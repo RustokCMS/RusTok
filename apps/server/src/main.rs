@@ -4,5 +4,5 @@ use rustok_server::app::App;
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    cli::main::<App, Migrator>().await
+    Ok(cli::main::<App, Migrator>().await?)
 }
