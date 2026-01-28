@@ -161,10 +161,10 @@ pub enum PermissionScope {
 
 impl Rbac {
     pub fn get_scope(role: &UserRole, permission: &Permission) -> PermissionScope {
-        if matches!(role, UserRole::SuperAdmin | UserRole::Admin | UserRole::Manager) {
-            if Self::has_permission(role, permission) {
-                return PermissionScope::All;
-            }
+        if matches!(role, UserRole::SuperAdmin | UserRole::Admin | UserRole::Manager)
+            && Self::has_permission(role, permission)
+        {
+            return PermissionScope::All;
         }
 
         if matches!(role, UserRole::Customer) {

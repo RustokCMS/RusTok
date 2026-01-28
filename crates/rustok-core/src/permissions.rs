@@ -136,15 +136,19 @@ impl Permission {
     pub const fn new(resource: Resource, action: Action) -> Self {
         Self { resource, action }
     }
+}
 
-    pub fn from_str(value: &str) -> Option<Self> {
+impl FromStr for Permission {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         let mut parts = value.split(':');
-        let resource = Resource::from_str(parts.next()?).ok()?;
-        let action = Action::from_str(parts.next()?).ok()?;
+        let resource = Resource::from_str(parts.next().ok_or("Missing resource")?)?;
+        let action = Action::from_str(parts.next().ok_or("Missing action")?)?;
         if parts.next().is_some() {
-            return None;
+            return Err("Too many parts in permission string".to_string());
         }
-        Some(Self { resource, action })
+        Ok(Self { resource, action })
     }
 }
 
