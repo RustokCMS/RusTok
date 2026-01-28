@@ -1,3 +1,8 @@
+use crate::context::TenantContextExt;
+use crate::models::{
+    sessions::Entity as Sessions,
+    users::{self, Entity as Users},
+};
 use axum::{
     async_trait,
     extract::{FromRef, FromRequestParts},
@@ -8,11 +13,6 @@ use axum_extra::{
     TypedHeader,
 };
 use loco_rs::prelude::*;
-use crate::context::TenantContextExt;
-use crate::models::{
-    sessions::Entity as Sessions,
-    users::{self, Entity as Users},
-};
 
 // Структура, которую мы будем просить в контроллерах
 pub struct CurrentUser {
@@ -45,8 +45,12 @@ where
                 .map_err(|_| (StatusCode::UNAUTHORIZED, "Missing or invalid token"))?;
 
         // 4. Берем секрет из конфига Loco
-        let auth_config = AuthConfig::from_ctx(&ctx)
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "JWT secret not configured"))?;
+        let auth_config = AuthConfig::from_ctx(&ctx).map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "JWT secret not configured",
+            )
+        })?;
 
         // 5. Валидируем токен
         let claims = decode_access_token(&auth_config, bearer.token())

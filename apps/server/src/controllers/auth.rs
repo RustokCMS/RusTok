@@ -1,4 +1,9 @@
-use axum::{extract::ConnectInfo, http::header::USER_AGENT, routing::{get, post}, Json};
+use axum::{
+    extract::ConnectInfo,
+    http::header::USER_AGENT,
+    routing::{get, post},
+    Json,
+};
 use chrono::{Duration, Utc};
 use loco_rs::prelude::*;
 use sea_orm::{ActiveModelTrait, Set};
@@ -120,16 +125,10 @@ async fn register(
     let token_hash = hash_refresh_token(&refresh_token);
     let expires_at = now + Duration::seconds(config.refresh_expiration as i64);
 
-    let session = sessions::ActiveModel::new(
-        tenant.id,
-        user.id,
-        token_hash,
-        expires_at,
-        None,
-        None,
-    )
-    .insert(&ctx.db)
-    .await?;
+    let session =
+        sessions::ActiveModel::new(tenant.id, user.id, token_hash, expires_at, None, None)
+            .insert(&ctx.db)
+            .await?;
 
     let access_token = encode_access_token(&config, user.id, tenant.id, user.role, session.id)?;
 

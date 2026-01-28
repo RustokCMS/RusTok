@@ -1,5 +1,5 @@
-use chrono::{Duration, Utc};
 use argon2::{PasswordHasher, PasswordVerifier};
+use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use loco_rs::{app::AppContext, Error, Result};
 use rand::RngCore;
