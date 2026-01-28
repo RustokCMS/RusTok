@@ -10,6 +10,9 @@ pub enum Error {
     #[error("Database error: {0}")]
     Database(String),
 
+    #[error("Auth error: {0}")]
+    Auth(String),
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 }
