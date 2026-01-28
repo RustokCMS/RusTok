@@ -123,7 +123,11 @@ where
     type Rejection = (StatusCode, &'static str);
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        if parts.headers.get(axum::http::header::AUTHORIZATION).is_none() {
+        if parts
+            .headers
+            .get(axum::http::header::AUTHORIZATION)
+            .is_none()
+        {
             return Ok(Self(None));
         }
 

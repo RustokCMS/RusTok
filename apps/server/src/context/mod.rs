@@ -1,5 +1,5 @@
-mod tenant;
 mod auth;
+mod tenant;
 
 pub use auth::AuthContext;
 pub use tenant::{

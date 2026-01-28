@@ -13,7 +13,7 @@ pub struct Tenant {
     pub slug: String,
 }
 
-#[derive(SimpleObject, Clone)]
+#[derive(SimpleObject, Debug, Clone)]
 #[graphql(complex)]
 pub struct User {
     pub id: Uuid,
