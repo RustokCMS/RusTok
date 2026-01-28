@@ -1,12 +1,19 @@
-use axum::{routing::{get, post}, Json};
+use axum::{extract::ConnectInfo, http::header::USER_AGENT, routing::{get, post}, Json};
+use chrono::{Duration, Utc};
 use loco_rs::prelude::*;
 use sea_orm::{ActiveModelTrait, Set};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 
-use crate::auth::{hash_password, verify_password};
+use crate::auth::{
+    encode_access_token, generate_refresh_token, hash_password, hash_refresh_token,
+    verify_password, AuthConfig,
+};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
-use crate::models::users::{self, ActiveModel as UserActiveModel, Entity as Users};
-use rustok_core::auth::jwt::{self, JwtConfig};
+use crate::models::{
+    sessions,
+    users::{self, ActiveModel as UserActiveModel, Entity as Users},
+};
 
 // --- DTOs ---
 
@@ -17,6 +24,11 @@ pub struct LoginParams {
 }
 
 #[derive(Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+#[derive(Deserialize)]
 pub struct RegisterParams {
     pub email: String,
     pub password: String,
@@ -24,9 +36,11 @@ pub struct RegisterParams {
 }
 
 #[derive(Serialize)]
-pub struct AuthResponse {
-    pub token: String,
-    pub user: UserResponse,
+pub struct UserResponse {
+    pub id: uuid::Uuid,
+    pub email: String,
+    pub name: Option<String>,
+    pub role: String,
 }
 
 #[derive(Serialize)]
@@ -48,28 +62,41 @@ impl From<users::Model> for UserResponse {
     }
 }
 
-fn jwt_config_from_ctx(ctx: &AppContext) -> Result<JwtConfig> {
-    let jwt_settings = ctx
-        .config
-        .auth
-        .as_ref()
-        .and_then(|auth| auth.jwt.as_ref())
-        .ok_or(Error::InternalServerError)?;
+#[derive(Debug, Serialize)]
+struct UserInfo {
+    id: uuid::Uuid,
+    email: String,
+    name: Option<String>,
+    role: rustok_core::UserRole,
+    status: rustok_core::UserStatus,
+}
 
-    Ok(JwtConfig::new(
-        jwt_settings.secret.clone(),
-        jwt_settings.expiration as i64,
-    ))
+#[derive(Debug, Serialize)]
+struct LogoutResponse {
+    status: &'static str,
+}
+
+impl From<users::Model> for UserResponse {
+    fn from(m: users::Model) -> Self {
+        Self {
+            id: m.id,
+            email: m.email,
+            name: m.name,
+            role: m.role.to_string(),
+        }
+    }
 }
 
 // --- Handlers ---
 
 /// POST /api/auth/register
-pub async fn register(
+async fn register(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RegisterParams>,
-) -> Result<Json<AuthResponse>> {
+) -> Result<Response> {
+    let config = AuthConfig::from_ctx(&ctx)?;
+
     // 1. Проверяем существование
     if Users::find_by_email(&ctx.db, tenant.id, &params.email)
         .await?
@@ -80,6 +107,68 @@ pub async fn register(
 
     // 2. Хешируем пароль
     let password_hash = hash_password(&params.password)?;
+
+    // 3. Создаем юзера
+    let mut user = UserActiveModel::new(tenant.id, &params.email, &password_hash);
+    user.name = Set(params.name);
+
+    let user = user.insert(&ctx.db).await?;
+
+    // 4. Создаем сессию и токены
+    let now = Utc::now();
+    let refresh_token = generate_refresh_token();
+    let token_hash = hash_refresh_token(&refresh_token);
+    let expires_at = now + Duration::seconds(config.refresh_expiration as i64);
+
+    let session = sessions::ActiveModel::new(
+        tenant.id,
+        user.id,
+        token_hash,
+        expires_at,
+        None,
+        None,
+    )
+    .insert(&ctx.db)
+    .await?;
+
+    let access_token = encode_access_token(&config, user.id, tenant.id, user.role, session.id)?;
+
+    let response = AuthResponse {
+        access_token,
+        refresh_token,
+        token_type: "Bearer",
+        expires_in: config.access_expiration,
+        user: UserInfo {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            status: user.status,
+        },
+    };
+
+    format::json(response)
+}
+
+/// POST /api/auth/login
+async fn login(
+    State(ctx): State<AppContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<LoginParams>,
+) -> Result<Response> {
+    let config = AuthConfig::from_ctx(&ctx)?;
+
+    // 1. Ищем юзера
+    let user = Users::find_by_email(&ctx.db, tenant.id, &payload.email)
+        .await?
+        .ok_or_else(|| Error::Unauthorized("Invalid credentials".into()))?;
+
+    // 2. Проверяем пароль
+    if !verify_password(&payload.password, &user.password_hash)? {
+        return Err(Error::Unauthorized("Invalid credentials".into()));
+    }
 
     // 3. Создаем юзера
     let mut user = UserActiveModel::new(tenant.id, &params.email, &password_hash);
@@ -131,10 +220,19 @@ pub async fn me(CurrentUser { user }: CurrentUser) -> Result<Json<UserResponse>>
     Ok(Json(user.into()))
 }
 
+/// GET /api/auth/me
+/// Требует авторизации через заголовок
+async fn me(CurrentUser { user }: CurrentUser) -> Result<Json<UserResponse>> {
+    Ok(Json(user.into()))
+}
+
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/auth")
         .add("/register", post(register))
         .add("/login", post(login))
+        .add("/register", post(register))
+        .add("/refresh", post(refresh))
+        .add("/logout", post(logout))
         .add("/me", get(me))
 }

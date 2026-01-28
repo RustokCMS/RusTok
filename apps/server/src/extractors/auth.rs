@@ -9,8 +9,10 @@ use axum_extra::{
 };
 use loco_rs::prelude::*;
 use crate::context::TenantContextExt;
-use crate::models::users::{self, Entity as Users};
-use rustok_core::auth::jwt::{self, JwtConfig};
+use crate::models::{
+    sessions::Entity as Sessions,
+    users::{self, Entity as Users},
+};
 
 // Структура, которую мы будем просить в контроллерах
 pub struct CurrentUser {
@@ -43,17 +45,11 @@ where
                 .map_err(|_| (StatusCode::UNAUTHORIZED, "Missing or invalid token"))?;
 
         // 4. Берем секрет из конфига Loco
-        let jwt_settings = ctx
-            .config
-            .auth
-            .as_ref()
-            .and_then(|auth| auth.jwt.as_ref())
-            .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "JWT secret not configured"))?;
-
-        let jwt_config = JwtConfig::new(jwt_settings.secret.clone(), jwt_settings.expiration as i64);
+        let auth_config = AuthConfig::from_ctx(&ctx)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "JWT secret not configured"))?;
 
         // 5. Валидируем токен
-        let claims = jwt::decode_token(bearer.token(), &jwt_config)
+        let claims = decode_access_token(&auth_config, bearer.token())
             .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
 
         // 6. ПРОВЕРКА МУЛЬТИТЕНАНТНОСТИ
@@ -62,17 +58,25 @@ where
             return Err((StatusCode::FORBIDDEN, "Token belongs to another tenant"));
         }
 
-        // 7. Достаем юзера из БД
-        let user_id = uuid::Uuid::parse_str(&claims.sub)
-            .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid user ID in token"))?;
+        // 7. Проверяем сессию
+        let session = Sessions::find_by_id(claims.session_id)
+            .one(&ctx.db)
+            .await
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+            .ok_or((StatusCode::UNAUTHORIZED, "Session not found"))?;
 
-        let user = Users::find_by_id(user_id)
+        if session.tenant_id != tenant_ctx.id || !session.is_active() {
+            return Err((StatusCode::UNAUTHORIZED, "Session expired"));
+        }
+
+        // 8. Достаем юзера из БД
+        let user = Users::find_by_id(claims.sub)
             .one(&ctx.db)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
             .ok_or((StatusCode::UNAUTHORIZED, "User not found"))?;
 
-        // 8. Проверяем статус (не забанен ли)
+        // 9. Проверяем статус (не забанен ли)
         if !user.is_active() {
             return Err((StatusCode::FORBIDDEN, "User is inactive"));
         }
