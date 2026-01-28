@@ -309,7 +309,9 @@ cargo build --release
 
 ### Feature Toggles
 
-Modules can be enabled/disabled per tenant without recompilation:
+Modules can be enabled/disabled per tenant without recompilation. The server
+tracks compiled modules in a registry and calls module lifecycle hooks when
+tenants enable or disable a module. See `docs/module-registry.md` for details.
 
 ```sql
 -- Stored in database

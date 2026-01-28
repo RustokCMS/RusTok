@@ -57,6 +57,16 @@ pub struct TenantModule {
     pub settings: String,
 }
 
+#[derive(SimpleObject, Clone)]
+pub struct ModuleRegistryItem {
+    pub module_slug: String,
+    pub name: String,
+    pub description: String,
+    pub version: String,
+    pub enabled: bool,
+    pub dependencies: Vec<String>,
+}
+
 #[derive(SimpleObject, Debug, Clone)]
 pub struct UserEdge {
     pub node: User,

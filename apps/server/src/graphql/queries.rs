@@ -1,10 +1,14 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect};
+use std::collections::HashSet;
 
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::common::{encode_cursor, PageInfo, PaginationInput};
 use crate::graphql::errors::GraphQLError;
-use crate::graphql::types::{Tenant, TenantModule, User, UserConnection, UserEdge};
+use crate::graphql::types::{
+    ModuleRegistryItem, Tenant, TenantModule, User, UserConnection, UserEdge,
+};
+use rustok_core::ModuleRegistry;
 use crate::models::_entities::tenant_modules::Column as TenantModulesColumn;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::users::Column as UsersColumn;
@@ -40,6 +44,33 @@ impl RootQuery {
             .map_err(|err| err.to_string())?;
 
         Ok(modules)
+    }
+
+    async fn module_registry(&self, ctx: &Context<'_>) -> Result<Vec<ModuleRegistryItem>> {
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let registry = ctx.data::<ModuleRegistry>()?;
+        let enabled_modules = TenantModulesEntity::find_enabled(&app_ctx.db, tenant.id)
+            .await
+            .map_err(|err| err.to_string())?;
+        let enabled_set: HashSet<String> = enabled_modules.into_iter().collect();
+
+        Ok(registry
+            .list()
+            .into_iter()
+            .map(|module| ModuleRegistryItem {
+                module_slug: module.slug().to_string(),
+                name: module.name().to_string(),
+                description: module.description().to_string(),
+                version: module.version().to_string(),
+                enabled: enabled_set.contains(module.slug()),
+                dependencies: module
+                    .dependencies()
+                    .iter()
+                    .map(|dependency| dependency.to_string())
+                    .collect(),
+            })
+            .collect())
     }
 
     async fn tenant_modules(&self, ctx: &Context<'_>) -> Result<Vec<TenantModule>> {
