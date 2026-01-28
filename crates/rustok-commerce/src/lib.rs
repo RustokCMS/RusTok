@@ -13,6 +13,10 @@ impl RusToKModule for CommerceModule {
         "Commerce"
     }
 
+    fn description(&self) -> &'static str {
+        "Products, Orders, Cart, Checkout"
+    }
+
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }

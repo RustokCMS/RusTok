@@ -13,6 +13,10 @@ impl RusToKModule for BlogModule {
         "Blog"
     }
 
+    fn description(&self) -> &'static str {
+        "Posts, Pages, Comments"
+    }
+
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }

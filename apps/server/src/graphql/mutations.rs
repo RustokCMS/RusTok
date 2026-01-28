@@ -3,7 +3,7 @@ use async_graphql::{Context, FieldError, Object, Result};
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
 use crate::graphql::types::TenantModule;
-use crate::modules::ModuleRegistry;
+use rustok_core::{ModuleContext, ModuleRegistry};
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 
 #[derive(Default)]
@@ -38,6 +38,29 @@ impl RootMutation {
         let module = TenantModulesEntity::toggle(&app_ctx.db, tenant.id, &module_slug, enabled)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        if let Some(module_impl) = registry.get(&module_slug) {
+            let module_ctx = ModuleContext {
+                db: &app_ctx.db,
+                tenant_id: tenant.id,
+                config: &module.settings,
+            };
+
+            let hook_result = if enabled {
+                module_impl.on_enable(module_ctx).await
+            } else {
+                module_impl.on_disable(module_ctx).await
+            };
+
+            if let Err(err) = hook_result {
+                tracing::error!(
+                    "Module hook failed for {} (enabled={}): {}",
+                    module_slug,
+                    enabled,
+                    err
+                );
+            }
+        }
 
         Ok(TenantModule {
             module_slug: module.module_slug,

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use axum::middleware as axum_middleware;
+use axum::Extension;
 use axum::Router as AxumRouter;
 use loco_rs::{
     app::{AppContext, Hooks, Initializer},
@@ -14,6 +15,7 @@ use std::path::Path;
 
 use crate::controllers;
 use crate::middleware;
+use crate::modules;
 use loco_rs::prelude::Queue;
 use migration::Migrator;
 
@@ -47,10 +49,14 @@ impl Hooks for App {
     }
 
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
-        Ok(router.layer(axum_middleware::from_fn_with_state(
-            ctx.clone(),
-            middleware::tenant::resolve,
-        )))
+        let registry = modules::build_registry();
+
+        Ok(router
+            .layer(Extension(registry))
+            .layer(axum_middleware::from_fn_with_state(
+                ctx.clone(),
+                middleware::tenant::resolve,
+            )))
     }
 
     async fn truncate(_db: &DatabaseConnection) -> Result<()> {

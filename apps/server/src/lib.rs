@@ -3,6 +3,7 @@ pub mod auth;
 pub mod context;
 pub mod controllers;
 pub mod extractors;
+pub mod guards;
 pub mod graphql;
 pub mod middleware;
 pub mod modules;

@@ -61,6 +61,7 @@ pub struct TenantModule {
 pub struct ModuleRegistryItem {
     pub module_slug: String,
     pub name: String,
+    pub description: String,
     pub version: String,
     pub enabled: bool,
     pub dependencies: Vec<String>,

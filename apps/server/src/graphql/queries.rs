@@ -8,7 +8,7 @@ use crate::graphql::errors::GraphQLError;
 use crate::graphql::types::{
     ModuleRegistryItem, Tenant, TenantModule, User, UserConnection, UserEdge,
 };
-use crate::modules::ModuleRegistry;
+use rustok_core::ModuleRegistry;
 use crate::models::_entities::tenant_modules::Column as TenantModulesColumn;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::users::Column as UsersColumn;
@@ -56,14 +56,19 @@ impl RootQuery {
         let enabled_set: HashSet<String> = enabled_modules.into_iter().collect();
 
         Ok(registry
-            .all()
-            .iter()
+            .list()
+            .into_iter()
             .map(|module| ModuleRegistryItem {
-                module_slug: module.slug.clone(),
-                name: module.name.clone(),
-                version: module.version.clone(),
-                enabled: enabled_set.contains(&module.slug),
-                dependencies: module.dependencies.clone(),
+                module_slug: module.slug().to_string(),
+                name: module.name().to_string(),
+                description: module.description().to_string(),
+                version: module.version().to_string(),
+                enabled: enabled_set.contains(module.slug()),
+                dependencies: module
+                    .dependencies()
+                    .iter()
+                    .map(|dependency| dependency.to_string())
+                    .collect(),
             })
             .collect())
     }

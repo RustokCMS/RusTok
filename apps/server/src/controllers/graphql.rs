@@ -4,19 +4,17 @@ use loco_rs::prelude::*;
 use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::OptionalCurrentUser;
 use crate::graphql::{build_schema, AppSchema};
-use crate::modules::ModuleRegistry;
+use rustok_core::ModuleRegistry;
 
 async fn graphql_handler(
     State(ctx): State<AppContext>,
     Extension(schema): Extension<AppSchema>,
+    Extension(registry): Extension<ModuleRegistry>,
     tenant_ctx: TenantContext,
     OptionalCurrentUser(current_user): OptionalCurrentUser,
     Json(req): Json<async_graphql::Request>,
 ) -> Json<async_graphql::Response> {
-    let mut request = req
-        .data(ctx)
-        .data(tenant_ctx)
-        .data(ModuleRegistry::new());
+    let mut request = req.data(ctx).data(tenant_ctx).data(registry);
 
     if let Some(current_user) = current_user {
         let auth_ctx = AuthContext {
