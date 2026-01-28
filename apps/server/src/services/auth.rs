@@ -61,11 +61,11 @@ impl AuthService {
             let resource = permission
                 .resource
                 .parse::<Resource>()
-                .map_err(|err| Error::BadRequest(err.into()))?;
+                .map_err(|err| Error::BadRequest(err))?;
             let action = permission
                 .action
                 .parse::<Action>()
-                .map_err(|err| Error::BadRequest(err.into()))?;
+                .map_err(|err| Error::BadRequest(err))?;
             result.push(Permission::new(resource, action));
         }
 
