@@ -11,10 +11,5 @@ use queries::RootQuery;
 pub type AppSchema = Schema<RootQuery, RootMutation, EmptySubscription>;
 
 pub fn build_schema() -> AppSchema {
-    Schema::build(
-        RootQuery,
-        RootMutation,
-        EmptySubscription,
-    )
-    .finish()
+    Schema::build(RootQuery, RootMutation, EmptySubscription).finish()
 }
