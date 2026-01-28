@@ -13,24 +13,17 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(ColumnDef::new(Users::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(Users::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(Users::Email).string_len(255).not_null())
-                    .col(
-                        ColumnDef::new(Users::PasswordHash)
-                            .string_len(255)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Users::Email).string().not_null())
+                    .col(ColumnDef::new(Users::Password).string().not_null())
+                    .col(ColumnDef::new(Users::Name).string().not_null())
                     .col(
                         ColumnDef::new(Users::Role)
-                            .string_len(32)
+                            .string()
                             .not_null()
-                            .default("customer"),
+                            .default("user"),
                     )
-                    .col(
-                        ColumnDef::new(Users::Metadata)
-                            .json_binary()
-                            .not_null()
-                            .default("{}"),
-                    )
+                    .col(ColumnDef::new(Users::EmailVerifiedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(Users::RememberToken).string())
                     .col(
                         ColumnDef::new(Users::CreatedAt)
                             .timestamp_with_time_zone()
@@ -45,22 +38,20 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
+                            .name("fk-users-tenant_id")
                             .from(Users::Table, Users::TenantId)
                             .to(Tenants::Table, Tenants::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
+                            .on_delete(ForeignKeyAction::Cascade)
+                            .on_update(ForeignKeyAction::Cascade),
                     )
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_users_tenant_email")
-                    .table(Users::Table)
-                    .col(Users::TenantId)
-                    .col(Users::Email)
-                    .unique()
+                    .index(
+                        Index::create()
+                            .unique()
+                            .name("idx-users-email-tenant")
+                            .table(Users::Table)
+                            .col(Users::Email)
+                            .col(Users::TenantId),
+                    )
                     .to_owned(),
             )
             .await
@@ -79,9 +70,11 @@ enum Users {
     Id,
     TenantId,
     Email,
-    PasswordHash,
+    Password,
+    Name,
     Role,
-    Metadata,
+    EmailVerifiedAt,
+    RememberToken,
     CreatedAt,
     UpdatedAt,
 }

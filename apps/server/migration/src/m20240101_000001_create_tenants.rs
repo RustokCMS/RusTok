@@ -12,18 +12,18 @@ impl MigrationTrait for Migration {
                     .table(Tenants::Table)
                     .if_not_exists()
                     .col(ColumnDef::new(Tenants::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(Tenants::Name).string_len(255).not_null())
+                    .col(ColumnDef::new(Tenants::Name).string().not_null())
                     .col(
                         ColumnDef::new(Tenants::Slug)
-                            .string_len(64)
+                            .string()
                             .not_null()
                             .unique_key(),
                     )
                     .col(
-                        ColumnDef::new(Tenants::Settings)
-                            .json_binary()
+                        ColumnDef::new(Tenants::Status)
+                            .string()
                             .not_null()
-                            .default("{}"),
+                            .default("active"),
                     )
                     .col(
                         ColumnDef::new(Tenants::CreatedAt)
@@ -55,7 +55,7 @@ enum Tenants {
     Id,
     Name,
     Slug,
-    Settings,
+    Status,
     CreatedAt,
     UpdatedAt,
 }
