@@ -14,7 +14,11 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Users::Id).uuid().not_null().primary_key())
                     .col(ColumnDef::new(Users::TenantId).uuid().not_null())
                     .col(ColumnDef::new(Users::Email).string_len(255).not_null())
-                    .col(ColumnDef::new(Users::PasswordHash).string_len(255).not_null())
+                    .col(
+                        ColumnDef::new(Users::PasswordHash)
+                            .string_len(255)
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(Users::Role)
                             .string_len(32)

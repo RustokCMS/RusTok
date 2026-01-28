@@ -1,6 +1,9 @@
 use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
-use axum::{routing::{get, post}, Extension, Router};
+use axum::{
+    routing::{get, post},
+    Extension, Router,
+};
 use loco_rs::prelude::*;
 
 #[derive(Default)]
@@ -31,11 +34,9 @@ async fn graphql_handler(
 }
 
 async fn graphql_playground() -> impl axum::response::IntoResponse {
-    axum::response::Html(
-        async_graphql::http::playground_source(
-            async_graphql::http::GraphQLPlaygroundConfig::new("/api/graphql"),
-        ),
-    )
+    axum::response::Html(async_graphql::http::playground_source(
+        async_graphql::http::GraphQLPlaygroundConfig::new("/api/graphql"),
+    ))
 }
 
 pub fn routes() -> Routes {
