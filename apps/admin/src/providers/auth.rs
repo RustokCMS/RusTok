@@ -29,13 +29,13 @@ pub fn provide_auth_context() {
         if let Some(t) = token.get() {
             let _ = LocalStorage::set("auth_token", t);
         } else {
-            let _ = LocalStorage::delete("auth_token");
+            LocalStorage::delete("auth_token");
         }
 
         if let Some(u) = user.get() {
             let _ = LocalStorage::set("auth_user", u);
         } else {
-            let _ = LocalStorage::delete("auth_user");
+            LocalStorage::delete("auth_user");
         }
     });
 
