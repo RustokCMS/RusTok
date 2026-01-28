@@ -39,6 +39,7 @@ sea-orm-migration = { version = "1.0", features = ["runtime-tokio-rustls", "sqlx
 
 # GraphQL
 async-graphql = { version = "6.0", features = ["uuid", "chrono"] }
+base64 = "0.22"
 
 # IDs
 uuid = { version = "1.10", features = ["v4", "serde"] }
