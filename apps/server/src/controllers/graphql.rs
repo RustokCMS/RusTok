@@ -1,6 +1,5 @@
 use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema};
-use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
-use axum::{routing::get, Extension};
+use axum::{routing::get, Extension, Json};
 use loco_rs::prelude::*;
 
 #[derive(Default)]
@@ -25,9 +24,9 @@ fn build_schema() -> AppSchema {
 
 async fn graphql_handler(
     Extension(schema): Extension<AppSchema>,
-    req: GraphQLRequest,
-) -> GraphQLResponse {
-    schema.execute(req.into_inner()).await.into()
+    Json(req): Json<async_graphql::Request>,
+) -> Json<async_graphql::Response> {
+    Json(schema.execute(req).await)
 }
 
 async fn graphql_playground() -> impl axum::response::IntoResponse {

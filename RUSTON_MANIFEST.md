@@ -1190,8 +1190,7 @@ sea-orm = { version = "1.0", features = [
 ] }
 
 # GraphQL
-async-graphql = { version = "6.0", features = ["uuid", "chrono"] }
-async-graphql-axum = "6.0"
+async-graphql = { version = "6.0", features = ["uuid", "chrono", "serde"] }
 
 # IDs
 uuid = { version = "1.10", features = ["v4", "serde"] }
