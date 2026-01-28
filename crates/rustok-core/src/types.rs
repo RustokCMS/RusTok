@@ -1,9 +1,25 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::str::FromStr;
+
+#[derive(Debug, thiserror::Error)]
+pub enum UserRoleParseError {
+    #[error("Invalid user role: {0}")]
+    Invalid(String),
+}
 
 #[derive(
-    Clone, Debug, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum, Default,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    EnumIter,
+    DeriveActiveEnum,
+    Default,
 )]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
 pub enum UserRole {
@@ -27,6 +43,20 @@ impl fmt::Display for UserRole {
             Self::Customer => "customer",
         };
         write!(f, "{value}")
+    }
+}
+
+impl FromStr for UserRole {
+    type Err = UserRoleParseError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "super_admin" => Ok(Self::SuperAdmin),
+            "admin" => Ok(Self::Admin),
+            "manager" => Ok(Self::Manager),
+            "customer" => Ok(Self::Customer),
+            _ => Err(UserRoleParseError::Invalid(value.to_string())),
+        }
     }
 }
 

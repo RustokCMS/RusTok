@@ -1,6 +1,6 @@
 pub mod _entities;
 
-pub use _entities::{Sessions, TenantModules, Tenants, Users};
+pub use _entities::{Permissions, RolePermissions, Roles, Sessions, TenantModules, Tenants, UserRoles, Users};
 
 pub mod sessions;
 pub mod tenant_modules;

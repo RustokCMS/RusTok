@@ -6,6 +6,7 @@ mod m20250101_000001_create_tenants;
 mod m20250101_000002_create_users;
 mod m20250101_000003_create_tenant_modules;
 mod m20250101_000004_create_sessions;
+mod m20250101_000005_create_roles_and_permissions;
 
 pub struct Migrator;
 
@@ -17,6 +18,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250101_000002_create_users::Migration),
             Box::new(m20250101_000003_create_tenant_modules::Migration),
             Box::new(m20250101_000004_create_sessions::Migration),
+            Box::new(m20250101_000005_create_roles_and_permissions::Migration),
         ]
     }
 }

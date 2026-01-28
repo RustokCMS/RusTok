@@ -19,6 +19,7 @@ use crate::models::{
     sessions,
     users::{self, ActiveModel as UserActiveModel, Entity as Users},
 };
+use crate::services::auth::AuthService;
 
 // --- DTOs ---
 
@@ -119,6 +120,8 @@ async fn register(
 
     let user = user.insert(&ctx.db).await?;
 
+    AuthService::assign_role_permissions(&ctx.db, &user.id, &tenant.id, user.role).await?;
+
     // 4. Создаем сессию и токены
     let now = Utc::now();
     let refresh_token = generate_refresh_token();
@@ -215,13 +218,13 @@ pub async fn login(
 
 /// GET /api/auth/me
 /// Требует авторизации через заголовок
-pub async fn me(CurrentUser { user }: CurrentUser) -> Result<Json<UserResponse>> {
+pub async fn me(CurrentUser { user, .. }: CurrentUser) -> Result<Json<UserResponse>> {
     Ok(Json(user.into()))
 }
 
 /// GET /api/auth/me
 /// Требует авторизации через заголовок
-async fn me(CurrentUser { user }: CurrentUser) -> Result<Json<UserResponse>> {
+async fn me(CurrentUser { user, .. }: CurrentUser) -> Result<Json<UserResponse>> {
     Ok(Json(user.into()))
 }
 
