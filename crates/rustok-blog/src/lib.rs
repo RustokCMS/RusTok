@@ -4,7 +4,7 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod services;
 
-pub use services::{PostService, PostServiceError};
+pub use services::{CreatePostInput, PostService};
 
 pub struct BlogModule;
 

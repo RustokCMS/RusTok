@@ -3933,8 +3933,12 @@ name = "rustok-blog"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "rustok-content",
  "rustok-core",
- "sea-orm-migration",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -3951,6 +3955,20 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-content"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rustok-core",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "slug",
+ "thiserror 1.0.69",
  "uuid",
 ]
 

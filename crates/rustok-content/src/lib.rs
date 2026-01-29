@@ -1,11 +1,7 @@
+pub mod entities;
 pub mod error;
-pub mod models;
-pub mod repository;
-pub mod service;
+pub mod services;
 
+pub use entities::{Body, Node, NodeTranslation};
 pub use error::{ContentError, ContentResult};
-pub use models::{
-    CreateNodeInput, Node, NodeStatus, NodeTranslation, NodeUpdate, TranslationInput,
-};
-pub use repository::ContentRepository;
-pub use service::ContentService;
+pub use services::{CreateNodeInput, NodeBodyInput, NodeService, NodeTranslationInput, NodeUpdate};
