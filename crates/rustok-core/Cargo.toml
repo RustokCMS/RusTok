@@ -16,4 +16,3 @@ async-trait.workspace = true
 tokio = { workspace = true }
 jsonwebtoken = "9"
 sea-orm-migration.workspace = true
-tokio.workspace = true

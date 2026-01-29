@@ -1,35 +1,10 @@
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-
 mod bus;
-mod dispatcher;
+mod handler;
+mod types;
 
 pub use bus::{EventBus, EventBusStats};
-pub use dispatcher::{
-    DispatcherConfig, EventDispatcher, HandlerBuilder, HandlerResult, RunningDispatcher,
+pub use handler::{
+    DispatcherConfig, EventDispatcher, EventHandler, HandlerBuilder, HandlerResult,
+    RunningDispatcher,
 };
-
-#[derive(Debug, Clone)]
-pub struct EventEnvelope {
-    pub id: Uuid,
-    pub occurred_at: DateTime<Utc>,
-    pub event: DomainEvent,
-}
-
-#[derive(Debug, Clone)]
-pub enum DomainEvent {
-    ModuleEnabled {
-        tenant_id: Uuid,
-        module_slug: String,
-    },
-    ModuleDisabled {
-        tenant_id: Uuid,
-        module_slug: String,
-    },
-}
-
-pub trait EventHandler: Send + Sync {
-    fn handles(&self, event: &DomainEvent) -> bool;
-    fn name(&self) -> &'static str;
-    fn handle(&self, envelope: &EventEnvelope) -> crate::Result<()>;
-}
+pub use types::{DomainEvent, EventEnvelope};

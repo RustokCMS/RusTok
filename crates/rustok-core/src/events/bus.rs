@@ -3,10 +3,8 @@ use std::sync::{
     Arc,
 };
 
-use chrono::Utc;
 use tokio::sync::broadcast;
-
-use crate::id::generate_id;
+use uuid::Uuid;
 
 use super::{DomainEvent, EventEnvelope};
 
@@ -64,12 +62,13 @@ impl EventBus {
         receiver
     }
 
-    pub fn publish(&self, event: DomainEvent) -> crate::Result<()> {
-        let envelope = EventEnvelope {
-            id: generate_id(),
-            occurred_at: Utc::now(),
-            event,
-        };
+    pub fn publish(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+        event: DomainEvent,
+    ) -> crate::Result<()> {
+        let envelope = EventEnvelope::new(tenant_id, actor_id, event);
 
         if self.sender.receiver_count() == 0 {
             tracing::debug!(event = ?envelope.event, "Event published without subscribers");
