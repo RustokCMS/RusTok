@@ -1,5 +1,6 @@
 pub mod app;
 pub mod auth;
+pub mod common;
 pub mod context;
 pub mod controllers;
 pub mod extractors;

@@ -1,15 +1,9 @@
 pub mod common;
+pub mod commerce;
 pub mod errors;
 pub mod mutations;
 pub mod queries;
+pub mod schema;
 pub mod types;
 
-use async_graphql::{EmptySubscription, Schema};
-use mutations::RootMutation;
-use queries::RootQuery;
-
-pub type AppSchema = Schema<RootQuery, RootMutation, EmptySubscription>;
-
-pub fn build_schema() -> AppSchema {
-    Schema::build(RootQuery, RootMutation, EmptySubscription).finish()
-}
+pub use schema::{build_schema, AppSchema};

@@ -68,4 +68,5 @@ impl RootMutation {
             settings: module.settings.to_string(),
         })
     }
+
 }

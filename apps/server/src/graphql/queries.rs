@@ -178,4 +178,5 @@ impl RootQuery {
             page_info: PageInfo::new(total, offset, limit),
         })
     }
+
 }
