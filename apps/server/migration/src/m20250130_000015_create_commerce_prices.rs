@@ -20,11 +20,7 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(PriceLists::TenantId).uuid().not_null())
-                    .col(
-                        ColumnDef::new(PriceLists::Name)
-                            .string_len(100)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(PriceLists::Name).string_len(100).not_null())
                     .col(ColumnDef::new(PriceLists::Description).text())
                     .col(
                         ColumnDef::new(PriceLists::Type)

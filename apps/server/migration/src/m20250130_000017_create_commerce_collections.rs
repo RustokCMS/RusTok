@@ -135,10 +135,7 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .from(
-                                CollectionProducts::Table,
-                                CollectionProducts::CollectionId,
-                            )
+                            .from(CollectionProducts::Table, CollectionProducts::CollectionId)
                             .to(Collections::Table, Collections::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -191,7 +188,11 @@ impl MigrationTrait for Migration {
             .drop_table(Table::drop().table(CollectionProducts::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(CollectionTranslations::Table).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(CollectionTranslations::Table)
+                    .to_owned(),
+            )
             .await?;
         manager
             .drop_table(Table::drop().table(Collections::Table).to_owned())

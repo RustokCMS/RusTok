@@ -19,7 +19,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(ProductCategories::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ProductCategories::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(ProductCategories::ParentId).uuid())
                     .col(
                         ColumnDef::new(ProductCategories::Position)
@@ -233,10 +237,18 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(ProductCategoryProducts::Table).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(ProductCategoryProducts::Table)
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(ProductCategoryTranslations::Table).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(ProductCategoryTranslations::Table)
+                    .to_owned(),
+            )
             .await?;
         manager
             .drop_table(Table::drop().table(ProductCategories::Table).to_owned())
