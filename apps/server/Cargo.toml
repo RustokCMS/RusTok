@@ -7,6 +7,7 @@ edition.workspace = true
 rustok-core.workspace = true
 rustok-commerce.workspace = true
 rustok-blog.workspace = true
+rustok-index.workspace = true
 
 loco-rs.workspace = true
 tokio.workspace = true

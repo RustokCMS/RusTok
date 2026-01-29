@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::common::{encode_cursor, PageInfo, PaginationInput};
 use crate::graphql::errors::GraphQLError;
-use crate::graphql::commerce::{map_commerce_error, Product as CommerceProduct};
 use crate::graphql::types::{
     ModuleRegistryItem, Tenant, TenantModule, User, UserConnection, UserEdge,
 };
@@ -13,8 +12,7 @@ use crate::models::_entities::tenant_modules::Column as TenantModulesColumn;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
-use rustok_commerce::CatalogService;
-use rustok_core::{EventBus, ModuleRegistry, Permission, Rbac};
+use rustok_core::ModuleRegistry;
 
 #[derive(Default)]
 pub struct RootQuery;
@@ -181,25 +179,4 @@ impl RootQuery {
         })
     }
 
-    async fn product(&self, ctx: &Context<'_>, id: uuid::Uuid) -> Result<CommerceProduct> {
-        let auth = ctx
-            .data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
-
-        if !Rbac::has_permission(&auth.role, &Permission::PRODUCTS_READ) {
-            return Err(<FieldError as GraphQLError>::permission_denied(
-                "Permission denied: products:read required",
-            ));
-        }
-
-        let service = CatalogService::new(app_ctx.db.clone(), EventBus::default());
-        let product = service
-            .get_product(tenant.id, id)
-            .await
-            .map_err(map_commerce_error)?;
-
-        Ok(product.into())
-    }
 }
