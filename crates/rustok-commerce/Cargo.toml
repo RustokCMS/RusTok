@@ -6,3 +6,4 @@ edition.workspace = true
 [dependencies]
 rustok-core.workspace = true
 async-trait.workspace = true
+sea-orm-migration.workspace = true

@@ -29,7 +29,6 @@ impl MigrationTrait for Migration {
                     .name("idx_tenants_metadata")
                     .table(Tenants::Table)
                     .col(Tenants::Metadata)
-                    .index_type(IndexType::Gin)
                     .to_owned(),
             )
             .await?;
@@ -40,7 +39,6 @@ impl MigrationTrait for Migration {
                     .name("idx_users_metadata")
                     .table(Users::Table)
                     .col(Users::Metadata)
-                    .index_type(IndexType::Gin)
                     .to_owned(),
             )
             .await

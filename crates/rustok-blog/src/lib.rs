@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use rustok_core::RusToKModule;
+use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub struct BlogModule;
@@ -21,7 +21,9 @@ impl RusToKModule for BlogModule {
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }
+}
 
+impl MigrationSource for BlogModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         Vec::new()
     }
