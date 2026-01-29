@@ -231,6 +231,9 @@ cargo loco generate controller products --api
 
 ## 🏗️ Architecture
 
+For the full system design, data models, and deployment layouts, see the
+[System Architecture Manifest v4.0](RUSTOK_MANIFEST.md).
+
 ### Project Structure
 
 ```text
