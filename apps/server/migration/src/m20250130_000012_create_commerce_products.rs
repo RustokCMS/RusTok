@@ -83,7 +83,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(ProductTranslations::ProductId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ProductTranslations::ProductId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ProductTranslations::Locale)
                             .string_len(5)
@@ -188,7 +192,10 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(ProductImageTranslations::AltText).string_len(255))
                     .foreign_key(
                         ForeignKey::create()
-                            .from(ProductImageTranslations::Table, ProductImageTranslations::ImageId)
+                            .from(
+                                ProductImageTranslations::Table,
+                                ProductImageTranslations::ImageId,
+                            )
                             .to(ProductImages::Table, ProductImages::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -266,7 +273,11 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(ProductImageTranslations::Table).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(ProductImageTranslations::Table)
+                    .to_owned(),
+            )
             .await?;
         manager
             .drop_table(Table::drop().table(ProductImages::Table).to_owned())

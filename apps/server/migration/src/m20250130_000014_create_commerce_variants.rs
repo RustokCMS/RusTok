@@ -116,7 +116,11 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(VariantOptionValues::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(VariantOptionValues::VariantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(VariantOptionValues::VariantId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(VariantOptionValues::OptionValueId)
                             .uuid()
@@ -193,7 +197,11 @@ impl MigrationTrait for Migration {
             .drop_table(Table::drop().table(VariantOptionValues::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(ProductVariantTranslations::Table).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(ProductVariantTranslations::Table)
+                    .to_owned(),
+            )
             .await?;
         manager
             .drop_table(Table::drop().table(ProductVariants::Table).to_owned())

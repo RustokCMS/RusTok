@@ -77,7 +77,7 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(InventoryItems::VariantId)
                             .uuid()
                             .not_null()
-                            .unique(),
+                            .unique_key(),
                     )
                     .col(ColumnDef::new(InventoryItems::Sku).string_len(100))
                     .col(
@@ -130,7 +130,11 @@ impl MigrationTrait for Migration {
                             .uuid()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(InventoryLevels::LocationId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(InventoryLevels::LocationId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(InventoryLevels::StockedQuantity)
                             .integer()
@@ -158,10 +162,7 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .from(
-                                InventoryLevels::Table,
-                                InventoryLevels::InventoryItemId,
-                            )
+                            .from(InventoryLevels::Table, InventoryLevels::InventoryItemId)
                             .to(InventoryItems::Table, InventoryItems::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -191,7 +192,11 @@ impl MigrationTrait for Migration {
                             .uuid()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(ReservationItems::LocationId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(ReservationItems::LocationId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(ReservationItems::Quantity)
                             .integer()
@@ -221,10 +226,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(ReservationItems::DeletedAt).timestamp_with_time_zone())
                     .foreign_key(
                         ForeignKey::create()
-                            .from(
-                                ReservationItems::Table,
-                                ReservationItems::InventoryItemId,
-                            )
+                            .from(ReservationItems::Table, ReservationItems::InventoryItemId)
                             .to(InventoryItems::Table, InventoryItems::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
