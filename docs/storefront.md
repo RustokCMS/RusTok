@@ -12,6 +12,20 @@ cargo run -p rustok-storefront
 
 The server listens on `http://localhost:3100`.
 
+## Tailwind + DaisyUI styles
+
+By default the storefront uses Tailwind CDN plus the DaisyUI stylesheet for quick
+local previews. For offline or customized themes, build the CSS bundle:
+
+```bash
+cd apps/storefront
+npm install
+npm run build:css
+```
+
+This writes `apps/storefront/static/app.css`, which the SSR server serves from
+`/assets/app.css`.
+
 ## Localization
 
 The storefront currently supports English and Russian strings. Switch language

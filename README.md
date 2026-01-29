@@ -212,6 +212,11 @@ trunk serve --open
 # Run storefront (terminal 3)
 cargo run -p rustok-storefront
 
+# (Optional) Build Tailwind + DaisyUI styles
+cd apps/storefront
+npm install
+npm run build:css
+
 # Visit
 # API: http://localhost:3000/api/graphql
 # Admin: http://localhost:8080

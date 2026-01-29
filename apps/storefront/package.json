@@ -1,0 +1,12 @@
+{
+  "name": "rustok-storefront",
+  "private": true,
+  "devDependencies": {
+    "daisyui": "^4.12.10",
+    "tailwindcss": "^3.4.11"
+  },
+  "scripts": {
+    "build:css": "npx tailwindcss -c tailwind.config.cjs -i ./assets/input.css -o ./static/app.css --minify",
+    "watch:css": "npx tailwindcss -c tailwind.config.cjs -i ./assets/input.css -o ./static/app.css --watch"
+  }
+}
