@@ -5,7 +5,7 @@ use axum::{
 };
 use loco_rs::prelude::*;
 use rustok_content::{CreateNodeInput, ListNodesFilter, NodeService, UpdateNodeInput};
-use rustok_core::EventBus;
+use rustok_core::{EventBus, SecurityContext};
 use uuid::Uuid;
 
 use crate::context::TenantContext;
@@ -30,8 +30,9 @@ pub async fn list_nodes(
     _user: CurrentUser,
     Query(filter): Query<ListNodesFilter>,
 ) -> Result<Json<Vec<rustok_content::dto::NodeListItem>>> {
+    let security = SecurityContext::new(user.user.role, Some(user.user.id));
     let service = NodeService::new(ctx.db.clone(), EventBus::default());
-    let (items, _) = service.list_nodes(tenant.id, filter).await?;
+    let (items, _) = service.list_nodes(tenant.id, security, filter).await?;
     Ok(Json(items))
 }
 
@@ -78,9 +79,10 @@ pub async fn create_node(
     user: CurrentUser,
     Json(input): Json<CreateNodeInput>,
 ) -> Result<Json<rustok_content::dto::NodeResponse>> {
+    let security = SecurityContext::new(user.user.role, Some(user.user.id));
     let service = NodeService::new(ctx.db.clone(), EventBus::default());
     let node = service
-        .create_node(tenant.id, Some(user.user.id), input)
+        .create_node(tenant.id, security, input)
         .await?;
     Ok(Json(node))
 }
@@ -107,9 +109,10 @@ pub async fn update_node(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateNodeInput>,
 ) -> Result<Json<rustok_content::dto::NodeResponse>> {
+    let security = SecurityContext::new(user.user.role, Some(user.user.id));
     let service = NodeService::new(ctx.db.clone(), EventBus::default());
     let node = service
-        .update_node(id, Some(user.user.id), input)
+        .update_node(id, security, input)
         .await?;
     Ok(Json(node))
 }
@@ -134,7 +137,8 @@ pub async fn delete_node(
     user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
+    let security = SecurityContext::new(user.user.role, Some(user.user.id));
     let service = NodeService::new(ctx.db.clone(), EventBus::default());
-    service.delete_node(id, Some(user.user.id)).await?;
+    service.delete_node(id, security).await?;
     Ok(())
 }

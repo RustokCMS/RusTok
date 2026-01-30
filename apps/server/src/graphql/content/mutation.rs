@@ -3,7 +3,8 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use rustok_content::NodeService;
-use rustok_core::EventBus;
+use rustok_core::{EventBus, SecurityContext};
+use crate::context::AuthContext;
 
 use super::types::*;
 
@@ -21,6 +22,8 @@ impl ContentMutation {
     ) -> Result<GqlNode> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<EventBus>()?;
+        let auth = ctx.data::<AuthContext>().map_err(|_| "Unauthorized")?;
+        let security = SecurityContext::new(auth.role.clone(), Some(auth.user_id));
 
         let service = NodeService::new(db.clone(), event_bus.clone());
         let domain_input = rustok_content::dto::CreateNodeInput {
@@ -55,7 +58,7 @@ impl ContentMutation {
         };
 
         let node = service
-            .create_node(tenant_id, author_id, domain_input)
+            .create_node(tenant_id, security, domain_input)
             .await?;
 
         Ok(node.into())
@@ -70,6 +73,8 @@ impl ContentMutation {
     ) -> Result<GqlNode> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<EventBus>()?;
+        let auth = ctx.data::<AuthContext>().map_err(|_| "Unauthorized")?;
+        let security = SecurityContext::new(auth.role.clone(), Some(auth.user_id));
 
         let service = NodeService::new(db.clone(), event_bus.clone());
         let domain_input = rustok_content::dto::UpdateNodeInput {
@@ -104,7 +109,7 @@ impl ContentMutation {
         };
 
         let node = service
-            .update_node(id, author_id, domain_input)
+            .update_node(id, security, domain_input)
             .await?;
 
         Ok(node.into())
@@ -118,9 +123,11 @@ impl ContentMutation {
     ) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<EventBus>()?;
+        let auth = ctx.data::<AuthContext>().map_err(|_| "Unauthorized")?;
+        let security = SecurityContext::new(auth.role.clone(), Some(auth.user_id));
 
         let service = NodeService::new(db.clone(), event_bus.clone());
-        service.delete_node(id, author_id).await?;
+        service.delete_node(id, security).await?;
 
         Ok(true)
     }

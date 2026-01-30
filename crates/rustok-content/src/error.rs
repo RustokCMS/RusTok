@@ -16,6 +16,9 @@ pub enum ContentError {
     #[error("Translation not found for node {node_id} and locale {locale}")]
     TranslationNotFound { node_id: Uuid, locale: String },
 
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+
     #[error("Validation error: {0}")]
     Validation(String),
 }

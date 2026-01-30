@@ -19,7 +19,7 @@ pub use module::ModuleContext;
 pub use module::RusToKModule;
 pub use module::{EventListener, MigrationSource};
 pub use permissions::{Action, Permission, Resource};
-pub use rbac::{PermissionScope, Rbac};
+pub use rbac::{PermissionScope, Rbac, SecurityContext};
 pub use registry::ModuleRegistry;
 pub use types::{UserRole, UserStatus};
 
@@ -31,7 +31,7 @@ pub mod prelude {
     };
     pub use crate::id::generate_id;
     pub use crate::permissions::{Action, Permission, Resource};
-    pub use crate::rbac::{PermissionScope, Rbac};
+    pub use crate::rbac::{PermissionScope, Rbac, SecurityContext};
     pub use crate::types::{UserRole, UserStatus};
     pub use uuid::Uuid;
 }

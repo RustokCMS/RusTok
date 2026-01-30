@@ -5,7 +5,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use rustok_core::{DomainEvent, EventBus};
+use rustok_core::{Action, DomainEvent, EventBus, PermissionScope, Resource, SecurityContext};
 
 use crate::dto::{
     BodyInput, BodyResponse, CreateNodeInput, ListNodesFilter, NodeListItem, NodeResponse,
@@ -24,12 +24,36 @@ impl NodeService {
         Self { db, event_bus }
     }
 
+    fn kind_to_resource(kind: &str) -> Resource {
+        match kind {
+            "post" => Resource::Posts,
+            "page" => Resource::Pages,
+            "comment" => Resource::Comments,
+            _ => Resource::Posts,
+        }
+    }
+
     pub async fn create_node(
         &self,
         tenant_id: Uuid,
-        actor_id: Option<Uuid>,
-        input: CreateNodeInput,
+        security: SecurityContext,
+        mut input: CreateNodeInput,
     ) -> ContentResult<NodeResponse> {
+        // Scope Enforcement
+        let resource = Self::kind_to_resource(&input.kind);
+        let scope = security.get_scope(resource, Action::Create);
+
+        match scope {
+            PermissionScope::All => {}
+            PermissionScope::Own => {
+                // Force user_id as author_id
+                input.author_id = security.user_id;
+            }
+            PermissionScope::None => {
+                return Err(ContentError::Forbidden("Permission denied".into()));
+            }
+        }
+
         let now = Utc::now().into();
         let node_id = rustok_core::generate_id();
         let status = input
@@ -93,7 +117,7 @@ impl NodeService {
 
         self.event_bus.publish(
             tenant_id,
-            actor_id,
+            security.user_id,
             DomainEvent::NodeCreated {
                 node_id,
                 kind: input.kind,
@@ -108,10 +132,27 @@ impl NodeService {
     pub async fn update_node(
         &self,
         node_id: Uuid,
-        actor_id: Option<Uuid>,
+        security: SecurityContext,
         update: UpdateNodeInput,
     ) -> ContentResult<NodeResponse> {
         let node_model = self.find_node(node_id).await?;
+
+        // Scope Enforcement
+        let resource = Self::kind_to_resource(&node_model.kind);
+        let scope = security.get_scope(resource, Action::Update);
+
+        match scope {
+            PermissionScope::All => {}
+            PermissionScope::Own => {
+                if node_model.author_id != security.user_id {
+                    return Err(ContentError::Forbidden("Permission denied: Not the author".into()));
+                }
+            }
+            PermissionScope::None => {
+                return Err(ContentError::Forbidden("Permission denied".into()));
+            }
+        }
+
         let mut active: node::ActiveModel = node_model.clone().into();
         let now = Utc::now().into();
 
@@ -189,7 +230,7 @@ impl NodeService {
 
         self.event_bus.publish(
             updated.tenant_id,
-            actor_id,
+            security.user_id,
             DomainEvent::NodeUpdated {
                 node_id: updated.id,
                 kind: updated.kind.clone(),
@@ -211,7 +252,7 @@ impl NodeService {
     pub async fn publish_node(
         &self,
         node_id: Uuid,
-        actor_id: Option<Uuid>,
+        security: SecurityContext,
     ) -> ContentResult<NodeResponse> {
         let now = Utc::now().into();
         let update = UpdateNodeInput {
@@ -219,11 +260,11 @@ impl NodeService {
             published_at: Some(Some(now)),
             ..UpdateNodeInput::default()
         };
-        let updated = self.update_node(node_id, actor_id, update).await?;
+        let updated = self.update_node(node_id, security.clone(), update).await?;
 
         self.event_bus.publish(
             updated.tenant_id,
-            actor_id,
+            security.user_id,
             DomainEvent::NodePublished {
                 node_id: updated.id,
                 kind: updated.kind.clone(),
@@ -236,18 +277,18 @@ impl NodeService {
     pub async fn unpublish_node(
         &self,
         node_id: Uuid,
-        actor_id: Option<Uuid>,
+        security: SecurityContext,
     ) -> ContentResult<NodeResponse> {
         let update = UpdateNodeInput {
             status: Some(crate::entities::node::ContentStatus::Draft),
             published_at: Some(None),
             ..UpdateNodeInput::default()
         };
-        let updated = self.update_node(node_id, actor_id, update).await?;
+        let updated = self.update_node(node_id, security.clone(), update).await?;
 
         self.event_bus.publish(
             updated.tenant_id,
-            actor_id,
+            security.user_id,
             DomainEvent::NodeUnpublished {
                 node_id: updated.id,
                 kind: updated.kind.clone(),
@@ -257,13 +298,30 @@ impl NodeService {
         Ok(updated)
     }
 
-    pub async fn delete_node(&self, node_id: Uuid, actor_id: Option<Uuid>) -> ContentResult<()> {
+    pub async fn delete_node(&self, node_id: Uuid, security: SecurityContext) -> ContentResult<()> {
         let node_model = self.find_node(node_id).await?;
+
+        // Scope Enforcement
+        let resource = Self::kind_to_resource(&node_model.kind);
+        let scope = security.get_scope(resource, Action::Delete);
+
+        match scope {
+            PermissionScope::All => {}
+            PermissionScope::Own => {
+                if node_model.author_id != security.user_id {
+                    return Err(ContentError::Forbidden("Permission denied: Not the author".into()));
+                }
+            }
+            PermissionScope::None => {
+                return Err(ContentError::Forbidden("Permission denied".into()));
+            }
+        }
+
         node::Entity::delete_by_id(node_id).exec(&self.db).await?;
 
         self.event_bus.publish(
             node_model.tenant_id,
-            actor_id,
+            security.user_id,
             DomainEvent::NodeDeleted {
                 node_id: node_model.id,
                 kind: node_model.kind,
@@ -319,8 +377,29 @@ impl NodeService {
     pub async fn list_nodes(
         &self,
         tenant_id: Uuid,
-        filter: ListNodesFilter,
+        security: SecurityContext,
+        mut filter: ListNodesFilter,
     ) -> ContentResult<(Vec<NodeListItem>, u64)> {
+        // Scope Enforcement for List
+        // We assume 'kind' is provided or we use a generic Resource::Posts if not.
+        let resource = filter
+            .kind
+            .as_deref()
+            .map(Self::kind_to_resource)
+            .unwrap_or(Resource::Posts);
+        let scope = security.get_scope(resource, Action::List);
+
+        match scope {
+            PermissionScope::All => {}
+            PermissionScope::Own => {
+                // Force user_id filter
+                filter.author_id = security.user_id;
+            }
+            PermissionScope::None => {
+                return Err(ContentError::Forbidden("Permission denied".into()));
+            }
+        }
+
         let locale = filter.locale.clone().unwrap_or_else(|| "en".to_string());
         let mut query = node::Entity::find().filter(node::Column::TenantId.eq(tenant_id));
 

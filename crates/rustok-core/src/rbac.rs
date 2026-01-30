@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use uuid::Uuid;
 
 use once_cell::sync::Lazy;
 
@@ -171,11 +172,34 @@ impl Rbac {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PermissionScope {
     All,
     Own,
     None,
+}
+
+#[derive(Debug, Clone)]
+pub struct SecurityContext {
+    pub role: UserRole,
+    pub user_id: Option<Uuid>,
+}
+
+impl SecurityContext {
+    pub fn new(role: UserRole, user_id: Option<Uuid>) -> Self {
+        Self { role, user_id }
+    }
+
+    pub fn get_scope(&self, resource: Resource, action: Action) -> PermissionScope {
+        Rbac::get_scope(&self.role, &Permission::new(resource, action))
+    }
+
+    pub fn system() -> Self {
+        Self {
+            role: UserRole::SuperAdmin,
+            user_id: None,
+        }
+    }
 }
 
 impl Rbac {

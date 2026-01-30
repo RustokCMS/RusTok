@@ -3,7 +3,8 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use rustok_content::NodeService;
-use rustok_core::EventBus;
+use rustok_core::{EventBus, SecurityContext, UserRole};
+use crate::context::AuthContext;
 
 use super::types::*;
 
@@ -59,7 +60,11 @@ impl ContentQuery {
             per_page: filter.per_page.unwrap_or(20),
         };
 
-        let (items, total) = service.list_nodes(tenant_id, domain_filter).await?;
+        let security = ctx.data::<AuthContext>()
+            .map(|auth| SecurityContext::new(auth.role.clone(), Some(auth.user_id)))
+            .unwrap_or_else(|_| SecurityContext::new(UserRole::Customer, None));
+
+        let (items, total) = service.list_nodes(tenant_id, security, domain_filter).await?;
 
         Ok(GqlNodeList {
             items: items.into_iter().map(Into::into).collect(),
