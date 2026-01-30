@@ -654,4 +654,45 @@ impl NodeService {
 
 ---
 
+## 19. STANDARD MODULE LAYOUT (Design Pattern)
+
+Чтобы ИИ и разработчики могли ориентироваться в любом крайте (crate), мы вводим единый стандарт папок. Даже если папка пуста — она должна быть (или создаваться по мере роста).
+
+### 19.1 Directory Structure
+```text
+crates/rustok-[name]/
+├── src/
+│   ├── entities/       # SeaORM модели (generate entity)
+│   ├── dto/            # Request/Response структуры (Input/Output)
+│   ├── services/       # Бизнес-логика (Service Layer)
+│   ├── error.rs        # Типизированные ошибки модуля
+│   └── lib.rs          # Регистрация модуля & Public API
+├── Cargo.toml
+└── README.md
+```
+
+### 19.2 Module Categorization
+Мы разделяем модули на 4 типа, но структура папок остается **одинаковой**:
+
+1.  **Core Components** (e.g., `rustok-content`): Базовые кирпичики системы. Имеют таблицы, но могут не иметь сложной бизнес-логики.
+2.  **Domain Modules** (e.g., `rustok-commerce`): Полноценные бизнес-вертикали (Товары, Заказы). Имеют свои таблицы и логику.
+3.  **Wrapper Modules** (e.g., `rustok-blog`): Надстройки. **Не имеют своих таблиц**. Используют таблицы `Core Components`, упаковывая их в специфичную бизнес-логику.
+4.  **Infrastructural Modules** (e.g., `rustok-index`): Технические модули (Поиск, CQRS, Почта).
+
+### 19.3 The lib.rs Standard
+Все модули обязаны реализовывать `RusToKModule` для интеграции в `ModuleRegistry`.
+
+```rust
+pub struct MyModule;
+
+#[async_trait]
+impl RusToKModule for MyModule {
+    fn slug(&self) -> &'static str { "my-module" }
+    fn name(&self) -> &'static str { "My Module" }
+    // ...
+}
+```
+
+---
+
 END OF MANIFEST v4.1

@@ -2,9 +2,12 @@ use async_trait::async_trait;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod dto;
+pub mod entities;
 pub mod services;
 
-pub use services::{CreatePostInput, PostService};
+pub use dto::CreatePostInput;
+pub use services::PostService;
 
 pub struct BlogModule;
 

@@ -1,3 +1,4 @@
+use crate::dto::CreatePostInput;
 use rustok_content::{
     BodyInput, ContentResult, CreateNodeInput, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
@@ -9,17 +10,6 @@ use uuid::Uuid;
 
 use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreatePostInput {
-    pub locale: String,
-    pub title: String,
-    pub body: String,
-    pub excerpt: Option<String>,
-    pub slug: Option<String>,
-    pub publish: bool,
-    pub tags: Vec<String>,
-    pub metadata: Option<Value>,
-}
 
 pub struct PostService {
     node_service: NodeService,
