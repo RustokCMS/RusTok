@@ -26,7 +26,7 @@
 | **Type** | Event-Driven Enterprise Headless Platform |
 | **Architecture** | Modular Monolith with CQRS & Event Sourcing elements |
 | **Language** | Rust 100% |
-| **License** | AGPL-3.0 (core) + MIT (modules) |
+| **License** | MIT |
 | **Version** | 4.0 (The Highload Tank) |
 | **Repository** | https://github.com/RustokCMS/RusToK |
 

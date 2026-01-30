@@ -1,4 +1,6 @@
 pub mod commerce;
+pub mod content;
+pub mod blog;
 pub mod common;
 pub mod errors;
 pub mod mutations;

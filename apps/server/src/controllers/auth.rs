@@ -9,6 +9,7 @@ use loco_rs::prelude::*;
 use sea_orm::{ActiveModelTrait, Set};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use utoipa::ToSchema;
 
 use crate::auth::{
     encode_access_token, generate_refresh_token, hash_password, hash_refresh_token,
@@ -23,25 +24,25 @@ use crate::services::auth::AuthService;
 
 // --- DTOs ---
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct LoginParams {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RefreshRequest {
     pub refresh_token: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RegisterParams {
     pub email: String,
     pub password: String,
     pub name: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct UserResponse {
     pub id: uuid::Uuid,
     pub email: String,
@@ -60,7 +61,7 @@ impl From<users::Model> for UserResponse {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 struct UserInfo {
     id: uuid::Uuid,
     email: String,
@@ -69,7 +70,7 @@ struct UserInfo {
     status: rustok_core::UserStatus,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 struct AuthResponse {
     access_token: String,
     refresh_token: String,
@@ -78,14 +79,24 @@ struct AuthResponse {
     user: UserInfo,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 struct LogoutResponse {
     status: &'static str,
 }
 
 // --- Handlers ---
 
-/// POST /api/auth/register
+/// Register a new user
+#[utoipa::path(
+    post,
+    path = "/api/auth/register",
+    tag = "auth",
+    request_body = RegisterParams,
+    responses(
+        (status = 200, description = "Registration successful", body = AuthResponse),
+        (status = 400, description = "Email already exists")
+    )
+)]
 async fn register(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
@@ -144,7 +155,17 @@ async fn register(
     format::json(response)
 }
 
-/// POST /api/auth/login
+/// Login with email and password
+#[utoipa::path(
+    post,
+    path = "/api/auth/login",
+    tag = "auth",
+    request_body = LoginParams,
+    responses(
+        (status = 200, description = "Login successful", body = AuthResponse),
+        (status = 401, description = "Unauthorized")
+    )
+)]
 async fn login(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
@@ -205,7 +226,20 @@ async fn login(
     format::json(response)
 }
 
-/// POST /api/auth/refresh
+    format::json(response)
+}
+
+/// Refresh access token
+#[utoipa::path(
+    post,
+    path = "/api/auth/refresh",
+    tag = "auth",
+    request_body = RefreshRequest,
+    responses(
+        (status = 200, description = "Token refreshed", body = AuthResponse),
+        (status = 401, description = "Invalid or expired refresh token")
+    )
+)]
 async fn refresh(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
@@ -264,7 +298,20 @@ async fn refresh(
     format::json(response)
 }
 
-/// POST /api/auth/logout
+    format::json(response)
+}
+
+/// Revoke refresh token (Logout)
+#[utoipa::path(
+    post,
+    path = "/api/auth/logout",
+    tag = "auth",
+    request_body = RefreshRequest,
+    responses(
+        (status = 200, description = "Logout successful", body = LogoutResponse),
+        (status = 401, description = "Invalid refresh token")
+    )
+)]
 async fn logout(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
@@ -284,8 +331,23 @@ async fn logout(
     format::json(LogoutResponse { status: "ok" })
 }
 
-/// GET /api/auth/me
-/// Требует авторизации через заголовок
+    format::json(LogoutResponse { status: "ok" })
+}
+
+/// Get current user info
+/// Requires Bearer token
+#[utoipa::path(
+    get,
+    path = "/api/auth/me",
+    tag = "auth",
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "Current user info", body = UserResponse),
+        (status = 401, description = "Unauthorized")
+    )
+)]
 async fn me(CurrentUser { user, .. }: CurrentUser) -> Result<Response> {
     format::json(UserResponse::from(user))
 }

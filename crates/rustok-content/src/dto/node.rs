@@ -4,7 +4,9 @@ use serde_json::Value;
 use uuid::Uuid;
 use crate::entities::node::ContentStatus;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+use utoipa::ToSchema;
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateNodeInput {
     pub kind: String,
     pub status: Option<ContentStatus>,
@@ -20,7 +22,7 @@ pub struct CreateNodeInput {
     pub bodies: Vec<BodyInput>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NodeTranslationInput {
     pub locale: String,
     pub title: Option<String>,
@@ -28,14 +30,14 @@ pub struct NodeTranslationInput {
     pub excerpt: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BodyInput {
     pub locale: String,
     pub body: Option<String>,
     pub format: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct UpdateNodeInput {
     pub status: Option<ContentStatus>,
     pub parent_id: Option<Option<Uuid>>,
@@ -71,7 +73,7 @@ fn default_per_page() -> u64 {
     20
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NodeResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -91,7 +93,7 @@ pub struct NodeResponse {
     pub bodies: Vec<BodyResponse>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NodeTranslationResponse {
     pub locale: String,
     pub title: Option<String>,
@@ -99,7 +101,7 @@ pub struct NodeTranslationResponse {
     pub excerpt: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BodyResponse {
     pub locale: String,
     pub body: Option<String>,
@@ -107,7 +109,7 @@ pub struct BodyResponse {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NodeListItem {
     pub id: Uuid,
     pub kind: String,

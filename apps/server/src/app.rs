@@ -10,6 +10,8 @@ use loco_rs::{
     task::Tasks,
     Result,
 };
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 use sea_orm::DatabaseConnection;
 use std::path::Path;
 
@@ -47,12 +49,15 @@ impl Hooks for App {
             .add_route(controllers::auth::routes())
             .add_route(controllers::graphql::routes())
             .add_route(controllers::commerce::routes())
+            .add_route(controllers::content::routes())
+            .add_route(controllers::blog::routes())
     }
 
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
         let registry = modules::build_registry();
 
         Ok(router
+            .merge(SwaggerUi::new("/swagger").url("/api-docs/openapi.json", controllers::swagger::ApiDoc::openapi()))
             .layer(Extension(registry))
             .layer(axum_middleware::from_fn_with_state(
                 ctx.clone(),
