@@ -145,7 +145,9 @@ impl NodeService {
             PermissionScope::All => {}
             PermissionScope::Own => {
                 if node_model.author_id != security.user_id {
-                    return Err(ContentError::Forbidden("Permission denied: Not the author".into()));
+                    return Err(ContentError::Forbidden(
+                        "Permission denied: Not the author".into(),
+                    ));
                 }
             }
             PermissionScope::None => {
@@ -309,7 +311,9 @@ impl NodeService {
             PermissionScope::All => {}
             PermissionScope::Own => {
                 if node_model.author_id != security.user_id {
-                    return Err(ContentError::Forbidden("Permission denied: Not the author".into()));
+                    return Err(ContentError::Forbidden(
+                        "Permission denied: Not the author".into(),
+                    ));
                 }
             }
             PermissionScope::None => {
