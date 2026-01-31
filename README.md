@@ -24,10 +24,10 @@
 
 ## 🎯 What is RusToK?
 
-**RusToK** is an event-driven, modular monolith for enterprise content and commerce. Each module is isolated and ready for microservices. It combines the developer experience of Laravel/Rails with the performance of Rust, utilizing a "Tank" strategy for stability and a "CQRS-lite" approach for blazing fast reads. •
+**RusToK** is an event-driven, modular monolith for enterprise content and commerce. Each module is isolated and ready for microservices. It combines the developer experience of Laravel/Rails with the performance of Rust, utilizing a "Tank" strategy for stability and a "CQRS-lite" approach for blazing fast reads.
 
 Modules in RusToK are compiled into a binary for maximum performance and security, but follow a standardized layout (Entities/DTO/Services) for easy maintainability. •
-Rustok can become the foundation of anything that has any data. !!! •
+Rustok can become the foundation of anything that has any data. !!! .
 From an alarm clock with a personal blog to NASA's terabyte storage. • 
 We consume 10-200 times less power than traditional platforms. •
 We can work on any device with an operational memory of more than 50 MB •
