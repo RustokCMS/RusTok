@@ -33,7 +33,8 @@ From an alarm clock with a personal blog to NASA's terabyte storage.
 
 We consume 10-200 times less power than traditional platforms. 
 
-We can work on any device with an operational memory of more than 50 MB.
+We can work on any device with an operational memory of more than 50 MB (Maybe less).
+
 Highload for the poor, salvation for the rich... 
 
 Our architecture will be relevant for decades. We won't turn into another WordPress. 
