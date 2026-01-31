@@ -41,7 +41,7 @@ Our architecture will be relevant for decades. We won't turn into another WordPr
 
 From a personal blog or landing page to petabytes of data storage.
 
-FORGET ABOUT OLD PATTERNS, WE'RE BUILDING THE FUTERE. WE HAVE NO LIMITATIONS!
+FORGET ABOUT OLD PATTERNS, WE'RE BUILDING THE FUTURE. WE HAVE NO LIMITATIONS!
 
 ┌─────────────────────────────────────────────────────────────┐
 │                      RusToK Platform                        │
