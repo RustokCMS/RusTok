@@ -28,13 +28,19 @@
 
 Modules in RusToK are compiled into a binary for maximum performance and security, but follow a standardized layout (Entities/DTO/Services) for easy maintainability. •
 Rustok can become the foundation of anything that has any data. !!! .
-From an alarm clock with a personal blog to NASA's terabyte storage. • 
-We consume 10-200 times less power than traditional platforms. •
-We can work on any device with an operational memory of more than 50 MB •
-Highload for the poor, salvation for the rich...  •
-Our architecture will be relevant for decades. We won't turn into another WordPress. • 
-From a personal blog or landing page to petabytes of data storage. •
-Forget about old patterns, we're building the future. We have no limitations! •
+
+From an alarm clock with a personal blog to NASA's terabyte storage. 
+
+We consume 10-200 times less power than traditional platforms. 
+
+We can work on any device with an operational memory of more than 50 MB.
+Highload for the poor, salvation for the rich... 
+
+Our architecture will be relevant for decades. We won't turn into another WordPress. 
+
+From a personal blog or landing page to petabytes of data storage.
+
+Forget about old patterns, we're building the future. We have no limitations!
 
 ┌─────────────────────────────────────────────────────────────┐
 │                      RusToK Platform                        │
