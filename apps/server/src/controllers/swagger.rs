@@ -27,6 +27,12 @@ use utoipa::OpenApi;
         crate::controllers::blog::posts::create_post,
         crate::controllers::blog::posts::update_post,
         crate::controllers::blog::posts::delete_post,
+        // Forum
+        crate::controllers::forum::threads::list_threads,
+        crate::controllers::forum::threads::get_thread,
+        crate::controllers::forum::threads::create_thread,
+        crate::controllers::forum::threads::update_thread,
+        crate::controllers::forum::threads::delete_thread,
         // Commerce
         crate::controllers::commerce::products::list_products,
         crate::controllers::commerce::products::create_product,
@@ -75,6 +81,12 @@ use utoipa::OpenApi;
             // Blog
             rustok_blog::dto::CreatePostInput,
 
+            // Forum
+            rustok_forum::CreateThreadInput,
+            rustok_forum::UpdateThreadInput,
+            rustok_forum::ThreadResponse,
+            rustok_forum::ThreadListItem,
+
             // Commerce
             rustok_commerce::dto::CreateProductInput,
             rustok_commerce::dto::UpdateProductInput,
@@ -106,6 +118,7 @@ use utoipa::OpenApi;
         (name = "auth", description = "Authentication endpoints"),
         (name = "content", description = "Content Management endpoints"),
         (name = "blog", description = "Blog endpoints"),
+        (name = "forum", description = "Forum endpoints"),
         (name = "commerce", description = "Ecommerce endpoints")
     )
 )]

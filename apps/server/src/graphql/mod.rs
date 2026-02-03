@@ -3,6 +3,7 @@ pub mod commerce;
 pub mod common;
 pub mod content;
 pub mod errors;
+pub mod forum;
 pub mod mutations;
 pub mod queries;
 pub mod schema;

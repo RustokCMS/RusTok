@@ -6,11 +6,12 @@ use rustok_core::EventBus;
 use super::blog::{BlogMutation, BlogQuery};
 use super::commerce::{CommerceMutation, CommerceQuery};
 use super::content::{ContentMutation, ContentQuery};
+use super::forum::{ForumMutation, ForumQuery};
 use super::mutations::RootMutation;
 use super::queries::RootQuery;
 
 #[derive(MergedObject, Default)]
-pub struct Query(RootQuery, CommerceQuery, ContentQuery, BlogQuery);
+pub struct Query(RootQuery, CommerceQuery, ContentQuery, BlogQuery, ForumQuery);
 
 #[derive(MergedObject, Default)]
 pub struct Mutation(
@@ -18,6 +19,7 @@ pub struct Mutation(
     CommerceMutation,
     ContentMutation,
     BlogMutation,
+    ForumMutation,
 );
 
 pub type AppSchema = Schema<Query, Mutation, EmptySubscription>;

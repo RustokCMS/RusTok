@@ -110,6 +110,7 @@ rustok/
 │   ├── rustok-search/         # P3: Поиск
 │   ├── rustok-storage/        # P3: Файловое хранилище
 │   ├── rustok-iggy/           # P4: Streaming
+│   ├── rustok-forum/          # P5: Бизнес-модуль
 │   ├── rustok-auth/           # P5: Бизнес-модуль
 │   └── rustok-content/        # P5: Бизнес-модуль
 │
@@ -776,6 +777,7 @@ PHASE 4: Iggy Integration (Week 4-5)
 PHASE 5: Business Modules (Week 5+)
 □ 5.1 rustok-auth (example module)
 □ 5.2 rustok-content (example module)
+□ 5.3 rustok-forum (community module)
 ```
 
 ---

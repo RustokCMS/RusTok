@@ -86,3 +86,4 @@ rustok-blog = { path = "crates/rustok-blog" }
 rustok-content = { path = "crates/rustok-content" }
 rustok-index = { path = "crates/rustok-index" }
 rustok-iggy = { path = "crates/rustok-iggy" }
+rustok-forum = { path = "crates/rustok-forum" }
