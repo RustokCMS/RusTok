@@ -56,6 +56,6 @@ async fn next_event(
     Ok(envelope)
 }
 
-async fn wait_for_tenant(_ctx: &TestContext, tenant_id: Uuid) -> TestResult<Uuid> {
-    todo!("wire tenant lookup for integration tests")
+async fn wait_for_tenant(_ctx: &TestContext, _tenant_id: Uuid) -> TestResult<Uuid> {
+    Err("wire tenant lookup for integration tests".into())
 }
