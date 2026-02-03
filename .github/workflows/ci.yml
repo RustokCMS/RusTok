@@ -55,9 +55,21 @@ jobs:
   deny:
     name: Cargo Deny
     runs-on: ubuntu-latest
+    env:
+      CARGO_HOME: ${{ github.workspace }}/.cargo
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v1
+      - name: Clean cargo-deny advisory db cache
+        run: |
+          rm -rf "$CARGO_HOME/advisory-dbs" || true
+          rm -rf "$CARGO_HOME"/advisory-db-empty-* || true
+        shell: bash
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          arguments: --all-features
+          manifest-path: ./Cargo.toml
+          log-level: warn
 
   typos:
     name: Spell Check (Typos)

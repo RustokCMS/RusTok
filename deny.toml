@@ -1,13 +1,11 @@
 [advisories]
-db-path = "advisory-db-empty-2"
-db-urls = []
-vulnerability = "deny"
-unmaintained = "warn"
-unsound = "warn"
-notice = "warn"
+db-path = "$CARGO_HOME/advisory-dbs"
+db-urls = ["https://github.com/RustSec/advisory-db"]
+unmaintained = "workspace"
+unsound = "workspace"
+git-fetch-with-cli = true
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
