@@ -45,34 +45,42 @@
 
 ---
 
-## 3. TECHNOLOGY STACK
+## 3. TECHNOLOGY STACK (Approved)
 
 | Layer | Technology | Details |
 |-------|------------|---------|
 | **Repository** | Cargo Workspace | Monorepo for all apps & crates |
 | **Runtime** | Tokio | Async runtime |
-| **Backend Framework** | Loco.rs | Axum-based, Rails-like MVC |
-| **Admin UI** | Leptos CSR | Client-Side WASM |
-| **Storefront** | Leptos SSR | Server-Side Rendering |
+| **HTTP Framework** | Axum | REST + middleware |
+| **OpenAPI Docs** | Utoipa | `utoipa`, `utoipa-swagger-ui` |
+| **Validation** | Validator | `validator` crate |
 | **Database** | PostgreSQL 16+ | Partitioning, JSONB |
 | **ORM** | SeaORM | Async, fully typed |
-| **API** | async-graphql | Schema Federation |
-| **IDs** | ULID | Generated via `ulid` crate, stored as `Uuid` |
-| **Events** | tokio::broadcast | In-process pub/sub |
-| **Search (optional)** | Meilisearch / Tantivy | Full-text search |
+| **SQL Driver** | SQLx | For raw queries/migrations |
+| **Config** | config-rs | Layered hierarchy (default/local/env) |
+| **Events (L0)** | tokio::sync::mpsc | In-memory transport |
+| **Events (L1)** | Outbox Pattern | Custom crate `rustok-outbox` |
+| **Events (L2)** | Iggy | Streaming (remote/embedded) |
+| **Cache (L1)** | Moka | In-memory cache |
+| **Cache (L2)** | Redis | Optional remote cache |
+| **Search** | Tantivy | Embedded full-text search |
+| **Storage** | object_store | Unified object storage API |
+| **Tracing** | tracing + OpenTelemetry | `tracing`, `tracing-opentelemetry` |
+| **Metrics** | Prometheus | `metrics`, `metrics-exporter-prometheus` |
+| **Auth** | PASETO / JWT | `pasetors` / `jsonwebtoken` |
+| **Serialization** | Serde | `serde`, `serde_json` |
 
 ---
 
 ## 4. API ARCHITECTURE
 
-### 4.1 Hybrid Design (REST + GraphQL)
-RusToK uses a hybrid approach to provide both standard infrastructure endpoints and flexible data querying:
-- **REST (Axum/Loco):** Authentication, Health, Swagger UI.
-- **GraphQL (async-graphql):** Modular schema (MergedObject) for all domain operations.
+### 4.1 REST-First (GraphQL in Backlog)
+RusToK starts with a REST-first API for platform endpoints:
+- **REST (Axum):** Authentication, Health, Admin endpoints.
+- **GraphQL:** **Backlog** item for phase after Foundation.
 
 ### 4.2 Documentation
-- **OpenAPI:** Automatically generated via `utoipa` and served at `/swagger`.
-- **GQL Playground:** Integrated into the server for developer use.
+- **OpenAPI:** Generated via `utoipa` and served at `/swagger`.
 
 ---
 
@@ -80,31 +88,30 @@ RusToK uses a hybrid approach to provide both standard infrastructure endpoints 
 
 ```text
 rustok/
-├── apps/
-│   ├── server/                     # Loco.rs backend (API Gateway)
-│   │   ├── src/
-│   │   │   ├── controllers/        # REST & GraphQL Handlers
-│   │   │   │   ├── auth.rs
-│   │   │   │   ├── content/
-│   │   │   │   ├── swagger.rs      # OpenAPI Definition
-│   │   │   │   └── graphql.rs      # Main GQL Endpoint
-│   │   │   ├── graphql/            # GQL Resolvers & Schema
-│   │   │   ├── models/             # Shared entities
-│   │   │   └── app.rs              # App orchestration
-│   │   └── migration/              # Main migrations
-│   ├── admin/                      # Leptos CSR (Management)
-│   └── storefront/                 # Leptos SSR (Public)
+├── Cargo.toml                 # Workspace
+├── config/
+│   ├── default.toml
+│   └── local.toml
 │
 ├── crates/
-│   ├── rustok-core/                # 🧠 Infrastructure (Auth, Events, RBAC)
-│   ├── rustok-content/             # 📝 CMS (Nodes, Bodies, Categories)
-│   ├── rustok-blog/                # 📰 Blogging Module
-│   ├── rustok-commerce/            # 🛒 Shop Module (Products, Orders)
-│   └── rustok-index/               # 🔎 CQRS Read Models (Fast Search)
+│   ├── rustok-config/         # P1: Конфигурация
+│   ├── rustok-core/           # P1: Ядро (module, context, events)
+│   ├── rustok-telemetry/      # P1: Observability
+│   ├── rustok-outbox/         # P2: Outbox transport
+│   ├── rustok-cache/          # P3: Кэширование
+│   ├── rustok-search/         # P3: Поиск
+│   ├── rustok-storage/        # P3: Файловое хранилище
+│   ├── rustok-iggy/           # P4: Streaming
+│   ├── rustok-auth/           # P5: Бизнес-модуль
+│   └── rustok-content/        # P5: Бизнес-модуль
 │
-├── docs/                           # 📚 Documentation & Architecture
-├── Cargo.toml                      # Workspace setup
-└── docker-compose.yml
+└── apps/
+    └── server/
+        ├── src/
+        │   ├── main.rs
+        │   └── bootstrap.rs
+        └── migration/
+            └── src/
 ```
 
 ---
@@ -361,7 +368,7 @@ CREATE TABLE nodes_p0 PARTITION OF nodes_partitioned FOR VALUES WITH (MODULUS 8,
 **Идея:** нормализованные write-таблицы остаются быстрыми и строгими, а для чтения строятся денормализованные индексы через Event Bus / Handlers.
 
 ```text
-WRITE: GraphQL API -> Service -> SeaORM -> PostgreSQL -> EventBus
+WRITE: REST API -> Service -> SeaORM -> PostgreSQL -> EventBus
 READ:  User -> Index Tables (denormalized) -> Search Results
 ```
 
@@ -400,6 +407,17 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
 ---
 
 ## 8. EVENT SYSTEM
+
+### 8.0 Event System Consensus (Status)
+
+| Decision | Status |
+|----------|--------|
+| EventTransport trait in Core | ✅ |
+| MemoryTransport (MPSC) in Core | ✅ |
+| OutboxTransport in separate crate | ✅ |
+| Transactional publish_in_tx | ✅ |
+| EventEnvelope with correlation/causation | ✅ |
+| sys_events migration in apps/server | ✅ |
 
 ### 8.1 Domain Events
 
@@ -563,7 +581,7 @@ graph TD
 ```text
 ┌──────────────────────────────────────────────────────────────────┐
 │                         WRITE PATH                               │
-│  User Request -> GraphQL API -> Service -> SeaORM -> PostgreSQL  │
+│  User Request -> REST API -> Service -> SeaORM -> PostgreSQL     │
 │                      |                                           │
 │                      v                                           │
 │                 [ Event Bus ]                                    │
@@ -611,7 +629,7 @@ graph TD
 ## 16. ARCHITECTURAL PATTERNS
 
 ### 16.1 The Service Layer Pattern
-Контроллеры (REST) и Резолверы (GQL) — это просто тонкие обертки. Вся логика живет в `Services`.
+Контроллеры (REST) и будущие резолверы (GraphQL, backlog) — это просто тонкие обертки. Вся логика живет в `Services`.
 
 ```rust
 pub struct NodeService;
@@ -640,8 +658,8 @@ impl NodeService {
 3.  **Module Crate**: Создай или выбери крафт в `crates/`.
 4.  **Logic**: Напиши `Service` для CRUD операций.
 5.  **Events**: Добавь новые варианты в `DomainEvent` и публикуй их в `Service`.
-6.  **GraphQL**: Напиши резолверы и добавь их в `MergedObject` в `apps/server/src/graphql`.
-7.  **Index**: Если нужен поиск — добавь `Handler` в `rustok-index`, который будет слушать события нового модуля.
+6.  **GraphQL (backlog)**: Напиши резолверы и добавь их в общий `MergedObject`, когда GraphQL будет активирован.
+7.  **Index**: Если нужен поиск — добавь `Handler` в `rustok-search`, который будет слушать события нового модуля.
 
 ---
 
@@ -696,5 +714,60 @@ impl RusToKModule for MyModule {
 ```
 
 ---
+
+## 20. IGGY INTEGRATION (Consensus)
+
+| Decision | Status |
+|----------|--------|
+| Embedded + Remote modes | ✅ |
+| Library → Subprocess fallback | ✅ |
+| 3 Topics: domain, system, dlq | ✅ |
+| Partition by tenant_id | ✅ |
+| Auto consumer groups | ✅ |
+| JSON default, Bincode optional | ✅ |
+
+## 21. PLATFORM FOUNDATION (Consensus)
+
+| Decision | Status |
+|----------|--------|
+| Simple RusToKModule trait | ✅ |
+| Arc<AppContext> (no DI) | ✅ |
+| config-rs hierarchy | ✅ |
+| Axum + utoipa | ✅ |
+| Tantivy embedded | ✅ |
+| object_store | ✅ |
+| moka + Redis optional | ✅ |
+| tracing + metrics | ✅ |
+| GraphQL in backlog | ✅ |
+
+## 22. MASTER PLAN v4.1 (Implementation Order)
+
+```text
+PHASE 1: Foundation (Week 1-2)
+□ 1.1 rustok-config
+□ 1.2 rustok-core (module trait + context)
+□ 1.3 rustok-telemetry
+□ 1.4 apps/server bootstrap
+
+PHASE 2: Event System (Week 2-3)
+□ 2.1 rustok-core/events (traits + envelope)
+□ 2.2 rustok-core/events (MemoryTransport)
+□ 2.3 rustok-outbox
+□ 2.4 apps/server (sys_events migration)
+
+PHASE 3: Infrastructure (Week 3-4)
+□ 3.1 rustok-cache (moka backend)
+□ 3.2 rustok-search (tantivy backend)
+□ 3.3 rustok-storage (object_store wrapper)
+
+PHASE 4: Iggy Integration (Week 4-5)
+□ 4.1 rustok-iggy (remote backend)
+□ 4.2 rustok-iggy (embedded backend)
+□ 4.3 rustok-iggy (topology + consumer groups)
+
+PHASE 5: Business Modules (Week 5+)
+□ 5.1 rustok-auth (example module)
+□ 5.2 rustok-content (example module)
+```
 
 END OF MANIFEST v4.1
