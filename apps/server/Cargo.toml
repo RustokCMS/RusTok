@@ -43,3 +43,6 @@ migration = { path = "migration" }
 [dev-dependencies]
 loco-rs = { workspace = true, features = ["testing"] }
 serial_test = "3.1"
+
+[package.metadata.cargo-udeps.ignore]
+development = ["serial_test"]
