@@ -14,7 +14,6 @@ use crate::serialization::{BincodeSerializer, EventSerializer, JsonSerializer};
 use crate::topology::TopologyManager;
 use crate::{producer, topology};
 
-#[derive(Debug)]
 pub struct IggyTransport {
     config: IggyConfig,
     backend: Arc<dyn IggyBackend>,
@@ -26,8 +25,8 @@ pub struct IggyTransport {
 impl IggyTransport {
     pub async fn new(config: IggyConfig) -> Result<Self> {
         let backend: Arc<dyn IggyBackend> = match config.mode {
-            IggyMode::Remote => Arc::new(RemoteBackend::default()),
-            IggyMode::Embedded => Arc::new(EmbeddedBackend::default()),
+            IggyMode::Remote => Arc::new(RemoteBackend),
+            IggyMode::Embedded => Arc::new(EmbeddedBackend),
         };
 
         backend.connect(&config).await?;
@@ -41,8 +40,8 @@ impl IggyTransport {
         Ok(Self {
             config,
             backend,
-            topology: TopologyManager::default(),
-            consumers: ConsumerGroupManager::default(),
+            topology: TopologyManager,
+            consumers: ConsumerGroupManager,
             serializer,
         })
     }
@@ -52,10 +51,12 @@ impl IggyTransport {
     }
 
     pub async fn subscribe_as_group(&self, _group: &str) -> Result<()> {
+        let _ = (&self.topology, &self.consumers);
         Ok(())
     }
 
     pub async fn replay(&self) -> Result<()> {
+        let _ = (&self.topology, &self.consumers);
         Ok(())
     }
 }

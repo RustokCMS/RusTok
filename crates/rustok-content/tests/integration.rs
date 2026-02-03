@@ -1,7 +1,7 @@
 use rustok_content::dto::{BodyInput, CreateNodeInput, NodeTranslationInput};
 use rustok_content::services::NodeService;
 use rustok_core::events::EventEnvelope;
-use rustok_core::{DomainEvent, EventBus, SecurityContext};
+use rustok_core::{DomainEvent, SecurityContext};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -59,16 +59,7 @@ async fn test_node_lifecycle() -> TestResult<()> {
 }
 
 async fn test_context() -> TestResult<TestContext> {
-    let event_bus = EventBus::new();
-    let events = event_bus.subscribe();
-    let tenant_id = Uuid::nil();
-    let db = todo!("create test database connection and apply migrations");
-
-    Ok(TestContext {
-        service: NodeService::new(db, event_bus),
-        events,
-        tenant_id,
-    })
+    Err("create test database connection and apply migrations".into())
 }
 
 async fn next_event(
@@ -85,5 +76,5 @@ struct IndexedNode {
 }
 
 async fn wait_for_index(_ctx: &TestContext, _node_id: Uuid) -> TestResult<IndexedNode> {
-    todo!("wire index module or test double for read model lookup")
+    Err("wire index module or test double for read model lookup".into())
 }

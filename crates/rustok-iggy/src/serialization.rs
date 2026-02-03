@@ -31,7 +31,7 @@ impl EventSerializer for BincodeSerializer {
 
     fn serialize(&self, envelope: &EventEnvelope) -> Result<Vec<u8>> {
         let payload = bincode::serialize(envelope).map_err(|error| {
-            let io_error = std::io::Error::new(std::io::ErrorKind::Other, error);
+            let io_error = std::io::Error::other(error);
             rustok_core::Error::Serialization(serde_json::Error::io(io_error))
         })?;
         Ok(payload)
