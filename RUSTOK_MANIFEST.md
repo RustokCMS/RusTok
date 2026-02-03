@@ -104,8 +104,8 @@
 | **Cache** | Loco Cache (Redis) | Built-in cache integration |
 | **Search** | PostgreSQL FTS + Tantivy/Meilisearch (optional) | Start with `tsvector`, add Tantivy or Meilisearch when needed |
 | **Storage** | object_store | Unified object storage API |
-| **Tracing** | tracing + OpenTelemetry | `tracing`, `tracing-opentelemetry` |
-| **Metrics** | Prometheus | `metrics`, `metrics-exporter-prometheus` |
+| **Tracing** | tracing | `tracing` |
+| **Metrics** | Placeholder | telemetry stub (no exporter) |
 | **Auth** | Loco Auth (JWT) | Users + JWT access/refresh, bcrypt hashing |
 | **Mailer** | Loco Mailer (SMTP) | Built-in mail delivery + templates |
 | **Workers/Queue** | Loco Workers | Async workers + Redis/Postgres queue |

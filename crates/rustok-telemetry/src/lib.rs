@@ -1,10 +1,16 @@
-use metrics_exporter_prometheus::{BuildError, PrometheusBuilder, PrometheusHandle};
 use once_cell::sync::OnceCell;
-use opentelemetry::trace::TraceContextExt;
-use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 
-static PROMETHEUS_HANDLE: OnceCell<PrometheusHandle> = OnceCell::new();
+static METRICS_HANDLE: OnceCell<MetricsHandle> = OnceCell::new();
+
+#[derive(Clone, Debug)]
+pub struct MetricsHandle;
+
+impl MetricsHandle {
+    pub fn render(&self) -> String {
+        String::new()
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum LogFormat {
@@ -21,7 +27,7 @@ pub struct TelemetryConfig {
 
 #[derive(Clone)]
 pub struct TelemetryHandles {
-    pub metrics: Option<PrometheusHandle>,
+    pub metrics: Option<MetricsHandle>,
 }
 
 impl std::fmt::Debug for TelemetryHandles {
@@ -36,8 +42,6 @@ impl std::fmt::Debug for TelemetryHandles {
 pub enum TelemetryError {
     #[error("failed to set global tracing subscriber")]
     SubscriberAlreadySet,
-    #[error("failed to install prometheus recorder: {0}")]
-    MetricsRecorder(String),
 }
 
 pub fn init(config: TelemetryConfig) -> Result<TelemetryHandles, TelemetryError> {
@@ -58,10 +62,8 @@ pub fn init(config: TelemetryConfig) -> Result<TelemetryHandles, TelemetryError>
         .map_err(|_| TelemetryError::SubscriberAlreadySet)?;
 
     let metrics_handle = if config.metrics {
-        let handle = PrometheusBuilder::new()
-            .install_recorder()
-            .map_err(|error: BuildError| TelemetryError::MetricsRecorder(error.to_string()))?;
-        let _ = PROMETHEUS_HANDLE.set(handle.clone());
+        let handle = MetricsHandle;
+        let _ = METRICS_HANDLE.set(handle.clone());
         Some(handle)
     } else {
         None
@@ -72,18 +74,11 @@ pub fn init(config: TelemetryConfig) -> Result<TelemetryHandles, TelemetryError>
     })
 }
 
-pub fn metrics_handle() -> Option<PrometheusHandle> {
-    PROMETHEUS_HANDLE.get().cloned()
+pub fn metrics_handle() -> Option<MetricsHandle> {
+    METRICS_HANDLE.get().cloned()
 }
 
 pub fn current_trace_id() -> Option<String> {
     let span = tracing::Span::current();
-    let context = span.context();
-    let span_ref = context.span();
-    let span_context = span_ref.span_context();
-    if span_context.is_valid() {
-        Some(span_context.trace_id().to_string())
-    } else {
-        span.id().map(|id| id.into_u64().to_string())
-    }
+    span.id().map(|id| id.into_u64().to_string())
 }

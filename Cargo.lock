@@ -4860,6 +4860,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "tokio",
  "utoipa",
  "uuid",
 ]
@@ -4877,6 +4878,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "utoipa",
  "uuid",
@@ -4895,6 +4897,7 @@ dependencies = [
  "serde_json",
  "slug",
  "thiserror 1.0.69",
+ "tokio",
  "utoipa",
  "uuid",
 ]
@@ -4907,6 +4910,7 @@ dependencies = [
  "chrono",
  "jsonwebtoken",
  "once_cell",
+ "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -4931,6 +4935,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "utoipa",
  "uuid",
@@ -4981,6 +4986,39 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-pages"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-content",
+ "rustok-core",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-rbac"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-core",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
  "uuid",
 ]
 
@@ -5010,6 +5048,10 @@ dependencies = [
  "rustok-content",
  "rustok-core",
  "rustok-forum",
+ "rustok-pages",
+ "rustok-rbac",
+ "rustok-telemetry",
+ "rustok-tenant",
  "sea-orm",
  "serde",
  "serde_json",
@@ -5031,6 +5073,30 @@ dependencies = [
  "leptos",
  "serde",
  "tokio",
+]
+
+[[package]]
+name = "rustok-telemetry"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "thiserror 1.0.69",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "rustok-tenant"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-core",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -6919,8 +6985,13 @@ dependencies = [
  "serde_json",
  "url",
  "utoipa",
+ "utoipa-swagger-ui-vendored",
  "zip",
 ]
+
+[[package]]
+name = "utoipa-swagger-ui-vendored"
+version = "0.1.0"
 
 [[package]]
 name = "uuid"
