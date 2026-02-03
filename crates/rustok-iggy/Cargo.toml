@@ -23,3 +23,6 @@ iggy = "0.4"
 default = ["remote"]
 remote = []
 embedded = []
+
+[dev-dependencies]
+tokio.workspace = true

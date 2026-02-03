@@ -29,3 +29,6 @@ tracing.workspace = true
 
 # Error handling
 thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

@@ -1067,7 +1067,7 @@ Check/add:
 | 2.3 Iggy feature flag | ⛔ Not yet | feature flag wiring in workspace/core |
 | 3.1 Module dependencies/health | ✅ Done | HealthStatus + default health() |
 | 3.2 AppContext fields | ✅ Done (scaffold) | events/cache/search traits present |
-| 3.3 Telemetry improvements | ⛔ Not yet | JSON logs/metrics/trace propagation |
+| 3.3 Telemetry improvements | ✅ Done | JSON logs, Prometheus endpoint, trace_id in events |
 | 3.4 Config hierarchy | ✅ Done | Loco YAML configs + env overrides |
 
 ---

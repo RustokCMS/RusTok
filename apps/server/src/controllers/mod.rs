@@ -5,5 +5,6 @@ pub mod content;
 pub mod forum;
 pub mod graphql;
 pub mod health;
+pub mod metrics;
 pub mod pages;
 pub mod swagger;

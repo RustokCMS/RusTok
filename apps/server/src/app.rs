@@ -46,6 +46,7 @@ impl Hooks for App {
     fn routes(_ctx: &AppContext) -> AppRoutes {
         AppRoutes::with_default_routes()
             .add_route(controllers::health::routes())
+            .add_route(controllers::metrics::routes())
             .add_route(controllers::auth::routes())
             .add_route(controllers::graphql::routes())
             .add_route(controllers::commerce::routes())

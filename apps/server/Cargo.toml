@@ -13,6 +13,7 @@ rustok-forum.workspace = true
 rustok-pages.workspace = true
 rustok-tenant.workspace = true
 rustok-rbac.workspace = true
+rustok-telemetry.workspace = true
 
 loco-rs.workspace = true
 tokio.workspace = true
