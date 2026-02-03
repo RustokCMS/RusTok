@@ -33,6 +33,7 @@
 - **Core Module (`rustok-core`):** Содержит только универсальные возможности (Traits, Events, Module Registry). Без таблиц БД.
 - **Specialized Modules:** Товары, Блог и пр. — у каждого свои таблицы и бизнес-логика.
 - **Empty Tables Cost Zero:** Неиспользуемые таблицы не нагружают систему.
+- **Module Boundaries:** модули не импортируют доменные таблицы/сервисы друг друга напрямую; интеграция только через Events/Interfaces.
 
 **Module Contracts (code-aligned):**
 `rustok-core` — инфраструктурный crate, не регистрируется как `RusToKModule`. Остальные модули реализуют единый контракт (slug/name/description/version) и стандартный набор unit-тестов для метаданных и миграций.
@@ -101,7 +102,7 @@
 | **Events (L1)** | Outbox Pattern | Custom crate `rustok-outbox` |
 | **Events (L2)** | Iggy | Streaming (remote/embedded) |
 | **Cache** | Loco Cache (Redis) | Built-in cache integration |
-| **Search** | Tantivy | Embedded full-text search |
+| **Search** | PostgreSQL FTS + Tantivy/Meilisearch (optional) | Start with `tsvector`, add Tantivy or Meilisearch when needed |
 | **Storage** | object_store | Unified object storage API |
 | **Tracing** | tracing + OpenTelemetry | `tracing`, `tracing-opentelemetry` |
 | **Metrics** | Prometheus | `metrics`, `metrics-exporter-prometheus` |
@@ -116,7 +117,7 @@
 ## 4. API ARCHITECTURE
 
 ### 4.1 REST + GraphQL in Parallel
-RusToK develops REST and GraphQL APIs simultaneously for platform and domain endpoints:
+RusToK develops REST and GraphQL APIs simultaneously for platform and domain endpoints, keeping both available for flexibility:
 - **REST (Axum):** Authentication, Health, Admin endpoints.
 - **GraphQL:** Modular schema (MergedObject) for domain operations.
 
@@ -150,8 +151,8 @@ rustok/
     │   └── src/
     │       ├── app.rs         # Loco hooks & routes
     │       └── main.rs
-    ├── admin/                 # Admin UI
-    └── storefront/            # Storefront UI
+    ├── admin/                 # Admin UI (Next.js)
+    └── storefront/            # Storefront UI (Next.js)
 ```
 
 ---
@@ -380,7 +381,9 @@ CREATE TABLE index_content (
 );
 ```
 
-### 6.6 Partitioning Strategy (Highload)
+### 6.6 Partitioning Strategy (Highload, Phase-in)
+
+**Recommendation:** start with regular tables + indexes on `tenant_id`, then enable partitioning when tenants grow (e.g., **> 1000** tenants or clear hot-spotting).
 
 ```sql
 -- PARTITIONING: Orders по дате
@@ -443,6 +446,12 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
 
 ### 7.3 Service Pattern
 Использование `NodeService` как эталона для бизнес-логики (CRUD + Event Publishing).
+
+### 7.4 Integration Tests as Documentation
+Интеграционные тесты считаются **исполняемой документацией**:
+- фиксируют кросс-модульные сценарии (write → event → read/index);
+- подтверждают совместимость версий событий и схем;
+- служат регрессионным контрактом при изменениях архитектуры.
 
 ---
 
@@ -531,6 +540,15 @@ pub struct EventDispatcher {
     handlers: Vec<Arc<dyn EventHandler>>,
 }
 ```
+
+### 8.4 Event Schema (First-Class)
+
+Event schema is a **first-class artifact** in RusToK:
+- Every `DomainEvent` must have a **versioned schema** (e.g., `schema_version: u16`) and stable `event_type`.
+- Schemas live in-repo and are treated like API contracts (reviewed, documented, and versioned).
+- Validation happens on publish/ingest boundaries (guards against invalid payloads).
+- Breaking changes require new versions; old versions remain supported for replay/outbox.
+- `sys_events` keeps payload + version to enable replay and migrations.
 
 ---
 
@@ -845,11 +863,11 @@ impl RusToKModule for MyModule {
 | Loco RS foundation | ✅ |
 | Loco YAML config | ✅ |
 | Axum + utoipa (via Loco) | ✅ |
-| Tantivy embedded | ✅ |
+| PostgreSQL FTS first (Tantivy/Meilisearch optional) | ✅ |
 | Loco Storage (object_store) | ✅ |
 | Loco Cache (Redis) | ✅ |
 | tracing + metrics | ✅ |
-| GraphQL in backlog | ✅ |
+| REST + GraphQL in parallel | ✅ |
 
 ## 23. MASTER PLAN v4.1 (Implementation Order)
 
@@ -866,7 +884,7 @@ PHASE 2: Event System (Week 2-3)
 □ 2.4 apps/server (sys_events migration)
 
 PHASE 3: Infrastructure (Week 3-4)
-□ 3.1 rustok-index (tantivy backend)
+□ 3.1 rustok-index (PostgreSQL FTS, Tantivy/Meilisearch optional)
 □ 3.2 Loco storage/cache integrations (via apps/server)
 
 PHASE 4: Iggy Integration (Week 4-5)
@@ -1051,5 +1069,18 @@ Check/add:
 | 3.2 AppContext fields | ✅ Done (scaffold) | events/cache/search traits present |
 | 3.3 Telemetry improvements | ⛔ Not yet | JSON logs/metrics/trace propagation |
 | 3.4 Config hierarchy | ✅ Done | Loco YAML configs + env overrides |
+
+---
+
+## 25. DECISION LOG (Realism & Complexity)
+
+We keep a lightweight decision log in the manifest to acknowledge complexity and track rationale:
+- **Decision:** What was chosen.
+- **Context:** Why it mattered (constraints, risks, timelines).
+- **Trade-offs:** What we accept by choosing it.
+- **Status:** Active / Revisit / Deprecated.
+- **Owner/Date:** Accountability and timeline.
+
+This log exists to keep the project realistic and aligned as the system grows.
 
 END OF MANIFEST v4.1
