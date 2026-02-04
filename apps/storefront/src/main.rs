@@ -4,7 +4,8 @@ use axum::{
     routing::get,
     Router,
 };
-use leptos::{component, view, CollectView, IntoView};
+use leptos::{component, view, IntoView};
+use leptos::prelude::{CollectView, ClassAttribute, ElementChild, render_to_string};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -322,7 +323,7 @@ fn StorefrontShell(locale: String) -> impl IntoView {
 
 fn render_shell(locale: &str) -> String {
     let locale_owned = locale.to_string();
-    let app_html = leptos::ssr::render_to_string(move || {
+    let app_html = render_to_string(move || {
         let locale = locale_owned.clone();
         view! { <StorefrontShell locale=locale /> }
     });
