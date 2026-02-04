@@ -3,8 +3,10 @@ use loco_rs::prelude::*;
 
 use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::OptionalCurrentUser;
+use crate::graphql::alloy::AlloyState;
 use crate::graphql::build_schema;
 use rustok_core::{EventBus, ModuleRegistry};
+use std::sync::Arc;
 
 async fn graphql_handler(
     State(ctx): State<AppContext>,
@@ -13,7 +15,12 @@ async fn graphql_handler(
     OptionalCurrentUser(current_user): OptionalCurrentUser,
     Json(req): Json<async_graphql::Request>,
 ) -> Json<async_graphql::Response> {
-    let schema = build_schema(ctx.db.clone(), EventBus::default());
+    let engine = Arc::new(alloy_scripting::create_default_engine());
+    let storage = Arc::new(alloy_scripting::SeaOrmStorage::new(ctx.db.clone()));
+    let orchestrator =
+        Arc::new(alloy_scripting::ScriptOrchestrator::new(engine.clone(), storage.clone()));
+    let alloy_state = AlloyState::new(engine, storage, orchestrator);
+    let schema = build_schema(ctx.db.clone(), EventBus::default(), alloy_state);
     let mut request = req.data(ctx).data(tenant_ctx).data(registry);
 
     if let Some(current_user) = current_user {

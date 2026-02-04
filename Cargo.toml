@@ -95,3 +95,4 @@ rustok-forum = { path = "crates/rustok-forum" }
 rustok-tenant = { path = "crates/rustok-tenant" }
 rustok-rbac = { path = "crates/rustok-rbac" }
 rustok-telemetry = { path = "crates/rustok-telemetry" }
+alloy-scripting = { path = "crates/alloy-scripting" }
