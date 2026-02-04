@@ -23,7 +23,6 @@ impl InMemoryCacheBackend {
         let cache = Cache::builder()
             .time_to_live(ttl)
             .max_capacity(max_capacity)
-            .record_stats()
             .build();
         Self { cache }
     }
@@ -78,12 +77,9 @@ impl CacheBackend for InMemoryCacheBackend {
     }
 
     fn stats(&self) -> CacheStats {
-        let stats = self.cache.stats();
         CacheStats {
-            hits: stats.hit_count(),
-            misses: stats.miss_count(),
-            evictions: stats.eviction_count(),
             entries: self.cache.entry_count(),
+            ..CacheStats::default()
         }
     }
 }
