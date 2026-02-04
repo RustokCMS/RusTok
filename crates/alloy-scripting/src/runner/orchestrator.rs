@@ -189,6 +189,25 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
         Ok(self.executor.execute(&script, &ctx, None).await)
     }
 
+    pub async fn run_manual_with_entity(
+        &self,
+        script_name: &str,
+        params: HashMap<String, Dynamic>,
+        entity: Option<EntityProxy>,
+        user_id: Option<String>,
+    ) -> ScriptResult<ExecutionResult> {
+        let script = self.registry.get_by_name(script_name).await?;
+
+        let mut ctx = ExecutionContext::new(ExecutionPhase::Manual)
+            .with_params(params.into_iter().map(|(k, v)| (k.into(), v)).collect());
+
+        if let Some(uid) = user_id {
+            ctx = ctx.with_user(uid);
+        }
+
+        Ok(self.executor.execute(&script, &ctx, entity).await)
+    }
+
     pub async fn run_api(
         &self,
         path: &str,
