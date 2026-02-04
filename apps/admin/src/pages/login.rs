@@ -158,6 +158,14 @@ pub fn Login() -> impl IntoView {
                     <Button on_click=on_submit class="w-full" disabled=move || is_loading.get()>
                         {move || translate(locale.locale.get(), "auth.submit")}
                     </Button>
+                    <div class="auth-links">
+                        <a class="secondary-link" href="/register">
+                            {move || translate(locale.locale.get(), "auth.registerLink")}
+                        </a>
+                        <a class="secondary-link" href="/reset">
+                            {move || translate(locale.locale.get(), "auth.resetLink")}
+                        </a>
+                    </div>
                 </div>
                 <p style="margin:0; color:#64748b;">
                     {move || translate(locale.locale.get(), "auth.footer")}

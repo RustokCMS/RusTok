@@ -128,9 +128,12 @@ pub fn Dashboard() -> impl IntoView {
                 <div class="panel">
                     <h4>{move || translate(locale.locale.get(), "app.dashboard.quick.title")}</h4>
                     <div class="quick-actions">
-                        <button type="button">
+                        <a href="/security">
                             {move || translate(locale.locale.get(), "app.dashboard.quick.security")}
-                        </button>
+                        </a>
+                        <a href="/profile">
+                            {move || translate(locale.locale.get(), "app.dashboard.quick.profile")}
+                        </a>
                         <a href="/users">
                             {move || translate(locale.locale.get(), "app.dashboard.quick.users")}
                         </a>
