@@ -1,7 +1,10 @@
 use leptos::*;
 use leptos_router::{use_navigate, Route, Router, Routes};
 
-use crate::pages::{dashboard::Dashboard, login::Login, not_found::NotFound, users::Users};
+use crate::pages::{
+    dashboard::Dashboard, login::Login, not_found::NotFound, user_details::UserDetails,
+    users::Users,
+};
 use crate::providers::auth::{provide_auth_context, use_auth};
 use crate::providers::locale::provide_locale_context;
 
@@ -18,6 +21,7 @@ pub fn App() -> impl IntoView {
                     <Route path="/login" view=Login />
                     <Route path="/dashboard" view=ProtectedDashboard />
                     <Route path="/users" view=ProtectedUsers />
+                    <Route path="/users/:id" view=ProtectedUserDetails />
                     <Route path="" view=ProtectedDashboard />
                     <Route path="/*" view=NotFound />
                 </Routes>
@@ -64,6 +68,27 @@ fn ProtectedUsers() -> impl IntoView {
             fallback=|| view! { <Login /> }
         >
             <Users />
+        </Show>
+    }
+}
+
+#[component]
+fn ProtectedUserDetails() -> impl IntoView {
+    let auth = use_auth();
+    let navigate = use_navigate();
+
+    create_effect(move |_| {
+        if auth.token.get().is_none() {
+            navigate("/login", Default::default());
+        }
+    });
+
+    view! {
+        <Show
+            when=move || auth.token.get().is_some()
+            fallback=|| view! { <Login /> }
+        >
+            <UserDetails />
         </Show>
     }
 }
@@ -129,6 +154,10 @@ fn Style() -> impl IntoView {
             ".data-table th { text-align: left; font-size: 0.85rem; color: #64748b; padding-bottom: 8px; }\n"
             ".data-table td { padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-size: 0.95rem; }\n"
             ".status-pill { background: #e2e8f0; color: #475569; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; }\n"
+            ".table-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }\n"
+            ".table-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }\n"
+            ".details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }\n"
+            ".details-grid p { margin: 4px 0 0; font-size: 0.95rem; }\n"
             ".locale-toggle { display: flex; gap: 8px; }\n"
             "@media (max-width: 960px) {\n"
             "  .auth-grid { grid-template-columns: 1fr; }\n"

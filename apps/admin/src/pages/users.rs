@@ -1,4 +1,5 @@
 use leptos::*;
+use leptos_router::Link;
 use serde::{Deserialize, Serialize};
 
 use crate::api::{request, rest_get, ApiError};
@@ -66,6 +67,12 @@ pub fn Users() -> impl IntoView {
     let (api_token, set_api_token) = create_signal(auth.token.get().unwrap_or_default());
     let (tenant_slug, set_tenant_slug) = create_signal(String::new());
     let (refresh_counter, set_refresh_counter) = create_signal(0u32);
+    let (page, set_page) = create_signal(1i64);
+    let (limit, set_limit) = create_signal(12i64);
+    let (limit_input, set_limit_input) = create_signal("12".to_string());
+    let (search_query, set_search_query) = create_signal(String::new());
+    let (role_filter, set_role_filter) = create_signal(String::new());
+    let (status_filter, set_status_filter) = create_signal(String::new());
 
     let rest_resource = create_resource(
         move || refresh_counter.get(),
@@ -88,15 +95,19 @@ pub fn Users() -> impl IntoView {
     );
 
     let graphql_resource = create_resource(
-        move || refresh_counter.get(),
+        move || (refresh_counter.get(), page.get(), limit.get()),
         move |_| {
             let token = api_token.get().trim().to_string();
             let tenant = tenant_slug.get().trim().to_string();
+            let offset = (page.get().saturating_sub(1)) * limit.get();
             async move {
                 request::<UsersVariables, GraphqlUsersResponse>(
                     "query Users($pagination: PaginationInput) { users(pagination: $pagination) { edges { node { id email name role status createdAt } } pageInfo { totalCount } } }",
                     UsersVariables {
-                        pagination: PaginationInput { offset: 0, limit: 12 },
+                        pagination: PaginationInput {
+                            offset,
+                            limit: limit.get(),
+                        },
                     },
                     if token.is_empty() { None } else { Some(token) },
                     if tenant.is_empty() {
@@ -111,6 +122,9 @@ pub fn Users() -> impl IntoView {
     );
 
     let refresh = move |_| set_refresh_counter.update(|value| *value += 1);
+    let next_page = move |_| set_page.update(|value| *value += 1);
+    let previous_page = move |_| set_page.update(|value| *value = (*value - 1).max(1));
+    let reset_pagination = move || set_page.set(1);
 
     view! {
         <section class="users-page">
@@ -144,6 +158,18 @@ pub fn Users() -> impl IntoView {
                         set_value=set_tenant_slug
                         placeholder="demo"
                         label=move || translate(locale.locale.get(), "users.access.tenant").to_string()
+                    />
+                    <Input
+                        value=limit_input
+                        set_value=move |value| {
+                            set_limit_input.set(value.clone());
+                            if let Ok(parsed) = value.parse::<i64>() {
+                                set_limit.set(parsed.max(1));
+                                reset_pagination();
+                            }
+                        }
+                        placeholder="12"
+                        label=move || translate(locale.locale.get(), "users.access.limit").to_string()
                     />
                 </div>
                 <p class="form-hint">
@@ -192,6 +218,26 @@ pub fn Users() -> impl IntoView {
                                 <p class="meta-text">
                                     {move || translate(locale.locale.get(), "users.graphql.total")} " " {response.users.page_info.total_count}
                                 </p>
+                                <div class="table-filters">
+                                    <Input
+                                        value=search_query
+                                        set_value=set_search_query
+                                        placeholder=move || translate(locale.locale.get(), "users.filters.searchPlaceholder").to_string()
+                                        label=move || translate(locale.locale.get(), "users.filters.search").to_string()
+                                    />
+                                    <Input
+                                        value=role_filter
+                                        set_value=set_role_filter
+                                        placeholder=move || translate(locale.locale.get(), "users.filters.rolePlaceholder").to_string()
+                                        label=move || translate(locale.locale.get(), "users.filters.role").to_string()
+                                    />
+                                    <Input
+                                        value=status_filter
+                                        set_value=set_status_filter
+                                        placeholder=move || translate(locale.locale.get(), "users.filters.statusPlaceholder").to_string()
+                                        label=move || translate(locale.locale.get(), "users.filters.status").to_string()
+                                    />
+                                </div>
                                 <div class="table-wrap">
                                     <table class="data-table">
                                         <thead>
@@ -200,29 +246,80 @@ pub fn Users() -> impl IntoView {
                                                 <th>{move || translate(locale.locale.get(), "users.graphql.name")}</th>
                                                 <th>{move || translate(locale.locale.get(), "users.graphql.role")}</th>
                                                 <th>{move || translate(locale.locale.get(), "users.graphql.status")}</th>
+                                                <th>{move || translate(locale.locale.get(), "users.graphql.createdAt")}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {response
-                                                .users
-                                                .edges
-                                                .iter()
-                                                .map(|edge| {
-                                                    let user = &edge.node;
-                                                    view! {
-                                                        <tr>
-                                                            <td>{user.email.clone()}</td>
-                                                            <td>{user.name.clone().unwrap_or_else(|| translate(locale.locale.get(), "users.placeholderDash").to_string())}</td>
-                                                            <td>{user.role.clone()}</td>
-                                                            <td>
-                                                                <span class="status-pill">{user.status.clone()}</span>
-                                                            </td>
-                                                        </tr>
-                                                    }
-                                                })
-                                                .collect_view()}
+                                            {({
+                                                let query = search_query.get().to_lowercase();
+                                                let role = role_filter.get().to_lowercase();
+                                                let status = status_filter.get().to_lowercase();
+
+                                                response
+                                                    .users
+                                                    .edges
+                                                    .iter()
+                                                    .filter(|edge| {
+                                                        let user = &edge.node;
+                                                        let name = user.name.clone().unwrap_or_default().to_lowercase();
+                                                        let email = user.email.to_lowercase();
+                                                        let role_value = user.role.to_lowercase();
+                                                        let status_value = user.status.to_lowercase();
+
+                                                        let matches_query = query.is_empty()
+                                                            || email.contains(&query)
+                                                            || name.contains(&query);
+                                                        let matches_role = role.is_empty()
+                                                            || role_value.contains(&role);
+                                                        let matches_status = status.is_empty()
+                                                            || status_value.contains(&status);
+
+                                                        matches_query && matches_role && matches_status
+                                                    })
+                                                    .map(|edge| {
+                                                        let user = &edge.node;
+                                                        view! {
+                                                            <tr>
+                                                                <td>
+                                                                    <Link href=format!("/users/{}", user.id.clone())>
+                                                                        {user.email.clone()}
+                                                                    </Link>
+                                                                </td>
+                                                                <td>{user.name.clone().unwrap_or_else(|| translate(locale.locale.get(), "users.placeholderDash").to_string())}</td>
+                                                                <td>{user.role.clone()}</td>
+                                                                <td>
+                                                                    <span class="status-pill">{user.status.clone()}</span>
+                                                                </td>
+                                                                <td>{user.created_at.clone()}</td>
+                                                            </tr>
+                                                        }
+                                                    })
+                                                    .collect_view()
+                                            })}
                                         </tbody>
                                     </table>
+                                </div>
+                                <div class="table-actions">
+                                    <Button
+                                        on_click=previous_page
+                                        class="ghost-button"
+                                        disabled=move || page.get() <= 1
+                                    >
+                                        {move || translate(locale.locale.get(), "users.pagination.prev")}
+                                    </Button>
+                                    <span class="meta-text">
+                                        {move || translate(locale.locale.get(), "users.pagination.page")} " " {page.get()}
+                                    </span>
+                                    <Button
+                                        on_click=next_page
+                                        class="ghost-button"
+                                        disabled=move || {
+                                            let total = response.users.page_info.total_count;
+                                            page.get() * limit.get() >= total
+                                        }
+                                    >
+                                        {move || translate(locale.locale.get(), "users.pagination.next")}
+                                    </Button>
                                 </div>
                             }
                             .into_view(),

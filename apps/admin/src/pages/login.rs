@@ -1,9 +1,32 @@
 use leptos::*;
 use leptos_router::use_navigate;
+use serde::{Deserialize, Serialize};
 
+use crate::api::{rest_post, ApiError};
 use crate::components::ui::{Button, Input, LanguageToggle};
-use crate::providers::locale::{translate, use_locale};
 use crate::providers::auth::{use_auth, User};
+use crate::providers::locale::{translate, use_locale};
+
+#[derive(Serialize)]
+struct LoginParams {
+    email: String,
+    password: String,
+}
+
+#[derive(Deserialize)]
+struct AuthResponse {
+    #[serde(rename = "access_token")]
+    access_token: String,
+    user: AuthUser,
+}
+
+#[derive(Deserialize)]
+struct AuthUser {
+    id: String,
+    email: String,
+    name: Option<String>,
+    role: String,
+}
 
 #[component]
 pub fn Login() -> impl IntoView {
@@ -11,11 +34,11 @@ pub fn Login() -> impl IntoView {
     let locale = use_locale();
     let navigate = use_navigate();
 
-    let demo_mode = option_env!("RUSTOK_DEMO_MODE").is_some();
     let (tenant, set_tenant) = create_signal(String::new());
     let (email, set_email) = create_signal(String::new());
     let (password, set_password) = create_signal(String::new());
     let (error, set_error) = create_signal(Option::<String>::None);
+    let (is_loading, set_is_loading) = create_signal(false);
 
     let navigate_effect = navigate.clone();
     create_effect(move |_| {
@@ -32,22 +55,62 @@ pub fn Login() -> impl IntoView {
             return;
         }
 
-        if !demo_mode {
-            set_error.set(Some(
-                translate(locale.locale.get(), "login.errorDemoDisabled").to_string(),
-            ));
-            return;
-        }
+        let tenant_value = tenant.get().trim().to_string();
+        let email_value = email.get().trim().to_string();
+        let password_value = password.get();
+        let set_token = auth.set_token;
+        let set_user = auth.set_user;
+        let locale = locale.locale;
+        let navigate = navigate.clone();
 
-        auth.set_token
-            .set(Some(format!("demo-token:{}", tenant.get())));
-        auth.set_user.set(Some(User {
-            id: "demo".to_string(),
-            email: email.get(),
-            name: Some("Администратор".to_string()),
-            role: "admin".to_string(),
-        }));
-        navigate("/dashboard", Default::default());
+        set_error.set(None);
+        set_is_loading.set(true);
+
+        spawn_local(async move {
+            let result = rest_post::<LoginParams, AuthResponse>(
+                "/api/auth/login",
+                &LoginParams {
+                    email: email_value,
+                    password: password_value,
+                },
+                None,
+                Some(tenant_value),
+            )
+            .await;
+
+            match result {
+                Ok(response) => {
+                    set_token.set(Some(response.access_token));
+                    set_user.set(Some(User {
+                        id: response.user.id,
+                        email: response.user.email,
+                        name: response.user.name,
+                        role: response.user.role,
+                    }));
+                    navigate("/dashboard", Default::default());
+                }
+                Err(err) => {
+                    let message = match err {
+                        ApiError::Unauthorized => {
+                            translate(locale.get(), "errors.auth.invalid_credentials")
+                                .to_string()
+                        }
+                        ApiError::Http(_) => {
+                            translate(locale.get(), "errors.http").to_string()
+                        }
+                        ApiError::Network => {
+                            translate(locale.get(), "errors.network").to_string()
+                        }
+                        ApiError::Graphql(_) => {
+                            translate(locale.get(), "errors.unknown").to_string()
+                        }
+                    };
+                    set_error.set(Some(message));
+                }
+            }
+
+            set_is_loading.set(false);
+        });
     };
 
     view! {
@@ -94,14 +157,9 @@ pub fn Login() -> impl IntoView {
                         type_="password"
                         label=move || translate(locale.locale.get(), "login.passwordLabel").to_string()
                     />
-                    <Button on_click=on_submit class="w-full">
+                    <Button on_click=on_submit class="w-full" disabled=move || is_loading.get()>
                         {move || translate(locale.locale.get(), "login.submit")}
                     </Button>
-                    <Show when=move || demo_mode>
-                        <a class="secondary-link" href="/dashboard">
-                            {move || translate(locale.locale.get(), "login.demoLink")}
-                        </a>
-                    </Show>
                 </div>
                 <p style="margin:0; color:#64748b;">
                     {move || translate(locale.locale.get(), "login.footer")}
