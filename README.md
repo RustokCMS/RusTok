@@ -473,6 +473,10 @@ cargo test -p rustok-core
 DATABASE_URL=postgres://localhost/rustok_test cargo test
 ```
 
+### Testing Guidelines
+
+See [docs/testing-guidelines.md](docs/testing-guidelines.md) for guidance on layering tests, avoiding flakiness, and mock boundaries.
+
 ### Code Quality
 
 ```bash
