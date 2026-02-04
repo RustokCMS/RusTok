@@ -17,7 +17,7 @@ bincode = "1.3.3"
 
 rustok-core.workspace = true
 
-iggy = "0.6"
+iggy.workspace = true
 
 [features]
 default = ["remote"]

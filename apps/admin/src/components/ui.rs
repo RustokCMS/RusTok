@@ -8,7 +8,7 @@ pub fn Button(
     #[prop(into)] on_click: Callback<web_sys::MouseEvent>,
     #[prop(optional)] children: Option<Children>,
     #[prop(optional, into)] class: String,
-    #[prop(default = false, into)] disabled: Signal<bool>,
+    #[prop(default = Signal::derive(|| false))] disabled: Signal<bool>,
 ) -> impl IntoView {
     view! {
         <button

@@ -113,7 +113,7 @@ pub fn UserDetails() -> impl IntoView {
                 <h4>{move || translate(locale.locale.get(), "users.detail.section")}</h4>
                 <Suspense fallback=move || view! { <p>{move || translate(locale.locale.get(), "users.detail.loading")}</p> }>
                     {move || match user_resource.get() {
-                        None => view! { <p>{move || translate(locale.locale.get(), "users.detail.pending")}</p> }.into_view(),
+                        None => view! { <p>{move || translate(locale.locale.get(), "users.detail.pending")}</p> }.into_any(),
                         Some(Ok(response)) => {
                             if let Some(user) = response.user {
                                 view! {
@@ -144,14 +144,14 @@ pub fn UserDetails() -> impl IntoView {
                                         </div>
                                     </div>
                                 }
-                                .into_view()
+                                .into_any()
                             } else {
                                 view! {
                                     <div class="alert">
                                         {move || translate(locale.locale.get(), "users.detail.empty")}
                                     </div>
                                 }
-                                .into_view()
+                                .into_any()
                             }
                         }
                         Some(Err(err)) => view! {
@@ -164,7 +164,7 @@ pub fn UserDetails() -> impl IntoView {
                                 }}
                             </div>
                         }
-                        .into_view(),
+                        .into_any(),
                     }}
                 </Suspense>
             </div>

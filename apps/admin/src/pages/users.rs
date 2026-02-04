@@ -189,7 +189,7 @@ pub fn Users() -> impl IntoView {
                                     <p>{move || translate(locale.locale.get(), "users.rest.pending")}</p>
                                 </div>
                             }
-                            .into_view(),
+                            .into_any(),
                             Some(Ok(user)) => view! {
                                 <div class="user-card">
                                     <strong>{user.email}</strong>
@@ -200,7 +200,7 @@ pub fn Users() -> impl IntoView {
                                     <p class="meta-text">{user.id}</p>
                                 </div>
                             }
-                            .into_view(),
+                            .into_any(),
                             Some(Err(err)) => view! {
                                 <div class="alert">
                                     {match err {
@@ -211,7 +211,7 @@ pub fn Users() -> impl IntoView {
                                     }}
                                 </div>
                             }
-                            .into_view(),
+                            .into_any(),
                         }}
                     </Suspense>
                 </div>
@@ -225,11 +225,14 @@ pub fn Users() -> impl IntoView {
                                     <p>{move || translate(locale.locale.get(), "users.rest.pending")}</p>
                                 </div>
                             }
-                            .into_view(),
-                            Some(Ok(response)) => view! {
+                            .into_any(),
+                            Some(Ok(response)) => {
+                                let total_count = response.users.page_info.total_count;
+                                let edges = response.users.edges;
+                                view! {
                                 <div>
                                     <p class="meta-text">
-                                        {move || translate(locale.locale.get(), "users.graphql.total")} " " {response.users.page_info.total_count}
+                                        {move || translate(locale.locale.get(), "users.graphql.total")} " " {total_count}
                                     </p>
                                     <div class="table-filters">
                                         <Input
@@ -268,9 +271,7 @@ pub fn Users() -> impl IntoView {
                                                     let role = role_filter.get().to_lowercase();
                                                     let status = status_filter.get().to_lowercase();
 
-                                                    response
-                                                        .users
-                                                        .edges
+                                                    edges
                                                         .iter()
                                                         .filter(|edge| {
                                                             let user = &edge.node;
@@ -290,20 +291,27 @@ pub fn Users() -> impl IntoView {
                                                             matches_query && matches_role && matches_status
                                                         })
                                                         .map(|edge| {
-                                                            let user = &edge.node;
+                                                            let GraphqlUser {
+                                                                id,
+                                                                email,
+                                                                name,
+                                                                role,
+                                                                status,
+                                                                created_at,
+                                                            } = edge.node.clone();
                                                             view! {
                                                                 <tr>
                                                                     <td>
-                                                                        <A href=format!("/users/{}", user.id.clone())>
-                                                                            {user.email.clone()}
+                                                                        <A href=format!("/users/{}", id)>
+                                                                            {email}
                                                                         </A>
                                                                     </td>
-                                                                    <td>{user.name.clone().unwrap_or_else(|| translate(locale.locale.get(), "users.placeholderDash").to_string())}</td>
-                                                                    <td>{user.role.clone()}</td>
+                                                                    <td>{name.unwrap_or_else(|| translate(locale.locale.get(), "users.placeholderDash").to_string())}</td>
+                                                                    <td>{role}</td>
                                                                     <td>
-                                                                        <span class="status-pill">{user.status.clone()}</span>
+                                                                        <span class="status-pill">{status}</span>
                                                                     </td>
-                                                                    <td>{user.created_at.clone()}</td>
+                                                                    <td>{created_at}</td>
                                                                 </tr>
                                                             }
                                                         })
@@ -327,7 +335,7 @@ pub fn Users() -> impl IntoView {
                                             on_click=next_page
                                             class="ghost-button"
                                             disabled=Signal::derive(move || {
-                                                let total = response.users.page_info.total_count;
+                                                let total = total_count;
                                                 page.get() * limit.get() >= total
                                             })
                                         >
@@ -335,8 +343,9 @@ pub fn Users() -> impl IntoView {
                                         </Button>
                                     </div>
                                 </div>
+                                }
+                                .into_any()
                             }
-                            .into_view(),
                             Some(Err(err)) => view! {
                                 <div class="alert">
                                     {match err {
@@ -347,7 +356,7 @@ pub fn Users() -> impl IntoView {
                                     }}
                                 </div>
                             }
-                            .into_view(),
+                            .into_any(),
                         }}
                     </Suspense>
                 </div>
