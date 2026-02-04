@@ -16,7 +16,7 @@ mod tests {
     use crate::integration::ScriptableEntity;
     use crate::model::{EventType, Script, ScriptTrigger};
     use crate::runner::{ExecutionOutcome, ScriptOrchestrator};
-    use crate::storage::InMemoryStorage;
+    use crate::storage::{InMemoryStorage, ScriptRegistry};
     use crate::EntityProxy;
 
     #[derive(Debug, Clone)]
@@ -76,7 +76,7 @@ mod tests {
         }
     }
 
-    struct DealService<R> {
+    struct DealService<R: ScriptRegistry> {
         orchestrator: Arc<ScriptOrchestrator<R>>,
     }
 

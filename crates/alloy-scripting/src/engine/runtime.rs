@@ -1,5 +1,5 @@
 use parking_lot::RwLock;
-use rhai::{Dynamic, Engine, EvalAltResult, RhaiNativeFunc, AST};
+use rhai::{Dynamic, Engine, EvalAltResult, RhaiNativeFunc, Scope, AST};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -59,7 +59,12 @@ impl ScriptEngine {
         &mut self.engine
     }
 
-    pub fn compile(&self, name: &str, source: &str) -> ScriptResult<Arc<CompiledScript>> {
+    pub fn compile(
+        &self,
+        name: &str,
+        source: &str,
+        scope: &mut Scope,
+    ) -> ScriptResult<Arc<CompiledScript>> {
         {
             let cache = self.cache.read();
             if let Some(compiled) = cache.get(name) {
@@ -69,7 +74,7 @@ impl ScriptEngine {
 
         let ast = self
             .engine
-            .compile(source)
+            .compile_with_scope(scope, source)
             .map_err(|e| ScriptError::Compilation(e.to_string()))?;
 
         let compiled = Arc::new(CompiledScript { ast });
@@ -91,8 +96,9 @@ impl ScriptEngine {
         source: &str,
         ctx: &ExecutionContext,
     ) -> ScriptResult<Dynamic> {
-        let compiled = self.compile(name, source)?;
-        self.execute_compiled(&compiled, ctx)
+        let mut scope = ctx.to_scope();
+        let compiled = self.compile(name, source, &mut scope)?;
+        self.execute_compiled_with_scope(&compiled, scope)
     }
 
     pub fn execute_compiled(
@@ -100,8 +106,15 @@ impl ScriptEngine {
         compiled: &CompiledScript,
         ctx: &ExecutionContext,
     ) -> ScriptResult<Dynamic> {
-        let mut scope = ctx.to_scope();
+        let scope = ctx.to_scope();
+        self.execute_compiled_with_scope(compiled, scope)
+    }
 
+    fn execute_compiled_with_scope(
+        &self,
+        compiled: &CompiledScript,
+        mut scope: Scope,
+    ) -> ScriptResult<Dynamic> {
         let result = self
             .engine
             .eval_ast_with_scope::<Dynamic>(&mut scope, &compiled.ast)
