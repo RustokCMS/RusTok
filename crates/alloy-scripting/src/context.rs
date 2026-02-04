@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
-use rhai::{Dynamic, Map, Scope};
+use rhai::{Map, Scope};
 use uuid::Uuid;
+
+use crate::model::EntityProxy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionPhase {
@@ -18,8 +20,8 @@ pub struct ExecutionContext {
     pub timestamp: DateTime<Utc>,
     pub user_id: Option<String>,
     pub tenant_id: Option<String>,
-    pub entity: Option<Dynamic>,
-    pub entity_before: Option<Dynamic>,
+    pub entity_proxy: Option<EntityProxy>,
+    pub entity_before_proxy: Option<EntityProxy>,
     pub params: Map,
     pub call_depth: usize,
 }
@@ -32,8 +34,8 @@ impl ExecutionContext {
             timestamp: Utc::now(),
             user_id: None,
             tenant_id: None,
-            entity: None,
-            entity_before: None,
+            entity_proxy: None,
+            entity_before_proxy: None,
             params: Map::new(),
             call_depth: 0,
         }
@@ -49,13 +51,13 @@ impl ExecutionContext {
         self
     }
 
-    pub fn with_entity(mut self, entity: Dynamic) -> Self {
-        self.entity = Some(entity);
+    pub fn with_entity_proxy(mut self, proxy: EntityProxy) -> Self {
+        self.entity_proxy = Some(proxy);
         self
     }
 
-    pub fn with_entity_before(mut self, entity: Dynamic) -> Self {
-        self.entity_before = Some(entity);
+    pub fn with_entity_before_proxy(mut self, proxy: EntityProxy) -> Self {
+        self.entity_before_proxy = Some(proxy);
         self
     }
 
@@ -71,8 +73,8 @@ impl ExecutionContext {
             timestamp: Utc::now(),
             user_id: self.user_id.clone(),
             tenant_id: self.tenant_id.clone(),
-            entity: None,
-            entity_before: None,
+            entity_proxy: None,
+            entity_before_proxy: None,
             params: Map::new(),
             call_depth: self.call_depth + 1,
         }
@@ -92,15 +94,15 @@ impl ExecutionContext {
             scope.push_constant("TENANT_ID", tenant_id.clone());
         }
 
-        if let Some(ref entity) = self.entity {
+        if let Some(ref proxy) = self.entity_proxy {
             match self.phase {
-                ExecutionPhase::Before => scope.push("entity", entity.clone()),
-                _ => scope.push_constant("entity", entity.clone()),
+                ExecutionPhase::Before => scope.push("entity", proxy.clone()),
+                _ => scope.push_constant("entity", proxy.clone()),
             }
         }
 
-        if let Some(ref before) = self.entity_before {
-            scope.push_constant("entity_before", before.clone());
+        if let Some(ref proxy) = self.entity_before_proxy {
+            scope.push_constant("entity_before", proxy.clone());
         }
 
         scope.push_constant("params", self.params.clone());

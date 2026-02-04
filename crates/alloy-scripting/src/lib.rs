@@ -3,6 +3,7 @@ pub mod context;
 pub mod engine;
 pub mod error;
 pub mod model;
+pub mod runner;
 pub mod storage;
 
 pub use bridge::Bridge;
@@ -13,6 +14,7 @@ pub use model::{
     register_entity_proxy, EntityProxy, EventType, HttpMethod, Script, ScriptId, ScriptStatus,
     ScriptTrigger,
 };
+pub use runner::{ExecutionOutcome, ExecutionResult, HookOutcome, ScriptOrchestrator};
 pub use storage::{InMemoryStorage, ScriptQuery, ScriptRegistry};
 
 pub fn create_default_engine() -> ScriptEngine {
@@ -20,14 +22,21 @@ pub fn create_default_engine() -> ScriptEngine {
     let mut engine = ScriptEngine::new(config);
 
     bridge::register_utils(engine.engine_mut());
+    register_entity_proxy(engine.engine_mut());
 
     engine
+}
+
+pub fn create_orchestrator<R: ScriptRegistry>(
+    registry: std::sync::Arc<R>,
+) -> ScriptOrchestrator<R> {
+    let engine = create_default_engine();
+    ScriptOrchestrator::new(std::sync::Arc::new(engine), registry)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rhai::Map;
 
     #[test]
     fn test_simple_script() {
@@ -63,20 +72,21 @@ mod tests {
     fn test_entity_access() {
         let engine = create_default_engine();
 
-        let mut deal = Map::new();
-        deal.insert("amount".into(), (50000_i64).into());
-        deal.insert("name".into(), "Big Deal".into());
+        let mut deal = std::collections::HashMap::new();
+        deal.insert("amount".to_string(), (50000_i64).into());
+        deal.insert("name".to_string(), "Big Deal".into());
 
-        let ctx = ExecutionContext::new(ExecutionPhase::Before).with_entity(deal.into());
+        let entity = EntityProxy::new("1", "deal", deal);
+        let ctx = ExecutionContext::new(ExecutionPhase::Before).with_entity_proxy(entity);
 
         let result = engine
             .execute(
                 "test_entity",
                 r#"
-                if entity.amount > 10000 {
-                    log("Big deal detected: " + entity.name);
+                if entity["amount"] > 10000 {
+                    log("Big deal detected: " + entity["name"]);
                 }
-                entity.amount
+                entity["amount"]
             "#,
                 &ctx,
             )

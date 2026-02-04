@@ -1,10 +1,17 @@
+use parking_lot::RwLock;
 use rhai::{CustomType, Dynamic, TypeBuilder};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, CustomType)]
 pub struct EntityProxy {
     id: String,
     entity_type: String,
+    state: Arc<RwLock<EntityState>>,
+}
+
+#[derive(Debug)]
+struct EntityState {
     data: HashMap<String, Dynamic>,
     changes: HashMap<String, Dynamic>,
 }
@@ -18,8 +25,10 @@ impl EntityProxy {
         Self {
             id: id.into(),
             entity_type: entity_type.into(),
-            data,
-            changes: HashMap::new(),
+            state: Arc::new(RwLock::new(EntityState {
+                data,
+                changes: HashMap::new(),
+            })),
         }
     }
 
@@ -32,31 +41,38 @@ impl EntityProxy {
     }
 
     pub fn get(&self, field: &str) -> Dynamic {
-        self.changes
+        let state = self.state.read();
+        state
+            .changes
             .get(field)
-            .or_else(|| self.data.get(field))
+            .or_else(|| state.data.get(field))
             .cloned()
             .unwrap_or(Dynamic::UNIT)
     }
 
     pub fn set(&mut self, field: &str, value: Dynamic) {
-        self.changes.insert(field.to_string(), value);
+        let mut state = self.state.write();
+        state.changes.insert(field.to_string(), value);
     }
 
     pub fn is_changed(&self, field: &str) -> bool {
-        self.changes.contains_key(field)
+        let state = self.state.read();
+        state.changes.contains_key(field)
     }
 
-    pub fn changes(&self) -> &HashMap<String, Dynamic> {
-        &self.changes
+    pub fn changes(&self) -> HashMap<String, Dynamic> {
+        let state = self.state.read();
+        state.changes.clone()
     }
 
-    pub fn original(&self) -> &HashMap<String, Dynamic> {
-        &self.data
+    pub fn original(&self) -> HashMap<String, Dynamic> {
+        let state = self.state.read();
+        state.data.clone()
     }
 
     pub fn has_changes(&self) -> bool {
-        !self.changes.is_empty()
+        let state = self.state.read();
+        !state.changes.is_empty()
     }
 }
 
