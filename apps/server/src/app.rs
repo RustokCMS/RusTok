@@ -20,6 +20,7 @@ use crate::middleware;
 use crate::modules;
 use loco_rs::prelude::Queue;
 use migration::Migrator;
+use std::sync::Arc;
 
 pub struct App;
 
@@ -58,6 +59,12 @@ impl Hooks for App {
 
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
         let registry = modules::build_registry();
+        let engine = Arc::new(alloy_scripting::create_default_engine());
+        let storage = Arc::new(alloy_scripting::SeaOrmStorage::new(ctx.db.clone()));
+        let orchestrator =
+            Arc::new(alloy_scripting::ScriptOrchestrator::new(engine.clone(), storage.clone()));
+        let alloy_state =
+            crate::graphql::alloy::AlloyState::new(engine, storage, orchestrator);
 
         Ok(router
             .merge(SwaggerUi::new("/swagger").url(
@@ -65,6 +72,7 @@ impl Hooks for App {
                 controllers::swagger::ApiDoc::openapi(),
             ))
             .layer(Extension(registry))
+            .layer(Extension(alloy_state))
             .layer(axum_middleware::from_fn_with_state(
                 ctx.clone(),
                 middleware::tenant::resolve,

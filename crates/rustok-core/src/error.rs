@@ -24,4 +24,7 @@ pub enum Error {
 
     #[error("Cache error: {0}")]
     Cache(String),
+
+    #[error("Scripting error: {0}")]
+    Scripting(String),
 }

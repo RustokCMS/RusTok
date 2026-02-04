@@ -9,11 +9,12 @@ use rustok_core::{EventBus, ModuleRegistry};
 async fn graphql_handler(
     State(ctx): State<AppContext>,
     Extension(registry): Extension<ModuleRegistry>,
+    Extension(alloy_state): Extension<crate::graphql::alloy::AlloyState>,
     tenant_ctx: TenantContext,
     OptionalCurrentUser(current_user): OptionalCurrentUser,
     Json(req): Json<async_graphql::Request>,
 ) -> Json<async_graphql::Response> {
-    let schema = build_schema(ctx.db.clone(), EventBus::default());
+    let schema = build_schema(ctx.db.clone(), EventBus::default(), alloy_state);
     let mut request = req.data(ctx).data(tenant_ctx).data(registry);
 
     if let Some(current_user) = current_user {

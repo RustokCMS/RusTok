@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use sea_orm::DatabaseConnection;
 
 use crate::cache::CacheStats;
 use crate::events::EventTransport;
+use crate::scripting::ScriptingContext;
 use crate::Result;
 
 #[async_trait]
@@ -21,7 +23,33 @@ pub trait SearchBackend: Send + Sync {
 }
 
 pub struct AppContext {
+    pub db: Arc<DatabaseConnection>,
     pub events: Arc<dyn EventTransport>,
     pub cache: Arc<dyn CacheBackend>,
     pub search: Arc<dyn SearchBackend>,
+    pub scripting: Arc<ScriptingContext>,
+}
+
+impl AppContext {
+    pub async fn new(
+        db: DatabaseConnection,
+        events: Arc<dyn EventTransport>,
+        cache: Arc<dyn CacheBackend>,
+        search: Arc<dyn SearchBackend>,
+    ) -> Result<Self> {
+        let db = Arc::new(db);
+        let scripting = Arc::new(ScriptingContext::new((*db).clone()).await?);
+
+        Ok(Self {
+            db,
+            events,
+            cache,
+            search,
+            scripting,
+        })
+    }
+
+    pub fn start_background_tasks(&self) {
+        self.scripting.start_scheduler();
+    }
 }

@@ -1,4 +1,3 @@
-use gloo_storage::{LocalStorage, Storage};
 use leptos::*;
 use serde::{Deserialize, Serialize};
 
@@ -19,25 +18,8 @@ pub struct AuthContext {
 }
 
 pub fn provide_auth_context() {
-    let stored_token: Option<String> = LocalStorage::get("auth_token").ok();
-    let stored_user: Option<User> = LocalStorage::get("auth_user").ok();
-
-    let (user, set_user) = create_signal(stored_user);
-    let (token, set_token) = create_signal(stored_token);
-
-    create_effect(move |_| {
-        if let Some(t) = token.get() {
-            let _ = LocalStorage::set("auth_token", t);
-        } else {
-            LocalStorage::delete("auth_token");
-        }
-
-        if let Some(u) = user.get() {
-            let _ = LocalStorage::set("auth_user", u);
-        } else {
-            LocalStorage::delete("auth_user");
-        }
-    });
+    let (user, set_user) = create_signal(None);
+    let (token, set_token) = create_signal(None);
 
     provide_context(AuthContext {
         user,

@@ -3,6 +3,7 @@ use sea_orm::DatabaseConnection;
 
 use rustok_core::EventBus;
 
+use super::alloy::{AlloyMutation, AlloyQuery, AlloyState};
 use super::blog::{BlogMutation, BlogQuery};
 use super::commerce::{CommerceMutation, CommerceQuery};
 use super::content::{ContentMutation, ContentQuery};
@@ -17,6 +18,7 @@ pub struct Query(
     ContentQuery,
     BlogQuery,
     ForumQuery,
+    AlloyQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -26,13 +28,15 @@ pub struct Mutation(
     ContentMutation,
     BlogMutation,
     ForumMutation,
+    AlloyMutation,
 );
 
 pub type AppSchema = Schema<Query, Mutation, EmptySubscription>;
 
-pub fn build_schema(db: DatabaseConnection, event_bus: EventBus) -> AppSchema {
+pub fn build_schema(db: DatabaseConnection, event_bus: EventBus, alloy_state: AlloyState) -> AppSchema {
     Schema::build(Query::default(), Mutation::default(), EmptySubscription)
         .data(db)
         .data(event_bus)
+        .data(alloy_state)
         .finish()
 }

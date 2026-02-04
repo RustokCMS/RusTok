@@ -44,6 +44,7 @@
 | `rustok-blog` | `blog` | Blog | Posts, Pages, Comments |
 | `rustok-commerce` | `commerce` | Commerce | Products, Orders, Cart, Checkout |
 | `rustok-pages` | `pages` | Pages | Static pages, menus, blocks |
+| `alloy-scripting` | `alloy` | Alloy Scripting | Rhai scripting engine, triggers, and script storage |
 | `rustok-tenant` | `tenant` | Tenant | Multi-tenancy helpers |
 | `rustok-rbac` | `rbac` | RBAC | Roles & permissions |
 | `rustok-index` | `index` | Index | CQRS Read Model (Fast Search) |
@@ -120,6 +121,7 @@
 RusToK develops REST and GraphQL APIs simultaneously for platform and domain endpoints, keeping both available for flexibility:
 - **REST (Axum):** Authentication, Health, Admin endpoints.
 - **GraphQL:** Modular schema (MergedObject) for domain operations.
+- **Alloy GraphQL:** Management of scripts/triggers and manual runs through the same schema.
 
 ### 4.2 Documentation
 - **OpenAPI:** Generated via `utoipa` and served at `/swagger`.

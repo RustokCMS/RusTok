@@ -16,6 +16,8 @@ pub struct Claims {
     pub tenant_id: Uuid,
     pub role: UserRole,
     pub session_id: Uuid,
+    pub iss: String,
+    pub aud: String,
     pub exp: usize,
     pub iat: usize,
 }
@@ -25,6 +27,8 @@ pub struct AuthConfig {
     pub secret: String,
     pub access_expiration: u64,
     pub refresh_expiration: u64,
+    pub issuer: String,
+    pub audience: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +40,8 @@ struct AppSettings {
 #[derive(Debug, Deserialize)]
 struct AuthSettings {
     refresh_expiration: Option<u64>,
+    issuer: Option<String>,
+    audience: Option<String>,
 }
 
 impl AuthConfig {
@@ -55,10 +61,26 @@ impl AuthConfig {
             .and_then(|settings| settings.auth.and_then(|auth| auth.refresh_expiration))
             .unwrap_or(DEFAULT_REFRESH_EXPIRATION_SECS);
 
+        let (issuer, audience) = ctx
+            .config
+            .settings
+            .clone()
+            .and_then(|value| serde_json::from_value::<AppSettings>(value).ok())
+            .and_then(|settings| settings.auth)
+            .map(|auth| {
+                (
+                    auth.issuer.unwrap_or_else(|| "rustok".to_string()),
+                    auth.audience.unwrap_or_else(|| "rustok-admin".to_string()),
+                )
+            })
+            .unwrap_or_else(|| ("rustok".to_string(), "rustok-admin".to_string()));
+
         Ok(Self {
             secret: auth.secret.clone(),
             access_expiration: auth.expiration,
             refresh_expiration,
+            issuer,
+            audience,
         })
     }
 }
@@ -78,6 +100,8 @@ pub fn encode_access_token(
         tenant_id,
         role,
         session_id,
+        iss: config.issuer.clone(),
+        aud: config.audience.clone(),
         exp: exp.timestamp() as usize,
         iat: now.timestamp() as usize,
     };
@@ -93,6 +117,8 @@ pub fn encode_access_token(
 pub fn decode_access_token(config: &AuthConfig, token: &str) -> Result<Claims> {
     let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
+    validation.set_issuer(&[config.issuer.as_str()]);
+    validation.set_audience(&[config.audience.as_str()]);
 
     decode::<Claims>(
         token,

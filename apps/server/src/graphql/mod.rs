@@ -1,3 +1,4 @@
+pub mod alloy;
 pub mod blog;
 pub mod commerce;
 pub mod common;
