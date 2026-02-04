@@ -61,10 +61,11 @@ impl Hooks for App {
         let registry = modules::build_registry();
         let engine = Arc::new(alloy_scripting::create_default_engine());
         let storage = Arc::new(alloy_scripting::SeaOrmStorage::new(ctx.db.clone()));
-        let orchestrator =
-            Arc::new(alloy_scripting::ScriptOrchestrator::new(engine.clone(), storage.clone()));
-        let alloy_state =
-            crate::graphql::alloy::AlloyState::new(engine, storage, orchestrator);
+        let orchestrator = Arc::new(alloy_scripting::ScriptOrchestrator::new(
+            engine.clone(),
+            storage.clone(),
+        ));
+        let alloy_state = crate::graphql::alloy::AlloyState::new(engine, storage, orchestrator);
 
         Ok(router
             .merge(SwaggerUi::new("/swagger").url(

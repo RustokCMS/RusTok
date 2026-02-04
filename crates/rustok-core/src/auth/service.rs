@@ -6,10 +6,10 @@ use uuid::Uuid;
 use alloy_scripting::{integration::ScriptableEntity, model::EventType, runner::HookOutcome};
 
 use crate::auth::error::AuthError;
+use crate::auth::jwt::{encode_token, JwtConfig};
 use crate::auth::password::{hash_password, verify_password};
 use crate::auth::repository::UserRepository;
 use crate::auth::user::Model as User;
-use crate::auth::jwt::{encode_token, JwtConfig};
 use crate::scripting::ScriptingContext;
 use crate::types::{UserRole, UserStatus};
 
@@ -100,7 +100,13 @@ impl AuthService {
                 let proxy = after_user.to_entity_proxy();
                 let _ = scripting
                     .orchestrator
-                    .run_after(after_user.entity_type(), EventType::AfterCreate, proxy, None, None)
+                    .run_after(
+                        after_user.entity_type(),
+                        EventType::AfterCreate,
+                        proxy,
+                        None,
+                        None,
+                    )
                     .await;
 
                 let commit_proxy = after_user.to_entity_proxy();
@@ -136,8 +142,13 @@ impl AuthService {
 
         self.repo.update_last_login(user.id).await?;
 
-        let token = encode_token(&user.id, &tenant_id, &user.role.to_string(), &self.jwt_config)
-            .map_err(|err| AuthError::Token(err.to_string()))?;
+        let token = encode_token(
+            &user.id,
+            &tenant_id,
+            &user.role.to_string(),
+            &self.jwt_config,
+        )
+        .map_err(|err| AuthError::Token(err.to_string()))?;
 
         Ok(AuthTokens {
             access_token: token,

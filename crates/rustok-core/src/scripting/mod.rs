@@ -1,11 +1,7 @@
 use std::sync::Arc;
 
 use alloy_scripting::{
-    create_default_engine,
-    runner::ScriptExecutor,
-    Scheduler,
-    ScriptEngine,
-    ScriptOrchestrator,
+    create_default_engine, runner::ScriptExecutor, Scheduler, ScriptEngine, ScriptOrchestrator,
     SeaOrmStorage,
 };
 use sea_orm::DatabaseConnection;

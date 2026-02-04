@@ -11,13 +11,14 @@ pub mod rbac;
 pub mod registry;
 pub mod scripting;
 pub mod types;
+pub use auth::{
+    AuthError, AuthService, AuthTokens, RegisterInput, User, UserRepository, UsersMigration,
+};
 #[cfg(feature = "redis-cache")]
 pub use cache::RedisCacheBackend;
 pub use cache::{CacheStats, InMemoryCacheBackend};
 pub use context::{AppContext, CacheBackend, SearchBackend};
 pub use error::{Error, Result};
-pub use auth::{AuthError, AuthService, AuthTokens, RegisterInput, User, UsersMigration, UserRepository};
-pub use scripting::ScriptingContext;
 pub use events::{
     event_schema, DispatcherConfig, DomainEvent, EventBus, EventBusStats, EventDispatcher,
     EventEnvelope, EventHandler, EventSchema, EventTransport, FieldSchema, HandlerBuilder,
@@ -30,6 +31,7 @@ pub use module::{HealthStatus, ModuleContext, RusToKModule};
 pub use permissions::{Action, Permission, Resource};
 pub use rbac::{PermissionScope, Rbac, SecurityContext};
 pub use registry::ModuleRegistry;
+pub use scripting::ScriptingContext;
 pub use types::{UserRole, UserStatus};
 
 pub mod prelude {

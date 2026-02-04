@@ -33,7 +33,11 @@ pub struct Mutation(
 
 pub type AppSchema = Schema<Query, Mutation, EmptySubscription>;
 
-pub fn build_schema(db: DatabaseConnection, event_bus: EventBus, alloy_state: AlloyState) -> AppSchema {
+pub fn build_schema(
+    db: DatabaseConnection,
+    event_bus: EventBus,
+    alloy_state: AlloyState,
+) -> AppSchema {
     Schema::build(Query::default(), Mutation::default(), EmptySubscription)
         .data(db)
         .data(event_bus)

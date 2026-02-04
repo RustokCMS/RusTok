@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use sea_orm::sea_query::Expr;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+};
 
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{EventType, HttpMethod, Script, ScriptId, ScriptStatus, ScriptTrigger};
@@ -81,9 +83,8 @@ impl SeaOrmStorage {
                     .get("event")
                     .and_then(|value| value.as_str())
                     .unwrap_or_default();
-                let event = EventType::from_str(event_str).ok_or_else(|| {
-                    ScriptError::InvalidTrigger(format!("event: {event_str}"))
-                })?;
+                let event = EventType::from_str(event_str)
+                    .ok_or_else(|| ScriptError::InvalidTrigger(format!("event: {event_str}")))?;
                 Ok(ScriptTrigger::Event { entity_type, event })
             }
             "cron" => {
@@ -105,9 +106,8 @@ impl SeaOrmStorage {
                     .get("method")
                     .and_then(|value| value.as_str())
                     .unwrap_or("GET");
-                let method = HttpMethod::from_str(method_str).ok_or_else(|| {
-                    ScriptError::InvalidTrigger(format!("method: {method_str}"))
-                })?;
+                let method = HttpMethod::from_str(method_str)
+                    .ok_or_else(|| ScriptError::InvalidTrigger(format!("method: {method_str}")))?;
                 Ok(ScriptTrigger::Api { path, method })
             }
             _ => Err(ScriptError::InvalidTrigger(trigger_type.to_string())),
@@ -217,10 +217,7 @@ impl ScriptRegistry for SeaOrmStorage {
             .await
             .map_err(|err| ScriptError::Storage(err.to_string()))?;
 
-        models
-            .into_iter()
-            .map(Self::model_to_script)
-            .collect()
+        models.into_iter().map(Self::model_to_script).collect()
     }
 
     async fn get(&self, id: ScriptId) -> ScriptResult<Script> {
@@ -228,7 +225,9 @@ impl ScriptRegistry for SeaOrmStorage {
             .one(&self.db)
             .await
             .map_err(|err| ScriptError::Storage(err.to_string()))?
-            .ok_or_else(|| ScriptError::NotFound { name: id.to_string() })?;
+            .ok_or_else(|| ScriptError::NotFound {
+                name: id.to_string(),
+            })?;
 
         Self::model_to_script(model)
     }
@@ -239,7 +238,9 @@ impl ScriptRegistry for SeaOrmStorage {
             .one(&self.db)
             .await
             .map_err(|err| ScriptError::Storage(err.to_string()))?
-            .ok_or_else(|| ScriptError::NotFound { name: name.to_string() })?;
+            .ok_or_else(|| ScriptError::NotFound {
+                name: name.to_string(),
+            })?;
 
         Self::model_to_script(model)
     }
@@ -316,7 +317,9 @@ impl ScriptRegistry for SeaOrmStorage {
             .map_err(|err| ScriptError::Storage(err.to_string()))?;
 
         if result.rows_affected == 0 {
-            return Err(ScriptError::NotFound { name: id.to_string() });
+            return Err(ScriptError::NotFound {
+                name: id.to_string(),
+            });
         }
 
         Ok(())
@@ -332,7 +335,9 @@ impl ScriptRegistry for SeaOrmStorage {
             .map_err(|err| ScriptError::Storage(err.to_string()))?;
 
         if result.rows_affected == 0 {
-            return Err(ScriptError::NotFound { name: id.to_string() });
+            return Err(ScriptError::NotFound {
+                name: id.to_string(),
+            });
         }
 
         Ok(())
@@ -343,7 +348,9 @@ impl ScriptRegistry for SeaOrmStorage {
             .one(&self.db)
             .await
             .map_err(|err| ScriptError::Storage(err.to_string()))?
-            .ok_or_else(|| ScriptError::NotFound { name: id.to_string() })?;
+            .ok_or_else(|| ScriptError::NotFound {
+                name: id.to_string(),
+            })?;
 
         let mut script = Self::model_to_script(model)?;
         let should_disable = script.register_error();
@@ -369,7 +376,10 @@ impl ScriptRegistry for SeaOrmStorage {
     async fn reset_errors(&self, id: ScriptId) -> ScriptResult<()> {
         let result = Entity::update_many()
             .col_expr(Column::ErrorCount, Expr::value(0))
-            .col_expr(Column::LastErrorAt, Expr::value(Option::<DateTime<Utc>>::None))
+            .col_expr(
+                Column::LastErrorAt,
+                Expr::value(Option::<DateTime<Utc>>::None),
+            )
             .col_expr(Column::UpdatedAt, Expr::value(Utc::now()))
             .filter(Column::Id.eq(id))
             .exec(&self.db)
@@ -377,7 +387,9 @@ impl ScriptRegistry for SeaOrmStorage {
             .map_err(|err| ScriptError::Storage(err.to_string()))?;
 
         if result.rows_affected == 0 {
-            return Err(ScriptError::NotFound { name: id.to_string() });
+            return Err(ScriptError::NotFound {
+                name: id.to_string(),
+            });
         }
 
         Ok(())

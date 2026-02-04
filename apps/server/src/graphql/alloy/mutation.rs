@@ -5,7 +5,9 @@ use uuid::Uuid;
 use alloy_scripting::model::Script;
 use alloy_scripting::runner::ExecutionOutcome;
 
-use super::types::{CreateScriptInput, GqlExecutionResult, GqlScript, RunScriptInput, UpdateScriptInput};
+use super::types::{
+    CreateScriptInput, GqlExecutionResult, GqlScript, RunScriptInput, UpdateScriptInput,
+};
 use super::{dynamic_to_json, json_to_dynamic, require_admin, AlloyState};
 
 #[derive(Default)]

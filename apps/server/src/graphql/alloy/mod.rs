@@ -4,8 +4,8 @@ mod types;
 
 use std::sync::Arc;
 
-use async_graphql::{Context, FieldError, Result};
 use alloy_scripting::{ScriptEngine, ScriptOrchestrator, SeaOrmStorage};
+use async_graphql::{Context, FieldError, Result};
 use rhai::Dynamic;
 
 use crate::context::AuthContext;

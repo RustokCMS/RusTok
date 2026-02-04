@@ -94,12 +94,7 @@ mod tests {
 
             let before = self
                 .orchestrator
-                .run_before(
-                    deal.entity_type(),
-                    EventType::BeforeCreate,
-                    proxy,
-                    None,
-                )
+                .run_before(deal.entity_type(), EventType::BeforeCreate, proxy, None)
                 .await;
 
             match before {
@@ -118,8 +113,7 @@ mod tests {
 
             // simulate DB insert
 
-            let after_proxy =
-                EntityProxy::new(&deal.id, deal.entity_type(), deal.to_dynamic_map());
+            let after_proxy = EntityProxy::new(&deal.id, deal.entity_type(), deal.to_dynamic_map());
 
             let after = self
                 .orchestrator

@@ -20,7 +20,11 @@ impl MigrationTrait for ScriptsMigration {
                     )
                     .col(ColumnDef::new(Scripts::Description).text())
                     .col(ColumnDef::new(Scripts::Code).text().not_null())
-                    .col(ColumnDef::new(Scripts::TriggerType).string_len(32).not_null())
+                    .col(
+                        ColumnDef::new(Scripts::TriggerType)
+                            .string_len(32)
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(Scripts::TriggerConfig)
                             .json_binary()

@@ -15,10 +15,7 @@ impl UserRepository {
 
     pub async fn create(&self, user: Model) -> Result<Model, AuthError> {
         let active: ActiveModel = user.into();
-        active
-            .insert(&self.db)
-            .await
-            .map_err(map_db_error)
+        active.insert(&self.db).await.map_err(map_db_error)
     }
 
     pub async fn find_by_email(&self, email: &str) -> Result<Option<Model>, AuthError> {
@@ -39,7 +36,10 @@ impl UserRepository {
     pub async fn update_last_login(&self, id: uuid::Uuid) -> Result<(), AuthError> {
         let result = Entity::update_many()
             .filter(Column::Id.eq(id))
-            .col_expr(Column::LastLoginAt, sea_orm::sea_query::Expr::current_timestamp())
+            .col_expr(
+                Column::LastLoginAt,
+                sea_orm::sea_query::Expr::current_timestamp(),
+            )
             .exec(&self.db)
             .await
             .map_err(map_db_error)?;

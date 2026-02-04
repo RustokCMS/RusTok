@@ -18,7 +18,11 @@ impl MigrationTrait for UsersMigration {
                             .not_null()
                             .unique_key(),
                     )
-                    .col(ColumnDef::new(Users::PasswordHash).string_len(255).not_null())
+                    .col(
+                        ColumnDef::new(Users::PasswordHash)
+                            .string_len(255)
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(Users::FirstName).string_len(100))
                     .col(ColumnDef::new(Users::LastName).string_len(100))
                     .col(
@@ -72,11 +76,7 @@ impl MigrationTrait for UsersMigration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(RefreshTokens::UserId)
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(RefreshTokens::UserId).uuid().not_null())
                     .col(
                         ColumnDef::new(RefreshTokens::TokenHash)
                             .string_len(255)

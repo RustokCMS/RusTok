@@ -3,8 +3,10 @@ use uuid::Uuid;
 
 use alloy_scripting::storage::ScriptQuery;
 
+use super::{
+    require_admin, AlloyState, GqlEventType, GqlScript, GqlScriptConnection, GqlScriptStatus,
+};
 use crate::graphql::common::PaginationInput;
-use super::{require_admin, AlloyState, GqlEventType, GqlScript, GqlScriptConnection, GqlScriptStatus};
 
 #[derive(Default)]
 pub struct AlloyQuery;
@@ -54,11 +56,7 @@ impl AlloyQuery {
         }
     }
 
-    async fn script_by_name(
-        &self,
-        ctx: &Context<'_>,
-        name: String,
-    ) -> Result<Option<GqlScript>> {
+    async fn script_by_name(&self, ctx: &Context<'_>, name: String) -> Result<Option<GqlScript>> {
         require_admin(ctx)?;
         let state = ctx.data::<AlloyState>()?;
         match state.storage.get_by_name(&name).await {
