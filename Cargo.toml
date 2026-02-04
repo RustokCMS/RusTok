@@ -73,7 +73,7 @@ async-trait = "0.1"
 rust_decimal = "1.36"
 utoipa = "4.2"
 utoipa-swagger-ui = { version = "7.0", features = ["vendored"] }
-moka = "0.12"
+moka = { version = "0.12", features = ["future"] }
 argon2 = "0.5"
 jsonwebtoken = "9.3"
 rand = "0.8"
