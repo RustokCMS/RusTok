@@ -15,6 +15,7 @@
 [Why Rust?](#why-rust) •
 [Comparison](#comparison) •
 [Quick Start](#quick-start) •
+[Documentation](#documentation) •
 [Architecture](#architecture) •
 [Roadmap](#roadmap)
 
@@ -294,6 +295,17 @@ cargo loco db migrate
 # Generate CRUD controller
 cargo loco generate controller products --api
 ```
+
+---
+
+## 📚 Documentation
+
+- [Architecture & system logic](docs/architecture.md)
+- [Module registry](docs/module-registry.md)
+- [Modules overview (current implementation)](docs/modules.md)
+- [MCP adapter](docs/mcp.md)
+- [Storefront SSR notes](docs/storefront.md)
+- [Testing guidelines](docs/testing-guidelines.md)
 
 ---
 
