@@ -66,6 +66,9 @@ pub fn Users() -> impl IntoView {
     let (api_token, set_api_token) = create_signal(auth.token.get().unwrap_or_default());
     let (tenant_slug, set_tenant_slug) = create_signal(String::new());
     let (refresh_counter, set_refresh_counter) = create_signal(0u32);
+    let (page, set_page) = create_signal(1i64);
+    let (limit, set_limit) = create_signal(12i64);
+    let (limit_input, set_limit_input) = create_signal("12".to_string());
 
     let rest_resource = create_resource(
         move || refresh_counter.get(),
@@ -88,15 +91,19 @@ pub fn Users() -> impl IntoView {
     );
 
     let graphql_resource = create_resource(
-        move || refresh_counter.get(),
+        move || (refresh_counter.get(), page.get(), limit.get()),
         move |_| {
             let token = api_token.get().trim().to_string();
             let tenant = tenant_slug.get().trim().to_string();
+            let offset = (page.get().saturating_sub(1)) * limit.get();
             async move {
                 request::<UsersVariables, GraphqlUsersResponse>(
                     "query Users($pagination: PaginationInput) { users(pagination: $pagination) { edges { node { id email name role status createdAt } } pageInfo { totalCount } } }",
                     UsersVariables {
-                        pagination: PaginationInput { offset: 0, limit: 12 },
+                        pagination: PaginationInput {
+                            offset,
+                            limit: limit.get(),
+                        },
                     },
                     if token.is_empty() { None } else { Some(token) },
                     if tenant.is_empty() {
@@ -111,6 +118,9 @@ pub fn Users() -> impl IntoView {
     );
 
     let refresh = move |_| set_refresh_counter.update(|value| *value += 1);
+    let next_page = move |_| set_page.update(|value| *value += 1);
+    let previous_page = move |_| set_page.update(|value| *value = (*value - 1).max(1));
+    let reset_pagination = move || set_page.set(1);
 
     view! {
         <section class="users-page">
@@ -144,6 +154,18 @@ pub fn Users() -> impl IntoView {
                         set_value=set_tenant_slug
                         placeholder="demo"
                         label=move || translate(locale.locale.get(), "users.access.tenant").to_string()
+                    />
+                    <Input
+                        value=limit_input
+                        set_value=move |value| {
+                            set_limit_input.set(value.clone());
+                            if let Ok(parsed) = value.parse::<i64>() {
+                                set_limit.set(parsed.max(1));
+                                reset_pagination();
+                            }
+                        }
+                        placeholder="12"
+                        label=move || translate(locale.locale.get(), "users.access.limit").to_string()
                     />
                 </div>
                 <p class="form-hint">
@@ -200,6 +222,7 @@ pub fn Users() -> impl IntoView {
                                                 <th>{move || translate(locale.locale.get(), "users.graphql.name")}</th>
                                                 <th>{move || translate(locale.locale.get(), "users.graphql.role")}</th>
                                                 <th>{move || translate(locale.locale.get(), "users.graphql.status")}</th>
+                                                <th>{move || translate(locale.locale.get(), "users.graphql.createdAt")}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -217,12 +240,35 @@ pub fn Users() -> impl IntoView {
                                                             <td>
                                                                 <span class="status-pill">{user.status.clone()}</span>
                                                             </td>
+                                                            <td>{user.created_at.clone()}</td>
                                                         </tr>
                                                     }
                                                 })
                                                 .collect_view()}
                                         </tbody>
                                     </table>
+                                </div>
+                                <div class="table-actions">
+                                    <Button
+                                        on_click=previous_page
+                                        class="ghost-button"
+                                        disabled=move || page.get() <= 1
+                                    >
+                                        {move || translate(locale.locale.get(), "users.pagination.prev")}
+                                    </Button>
+                                    <span class="meta-text">
+                                        {move || translate(locale.locale.get(), "users.pagination.page")} " " {page.get()}
+                                    </span>
+                                    <Button
+                                        on_click=next_page
+                                        class="ghost-button"
+                                        disabled=move || {
+                                            let total = response.users.page_info.total_count;
+                                            page.get() * limit.get() >= total
+                                        }
+                                    >
+                                        {move || translate(locale.locale.get(), "users.pagination.next")}
+                                    </Button>
                                 </div>
                             }
                             .into_view(),
