@@ -1,5 +1,5 @@
 use parking_lot::RwLock;
-use rhai::{Dynamic, Engine, EvalAltResult, AST};
+use rhai::{Dynamic, Engine, EvalAltResult, RhaiNativeFunc, Variant, AST};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -40,9 +40,13 @@ impl ScriptEngine {
         }
     }
 
-    pub fn register_fn<F>(&mut self, name: &str, func: F)
-    where
-        F: Send + Sync + 'static,
+    /// Register a native function with Rhai using the required trait bounds.
+    pub fn register_fn<A, const N: usize, const X: bool, R, const F: bool>(
+        &mut self,
+        name: &str,
+        func: impl RhaiNativeFunc<A, N, X, R, F> + Send + Sync + 'static,
+    ) where
+        R: Variant + Clone,
     {
         self.engine.register_fn(name, func);
     }
