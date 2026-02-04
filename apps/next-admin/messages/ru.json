@@ -33,5 +33,35 @@
     ],
     "alertTitle": "Многоязычность",
     "alertDescription": "Локализация включена через next-intl (ru/en)."
+  },
+  "Users": {
+    "eyebrow": "Users",
+    "title": "Пользователи",
+    "subtitle": "Одна страница, два формата API: REST /api/auth/me и GraphQL users.",
+    "back": "Назад к обзору",
+    "access": {
+      "title": "Настройки доступа",
+      "description": "Для запросов используются переменные окружения ADMIN_API_TOKEN и ADMIN_TENANT_SLUG.",
+      "restTitle": "REST",
+      "restHint": "Bearer-токен обязателен, иначе /api/auth/me вернёт 401.",
+      "graphqlTitle": "GraphQL",
+      "graphqlHint": "Требуются permissions users:list и корректный tenant slug."
+    },
+    "rest": {
+      "title": "REST: /api/auth/me",
+      "subtitle": "Текущий пользователь из REST слоя.",
+      "noName": "Без имени"
+    },
+    "graphql": {
+      "title": "GraphQL: users",
+      "subtitle": "Список пользователей из GraphQL слоя.",
+      "columns": {
+        "email": "Email",
+        "name": "Имя",
+        "role": "Роль",
+        "status": "Статус"
+      },
+      "total": "Всего: {total}"
+    }
   }
 }

@@ -33,5 +33,35 @@
     ],
     "alertTitle": "Localization",
     "alertDescription": "Localization is wired via next-intl (ru/en)."
+  },
+  "Users": {
+    "eyebrow": "Users",
+    "title": "Users",
+    "subtitle": "Single page, two API formats: REST /api/auth/me and GraphQL users.",
+    "back": "Back to overview",
+    "access": {
+      "title": "Access configuration",
+      "description": "Requests use ADMIN_API_TOKEN and ADMIN_TENANT_SLUG environment variables.",
+      "restTitle": "REST",
+      "restHint": "Bearer token is required, otherwise /api/auth/me returns 401.",
+      "graphqlTitle": "GraphQL",
+      "graphqlHint": "Requires users:list permissions and a valid tenant slug."
+    },
+    "rest": {
+      "title": "REST: /api/auth/me",
+      "subtitle": "Current user from the REST layer.",
+      "noName": "No name"
+    },
+    "graphql": {
+      "title": "GraphQL: users",
+      "subtitle": "User list from the GraphQL layer.",
+      "columns": {
+        "email": "Email",
+        "name": "Name",
+        "role": "Role",
+        "status": "Status"
+      },
+      "total": "Total: {total}"
+    }
   }
 }

@@ -1,16 +1,19 @@
 import { Activity, Bell, Boxes, Briefcase, LineChart, Users } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
 
 import { OverviewCard } from "@/components/overview-card";
 import { Button } from "@/components/ui/button";
 
 export default async function AdminHome() {
   const t = await getTranslations("Admin");
+  const locale = await getLocale();
   const quickActions = t.raw("quickActions") as Array<{
     title: string;
     description: string;
   }>;
   const quickActionIcons = [Boxes, Users, Briefcase];
+  const quickActionLinks = [undefined, `/${locale}/users`, undefined];
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -79,19 +82,25 @@ export default async function AdminHome() {
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             {quickActions.map((action, index) => {
               const Icon = quickActionIcons[index] ?? Briefcase;
-              return (
-              <div
-                key={action.title}
-                className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-              >
-                <Icon className="h-5 w-5 text-indigo-600" />
-                <h3 className="mt-3 text-sm font-semibold text-slate-900">
-                  {action.title}
-                </h3>
-                <p className="mt-2 text-sm text-slate-500">
-                  {action.description}
-                </p>
-              </div>
+              const href = quickActionLinks[index];
+              const card = (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-indigo-200 hover:bg-white">
+                  <Icon className="h-5 w-5 text-indigo-600" />
+                  <h3 className="mt-3 text-sm font-semibold text-slate-900">
+                    {action.title}
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-500">
+                    {action.description}
+                  </p>
+                </div>
+              );
+
+              return href ? (
+                <Link key={action.title} href={href}>
+                  {card}
+                </Link>
+              ) : (
+                <div key={action.title}>{card}</div>
               );
             })}
           </div>

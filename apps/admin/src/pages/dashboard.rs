@@ -90,7 +90,7 @@ pub fn Dashboard() -> impl IntoView {
                     <h4>"Быстрые действия"</h4>
                     <div class="quick-actions">
                         <button type="button">"Запустить аудит безопасности"</button>
-                        <button type="button">"Открыть список модулей"</button>
+                        <a href="/users">"Управление пользователями"</a>
                         <button type="button">"Проверить метрики API"</button>
                         <button type="button">"Сформировать отчёт по ролям"</button>
                     </div>
