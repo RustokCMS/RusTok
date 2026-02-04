@@ -1,6 +1,6 @@
 {
   "app": {
-    "home": {
+    "dashboard": {
       "eyebrow": "RusToK Admin",
       "title": "Панель управления",
       "subtitle": "Скелет админки на Next.js с быстрыми библиотеками: React Query, React Hook Form, Zod, DaisyUI и shadcn/ui.",
