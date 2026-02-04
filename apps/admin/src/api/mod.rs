@@ -106,3 +106,37 @@ where
 
     res.json().await.map_err(|_| ApiError::Network)
 }
+
+pub async fn rest_post<B, T>(
+    path: &str,
+    body: &B,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<T, ApiError>
+where
+    B: Serialize,
+    T: for<'de> Deserialize<'de>,
+{
+    let client = reqwest::Client::new();
+    let mut req = client.post(format!("{}{}", REST_API_URL, path)).json(body);
+
+    if let Some(t) = token {
+        req = req.header("Authorization", format!("Bearer {}", t));
+    }
+
+    if let Some(slug) = tenant_slug {
+        req = req.header("X-Tenant-Slug", slug);
+    }
+
+    let res = req.send().await.map_err(|_| ApiError::Network)?;
+
+    if res.status() == 401 {
+        return Err(ApiError::Unauthorized);
+    }
+
+    if !res.status().is_success() {
+        return Err(ApiError::Http(res.status().to_string()));
+    }
+
+    res.json().await.map_err(|_| ApiError::Network)
+}
