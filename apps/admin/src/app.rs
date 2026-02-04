@@ -2,8 +2,8 @@ use leptos::*;
 use leptos_router::{use_navigate, Route, Router, Routes};
 
 use crate::pages::{
-    dashboard::Dashboard, login::Login, not_found::NotFound, user_details::UserDetails,
-    users::Users,
+    dashboard::Dashboard, login::Login, not_found::NotFound, profile::Profile, register::Register,
+    reset::ResetPassword, security::Security, user_details::UserDetails, users::Users,
 };
 use crate::providers::auth::{provide_auth_context, use_auth};
 use crate::providers::locale::provide_locale_context;
@@ -19,7 +19,11 @@ pub fn App() -> impl IntoView {
                 <Style />
                 <Routes>
                     <Route path="/login" view=Login />
+                    <Route path="/register" view=Register />
+                    <Route path="/reset" view=ResetPassword />
                     <Route path="/dashboard" view=ProtectedDashboard />
+                    <Route path="/profile" view=ProtectedProfile />
+                    <Route path="/security" view=ProtectedSecurity />
                     <Route path="/users" view=ProtectedUsers />
                     <Route path="/users/:id" view=ProtectedUserDetails />
                     <Route path="" view=ProtectedDashboard />
@@ -94,6 +98,48 @@ fn ProtectedUserDetails() -> impl IntoView {
 }
 
 #[component]
+fn ProtectedProfile() -> impl IntoView {
+    let auth = use_auth();
+    let navigate = use_navigate();
+
+    create_effect(move |_| {
+        if auth.token.get().is_none() {
+            navigate("/login", Default::default());
+        }
+    });
+
+    view! {
+        <Show
+            when=move || auth.token.get().is_some()
+            fallback=|| view! { <Login /> }
+        >
+            <Profile />
+        </Show>
+    }
+}
+
+#[component]
+fn ProtectedSecurity() -> impl IntoView {
+    let auth = use_auth();
+    let navigate = use_navigate();
+
+    create_effect(move |_| {
+        if auth.token.get().is_none() {
+            navigate("/login", Default::default());
+        }
+    });
+
+    view! {
+        <Show
+            when=move || auth.token.get().is_some()
+            fallback=|| view! { <Login /> }
+        >
+            <Security />
+        </Show>
+    }
+}
+
+#[component]
 fn Style() -> impl IntoView {
     view! {
         <style>
@@ -113,10 +159,13 @@ fn Style() -> impl IntoView {
             ".auth-card { background: #fff; border-radius: 24px; padding: 32px; box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12); display: flex; flex-direction: column; gap: 20px; }\n"
             ".auth-card h2 { margin: 0; font-size: 1.75rem; }\n"
             ".auth-card p { margin: 0; color: #64748b; }\n"
+            ".auth-note { display: grid; gap: 6px; }\n"
+            ".auth-links { display: flex; justify-content: space-between; gap: 12px; }\n"
             ".auth-locale { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 0.9rem; color: #475569; }\n"
             ".input-group { display: flex; flex-direction: column; gap: 8px; }\n"
             ".input-group label { font-size: 0.9rem; color: #475569; }\n"
             ".input-group input { padding: 12px 16px; border-radius: 12px; border: 1px solid #e2e8f0; font-size: 0.95rem; }\n"
+            ".input-select { padding: 12px 16px; border-radius: 12px; border: 1px solid #e2e8f0; font-size: 0.95rem; background: #fff; }\n"
             ".primary-button { background: #2563eb; color: #fff; border: none; padding: 12px 18px; border-radius: 12px; font-weight: 600; cursor: pointer; }\n"
             ".primary-button.w-full { width: 100%; }\n"
             ".ghost-button { background: transparent; color: #2563eb; border: 1px solid #cbd5f5; }\n"
@@ -124,6 +173,7 @@ fn Style() -> impl IntoView {
             ".secondary-link { color: #2563eb; text-decoration: none; font-size: 0.9rem; }\n"
             ".badge { background: #e2e8f0; padding: 6px 12px; border-radius: 999px; font-size: 0.85rem; color: #475569; }\n"
             ".alert { background: #fee2e2; color: #b91c1c; padding: 10px 14px; border-radius: 12px; font-size: 0.9rem; }\n"
+            ".alert.success { background: #dcfce7; color: #166534; }\n"
             ".dashboard { padding: 32px 40px 56px; }\n"
             ".dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; gap: 16px; flex-wrap: wrap; }\n"
             ".dashboard-header h1 { margin: 8px 0 0; font-size: 2rem; }\n"
@@ -160,12 +210,28 @@ fn Style() -> impl IntoView {
             ".details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }\n"
             ".details-grid p { margin: 4px 0 0; font-size: 0.95rem; }\n"
             ".locale-toggle { display: flex; gap: 8px; }\n"
+            ".settings-page { padding: 32px 40px 56px; }\n"
+            ".settings-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }\n"
+            ".settings-header h1 { margin: 8px 0 0; font-size: 2rem; }\n"
+            ".settings-header p { margin: 8px 0 0; color: #64748b; }\n"
+            ".settings-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }\n"
+            ".settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }\n"
+            ".settings-card { background: #fff; border-radius: 20px; padding: 24px; box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08); display: grid; gap: 16px; }\n"
+            ".settings-card h3 { margin: 0; font-size: 1.2rem; }\n"
+            ".section-subtitle { margin: 0; color: #64748b; font-size: 0.95rem; }\n"
+            ".preference-row { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid #e2e8f0; }\n"
+            ".preference-row:last-child { border-bottom: none; }\n"
+            ".session-list { display: grid; gap: 12px; }\n"
+            ".session-item { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid #e2e8f0; }\n"
+            ".session-item:last-child { border-bottom: none; }\n"
+            ".session-meta { display: grid; gap: 4px; justify-items: end; }\n"
             "@media (max-width: 960px) {\n"
             "  .auth-grid { grid-template-columns: 1fr; }\n"
             "  .auth-form { padding: 48px 32px; }\n"
             "  .auth-visual { padding: 48px 32px; }\n"
             "  .dashboard-panels { grid-template-columns: 1fr; }\n"
             "  .users-grid { grid-template-columns: 1fr; }\n"
+            "  .settings-header { align-items: flex-start; }\n"
             "}\n"
         </style>
     }

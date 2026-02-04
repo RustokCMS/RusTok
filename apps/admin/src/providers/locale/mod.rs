@@ -1,6 +1,7 @@
 use leptos::*;
 
 mod app;
+mod auth;
 mod dashboard;
 mod errors;
 mod login;
@@ -60,6 +61,7 @@ pub fn translate(locale: Locale, key: &str) -> &'static str {
 
 fn translate_en(key: &str) -> &'static str {
     app::translate_en(key)
+        .or_else(|| auth::translate_en(key))
         .or_else(|| login::translate_en(key))
         .or_else(|| dashboard::translate_en(key))
         .or_else(|| users::translate_en(key))
@@ -69,6 +71,7 @@ fn translate_en(key: &str) -> &'static str {
 
 fn translate_ru(key: &str) -> &'static str {
     app::translate_ru(key)
+        .or_else(|| auth::translate_ru(key))
         .or_else(|| login::translate_ru(key))
         .or_else(|| dashboard::translate_ru(key))
         .or_else(|| users::translate_ru(key))
