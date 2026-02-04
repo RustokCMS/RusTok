@@ -9,9 +9,10 @@ pub fn Login() -> impl IntoView {
     let auth = use_auth();
     let navigate = use_navigate();
 
-    let (tenant, set_tenant) = create_signal("demo".to_string());
-    let (email, set_email) = create_signal("admin@rustok.io".to_string());
-    let (password, set_password) = create_signal("password123".to_string());
+    let demo_mode = option_env!("RUSTOK_DEMO_MODE").is_some();
+    let (tenant, set_tenant) = create_signal(String::new());
+    let (email, set_email) = create_signal(String::new());
+    let (password, set_password) = create_signal(String::new());
     let (error, set_error) = create_signal(Option::<String>::None);
 
     let navigate_effect = navigate.clone();
@@ -24,6 +25,14 @@ pub fn Login() -> impl IntoView {
     let on_submit = move |_| {
         if tenant.get().is_empty() || email.get().is_empty() || password.get().is_empty() {
             set_error.set(Some("Заполните все поля".to_string()));
+            return;
+        }
+
+        if !demo_mode {
+            set_error.set(Some(
+                "Демо-вход отключен. Используйте серверную аутентификацию или включите RUSTOK_DEMO_MODE."
+                    .to_string(),
+            ));
             return;
         }
 
@@ -67,9 +76,11 @@ pub fn Login() -> impl IntoView {
                     <Button on_click=on_submit class="w-full">
                         "Продолжить"
                     </Button>
-                    <a class="secondary-link" href="/dashboard">
-                        "Перейти в демонстрационный дашборд →"
-                    </a>
+                    <Show when=move || demo_mode>
+                        <a class="secondary-link" href="/dashboard">
+                            "Перейти в демонстрационный дашборд →"
+                        </a>
+                    </Show>
                 </div>
                 <p style="margin:0; color:#64748b;">
                     "Нужен доступ? Напишите администратору безопасности для активации."

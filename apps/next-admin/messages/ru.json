@@ -1,0 +1,37 @@
+{
+  "Admin": {
+    "eyebrow": "RusToK Admin",
+    "title": "Панель управления",
+    "subtitle": "Скелет админки на Next.js с быстрыми библиотеками: React Query, React Hook Form, Zod, DaisyUI и shadcn/ui.",
+    "notifications": "Центр уведомлений",
+    "stats": {
+      "requests": "Запросы",
+      "requestsValue": "24 300",
+      "requestsDescription": "За последние 24 часа",
+      "modules": "Активные модули",
+      "modulesValue": "12",
+      "modulesDescription": "Commerce, Content, Community",
+      "events": "События",
+      "eventsValue": "1 284",
+      "eventsDescription": "Синхронизировано без ошибок"
+    },
+    "quickActionsTitle": "Быстрые действия",
+    "quickActionsDescription": "Самые частые сценарии для администраторов RusToK.",
+    "quickActions": [
+      {
+        "title": "Новый каталог",
+        "description": "Добавьте категорию в витрину"
+      },
+      {
+        "title": "Управление пользователями",
+        "description": "Настройте роли и доступы"
+      },
+      {
+        "title": "Запуск промо",
+        "description": "Подготовьте кампанию"
+      }
+    ],
+    "alertTitle": "Многоязычность",
+    "alertDescription": "Локализация включена через next-intl (ru/en)."
+  }
+}

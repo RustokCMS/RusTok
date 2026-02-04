@@ -1,0 +1,111 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct ScriptsMigration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for ScriptsMigration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(Scripts::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(Scripts::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(Scripts::Name)
+                            .string_len(255)
+                            .not_null()
+                            .unique_key(),
+                    )
+                    .col(ColumnDef::new(Scripts::Description).text())
+                    .col(ColumnDef::new(Scripts::Code).text().not_null())
+                    .col(ColumnDef::new(Scripts::TriggerType).string_len(32).not_null())
+                    .col(
+                        ColumnDef::new(Scripts::TriggerConfig)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Scripts::Status)
+                            .string_len(32)
+                            .not_null()
+                            .default("draft"),
+                    )
+                    .col(
+                        ColumnDef::new(Scripts::Version)
+                            .integer()
+                            .not_null()
+                            .default(1),
+                    )
+                    .col(
+                        ColumnDef::new(Scripts::RunAsSystem)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(Scripts::Permissions)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Scripts::AuthorId).string_len(255))
+                    .col(
+                        ColumnDef::new(Scripts::ErrorCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(ColumnDef::new(Scripts::LastErrorAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(Scripts::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Scripts::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_scripts_trigger_status")
+                    .table(Scripts::Table)
+                    .col(Scripts::TriggerType)
+                    .col(Scripts::Status)
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(Scripts::Table).to_owned())
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum Scripts {
+    Table,
+    Id,
+    Name,
+    Description,
+    Code,
+    TriggerType,
+    TriggerConfig,
+    Status,
+    Version,
+    RunAsSystem,
+    Permissions,
+    AuthorId,
+    ErrorCount,
+    LastErrorAt,
+    CreatedAt,
+    UpdatedAt,
+}

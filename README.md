@@ -15,6 +15,7 @@
 [Why Rust?](#why-rust) •
 [Comparison](#comparison) •
 [Quick Start](#quick-start) •
+[Documentation](#documentation) •
 [Architecture](#architecture) •
 [Roadmap](#roadmap)
 
@@ -260,7 +261,7 @@ cargo loco start
 
 # Run admin panel (terminal 2)
 cd apps/admin
-trunk serve --open
+RUSTOK_DEMO_MODE=1 trunk serve --open
 
 # Run storefront (terminal 3)
 cargo run -p rustok-storefront
@@ -275,6 +276,9 @@ npm run build:css
 # Admin: http://localhost:8080
 # Storefront (SSR): http://localhost:3100?lang=en
 ```
+
+> ⚠️ Admin demo mode is disabled by default. Set `RUSTOK_DEMO_MODE=1` only for local demos.
+> For real authentication, use the backend `/api/auth` endpoints with HttpOnly cookies.
 
 ### First Steps
 
@@ -291,6 +295,17 @@ cargo loco db migrate
 # Generate CRUD controller
 cargo loco generate controller products --api
 ```
+
+---
+
+## 📚 Documentation
+
+- [Architecture & system logic](docs/architecture.md)
+- [Module registry](docs/module-registry.md)
+- [Modules overview (current implementation)](docs/modules.md)
+- [MCP adapter](docs/mcp.md)
+- [Storefront SSR notes](docs/storefront.md)
+- [Testing guidelines](docs/testing-guidelines.md)
 
 ---
 

@@ -23,6 +23,8 @@ auth:
 settings:
   auth:
     refresh_expiration: 1209600
+    issuer: rustok
+    audience: rustok-admin
   rustok:
     tenant:
       enabled: true

@@ -133,7 +133,7 @@ impl NodeService {
         &self,
         node_id: Uuid,
         security: SecurityContext,
-        update: UpdateNodeInput,
+        mut update: UpdateNodeInput,
     ) -> ContentResult<NodeResponse> {
         let node_model = self.find_node(node_id).await?;
 
@@ -147,6 +147,11 @@ impl NodeService {
                 if node_model.author_id != security.user_id {
                     return Err(ContentError::Forbidden(
                         "Permission denied: Not the author".into(),
+                    ));
+                }
+                if update.author_id.is_some() {
+                    return Err(ContentError::Forbidden(
+                        "Permission denied: cannot change author".into(),
                     ));
                 }
             }
