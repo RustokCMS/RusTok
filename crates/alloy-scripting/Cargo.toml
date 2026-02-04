@@ -11,5 +11,6 @@ chrono = { workspace = true }
 serde = { workspace = true }
 parking_lot = "0.12"
 uuid = { workspace = true }
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["sync", "time"] }
 async-trait = "0.1"
+cron = "0.12"

@@ -5,6 +5,7 @@ pub mod error;
 pub mod integration;
 pub mod model;
 pub mod runner;
+pub mod scheduler;
 pub mod storage;
 
 pub use bridge::Bridge;
@@ -17,6 +18,7 @@ pub use model::{
     ScriptTrigger,
 };
 pub use runner::{ExecutionOutcome, ExecutionResult, HookOutcome, ScriptOrchestrator};
+pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptQuery, ScriptRegistry};
 
 pub fn create_default_engine() -> ScriptEngine {
