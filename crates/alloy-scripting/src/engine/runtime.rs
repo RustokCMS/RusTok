@@ -112,7 +112,9 @@ impl ScriptEngine {
     fn convert_error(err: EvalAltResult, op_limit: u64) -> ScriptError {
         match err {
             EvalAltResult::ErrorTerminated(reason, _) => ScriptError::Aborted(reason.to_string()),
-            EvalAltResult::ErrorTooManyOperations(_) => ScriptError::OperationLimit { limit: op_limit },
+            EvalAltResult::ErrorTooManyOperations(_) => {
+                ScriptError::OperationLimit { limit: op_limit }
+            }
             EvalAltResult::ErrorRuntime(msg, _) => {
                 let msg_str = msg.to_string();
                 if msg_str.starts_with("ABORT:") {

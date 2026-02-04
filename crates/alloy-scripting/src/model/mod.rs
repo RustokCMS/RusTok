@@ -2,6 +2,6 @@ mod proxy;
 mod script;
 mod trigger;
 
-pub use proxy::EntityProxy;
+pub use proxy::{register_entity_proxy, EntityProxy};
 pub use script::{Script, ScriptId, ScriptStatus};
-pub use trigger::{ScriptTrigger, TriggerEvent};
+pub use trigger::{EventType, HttpMethod, ScriptTrigger};
