@@ -39,9 +39,9 @@ impl RusToKModule for DemoModule {
 #[tokio::test]
 async fn list_modules_returns_registered_metadata() {
     let registry = ModuleRegistry::new().register(DemoModule);
-    let state = McpState { registry };
+    let state = Box::leak(Box::new(McpState { registry }));
 
-    let response = list_modules(&state).await;
+    let response = list_modules(state).await;
 
     assert_eq!(response.modules.len(), 1);
     assert_eq!(response.modules[0].slug, "demo");
@@ -54,10 +54,10 @@ async fn list_modules_returns_registered_metadata() {
 #[tokio::test]
 async fn module_exists_checks_registry() {
     let registry = ModuleRegistry::new().register(DemoModule);
-    let state = McpState { registry };
+    let state = Box::leak(Box::new(McpState { registry }));
 
     let response = module_exists(
-        &state,
+        state,
         ModuleLookupRequest {
             slug: "demo".to_string(),
         },

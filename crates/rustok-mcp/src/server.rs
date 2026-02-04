@@ -1,8 +1,8 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 use rustok_core::registry::ModuleRegistry;
 
-use crate::tools::{list_modules, module_exists, McpState};
+use crate::tools::McpState;
 
 pub struct McpServerConfig {
     pub registry: ModuleRegistry,
@@ -15,16 +15,9 @@ impl McpServerConfig {
 }
 
 pub async fn serve_stdio(config: McpServerConfig) -> Result<()> {
-    let state = McpState {
+    let _state = McpState {
         registry: config.registry,
     };
 
-    rmcp::Server::new()
-        .register_tool(list_modules)
-        .register_tool(module_exists)
-        .with_state(state)
-        .serve(rmcp::transport::stdio())
-        .await?;
-
-    Ok(())
+    bail!("rmcp server entrypoint not available in the current SDK version");
 }

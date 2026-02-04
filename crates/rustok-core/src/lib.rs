@@ -12,9 +12,9 @@ pub mod types;
 pub use context::{AppContext, CacheBackend, SearchBackend};
 pub use error::{Error, Result};
 pub use events::{
-    DispatcherConfig, DomainEvent, EventBus, EventBusStats, EventDispatcher, EventEnvelope,
-    EventHandler, EventTransport, HandlerBuilder, HandlerResult, MemoryTransport, ReliabilityLevel,
-    RunningDispatcher,
+    event_schema, DispatcherConfig, DomainEvent, EventBus, EventBusStats, EventDispatcher,
+    EventEnvelope, EventHandler, EventSchema, EventTransport, FieldSchema, HandlerBuilder,
+    HandlerResult, MemoryTransport, ReliabilityLevel, RunningDispatcher, EVENT_SCHEMAS,
 };
 pub use id::generate_id;
 pub use migrations::ModuleMigration;
@@ -28,9 +28,9 @@ pub use types::{UserRole, UserStatus};
 pub mod prelude {
     pub use crate::error::{Error, Result};
     pub use crate::events::{
-        DispatcherConfig, DomainEvent, EventBus, EventBusStats, EventDispatcher, EventEnvelope,
-        EventHandler, EventTransport, HandlerBuilder, HandlerResult, MemoryTransport,
-        ReliabilityLevel, RunningDispatcher,
+        event_schema, DispatcherConfig, DomainEvent, EventBus, EventBusStats, EventDispatcher,
+        EventEnvelope, EventHandler, EventSchema, EventTransport, FieldSchema, HandlerBuilder,
+        HandlerResult, MemoryTransport, ReliabilityLevel, RunningDispatcher, EVENT_SCHEMAS,
     };
     pub use crate::id::generate_id;
     pub use crate::module::HealthStatus;
