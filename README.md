@@ -304,6 +304,7 @@ cargo loco generate controller products --api
 - [Module registry](docs/module-registry.md)
 - [Modules overview (current implementation)](docs/modules.md)
 - [MCP adapter](docs/mcp.md)
+- [Admin auth phase 3 scope](docs/admin-auth-phase3.md)
 - [Storefront SSR notes](docs/storefront.md)
 - [Testing guidelines](docs/testing-guidelines.md)
 
