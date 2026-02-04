@@ -59,9 +59,25 @@
         "email": "Email",
         "name": "Имя",
         "role": "Роль",
-        "status": "Статус"
+        "status": "Статус",
+        "createdAt": "Создан"
       },
       "total": "Всего: {total}"
+    },
+    "detail": {
+      "title": "Профиль пользователя",
+      "subtitle": "Детали пользователя из GraphQL.",
+      "section": "Профиль",
+      "back": "Назад к списку",
+      "empty": "Пользователь не найден.",
+      "fields": {
+        "email": "Email",
+        "name": "Имя",
+        "role": "Роль",
+        "status": "Статус",
+        "createdAt": "Создан",
+        "id": "ID пользователя"
+      }
     }
   }
 }

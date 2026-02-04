@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 
 type RestUser = {
@@ -204,13 +205,19 @@ export default async function UsersPage() {
                       <th className="px-4 py-3">{t("graphql.columns.name")}</th>
                       <th className="px-4 py-3">{t("graphql.columns.role")}</th>
                       <th className="px-4 py-3">{t("graphql.columns.status")}</th>
+                      <th className="px-4 py-3">{t("graphql.columns.createdAt")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {graphqlResult.data?.edges.map((edge) => (
                       <tr key={edge.node.id}>
                         <td className="px-4 py-3 text-slate-900">
-                          {edge.node.email}
+                          <Link
+                            className="text-indigo-600 hover:text-indigo-500"
+                            href={`/${locale}/users/${edge.node.id}`}
+                          >
+                            {edge.node.email}
+                          </Link>
                         </td>
                         <td className="px-4 py-3 text-slate-500">
                           {edge.node.name ?? "—"}
@@ -222,6 +229,9 @@ export default async function UsersPage() {
                           <span className="badge badge-outline">
                             {edge.node.status}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-500">
+                          {edge.node.createdAt}
                         </td>
                       </tr>
                     ))}

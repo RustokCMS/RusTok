@@ -59,9 +59,25 @@
         "email": "Email",
         "name": "Name",
         "role": "Role",
-        "status": "Status"
+        "status": "Status",
+        "createdAt": "Created"
       },
       "total": "Total: {total}"
+    },
+    "detail": {
+      "title": "User profile",
+      "subtitle": "User details from GraphQL.",
+      "section": "Profile",
+      "back": "Back to users",
+      "empty": "User not found.",
+      "fields": {
+        "email": "Email",
+        "name": "Name",
+        "role": "Role",
+        "status": "Status",
+        "createdAt": "Created",
+        "id": "User ID"
+      }
     }
   }
 }
