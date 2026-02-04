@@ -15,7 +15,7 @@ chrono.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 tokio = { workspace = true }
-jsonwebtoken = "9"
+jsonwebtoken = "10.3.0"
 argon2.workspace = true
 once_cell = "1.19"
 sea-orm-migration.workspace = true

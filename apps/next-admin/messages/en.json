@@ -1,0 +1,37 @@
+{
+  "Admin": {
+    "eyebrow": "RusToK Admin",
+    "title": "Control center",
+    "subtitle": "Next.js admin skeleton with fast libraries: React Query, React Hook Form, Zod, DaisyUI, and shadcn/ui.",
+    "notifications": "Notifications hub",
+    "stats": {
+      "requests": "Requests",
+      "requestsValue": "24,300",
+      "requestsDescription": "Last 24 hours",
+      "modules": "Active modules",
+      "modulesValue": "12",
+      "modulesDescription": "Commerce, Content, Community",
+      "events": "Events",
+      "eventsValue": "1,284",
+      "eventsDescription": "Synced without errors"
+    },
+    "quickActionsTitle": "Quick actions",
+    "quickActionsDescription": "Most common flows for RusToK admins.",
+    "quickActions": [
+      {
+        "title": "New catalog",
+        "description": "Add a category to the storefront"
+      },
+      {
+        "title": "User management",
+        "description": "Set roles and permissions"
+      },
+      {
+        "title": "Launch promo",
+        "description": "Prepare a new campaign"
+      }
+    ],
+    "alertTitle": "Localization",
+    "alertDescription": "Localization is wired via next-intl (ru/en)."
+  }
+}
