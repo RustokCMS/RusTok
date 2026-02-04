@@ -1,5 +1,5 @@
-use leptos::*;
-use leptos_router::use_navigate;
+use leptos::prelude::*;
+use leptos_router::hooks::use_navigate;
 use serde::{Deserialize, Serialize};
 
 use crate::api::{rest_post, ApiError};

@@ -58,7 +58,7 @@ mod tests {
                         }
                     }
                     "amount" => {
-                        if let Some(v) = value.as_float().ok() {
+                        if let Ok(v) = value.as_float() {
                             self.amount = v;
                         }
                     }

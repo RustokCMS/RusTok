@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 
 use crate::components::ui::{Button, Input};
 use crate::providers::locale::{translate, use_locale};

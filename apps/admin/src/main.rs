@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 use rustok_admin::app::App;
 
 fn main() {

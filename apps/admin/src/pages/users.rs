@@ -1,5 +1,5 @@
-use leptos::*;
-use leptos_router::Link;
+use leptos::prelude::*;
+use leptos_router::components::A;
 use serde::{Deserialize, Serialize};
 
 use crate::api::{request, rest_get, ApiError};
@@ -281,9 +281,9 @@ pub fn Users() -> impl IntoView {
                                                         view! {
                                                             <tr>
                                                                 <td>
-                                                                    <Link href=format!("/users/{}", user.id.clone())>
+                                                                    <A href=format!("/users/{}", user.id.clone())>
                                                                         {user.email.clone()}
-                                                                    </Link>
+                                                                    </A>
                                                                 </td>
                                                                 <td>{user.name.clone().unwrap_or_else(|| translate(locale.locale.get(), "users.placeholderDash").to_string())}</td>
                                                                 <td>{user.role.clone()}</td>
