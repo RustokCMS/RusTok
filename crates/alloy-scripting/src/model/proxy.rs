@@ -107,7 +107,7 @@ impl EntityProxy {
 }
 
 impl CustomType for EntityProxy {
-    fn build(builder: TypeBuilder<Self>) {
+    fn build(mut builder: TypeBuilder<Self>) {
         builder
             .with_name("Entity")
             .with_get("id", |entity: &mut EntityProxy| entity.id.clone())
