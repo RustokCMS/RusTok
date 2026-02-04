@@ -5,7 +5,7 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-rhai = { version = "1.20", features = ["sync", "metadata"] }
+rhai = { version = "1.20", features = ["internals", "metadata", "sync"] }
 thiserror = "2"
 tracing = { workspace = true }
 chrono = { workspace = true }
