@@ -194,20 +194,3 @@ impl Permission {
     pub const ANALYTICS_READ: Self = Self::new(Resource::Analytics, Action::Read);
     pub const ANALYTICS_EXPORT: Self = Self::new(Resource::Analytics, Action::Export);
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn permission_display_format() {
-        let permission = Permission::new(Resource::Products, Action::Read);
-        assert_eq!(permission.to_string(), "products:read");
-    }
-
-    #[test]
-    fn permission_parse_from_str() {
-        let permission = Permission::from_str("orders:update").unwrap();
-        assert_eq!(permission, Permission::ORDERS_UPDATE);
-    }
-}

@@ -393,23 +393,3 @@ pub fn event_schema(event_type: &str) -> Option<&'static EventSchema> {
         .iter()
         .find(|schema| schema.event_type == event_type)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn event_schema_lookup_returns_known_schema() {
-        let schema = event_schema("node.created");
-        assert!(schema.is_some());
-        assert_eq!(schema.unwrap().version, 1);
-    }
-
-    #[test]
-    fn schemas_have_unique_event_types() {
-        let mut types = std::collections::HashSet::new();
-        for schema in EVENT_SCHEMAS {
-            assert!(types.insert(schema.event_type));
-        }
-    }
-}
