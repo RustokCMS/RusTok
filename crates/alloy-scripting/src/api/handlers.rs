@@ -163,15 +163,16 @@ pub async fn run_script<S: ScriptRegistry>(
         .await
         .map_err(ApiError::from)?;
 
-    let (success, error, changes, return_value) = match result.outcome {
+    let (success, error, changes, return_value) = match &result.outcome {
         crate::runner::ExecutionOutcome::Success {
             return_value,
             entity_changes,
         } => (
             true,
             None,
-            Some(convert_map(entity_changes)),
+            Some(convert_map(entity_changes.clone())),
             return_value
+                .clone()
                 .map(dynamic_to_json)
                 .unwrap_or(serde_json::Value::Null),
         ),
