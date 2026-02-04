@@ -141,7 +141,7 @@ mutation DisableUser($id: ID!) {
 - [ ] i18n refactor + aligned keys
 - [ ] Login flow (REST) in both apps
 - [ ] Users list (GraphQL) with pagination + filters
-- [ ] User details
+- [x] User details
 - [ ] CRUD mutations + RBAC
 - [ ] Admin UI parity + shared components
 
