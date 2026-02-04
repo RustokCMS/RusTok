@@ -19,7 +19,7 @@ alloy-scripting.workspace = true
 loco-rs.workspace = true
 tokio.workspace = true
 axum.workspace = true
-axum-extra = { version = "0.9", features = ["typed-header"] }
+axum-extra = { version = "0.12.5", features = ["typed-header"] }
 sea-orm.workspace = true
 async-graphql.workspace = true
 serde.workspace = true
