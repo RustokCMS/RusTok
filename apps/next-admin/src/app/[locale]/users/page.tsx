@@ -19,6 +19,12 @@ type GraphqlUser = {
   createdAt: string;
 };
 
+type FetchError = {
+  kind: "http" | "network" | "graphql";
+  status?: number;
+  message?: string;
+};
+
 type GraphqlUsersResponse = {
   data?: {
     users: {
@@ -153,6 +159,7 @@ type UsersPageProps = {
 
 export default async function UsersPage({ searchParams }: UsersPageProps) {
   const t = await getTranslations("users");
+  const tErrors = await getTranslations("errors");
   const locale = await getLocale();
   const requestedPage = Number(searchParams?.page ?? 1) || 1;
   const search = searchParams?.search?.trim();
@@ -171,6 +178,19 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   ]);
   const totalCount = graphqlResult.data?.pageInfo.totalCount ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+  const formatError = (error: FetchError) => {
+    switch (error.kind) {
+      case "http":
+        return error.status ? `${tErrors("http")} ${error.status}` : tErrors("http");
+      case "graphql":
+        return error.message
+          ? `${tErrors("unknown")} ${error.message}`
+          : tErrors("unknown");
+      case "network":
+      default:
+        return tErrors("network");
+    }
+  };
   const currentPage = Math.min(Math.max(1, requestedPage), totalPages);
   const buildQueryString = (overrides: Partial<UsersSearchParams>) => {
     const params = new URLSearchParams();

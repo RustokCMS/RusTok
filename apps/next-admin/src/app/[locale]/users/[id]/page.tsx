@@ -97,19 +97,20 @@ type UsersDetailPageProps = {
 
 export default async function UsersDetailPage({ params }: UsersDetailPageProps) {
   const t = await getTranslations("users");
+  const tErrors = await getTranslations("errors");
   const locale = await getLocale();
   const result = await fetchGraphqlUser(params.id);
   const formatError = (error: FetchError) => {
     switch (error.kind) {
       case "http":
-        return error.status ? `${errors("http")} ${error.status}` : errors("http");
+        return error.status ? `${tErrors("http")} ${error.status}` : tErrors("http");
       case "graphql":
         return error.message
-          ? `${errors("unknown")} ${error.message}`
-          : errors("unknown");
+          ? `${tErrors("unknown")} ${error.message}`
+          : tErrors("unknown");
       case "network":
       default:
-        return errors("network");
+        return tErrors("network");
     }
   };
 

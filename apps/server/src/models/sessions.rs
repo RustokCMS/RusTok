@@ -4,7 +4,7 @@ use sea_orm::prelude::*;
 use rustok_core::generate_id;
 
 use super::_entities::sessions::{self};
-pub use super::_entities::sessions::{ActiveModel, Entity, Model};
+pub use super::_entities::sessions::{ActiveModel, Column, Entity, Model};
 
 impl Model {
     pub fn is_active(&self) -> bool {

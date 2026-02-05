@@ -13,10 +13,10 @@ export default function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const [, locale] = pathname.split("/");
   const isLocaleRoute = locales.includes(locale as (typeof locales)[number]);
-  const isLoginRoute = pathname.endsWith("/login");
+  const isPublicRoute = pathname.endsWith("/login") || pathname.endsWith("/register") || pathname.endsWith("/reset");
   const token = request.cookies.get("rustok-admin-token")?.value;
 
-  if (isLocaleRoute && !isLoginRoute && !token) {
+  if (isLocaleRoute && !isPublicRoute && !token) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = `/${locale}/login`;
     return NextResponse.redirect(loginUrl);
