@@ -1,0 +1,3 @@
+[submodule "vendor/ui/next-shadcn-dashboard-starter"]
+	path = vendor/ui/next-shadcn-dashboard-starter
+	url = https://github.com/Kiranism/next-shadcn-dashboard-starter
