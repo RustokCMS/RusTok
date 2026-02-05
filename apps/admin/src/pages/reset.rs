@@ -1,7 +1,30 @@
 use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 
+use crate::api::{rest_post, ApiError};
 use crate::components::ui::{Button, Input, LanguageToggle};
 use crate::providers::locale::{translate, use_locale};
+
+#[derive(Serialize)]
+struct ResetRequestParams {
+    email: String,
+}
+
+#[derive(Deserialize)]
+struct ResetRequestResponse {
+    reset_token: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ResetConfirmParams {
+    token: String,
+    password: String,
+}
+
+#[derive(Deserialize)]
+struct GenericStatus {
+    status: String,
+}
 
 #[component]
 pub fn ResetPassword() -> impl IntoView {
@@ -23,10 +46,52 @@ pub fn ResetPassword() -> impl IntoView {
             return;
         }
 
-        set_error.set(None);
-        set_status.set(Some(
-            translate(locale.locale.get(), "reset.requestSent").to_string(),
-        ));
+        let tenant_value = tenant.get().trim().to_string();
+        let email_value = email.get().trim().to_string();
+        let set_error = set_error;
+        let set_status = set_status;
+        let set_token = set_token;
+        let locale_signal = locale.locale;
+
+        spawn_local(async move {
+            let result = rest_post::<ResetRequestParams, ResetRequestResponse>(
+                "/api/auth/reset/request",
+                &ResetRequestParams { email: email_value },
+                None,
+                Some(tenant_value),
+            )
+            .await;
+
+            match result {
+                Ok(response) => {
+                    set_error.set(None);
+                    if let Some(reset_token) = response.reset_token {
+                        set_token.set(reset_token);
+                    }
+                    set_status.set(Some(
+                        translate(locale_signal.get(), "reset.requestSent").to_string(),
+                    ));
+                }
+                Err(err) => {
+                    let message = match err {
+                        ApiError::Unauthorized => {
+                            translate(locale_signal.get(), "errors.auth.unauthorized").to_string()
+                        }
+                        ApiError::Http(_) => {
+                            translate(locale_signal.get(), "errors.http").to_string()
+                        }
+                        ApiError::Network => {
+                            translate(locale_signal.get(), "errors.network").to_string()
+                        }
+                        ApiError::Graphql(_) => {
+                            translate(locale_signal.get(), "errors.unknown").to_string()
+                        }
+                    };
+                    set_error.set(Some(message));
+                    set_status.set(None);
+                }
+            }
+        });
     };
 
     let on_reset = move |_| {
@@ -38,10 +103,52 @@ pub fn ResetPassword() -> impl IntoView {
             return;
         }
 
-        set_error.set(None);
-        set_status.set(Some(
-            translate(locale.locale.get(), "reset.updated").to_string(),
-        ));
+        let tenant_value = tenant.get().trim().to_string();
+        let token_value = token.get();
+        let password_value = new_password.get();
+        let set_error = set_error;
+        let set_status = set_status;
+        let locale_signal = locale.locale;
+
+        spawn_local(async move {
+            let result = rest_post::<ResetConfirmParams, GenericStatus>(
+                "/api/auth/reset/confirm",
+                &ResetConfirmParams {
+                    token: token_value,
+                    password: password_value,
+                },
+                None,
+                Some(tenant_value),
+            )
+            .await;
+
+            match result {
+                Ok(_) => {
+                    set_error.set(None);
+                    set_status.set(Some(
+                        translate(locale_signal.get(), "reset.updated").to_string(),
+                    ));
+                }
+                Err(err) => {
+                    let message = match err {
+                        ApiError::Unauthorized => {
+                            translate(locale_signal.get(), "errors.auth.unauthorized").to_string()
+                        }
+                        ApiError::Http(_) => {
+                            translate(locale_signal.get(), "errors.http").to_string()
+                        }
+                        ApiError::Network => {
+                            translate(locale_signal.get(), "errors.network").to_string()
+                        }
+                        ApiError::Graphql(_) => {
+                            translate(locale_signal.get(), "errors.unknown").to_string()
+                        }
+                    };
+                    set_error.set(Some(message));
+                    set_status.set(None);
+                }
+            }
+        });
     };
 
     view! {
@@ -51,9 +158,7 @@ pub fn ResetPassword() -> impl IntoView {
                 <h1>{move || translate(locale.locale.get(), "reset.heroTitle")}</h1>
                 <p>{move || translate(locale.locale.get(), "reset.heroSubtitle")}</p>
                 <div class="auth-note">
-                    <p>
-                        <strong>{move || translate(locale.locale.get(), "reset.heroListTitle")}</strong>
-                    </p>
+                    <p><strong>{move || translate(locale.locale.get(), "reset.heroListTitle")}</strong></p>
                     <p>{move || translate(locale.locale.get(), "reset.heroListSubtitle")}</p>
                 </div>
             </aside>
@@ -73,21 +178,9 @@ pub fn ResetPassword() -> impl IntoView {
                     <Show when=move || status.get().is_some()>
                         <div class="alert success">{move || status.get().unwrap_or_default()}</div>
                     </Show>
-                    <Input
-                        value=tenant
-                        set_value=set_tenant
-                        placeholder="demo"
-                        label=move || translate(locale.locale.get(), "reset.tenantLabel")
-                    />
-                    <Input
-                        value=email
-                        set_value=set_email
-                        placeholder="admin@rustok.io"
-                        label=move || translate(locale.locale.get(), "reset.emailLabel")
-                    />
-                    <Button on_click=on_request class="w-full">
-                        {move || translate(locale.locale.get(), "reset.requestSubmit")}
-                    </Button>
+                    <Input value=tenant set_value=set_tenant placeholder="demo" label=move || translate(locale.locale.get(), "reset.tenantLabel") />
+                    <Input value=email set_value=set_email placeholder="admin@rustok.io" label=move || translate(locale.locale.get(), "reset.emailLabel") />
+                    <Button on_click=on_request class="w-full">{move || translate(locale.locale.get(), "reset.requestSubmit")}</Button>
                 </div>
 
                 <div class="auth-card">
@@ -95,30 +188,13 @@ pub fn ResetPassword() -> impl IntoView {
                         <h3>{move || translate(locale.locale.get(), "reset.tokenTitle")}</h3>
                         <p>{move || translate(locale.locale.get(), "reset.tokenSubtitle")}</p>
                     </div>
-                    <Input
-                        value=token
-                        set_value=set_token
-                        placeholder="RESET-2024-0001"
-                        label=move || translate(locale.locale.get(), "reset.tokenLabel")
-                    />
-                    <Input
-                        value=new_password
-                        set_value=set_new_password
-                        placeholder="••••••••"
-                        type_="password"
-                        label=move || translate(locale.locale.get(), "reset.newPasswordLabel")
-                    />
+                    <Input value=token set_value=set_token placeholder="RESET-2024-0001" label=move || translate(locale.locale.get(), "reset.tokenLabel") />
+                    <Input value=new_password set_value=set_new_password placeholder="••••••••" type_="password" label=move || translate(locale.locale.get(), "reset.newPasswordLabel") />
                     <p class="form-hint">{move || translate(locale.locale.get(), "reset.tokenHint")}</p>
-                    <Button on_click=on_reset class="w-full ghost-button">
-                        {move || translate(locale.locale.get(), "reset.tokenSubmit")}
-                    </Button>
+                    <Button on_click=on_reset class="w-full ghost-button">{move || translate(locale.locale.get(), "reset.tokenSubmit")}</Button>
                     <div class="auth-links">
-                        <a class="secondary-link" href="/login">
-                            {move || translate(locale.locale.get(), "reset.loginLink")}
-                        </a>
-                        <a class="secondary-link" href="/register">
-                            {move || translate(locale.locale.get(), "reset.registerLink")}
-                        </a>
+                        <a class="secondary-link" href="/login">{move || translate(locale.locale.get(), "reset.loginLink")}</a>
+                        <a class="secondary-link" href="/register">{move || translate(locale.locale.get(), "reset.registerLink")}</a>
                     </div>
                 </div>
             </div>
