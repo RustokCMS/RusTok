@@ -101,7 +101,7 @@
 | **Config** | Loco YAML | `apps/server/config/*.yaml` with env overrides |
 | **Events (L0)** | tokio::sync::mpsc | In-memory transport |
 | **Events (L1)** | Outbox Pattern | Custom crate `rustok-outbox` |
-| **Events (L2)** | Iggy | Streaming (remote/embedded) |
+| **Events (L2)** | Iggy | Streaming (remote/embedded via connector layer) |
 | **Cache** | Loco Cache (Redis) | Built-in cache integration |
 | **Search** | PostgreSQL FTS + Tantivy/Meilisearch (optional) | Start with `tsvector`, add Tantivy or Meilisearch when needed |
 | **Storage** | object_store | Unified object storage API |
@@ -145,6 +145,7 @@ rustok/
 │   ├── rustok-rbac            # Roles & permissions
 │   ├── rustok-outbox          # Outbox transport
 │   ├── rustok-iggy            # Streaming (optional)
+│   ├── rustok-iggy-connector  # Iggy connector layer (embedded/remote)
 │   └── rustok-mcp             # MCP adapter (rmcp SDK)
 │
 └── apps/
