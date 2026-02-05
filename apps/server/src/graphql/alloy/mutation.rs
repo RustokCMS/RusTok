@@ -3,8 +3,8 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use alloy_scripting::model::Script;
-use alloy_scripting::ScriptRegistry;
 use alloy_scripting::runner::ExecutionOutcome;
+use alloy_scripting::ScriptRegistry;
 
 use super::types::{
     CreateScriptInput, GqlExecutionResult, GqlScript, RunScriptInput, UpdateScriptInput,

@@ -5,8 +5,8 @@ use axum::Router as AxumRouter;
 use loco_rs::{
     app::{AppContext, Hooks, Initializer},
     boot::{create_app, BootResult, StartMode},
-    controller::AppRoutes,
     config::Config,
+    controller::AppRoutes,
     environment::Environment,
     task::Tasks,
     Result,
@@ -38,7 +38,11 @@ impl Hooks for App {
         )
     }
 
-    async fn boot(mode: StartMode, environment: &Environment, config: Config) -> Result<BootResult> {
+    async fn boot(
+        mode: StartMode,
+        environment: &Environment,
+        config: Config,
+    ) -> Result<BootResult> {
         create_app::<Self, Migrator>(mode, environment, config).await
     }
 

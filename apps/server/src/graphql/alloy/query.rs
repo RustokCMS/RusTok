@@ -1,8 +1,8 @@
 use async_graphql::{Context, Object, Result};
 use uuid::Uuid;
 
-use alloy_scripting::ScriptRegistry;
 use alloy_scripting::storage::ScriptQuery;
+use alloy_scripting::ScriptRegistry;
 
 use super::{
     require_admin, AlloyState, GqlEventType, GqlScript, GqlScriptConnection, GqlScriptStatus,
