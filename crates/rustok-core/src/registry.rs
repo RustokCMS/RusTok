@@ -36,6 +36,11 @@ impl ModuleRegistry {
         modules
     }
 
+    /// Returns an iterator over all registered modules
+    pub fn modules(&self) -> impl Iterator<Item = &Arc<dyn RusToKModule>> {
+        self.modules.values()
+    }
+
     pub fn migrations(&self) -> Vec<ModuleMigration> {
         self.list()
             .into_iter()

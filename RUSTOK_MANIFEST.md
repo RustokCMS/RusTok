@@ -5,7 +5,6 @@
 **Role:** Senior Rust Architect & System Designer  \
 **Philosophy:** "Write Optimized vs Read Optimized" / "Rust is ON. WordPress is OFF."
 
-
 ## 1. PROJECT IDENTITY
 
 | Property | Value |
@@ -16,20 +15,37 @@
 | **Language** | Rust 100% |
 | **License** | MIT |
 | **Version** | 4.1 (The Highload Tank) |
-| **Repository** | https://github.com/RustokCMS/RusToK |
+| **Repository** | <https://github.com/RustokCMS/RusToK> |
 | **Key Advantage** | First AI-Native Enterprise CMS |
 | **Market Segment** | High-performance, low-cost enterprise commerce |
+
+### 📚 Documentation Hub
+
+> **Важно:** Полная документация находится в `docs/`. См. ссылки ниже.
+
+| Document | Description |
+|----------|-------------|
+| [MODULE_MATRIX.md](docs/MODULE_MATRIX.md) | Полная карта модулей, зависимости, типы |
+| [DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) | Все таблицы БД с колонками и связями |
+| [ARCHITECTURE_GUIDE.md](docs/ARCHITECTURE_GUIDE.md) | Архитектурные принципы и решения |
+| [ROADMAP.md](docs/ROADMAP.md) | Фазы разработки и стратегия |
+| [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Статус реализации vs документация |
+| [MANIFEST_ADDENDUM.md](docs/MANIFEST_ADDENDUM.md) | Дополнения к манифесту (секции 26-33) |
+| [modules/flex.md](docs/modules/flex.md) | Спецификация Flex модуля (новый концепт) |
+| [templates/module_contract.md](docs/templates/module_contract.md) | Шаблон контракта модуля |
 
 ---
 
 ## 2. CORE PHILOSOPHY
 
 ### 2.1 The Tank Strategy
+
 - **Stability First:** Мы строим "Танк", а не хрупкую экосистему плагинов.
 - **Compile-Time Safety:** Если компилируется — работает.
 - **Monorepo:** Backend, Admin и Storefront живут вместе.
 
 ### 2.2 Core Module, Specific Modules
+
 - **Core Module (`rustok-core`):** Содержит только универсальные возможности (Traits, Events, Module Registry). Без таблиц БД.
 - **Specialized Modules:** Товары, Блог и пр. — у каждого свои таблицы и бизнес-логика.
 - **Empty Tables Cost Zero:** Неиспользуемые таблицы не нагружают систему.
@@ -50,24 +66,30 @@
 | `rustok-index` | `index` | Index | CQRS Read Model (Fast Search) |
 
 ### 2.3 CQRS (Write vs Read)
+
 - **Write Model (Modules):** строгие реляционные таблицы (3NF), транзакции, валидация.
 - **Read Model (Index/Catalog):** денормализованные JSONB-таблицы/индексы, GIN, быстрый поиск.
 - **Event-Driven Sync:** изменения propagate через события.
 
 ### 2.4 Highload by Default
+
 - **Event-Driven Glue:** модули не знают друг друга напрямую. Они общаются через EventBus.
 - **No Heavy JOINs on Storefront:** данные "склеиваются" при записи (в Indexer), а не при чтении.
 - **Multilingual by Default:** многоязычность включена сразу; платформа по умолчанию полностью многоязычная.
 
 ### 2.5 Multilingual Implementation (Current State)
+
 Многоязычность уже внедрена в ключевых доменных модулях:
+
 - **Content:** переводы узлов и тела (`node_translation`, `body`) с `locale`.
 - **Commerce:** переводы продуктов и вариантов (`product_translation`, `variant_translation`) с `locale`.
 - **Blog:** DTO и сервисы принимают `locale`.
 - **Index:** индексация поддерживает `locale` и пересборку по локалям.
 
 ### 2.6 Loco RS Foundation (Current State)
+
 Используем Loco RS как базовый каркас, чтобы не дублировать инфраструктуру:
+
 - **Config:** `apps/server/config/*.yaml`, секция `rustok` для кастомных настроек.
 - **Auth:** встроенные Users + JWT access/refresh + bcrypt.
 - **Cache:** Redis через Loco cache.
@@ -78,6 +100,7 @@
 **Следствие:** отдельные crates `rustok-config`, `rustok-cache`, `rustok-auth`, `rustok-storage` **не нужны**.
 
 **RusToK settings (Loco `settings.rustok`):**
+
 - `tenant.enabled` / `tenant.resolution` / `tenant.header_name` / `tenant.default_id`
 - `search.enabled` / `search.driver` / `search.url` / `search.api_key` / `search.index_prefix`
 - `features.registration_enabled` / `features.email_verification` / `features.multi_tenant` / `features.search_indexing` / `features.oauth_enabled`
@@ -118,12 +141,15 @@
 ## 4. API ARCHITECTURE
 
 ### 4.1 REST + GraphQL in Parallel
+
 RusToK develops REST and GraphQL APIs simultaneously for platform and domain endpoints, keeping both available for flexibility:
+
 - **REST (Axum):** Authentication, Health, Admin endpoints.
 - **GraphQL:** Modular schema (MergedObject) for domain operations.
 - **Alloy GraphQL:** Management of scripts/triggers and manual runs through the same schema.
 
 ### 4.2 Documentation
+
 - **OpenAPI:** Generated via `utoipa` and served at `/swagger`.
 
 ---
@@ -184,6 +210,7 @@ pub fn parse_id(s: &str) -> Result<Uuid, IdError> {
 ```
 
 ### 6.2 RusToK App Core (Server)
+
 `apps/server/src/models`
 
 ```sql
@@ -225,6 +252,7 @@ CREATE TABLE tenant_modules (
 ```
 
 ### 6.3 RusToK Content (Module)
+
 `crates/rustok-content/src/entities`
 
 ```sql
@@ -425,9 +453,11 @@ READ:  User -> Index Tables (denormalized) -> Search Results
 ## 7. TRAITS & INTERFACES (Rust Code)
 
 ### 7.1 Entity Identification
+
 Все сущности должны использовать `Uuid` (генерируемый из `Ulid`).
 
 ### 7.2 Module Interface (`RusToKModule`)
+
 `crates/rustok-core/src/module.rs`
 
 ```rust
@@ -450,10 +480,13 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
 ```
 
 ### 7.3 Service Pattern
+
 Использование `NodeService` как эталона для бизнес-логики (CRUD + Event Publishing).
 
 ### 7.4 Integration Tests as Documentation
+
 Интеграционные тесты считаются **исполняемой документацией**:
+
 - фиксируют кросс-модульные сценарии (write → event → read/index);
 - подтверждают совместимость версий событий и схем;
 - служат регрессионным контрактом при изменениях архитектуры.
@@ -549,6 +582,7 @@ pub struct EventDispatcher {
 ### 8.4 Event Schema (First-Class)
 
 Event schema is a **first-class artifact** in RusToK:
+
 - Every `DomainEvent` must have a **versioned schema** (e.g., `schema_version: u16`) and stable `event_type`.
 - Schemas live in-repo and are treated like API contracts (reviewed, documented, and versioned).
 - Validation happens on publish/ingest boundaries (guards against invalid payloads).
@@ -608,9 +642,11 @@ impl ModuleRegistry {
 ## 11. DEPLOYMENT ARCHITECTURE
 
 ### 11.1 Monolith (Default)
+
 Standard `docker-compose.yml` with PostgreSQL and Redis.
 
 ### 11.2 Microservices (Scale)
+
 Scaling API instances and isolating the Index Service for heavy read loads using streaming replication for DB.
 
 ### 11.3 Architecture Diagram
@@ -677,6 +713,7 @@ graph TD
 Ниже перечислены все модули и их обязанности. Цель: **не дублировать функциональность Loco RS** и не вводить параллельные инфраструктурные слои.
 
 ### 15.1 Loco RS (Infrastructure — используем как есть)
+
 - **Config:** `apps/server/config/*.yaml`, кастомные поля в `settings.rustok`.
 - **Auth:** Users + JWT access/refresh, hashing.
 - **Cache:** Redis cache.
@@ -685,61 +722,83 @@ graph TD
 - **Storage:** Local/S3 через `object_store`.
 
 ### 15.2 `rustok-core` (Infrastructure, без таблиц)
+
 **Роль:** только общие типы и контракты.
+
 - ID generation (ULID → UUID), общие типы.
 - Event bus, envelope, transport traits.
 - `RusToKModule` interface + registry.
 - Ошибки и базовые helpers.
 
 ### 15.3 `rustok-tenant` (Multi-tenancy helpers)
+
 **Роль:** логика тенантов и доступ к metadata, но **не** инфраструктура.
+
 - Tenant helpers/DTOs/сервисы.
 - Модель тенанта остаётся в `apps/server` (Loco + SeaORM).
 - Конфиг резолюции тенанта — в `settings.rustok.tenant`.
 
 ### 15.4 `rustok-rbac` (Roles & Permissions)
+
 **Роль:** правила доступа поверх Loco Users.
+
 - Проверки прав/ролей.
 - Политики доступа (permission checks).
 - Не дублирует Loco Auth.
 
 ### 15.5 `rustok-content` (Core CMS write model)
+
 **Роль:** универсальный контент.
+
 - Nodes/Bodies/Categories/Tags.
 - Версионирование, локализации.
 - События изменений → EventBus.
 
 ### 15.6 `rustok-blog` (Wrapper module)
+
 **Роль:** надстройка над `rustok-content`.
+
 - Бизнес-логика для постов/комментариев.
 - Не создаёт собственных таблиц, использует content tables.
 
 ### 15.7 `rustok-forum` (Wrapper module)
+
 **Роль:** форумная логика поверх `rustok-content`.
+
 - Topics/Replies как специализация nodes.
 - Не дублирует storage/config/auth.
 
 ### 15.8 `rustok-pages` (Pages & Menus)
+
 **Роль:** статические страницы, меню, блоки.
+
 - Реализуется на основе content tables или собственных страниц.
 - Не дублирует базовый CMS слой.
 
 ### 15.9 `rustok-commerce` (Commerce domain)
+
 **Роль:** товары/заказы/цены.
+
 - Commerce write model + события.
 - Мульти-tenant фильтрация обязательна.
 
 ### 15.10 `rustok-index` (CQRS Read Model)
+
 **Роль:** быстрый поиск и denormalized read tables.
+
 - Подписка на события.
 - Построение `index_*` таблиц / search индекс.
 
 ### 15.11 `rustok-outbox` (Event delivery)
+
 **Роль:** надёжная доставка событий (Outbox pattern).
+
 - Не заменяет EventBus, а расширяет транспорт.
 
 ### 15.12 `rustok-iggy` (Streaming transport)
+
 **Роль:** потоковый транспорт событий (опционально).
+
 - Реализация `EventTransport` для L2.
 
 ---
@@ -748,20 +807,21 @@ graph TD
 
 Для обеспечения консистентности кода и предсказуемости для ИИ:
 
-1.  **Strict Result Handling**: Все функции, которые могут упасть, возвращают `Result<T, RusToKError>`. Использование `.unwrap()` или `.expect()` запрещено (кроме тестов).
-2.  **DTO Separation**: Никогда не отдавать SeaORM-модели (Entity) в API напрямую.
-    *   `Create[Name]Request` — для ввода.
-    *   `Update[Name]Request` — для редактирования.
-    *   `[Name]Response` — для вывода.
-3.  **Snake Case everywhere**: БД таблицы и поля в Rust — `snake_case`. GraphQL — `camelCase` (автоматически через библиотеку).
-4.  **Tenant Isolation**: Любой запрос к БД обязан содержать фильтр по `tenant_id`. Если его нет — это баг безопасности.
-5.  **Event-First**: Изменение данных в БД должно сопровождаться публикацией события. Если события нет — индекс (Search) не узнает об изменениях.
+1. **Strict Result Handling**: Все функции, которые могут упасть, возвращают `Result<T, RusToKError>`. Использование `.unwrap()` или `.expect()` запрещено (кроме тестов).
+2. **DTO Separation**: Никогда не отдавать SeaORM-модели (Entity) в API напрямую.
+    - `Create[Name]Request` — для ввода.
+    - `Update[Name]Request` — для редактирования.
+    - `[Name]Response` — для вывода.
+3. **Snake Case everywhere**: БД таблицы и поля в Rust — `snake_case`. GraphQL — `camelCase` (автоматически через библиотеку).
+4. **Tenant Isolation**: Любой запрос к БД обязан содержать фильтр по `tenant_id`. Если его нет — это баг безопасности.
+5. **Event-First**: Изменение данных в БД должно сопровождаться публикацией события. Если события нет — индекс (Search) не узнает об изменениях.
 
 ---
 
 ## 17. ARCHITECTURAL PATTERNS
 
 ### 17.1 The Service Layer Pattern
+
 Контроллеры (REST) и резолверы (GraphQL) — это просто тонкие обертки. Вся логика живет в `Services`.
 
 ```rust
@@ -778,6 +838,7 @@ impl NodeService {
 ```
 
 ### 17.2 The Transactional Pattern
+
 Для операций с несколькими таблицами всегда передавайте `&C where C: ConnectionTrait` в методы сервисов, чтобы можно было прокинуть транзакцию.
 
 ---
@@ -786,13 +847,13 @@ impl NodeService {
 
 Чтобы добавить новый функционал (например, "Tickets"), следуй этому алгоритму:
 
-1.  **Database**: Создай миграцию в `apps/server/migration` (таблицы с `tenant_id`).
-2.  **Entities**: Сгенерируй модели SeaORM (`sea-orm-cli generate entity`).
-3.  **Module Crate**: Создай или выбери крафт в `crates/`.
-4.  **Logic**: Напиши `Service` для CRUD операций.
-5.  **Events**: Добавь новые варианты в `DomainEvent` и публикуй их в `Service`.
-6.  **GraphQL**: Напиши резолверы и добавь их в общий `MergedObject`.
-7.  **Index**: Если нужен поиск — добавь `Handler` в `rustok-search`, который будет слушать события нового модуля.
+1. **Database**: Создай миграцию в `apps/server/migration` (таблицы с `tenant_id`).
+2. **Entities**: Сгенерируй модели SeaORM (`sea-orm-cli generate entity`).
+3. **Module Crate**: Создай или выбери крафт в `crates/`.
+4. **Logic**: Напиши `Service` для CRUD операций.
+5. **Events**: Добавь новые варианты в `DomainEvent` и публикуй их в `Service`.
+6. **GraphQL**: Напиши резолверы и добавь их в общий `MergedObject`.
+7. **Index**: Если нужен поиск — добавь `Handler` в `rustok-search`, который будет слушать события нового модуля.
 
 ---
 
@@ -812,6 +873,7 @@ impl NodeService {
 Чтобы ИИ и разработчики могли ориентироваться в любом крайте (crate), мы вводим единый стандарт папок. Даже если папка пуста — она должна быть (или создаваться по мере роста).
 
 ### 20.1 Directory Structure
+
 ```text
 crates/rustok-[name]/
 ├── src/
@@ -825,14 +887,16 @@ crates/rustok-[name]/
 ```
 
 ### 20.2 Module Categorization
+
 Мы разделяем модули на 4 типа, но структура папок остается **одинаковой**:
 
-1.  **Core Components** (e.g., `rustok-content`): Базовые кирпичики системы. Имеют таблицы, но могут не иметь сложной бизнес-логики.
-2.  **Domain Modules** (e.g., `rustok-commerce`): Полноценные бизнес-вертикали (Товары, Заказы). Имеют свои таблицы и логику.
-3.  **Wrapper Modules** (e.g., `rustok-blog`): Надстройки. **Не имеют своих таблиц**. Используют таблицы `Core Components`, упаковывая их в специфичную бизнес-логику.
-4.  **Infrastructural Modules** (e.g., `rustok-index`): Технические модули (Поиск, CQRS, Почта).
+1. **Core Components** (e.g., `rustok-content`): Базовые кирпичики системы. Имеют таблицы, но могут не иметь сложной бизнес-логики.
+2. **Domain Modules** (e.g., `rustok-commerce`): Полноценные бизнес-вертикали (Товары, Заказы). Имеют свои таблицы и логику.
+3. **Wrapper Modules** (e.g., `rustok-blog`): Надстройки. **Не имеют своих таблиц**. Используют таблицы `Core Components`, упаковывая их в специфичную бизнес-логику.
+4. **Infrastructural Modules** (e.g., `rustok-index`): Технические модули (Поиск, CQRS, Почта).
 
 ### 20.3 The lib.rs Standard
+
 Все модули обязаны реализовывать `RusToKModule` для интеграции в `ModuleRegistry`.
 
 ```rust
@@ -921,6 +985,7 @@ PHASE 5: Business Modules (Week 5+)
 **1.1 Extend `EventEnvelope` (P0)**  
 **File:** `crates/rustok-core/src/events/envelope.rs` (or current location)  
 Add fields:
+
 - `correlation_id: Uuid` — link events in a chain
 - `causation_id: Option<Uuid>` — source event ID
 - `tenant_id: Uuid` — multi-tenant context
@@ -930,6 +995,7 @@ Add fields:
 **1.2 Extend `EventTransport` trait (P0)**  
 **File:** `crates/rustok-core/src/events/transport.rs` (or current location)  
 Add methods:
+
 - `async fn publish_batch(&self, events: Vec<EventEnvelope>) -> Result<()>`
 - `async fn acknowledge(&self, event_id: Uuid) -> Result<()>` (Outbox/Iggy)
 - `fn reliability_level(&self) -> ReliabilityLevel` (L0/L1/L2)
@@ -937,6 +1003,7 @@ Add methods:
 **1.3 New crate `rustok-outbox` (P0)**  
 **Path:** `crates/rustok-outbox/`  
 Structure:
+
 ```
 crates/rustok-outbox/
 ├── Cargo.toml
@@ -947,7 +1014,9 @@ crates/rustok-outbox/
     ├── relay.rs          # background relay worker
     └── migration.rs      # SQL migration for sys_events
 ```
+
 Key components:
+
 - `sys_events` table (`id`, `payload`, `status`, `created_at`, `dispatched_at`)
 - `OutboxTransport` writes transactionally
 - Relay worker publishes pending events and marks dispatched
@@ -961,6 +1030,7 @@ In-memory transport via `tokio::sync::broadcast`.
 **2.1 New crate `rustok-iggy` (P1)**  
 **Path:** `crates/rustok-iggy/`  
 Structure:
+
 ```
 crates/rustok-iggy/
 ├── Cargo.toml
@@ -981,6 +1051,7 @@ crates/rustok-iggy/
 **2.2 Add Iggy config (P1)**  
 **File:** `apps/server/config/*.yaml` (section `rustok.iggy`)  
 Add:
+
 - `IggyConfig`
 - `IggyEmbeddedConfig`
 - `IggyRemoteConfig`
@@ -989,6 +1060,7 @@ Add:
 **2.3 Feature flag for Iggy (P1)**  
 **File:** `crates/rustok-core/Cargo.toml` or workspace  
 Add:
+
 ```toml
 [features]
 iggy = ["rustok-iggy"]
@@ -999,15 +1071,18 @@ iggy = ["rustok-iggy"]
 **3.1 Extend `RusToKModule` trait (P0)**  
 **File:** `crates/rustok-core/src/module.rs`  
 Add:
+
 - `fn dependencies(&self) -> &'static [&'static str]` (topological sort)
 - `async fn health(&self) -> HealthStatus` (K8s probes)
 
 Add enum:
+
 - `HealthStatus { Healthy, Degraded, Unhealthy }`
 
 **3.2 Improve `AppContext` (P0)**  
 **File:** `crates/rustok-core/src/context.rs`  
 Add fields (if missing):
+
 - `events: Arc<dyn EventTransport>`
 - `cache: Arc<dyn CacheBackend>` (Phase 2)
 - `search: Arc<dyn SearchBackend>` (Phase 2)
@@ -1015,6 +1090,7 @@ Add fields (if missing):
 **3.3 Telemetry improvements (P1)**  
 **File:** `crates/rustok-telemetry/`  
 Check/add:
+
 - JSON logging for production
 - Prometheus metrics endpoint
 - TraceId propagation in events
@@ -1022,6 +1098,7 @@ Check/add:
 **3.4 Config hierarchy (P1)**  
 **File:** `apps/server/config/*.yaml`  
 Check/add:
+
 - `development.yaml/production.yaml/test.yaml` layering
 - Env overrides supported by Loco
 
@@ -1044,15 +1121,18 @@ Check/add:
 ### 24.6 Delivery Order
 
 **Week 1 (P0):**
+
 - 1.1 EventEnvelope extension
 - 1.2 EventTransport extension
 - 3.1 RusToKModule extension
 - 3.2 AppContext extension
 
 **Week 2 (P0 continued):**
+
 - 1.3 `rustok-outbox` crate (full implementation)
 
 **Week 3 (P1, production-ready):**
+
 - 2.1 `rustok-iggy` crate
 - 2.2 Iggy config
 - 2.3 Feature flags
@@ -1080,6 +1160,7 @@ Check/add:
 ## 25. DECISION LOG (Realism & Complexity)
 
 We keep a lightweight decision log in the manifest to acknowledge complexity and track rationale:
+
 - **Decision:** What was chosen.
 - **Context:** Why it mattered (constraints, risks, timelines).
 - **Trade-offs:** What we accept by choosing it.

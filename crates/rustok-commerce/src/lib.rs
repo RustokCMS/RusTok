@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use rustok_core::permissions::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
@@ -30,6 +31,36 @@ impl RusToKModule for CommerceModule {
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
     }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            // Products
+            Permission::new(Resource::Products, Action::Create),
+            Permission::new(Resource::Products, Action::Read),
+            Permission::new(Resource::Products, Action::Update),
+            Permission::new(Resource::Products, Action::Delete),
+            Permission::new(Resource::Products, Action::List),
+            // Orders
+            Permission::new(Resource::Orders, Action::Create),
+            Permission::new(Resource::Orders, Action::Read),
+            Permission::new(Resource::Orders, Action::Update),
+            Permission::new(Resource::Orders, Action::List),
+            // Customers
+            Permission::new(Resource::Customers, Action::Read),
+            Permission::new(Resource::Customers, Action::Update),
+            Permission::new(Resource::Customers, Action::List),
+            // Inventory
+            Permission::new(Resource::Inventory, Action::Read),
+            Permission::new(Resource::Inventory, Action::Update),
+            Permission::new(Resource::Inventory, Action::List),
+            // Discounts
+            Permission::new(Resource::Discounts, Action::Create),
+            Permission::new(Resource::Discounts, Action::Read),
+            Permission::new(Resource::Discounts, Action::Update),
+            Permission::new(Resource::Discounts, Action::Delete),
+            Permission::new(Resource::Discounts, Action::List),
+        ]
+    }
 }
 
 impl MigrationSource for CommerceModule {
@@ -37,3 +68,4 @@ impl MigrationSource for CommerceModule {
         Vec::new()
     }
 }
+

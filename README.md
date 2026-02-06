@@ -30,15 +30,15 @@
 Modules in RusToK are compiled into a binary for maximum performance and security, but follow a standardized layout (Entities/DTO/Services) for easy maintainability. •
 Rustok can become the foundation of anything that has any data. !!! .
 
-From an alarm clock with a personal blog to NASA's terabyte storage. 
+From an alarm clock with a personal blog to NASA's terabyte storage.
 
-We consume 10-200 times less power than traditional platforms. 
+We consume 10-200 times less power than traditional platforms.
 
 We can work on any device with an operational memory of more than 50 MB (Maybe less).
 
-Highload for the poor, salvation for the rich... 
+Highload for the poor, salvation for the rich...
 
-Our architecture will be relevant for decades. We won't turn into another WordPress. 
+Our architecture will be relevant for decades. We won't turn into another WordPress.
 
 From a personal blog or landing page to petabytes of data storage.
 
@@ -61,6 +61,7 @@ FORGET ABOUT OLD PATTERNS, WE'RE BUILDING THE FUTURE. WE HAVE NO LIMITATIONS!
 └─────────────────────────────────────────────────────────────┘
 
 ### 💡 The "Why"
+
 Most platforms are either **fast but complex** (Go/C++) or **productive but slow** (PHP/Node). RusToK breaks this trade-off using the **Loco.rs** foundation, giving you "Rails-like" speed of development with "C++-like" runtime performance.
 
 ---
@@ -68,6 +69,7 @@ Most platforms are either **fast but complex** (Go/C++) or **productive but slow
 ## ✨ Features
 
 ### Core Platform
+
 - 🔐 **Multi-tenant Isolation** — Native support for multiple stores/sites in one deployment.
 - 🔑 **Enterprise Auth** — JWT-based authentication with fine-grained RBAC.
 - 📊 **Hybrid API** — Unified GraphQL for domain data and REST for infrastructure/OpenAPI.
@@ -77,6 +79,7 @@ Most platforms are either **fast but complex** (Go/C++) or **productive but slow
 - 🌍 **Global-First** — Built-in i18n and localization support.
 
 ### Developer Experience
+
 - 🚀 **Loco.rs Framework** — Rails-like productivity in Rust
 - 🛠️ **CLI Generators** — `cargo loco generate model/controller/migration`
 - 📝 **Type-Safe Everything** — From database to frontend, one language
@@ -85,6 +88,7 @@ Most platforms are either **fast but complex** (Go/C++) or **productive but slow
 - 📚 **Auto-generated Docs** — OpenAPI/GraphQL schema documentation
 
 ### Performance & Reliability
+
 - ⚡ **Blazingly Fast** — Native compiled binary, no interpreter overhead
 - 🛡️ **Memory Safe** — Rust's ownership model prevents entire classes of bugs
 - 📦 **Single Binary** — Deploy one file, no dependency management
@@ -120,20 +124,22 @@ let product = Product::find_by_id(db, product_id)
 
 Real-world impact:
 
-* 🐛 Fewer bugs in production — Most errors caught at compile time
-* 💰 Lower infrastructure costs — 10x less memory, 50x more throughput
-* 😴 Sleep better at night — No 3 AM "site is down" emergencies
+- 🐛 Fewer bugs in production — Most errors caught at compile time
+- 💰 Lower infrastructure costs — 10x less memory, 50x more throughput
+- 😴 Sleep better at night — No 3 AM "site is down" emergencies
 
 ---
 
 ## ⚡ Performance & Economy
 
 ### 💰 Save 80% on Infrastructure
+
 While a typical Node.js or Python application requires **256MB-512MB RAM** per instance, a RusToK production container starts at just **30MB-50MB**.
-* **Deploy on $5 VPS**: Handle traffic that would cost $100/mo on other stacks.
-* **Serverless Friendly**: Native binary starts in milliseconds. Zero "cold start" issues.
+- **Deploy on $5 VPS**: Handle traffic that would cost $100/mo on other stacks.
+- **Serverless Friendly**: Native binary starts in milliseconds. Zero "cold start" issues.
 
 ### 🚀 Benchmarks (simulated)
+
 | Metrics | WordPress | Strapi | RusToK |
 |---------|-----------|--------|--------|
 | **Req/sec** | 60 | 800 | **45,000+** |
@@ -143,18 +149,19 @@ While a typical Node.js or Python application requires **256MB-512MB RAM** per i
 ---
 
 ## 🤖 AI-Native Architecture
-RusToK is the first platform built with a **System Manifest** designed specifically for AI Assistants. 
-* **Structured for Agents**: Clean directory patterns and exhaustive documentation mean AI (Cursor, Windsurf, Claude) builds features for you with 99% accuracy.
-* **Zero Boilerplate**: Use our CLI and AI-prompts to generate entire modules in minutes.
+
+RusToK is the first platform built with a **System Manifest** designed specifically for AI Assistants.
+- **Structured for Agents**: Clean directory patterns and exhaustive documentation mean AI (Cursor, Windsurf, Claude) builds features for you with 99% accuracy.
+- **Zero Boilerplate**: Use our CLI and AI-prompts to generate entire modules in minutes.
 
 ---
 
 ## 🦄 Legendary Efficiency (Hyper-Optimized)
 
 RusToK is so efficient that it doesn't just run on servers — it survives where others crash:
-* **Smartwatch Ready**: Handle a million requests per second while running on your smart fridge or a digital watch.
-* **Powered by Vibes**: We handle high traffic using less energy than a literal cup of coffee.
-* **Quantum Speed**: Our response times are so low that requests are often served before the user even finishes clicking.
+- **Smartwatch Ready**: Handle a million requests per second while running on your smart fridge or a digital watch.
+- **Powered by Vibes**: We handle high traffic using less energy than a literal cup of coffee.
+- **Quantum Speed**: Our response times are so low that requests are often served before the user even finishes clicking.
 
 If your current CMS needs a supercomputer just to render a "About Us" page, it's time to upgrade to the Tank.
 
@@ -310,15 +317,31 @@ cargo loco generate controller products --api
 
 ## 📚 Documentation
 
+### Architecture & Design (NEW!)
+
+| Document | Description |
+|----------|-------------|
+| [RUSTOK_MANIFEST.md](RUSTOK_MANIFEST.md) | **Главный манифест** — философия, архитектура, стек |
+| [MODULE_MATRIX.md](docs/MODULE_MATRIX.md) | Карта всех модулей и зависимостей |
+| [DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) | Все таблицы БД с колонками и ERD |
+| [ARCHITECTURE_GUIDE.md](docs/ARCHITECTURE_GUIDE.md) | Архитектурные принципы и решения |
+| [ROADMAP.md](docs/ROADMAP.md) | Фазы разработки (Forge → Blueprint → Construction) |
+| [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Статус реализации vs документация |
+
+### Implementation Guides
+
 - [Architecture & system logic](docs/architecture.md)
 - [Module registry](docs/module-registry.md)
-- [Modules overview (current implementation)](docs/modules.md)
+- [Modules overview](docs/modules.md)
 - [MCP adapter](docs/mcp.md)
-- [Admin auth phase 3 scope](docs/admin-auth-phase3.md)
-- [Admin auth phase 3 gap analysis (Leptos + Next.js)](docs/admin-phase3-gap-analysis.md)
-- [Admin auth phase 3 architecture (Server + Leptos + Next.js)](docs/admin-phase3-architecture.md)
 - [Storefront SSR notes](docs/storefront.md)
 - [Testing guidelines](docs/testing-guidelines.md)
+
+### Admin Auth (Phase 3)
+
+- [Admin auth phase 3 scope](docs/admin-auth-phase3.md)
+- [Gap analysis (Leptos + Next.js)](docs/admin-phase3-gap-analysis.md)
+- [Architecture (Server + Leptos + Next.js)](docs/admin-phase3-architecture.md)
 
 ---
 
@@ -433,58 +456,58 @@ Write → Event Bus → Indexers → Read Models
 
 **Phase 1: Foundation ✅**
 
-*  Project scaffolding
-*  CI/CD pipeline
-*  Loco.rs integration
-*  Basic GraphQL API
-*  Database migrations
+- Project scaffolding
+- CI/CD pipeline
+- Loco.rs integration
+- Basic GraphQL API
+- Database migrations
 
 **Phase 2: Core (Current)**
 
-*  Multi-tenant data isolation
-*  User authentication (JWT)
-*  Role-based permissions
-*  Admin panel foundation
-*  Module registry system
+- Multi-tenant data isolation
+- User authentication (JWT)
+- Role-based permissions
+- Admin panel foundation
+- Module registry system
 
 **Phase 3: Commerce Module**
 
-*  Product catalog
-*  Categories & attributes
-*  Shopping cart
-*  Order management
-*  Inventory tracking
+- Product catalog
+- Categories & attributes
+- Shopping cart
+- Order management
+- Inventory tracking
 
 **Phase 4: Storefront**
 
-*  Leptos SSR setup (Tailwind + DaisyUI)
-*  Product pages
-*  Cart & checkout flow
-*  SEO optimization
-*  Performance tuning
+- Leptos SSR setup (Tailwind + DaisyUI)
+- Product pages
+- Cart & checkout flow
+- SEO optimization
+- Performance tuning
 
 **Phase 5: Content**
 
-*  Blog module
-*  Page builder basics
-*  Media library
-*  SEO fields
+- Blog module
+- Page builder basics
+- Media library
+- SEO fields
 
 **Phase 6: Advanced**
 
-*  Payment integrations
-*  Email notifications
-*  Search (MeiliSearch)
-*  Caching layer
-*  Admin dashboard widgets
+- Payment integrations
+- Email notifications
+- Search (MeiliSearch)
+- Caching layer
+- Admin dashboard widgets
 
 **Phase 7: Ecosystem**
 
-*  Plugin marketplace concept
-*  Theme system
-*  CLI improvements
-*  Documentation site
-*  Docker images
+- Plugin marketplace concept
+- Theme system
+- CLI improvements
+- Documentation site
+- Docker images
 
 ---
 
@@ -592,11 +615,10 @@ Look for issues labeled good first issue — these are great starting points.
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 What this means:
-* ✅ Free to use for any purpose (commercial or private)
-* ✅ Free to modify and sub-license
-* ✅ No "copyleft" requirements (keep your proprietary code private)
-* ✅ Standard "as-is" liability protection
-
+- ✅ Free to use for any purpose (commercial or private)
+- ✅ Free to modify and sub-license
+- ✅ No "copyleft" requirements (keep your proprietary code private)
+- ✅ Standard "as-is" liability protection
 
 ---
 
@@ -604,11 +626,11 @@ What this means:
 
 Built with amazing open-source projects:
 
-* Loco.rs — Rails-like framework for Rust
-* Leptos — Full-stack Rust web framework
-* SeaORM — Async ORM for Rust
-* async-graphql — GraphQL server library
-* Axum — Web framework
+- Loco.rs — Rails-like framework for Rust
+- Leptos — Full-stack Rust web framework
+- SeaORM — Async ORM for Rust
+- async-graphql — GraphQL server library
+- Axum — Web framework
 
 ---
 

@@ -3,6 +3,8 @@ use sea_orm::DatabaseConnection;
 use sea_orm_migration::MigrationTrait;
 use serde_json::Value;
 
+use crate::permissions::Permission;
+
 pub struct ModuleContext<'a> {
     pub db: &'a DatabaseConnection,
     pub tenant_id: uuid::Uuid,
@@ -36,6 +38,12 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
         &[]
     }
 
+    /// Returns the list of permissions this module declares.
+    /// Used for dynamic RBAC permission registration.
+    fn permissions(&self) -> Vec<Permission> {
+        Vec::new()
+    }
+
     fn event_listeners(&self) -> Vec<Box<dyn EventListener>> {
         Vec::new()
     }
@@ -52,3 +60,4 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
         HealthStatus::Healthy
     }
 }
+
