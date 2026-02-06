@@ -21,7 +21,18 @@ Applies to the following apps:
 
 - **Next.js**: use shadcn/ui components (Radix patterns + Tailwind).
 - **Leptos**: use `leptos-shadcn-ui` for equivalent primitives.
-- **Remove DaisyUI** to reduce duplicate styling systems and ensure a single source of UI truth.
+
+## Parallel admin stack (short version)
+
+When we need parity across the Leptos + Next admin apps, we align on the same
+library *roles* even if the exact implementation differs per runtime:
+
+- **Forms**: `leptos-forms-rs` for Leptos, with optional validation via validator/garde.
+- **Server state**: `leptos-query` (chosen).
+- **UI primitives**: `leptos-shadcn-ui` (Leptos) ↔ shadcn/ui (Next.js).
+- **Styling**: `tailwind-rs` + `tailwind-rs-leptos` for Leptos, Tailwind for Next.js.
+- **SEO/metadata**: `leptos-next-metadata` for Leptos; Next.js uses its built-in metadata APIs.
+- **Realtime (optional)**: `leptos-ws-pro`.
 
 Note: the canonical shadcn/ui implementation is Tailwind-first, so Tailwind remains the styling substrate
 for the Next.js apps. The Leptos side can consume the same design tokens (CSS variables) while rendering

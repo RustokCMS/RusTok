@@ -52,7 +52,13 @@ When a feature is missing on the Leptos side:
 
 | Area | Gap | Impact | Mitigation | Migration trigger |
 | --- | --- | --- | --- | --- |
-| UI primitives (Leptos) | `leptos-shadcn-ui` v0.1.0 previously failed to compile due to version mismatch (`lucide-leptos` icons + `view!` inference). | Blocks adoption of shadcn-style primitives in Leptos until versions align. | Keep current Leptos versions (0.8.11) and custom UI; re-test `leptos-shadcn-ui` once we can pin compatible versions. | Successful build with pinned versions or upstream fixes. |
+| _None_ | _—_ | _—_ | _—_ | _—_ |
+
+### Resolved gaps
+
+| Area | Resolution | Notes |
+| --- | --- | --- |
+| UI primitives (Leptos) | `leptos-shadcn-ui` builds successfully after dependency alignment (including `lucide-leptos` + `view!` inference). | Keep versions pinned in workspace to avoid regressions. |
 
 ### Suggested code annotation format
 

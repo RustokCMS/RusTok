@@ -1,7 +1,7 @@
 # Storefront (Leptos SSR + Next.js)
 
 RusToK storefront ships in two flavors:
-- **Leptos SSR** (`apps/storefront`) for a Rust-first, SSR application styled with Tailwind + DaisyUI.
+- **Leptos SSR** (`apps/storefront`) for a Rust-first, SSR application styled with Tailwind.
 - **Next.js App Router** (`apps/next-frontend`) for teams that want a React-based storefront.
 
 Both variants start with a minimal landing layout that can be extended with
@@ -22,11 +22,9 @@ npm run dev
 The Leptos SSR server listens on `http://localhost:3100`. The Next.js app runs on
 `http://localhost:3000` by default.
 
-## Tailwind + DaisyUI styles
+## Tailwind styles
 
-By default the Leptos storefront uses Tailwind CDN plus the DaisyUI stylesheet
-for quick local previews. The SSR template sets `data-theme="rustok"` so built
-bundles can pick up the custom DaisyUI theme below. For offline or customized
+The Leptos storefront ships with Tailwind-only styling. For offline or customized
 themes, build the CSS bundle:
 
 ```bash
