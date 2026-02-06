@@ -112,32 +112,42 @@ pub fn Login() -> impl IntoView {
     };
 
     view! {
-        <section class="auth-grid">
-            <aside class="auth-visual">
-                <span class="badge">{move || translate(locale.locale.get(), "auth.badge")}</span>
-                <h1>{move || translate(locale.locale.get(), "auth.heroTitle")}</h1>
-                <p>
+        <section class="grid min-h-screen grid-cols-1 lg:grid-cols-[1.2fr_1fr]">
+            <aside class="flex flex-col justify-center gap-6 bg-[radial-gradient(circle_at_top_left,#1e3a8a,#0f172a)] p-12 text-white lg:p-16">
+                <span class="inline-flex w-fit items-center rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/80">
+                    {move || translate(locale.locale.get(), "auth.badge")}
+                </span>
+                <h1 class="text-4xl font-semibold">{move || translate(locale.locale.get(), "auth.heroTitle")}</h1>
+                <p class="text-lg text-white/80">
                     {move || translate(locale.locale.get(), "auth.heroSubtitle")}
                 </p>
                 <div>
-                    <p>
-                        <strong>{move || translate(locale.locale.get(), "auth.heroListTitle")}</strong>
+                    <p class="text-sm font-semibold">
+                        {move || translate(locale.locale.get(), "auth.heroListTitle")}
                     </p>
-                    <p>{move || translate(locale.locale.get(), "auth.heroListSubtitle")}</p>
+                    <p class="text-sm text-white/75">
+                        {move || translate(locale.locale.get(), "auth.heroListSubtitle")}
+                    </p>
                 </div>
             </aside>
-            <div class="auth-form">
-                <div class="auth-card">
+            <div class="flex flex-col justify-center gap-7 bg-slate-50 p-12 lg:p-20">
+                <div class="flex flex-col gap-5 rounded-3xl bg-white p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
                     <div>
-                        <h2>{move || translate(locale.locale.get(), "auth.title")}</h2>
-                        <p>{move || translate(locale.locale.get(), "auth.subtitle")}</p>
+                        <h2 class="text-2xl font-semibold">
+                            {move || translate(locale.locale.get(), "auth.title")}
+                        </h2>
+                        <p class="text-slate-500">
+                            {move || translate(locale.locale.get(), "auth.subtitle")}
+                        </p>
                     </div>
-                    <div class="auth-locale">
+                    <div class="flex items-center justify-between gap-3 text-sm text-slate-600">
                         <span>{move || translate(locale.locale.get(), "auth.languageLabel")}</span>
                         <LanguageToggle />
                     </div>
                     <Show when=move || error.get().is_some()>
-                        <div class="alert">{move || error.get().unwrap_or_default()}</div>
+                        <div class="rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
+                            {move || error.get().unwrap_or_default()}
+                        </div>
                     </Show>
                     <Input
                         value=tenant
@@ -165,16 +175,16 @@ pub fn Login() -> impl IntoView {
                     >
                         {move || translate(locale.locale.get(), "auth.submit")}
                     </Button>
-                    <div class="auth-links">
-                        <a class="secondary-link" href="/register">
+                    <div class="flex justify-between gap-3 text-sm">
+                        <a class="text-blue-600 hover:underline" href="/register">
                             {move || translate(locale.locale.get(), "auth.registerLink")}
                         </a>
-                        <a class="secondary-link" href="/reset">
+                        <a class="text-blue-600 hover:underline" href="/reset">
                             {move || translate(locale.locale.get(), "auth.resetLink")}
                         </a>
                     </div>
                 </div>
-                <p style="margin:0; color:#64748b;">
+                <p class="text-sm text-slate-500">
                     {move || translate(locale.locale.get(), "auth.footer")}
                 </p>
             </div>

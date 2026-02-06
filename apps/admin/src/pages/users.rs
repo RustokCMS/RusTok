@@ -135,26 +135,35 @@ pub fn Users() -> impl IntoView {
     });
 
     view! {
-        <section class="users-page">
-            <header class="dashboard-header">
+        <section class="px-10 py-8">
+            <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <span class="badge">{move || translate(locale.locale.get(), "app.nav.users")}</span>
-                    <h1>{move || translate(locale.locale.get(), "users.title")}</h1>
-                    <p style="margin:8px 0 0; color:#64748b;">
+                    <span class="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                        {move || translate(locale.locale.get(), "app.nav.users")}
+                    </span>
+                    <h1 class="mt-2 text-2xl font-semibold">
+                        {move || translate(locale.locale.get(), "users.title")}
+                    </h1>
+                    <p class="mt-2 text-sm text-slate-500">
                         {move || translate(locale.locale.get(), "users.subtitle")}
                     </p>
                 </div>
-                <div class="dashboard-actions">
+                <div class="flex flex-wrap items-center gap-3">
                     <LanguageToggle />
-                    <Button on_click=refresh class="ghost-button">
+                    <Button
+                        on_click=refresh
+                        class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
+                    >
                         {move || translate(locale.locale.get(), "users.refresh")}
                     </Button>
                 </div>
             </header>
 
-            <div class="panel users-panel">
-                <h4>{move || translate(locale.locale.get(), "users.access.title")}</h4>
-                <div class="form-grid">
+            <div class="mb-6 rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+                <h4 class="mb-4 text-lg font-semibold">
+                    {move || translate(locale.locale.get(), "users.access.title")}
+                </h4>
+                <div class="grid gap-4 md:grid-cols-3">
                     <Input
                         value=api_token
                         set_value=set_api_token
@@ -174,35 +183,47 @@ pub fn Users() -> impl IntoView {
                         label=move || translate(locale.locale.get(), "users.access.limit")
                     />
                 </div>
-                <p class="form-hint">
+                <p class="mt-3 text-sm text-slate-500">
                     {move || translate(locale.locale.get(), "users.access.hint")}
                 </p>
             </div>
 
-            <div class="users-grid">
-                <div class="panel">
-                    <h4>{move || translate(locale.locale.get(), "users.rest.title")}</h4>
-                    <Suspense fallback=move || view! { <p>{move || translate(locale.locale.get(), "users.rest.loading")}</p> }>
+            <div class="grid gap-6 lg:grid-cols-2">
+                <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+                    <h4 class="mb-4 text-lg font-semibold">
+                        {move || translate(locale.locale.get(), "users.rest.title")}
+                    </h4>
+                    <Suspense
+                        fallback=move || view! {
+                            <p class="text-sm text-slate-500">
+                                {move || translate(locale.locale.get(), "users.rest.loading")}
+                            </p>
+                        }
+                    >
                         {move || match rest_resource.get() {
                             None => view! {
                                 <div>
-                                    <p>{move || translate(locale.locale.get(), "users.rest.pending")}</p>
+                                    <p class="text-sm text-slate-500">
+                                        {move || translate(locale.locale.get(), "users.rest.pending")}
+                                    </p>
                                 </div>
                             }
                             .into_any(),
                             Some(Ok(user)) => view! {
-                                <div class="user-card">
-                                    <strong>{user.email}</strong>
-                                    <span class="badge">{user.role}</span>
-                                    <p style="margin:8px 0 0; color:#64748b;">
+                                <div class="grid gap-2">
+                                    <strong class="text-base">{user.email}</strong>
+                                    <span class="inline-flex w-fit items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                                        {user.role}
+                                    </span>
+                                    <p class="mt-2 text-sm text-slate-500">
                                         {user.name.unwrap_or_else(|| translate(locale.locale.get(), "users.noName").to_string())}
                                     </p>
-                                    <p class="meta-text">{user.id}</p>
+                                    <p class="text-xs text-slate-400">{user.id}</p>
                                 </div>
                             }
                             .into_any(),
                             Some(Err(err)) => view! {
-                                <div class="alert">
+                                <div class="rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
                                     {match err {
                                         ApiError::Unauthorized => translate(locale.locale.get(), "users.rest.unauthorized").to_string(),
                                         ApiError::Http(code) => format!("{} {}", translate(locale.locale.get(), "users.rest.error"), code),
@@ -216,13 +237,23 @@ pub fn Users() -> impl IntoView {
                     </Suspense>
                 </div>
 
-                <div class="panel">
-                    <h4>{move || translate(locale.locale.get(), "users.graphql.title")}</h4>
-                    <Suspense fallback=move || view! { <p>{move || translate(locale.locale.get(), "users.rest.loading")}</p> }>
+                <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+                    <h4 class="mb-4 text-lg font-semibold">
+                        {move || translate(locale.locale.get(), "users.graphql.title")}
+                    </h4>
+                    <Suspense
+                        fallback=move || view! {
+                            <p class="text-sm text-slate-500">
+                                {move || translate(locale.locale.get(), "users.rest.loading")}
+                            </p>
+                        }
+                    >
                         {move || match graphql_resource.get() {
                             None => view! {
                                 <div>
-                                    <p>{move || translate(locale.locale.get(), "users.rest.pending")}</p>
+                                    <p class="text-sm text-slate-500">
+                                        {move || translate(locale.locale.get(), "users.rest.pending")}
+                                    </p>
                                 </div>
                             }
                             .into_any(),
@@ -231,10 +262,10 @@ pub fn Users() -> impl IntoView {
                                 let edges = response.users.edges;
                                 view! {
                                 <div>
-                                    <p class="meta-text">
+                                    <p class="text-xs text-slate-400">
                                         {move || translate(locale.locale.get(), "users.graphql.total")} " " {total_count}
                                     </p>
-                                    <div class="table-filters">
+                                    <div class="mb-4 grid gap-3 md:grid-cols-3">
                                         <Input
                                             value=search_query
                                             set_value=set_search_query
@@ -254,15 +285,25 @@ pub fn Users() -> impl IntoView {
                                             label=move || translate(locale.locale.get(), "users.filters.status")
                                         />
                                     </div>
-                                    <div class="table-wrap">
-                                        <table class="data-table">
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full border-collapse text-sm">
                                             <thead>
                                                 <tr>
-                                                    <th>{move || translate(locale.locale.get(), "users.graphql.email")}</th>
-                                                    <th>{move || translate(locale.locale.get(), "users.graphql.name")}</th>
-                                                    <th>{move || translate(locale.locale.get(), "users.graphql.role")}</th>
-                                                    <th>{move || translate(locale.locale.get(), "users.graphql.status")}</th>
-                                                    <th>{move || translate(locale.locale.get(), "users.graphql.createdAt")}</th>
+                                                    <th class="pb-2 text-left text-xs font-semibold text-slate-500">
+                                                        {move || translate(locale.locale.get(), "users.graphql.email")}
+                                                    </th>
+                                                    <th class="pb-2 text-left text-xs font-semibold text-slate-500">
+                                                        {move || translate(locale.locale.get(), "users.graphql.name")}
+                                                    </th>
+                                                    <th class="pb-2 text-left text-xs font-semibold text-slate-500">
+                                                        {move || translate(locale.locale.get(), "users.graphql.role")}
+                                                    </th>
+                                                    <th class="pb-2 text-left text-xs font-semibold text-slate-500">
+                                                        {move || translate(locale.locale.get(), "users.graphql.status")}
+                                                    </th>
+                                                    <th class="pb-2 text-left text-xs font-semibold text-slate-500">
+                                                        {move || translate(locale.locale.get(), "users.graphql.createdAt")}
+                                                    </th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -301,17 +342,21 @@ pub fn Users() -> impl IntoView {
                                                             } = edge.node.clone();
                                                             view! {
                                                                 <tr>
-                                                                    <td>
-                                                                        <A href=format!("/users/{}", id)>
+                                                                    <td class="border-b border-slate-200 py-2">
+                                                                        <A class="text-blue-600 hover:underline" href=format!("/users/{}", id)>
                                                                             {email}
                                                                         </A>
                                                                     </td>
-                                                                    <td>{name.unwrap_or_else(|| translate(locale.locale.get(), "users.placeholderDash").to_string())}</td>
-                                                                    <td>{role}</td>
-                                                                    <td>
-                                                                        <span class="status-pill">{status}</span>
+                                                                    <td class="border-b border-slate-200 py-2">
+                                                                        {name.unwrap_or_else(|| translate(locale.locale.get(), "users.placeholderDash").to_string())}
                                                                     </td>
-                                                                    <td>{created_at}</td>
+                                                                    <td class="border-b border-slate-200 py-2">{role}</td>
+                                                                    <td class="border-b border-slate-200 py-2">
+                                                                        <span class="inline-flex items-center rounded-full bg-slate-200 px-2.5 py-1 text-xs text-slate-600">
+                                                                            {status}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td class="border-b border-slate-200 py-2">{created_at}</td>
                                                                 </tr>
                                                             }
                                                         })
@@ -320,20 +365,20 @@ pub fn Users() -> impl IntoView {
                                             </tbody>
                                         </table>
                                     </div>
-                                    <div class="table-actions">
+                                    <div class="mt-4 flex flex-wrap items-center gap-3">
                                         <Button
                                             on_click=previous_page
-                                            class="ghost-button"
+                                            class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
                                             disabled=Signal::derive(move || page.get() <= 1)
                                         >
                                             {move || translate(locale.locale.get(), "users.pagination.prev")}
                                         </Button>
-                                        <span class="meta-text">
+                                        <span class="text-xs text-slate-400">
                                             {move || translate(locale.locale.get(), "users.pagination.page")} " " {page.get()}
                                         </span>
                                         <Button
                                             on_click=next_page
-                                            class="ghost-button"
+                                            class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
                                             disabled=Signal::derive(move || {
                                                 let total = total_count;
                                                 page.get() * limit.get() >= total
@@ -347,7 +392,7 @@ pub fn Users() -> impl IntoView {
                                 .into_any()
                             }
                             Some(Err(err)) => view! {
-                                <div class="alert">
+                                <div class="rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
                                     {match err {
                                         ApiError::Unauthorized => translate(locale.locale.get(), "users.graphql.unauthorized").to_string(),
                                         ApiError::Http(code) => format!("{} {}", translate(locale.locale.get(), "users.graphql.error"), code),

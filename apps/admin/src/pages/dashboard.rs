@@ -65,11 +65,13 @@ pub fn Dashboard() -> impl IntoView {
     };
 
     view! {
-        <section class="dashboard">
-            <header class="dashboard-header">
+        <section class="px-10 py-8">
+            <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <span class="badge">{move || translate(locale.locale.get(), "app.nav.dashboard")}</span>
-                    <h1>
+                    <span class="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                        {move || translate(locale.locale.get(), "app.nav.dashboard")}
+                    </span>
+                    <h1 class="mt-2 text-2xl font-semibold">
                         {move || {
                             auth.user
                                 .get()
@@ -77,13 +79,16 @@ pub fn Dashboard() -> impl IntoView {
                                 .unwrap_or_else(|| "Добро пожаловать, Админ".to_string())
                         }}
                     </h1>
-                    <p style="margin:8px 0 0; color:#64748b;">
+                    <p class="mt-2 text-sm text-slate-500">
                         {move || translate(locale.locale.get(), "app.dashboard.subtitle")}
                     </p>
                 </div>
-                <div class="dashboard-actions">
+                <div class="flex flex-wrap items-center gap-3">
                     <LanguageToggle />
-                    <Button on_click=logout class="ghost-button">
+                    <Button
+                        on_click=logout
+                        class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
+                    >
                         {move || translate(locale.locale.get(), "app.dashboard.logout")}
                     </Button>
                     <Button on_click=move |_| {}>
@@ -92,55 +97,76 @@ pub fn Dashboard() -> impl IntoView {
                 </div>
             </header>
 
-            <div class="stats-grid">
+            <div class="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
                 {stats()
                     .iter()
                     .map(|(title, value, hint)| {
                         view! {
-                            <div class="stat-card">
-                                <h3>{title.clone()}</h3>
-                                <strong>{*value}</strong>
-                                <p style="margin:8px 0 0; color:#94a3b8;">{hint.clone()}</p>
+                            <div class="rounded-2xl bg-white p-5 shadow-[0_16px_30px_rgba(15,23,42,0.08)]">
+                                <h3 class="text-sm text-slate-500">{title.clone()}</h3>
+                                <strong class="text-2xl">{*value}</strong>
+                                <p class="mt-2 text-sm text-slate-400">{hint.clone()}</p>
                             </div>
                         }
                     })
                     .collect_view()}
             </div>
 
-            <div class="dashboard-panels">
-                <div class="panel">
-                    <h4>{move || translate(locale.locale.get(), "app.dashboard.activity.title")}</h4>
+            <div class="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+                <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+                    <h4 class="mb-4 text-lg font-semibold">
+                        {move || translate(locale.locale.get(), "app.dashboard.activity.title")}
+                    </h4>
                     {activity()
                         .iter()
                         .map(|(title, detail, time)| {
                             view! {
-                                <div class="activity-item">
+                                <div class="flex items-center justify-between border-b border-slate-200 py-3 last:border-b-0">
                                     <div>
                                         <strong>{title.clone()}</strong>
-                                        <p style="margin:4px 0 0; color:#64748b;">{detail.clone()}</p>
+                                        <p class="mt-1 text-sm text-slate-500">{detail.clone()}</p>
                                     </div>
-                                    <span class="badge">{time.clone()}</span>
+                                    <span class="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                                        {time.clone()}
+                                    </span>
                                 </div>
                             }
                         })
                         .collect_view()}
                 </div>
-                <div class="panel">
-                    <h4>{move || translate(locale.locale.get(), "app.dashboard.quick.title")}</h4>
-                    <div class="quick-actions">
-                        <a href="/security">
+                <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+                    <h4 class="mb-4 text-lg font-semibold">
+                        {move || translate(locale.locale.get(), "app.dashboard.quick.title")}
+                    </h4>
+                    <div class="grid gap-3">
+                        <a
+                            class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                            href="/security"
+                        >
                             {move || translate(locale.locale.get(), "app.dashboard.quick.security")}
                         </a>
-                        <a href="/profile">
+                        <a
+                            class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                            href="/profile"
+                        >
                             {move || translate(locale.locale.get(), "app.dashboard.quick.profile")}
                         </a>
-                        <a href="/users">
+                        <a
+                            class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                            href="/users"
+                        >
                             {move || translate(locale.locale.get(), "app.dashboard.quick.users")}
                         </a>
-                        <button type="button">
+                        <button
+                            type="button"
+                            class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                        >
                             {move || translate(locale.locale.get(), "app.dashboard.quick.metrics")}
                         </button>
-                        <button type="button">
+                        <button
+                            type="button"
+                            class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                        >
                             {move || translate(locale.locale.get(), "app.dashboard.quick.roles")}
                         </button>
                     </div>

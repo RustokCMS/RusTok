@@ -10,9 +10,18 @@ pub fn Button(
     #[prop(optional, into)] class: String,
     #[prop(default = Signal::derive(|| false))] disabled: Signal<bool>,
 ) -> impl IntoView {
+    let base_class = "inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60";
+    let merged_class = move || {
+        if class.is_empty() {
+            base_class.to_string()
+        } else {
+            format!("{base_class} {class}")
+        }
+    };
+
     view! {
         <button
-            class=format!("primary-button {}", class)
+            class=merged_class
             on:click=move |ev| on_click.run(ev)
             disabled=move || disabled.get()
         >
@@ -30,16 +39,19 @@ pub fn Input(
     #[prop(default = String::new().into(), into)] label: TextProp,
 ) -> impl IntoView {
     view! {
-        <div class="input-group">
+        <div class="flex flex-col gap-2">
             {move || {
                 let label_value = label.get();
-                (!label_value.is_empty()).then(|| view! { <label>{label_value}</label> })
+                (!label_value.is_empty()).then(|| {
+                    view! { <label class="text-sm text-slate-600">{label_value}</label> }
+                })
             }}
             <input
                 type=type_
                 placeholder=placeholder
                 prop:value=value
                 on:input=move |ev| set_value.set(event_target_value(&ev))
+                class="rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
         </div>
     }
@@ -54,19 +66,31 @@ pub fn LanguageToggle() -> impl IntoView {
     };
 
     view! {
-        <div class="locale-toggle">
+        <div class="flex gap-2">
             <button
                 type="button"
-                class="ghost-button"
-                class:active=move || locale.locale.get() == Locale::Ru
+                class=move || {
+                    let is_active = locale.locale.get() == Locale::Ru;
+                    if is_active {
+                        "rounded-lg border border-blue-600 bg-blue-600 px-3 py-1 text-sm font-semibold text-white"
+                    } else {
+                        "rounded-lg border border-slate-200 px-3 py-1 text-sm font-semibold text-blue-600"
+                    }
+                }
                 on:click=move |_| set_locale(Locale::Ru)
             >
                 "RU"
             </button>
             <button
                 type="button"
-                class="ghost-button"
-                class:active=move || locale.locale.get() == Locale::En
+                class=move || {
+                    let is_active = locale.locale.get() == Locale::En;
+                    if is_active {
+                        "rounded-lg border border-blue-600 bg-blue-600 px-3 py-1 text-sm font-semibold text-white"
+                    } else {
+                        "rounded-lg border border-slate-200 px-3 py-1 text-sm font-semibold text-blue-600"
+                    }
+                }
                 on:click=move |_| set_locale(Locale::En)
             >
                 "EN"
