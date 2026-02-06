@@ -123,6 +123,7 @@ export default function RegisterView({ locale }: { locale: string }) {
 
       const payload = (await response.json()) as VerificationRequestResponse;
       if (payload.verification_token) {
+        setVerificationToken(payload.verification_token);
         setStatus(`${t("verifySent")} ${t("verifyTokenPreview")} ${payload.verification_token}`);
       } else {
         setStatus(t("verifySent"));

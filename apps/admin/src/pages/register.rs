@@ -197,6 +197,7 @@ pub fn Register() -> impl IntoView {
         let verification_value = verification_email.get().trim().to_string();
         let set_error = set_error;
         let set_status = set_status;
+        let set_verification_token = set_verification_token;
 
         spawn_local(async move {
             let result = rest_post::<VerificationRequestParams, VerificationRequestResponse>(
@@ -213,6 +214,7 @@ pub fn Register() -> impl IntoView {
                 Ok(response) => {
                     set_error.set(None);
                     let status = if let Some(token) = response.verification_token {
+                        set_verification_token.set(token.clone());
                         format!(
                             "{} {} {}",
                             translate("register.verifySent"),
