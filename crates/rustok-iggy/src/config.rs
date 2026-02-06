@@ -1,4 +1,7 @@
 use serde::Deserialize;
+use rustok_iggy_connector::{
+    ConnectorConfig, ConnectorMode, EmbeddedConnectorConfig, RemoteConnectorConfig,
+};
 
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct IggyConfig {
@@ -102,6 +105,34 @@ impl Default for RetentionConfig {
             domain_max_size_gb: 10,
             system_max_age_days: 7,
             dlq_max_age_days: 365,
+        }
+    }
+}
+
+impl From<&IggyConfig> for ConnectorConfig {
+    fn from(config: &IggyConfig) -> Self {
+        let mode = match config.mode {
+            IggyMode::Embedded => ConnectorMode::Embedded,
+            IggyMode::Remote => ConnectorMode::Remote,
+        };
+
+        let embedded = EmbeddedConnectorConfig {
+            data_dir: config.embedded.data_dir.clone(),
+            tcp_port: config.embedded.tcp_port,
+            http_port: config.embedded.http_port,
+        };
+
+        let remote = RemoteConnectorConfig {
+            addresses: config.remote.addresses.clone(),
+            protocol: config.remote.protocol.clone(),
+            username: config.remote.username.clone(),
+            password: config.remote.password.clone(),
+        };
+
+        ConnectorConfig {
+            mode,
+            embedded,
+            remote,
         }
     }
 }

@@ -315,6 +315,8 @@ cargo loco generate controller products --api
 - [Modules overview (current implementation)](docs/modules.md)
 - [MCP adapter](docs/mcp.md)
 - [Admin auth phase 3 scope](docs/admin-auth-phase3.md)
+- [Admin auth phase 3 gap analysis (Leptos + Next.js)](docs/admin-phase3-gap-analysis.md)
+- [Admin auth phase 3 architecture (Server + Leptos + Next.js)](docs/admin-phase3-architecture.md)
 - [Storefront SSR notes](docs/storefront.md)
 - [Testing guidelines](docs/testing-guidelines.md)
 

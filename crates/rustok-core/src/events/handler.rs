@@ -160,6 +160,21 @@ impl EventDispatcher {
             "Dispatching to handlers"
         );
 
+        if config.fail_fast {
+            for handler in matching_handlers {
+                let envelope = envelope.clone();
+                if let Err(error) = Self::handle_with_retry(handler, envelope, config).await {
+                    error!(
+                        event_type = envelope.event.event_type(),
+                        error = %error,
+                        "Fail fast enabled, stopping dispatch after handler error"
+                    );
+                    break;
+                }
+            }
+            return;
+        }
+
         for handler in matching_handlers {
             let envelope = envelope.clone();
             let config = config.clone();
@@ -167,47 +182,48 @@ impl EventDispatcher {
 
             tokio::spawn(async move {
                 let _permit = permit;
-                let mut attempts = 0;
-                let max_attempts = config.retry_count + 1;
+                let _ = Self::handle_with_retry(handler, envelope, &config).await;
+            });
+        }
+    }
 
-                loop {
-                    attempts += 1;
-                    match handler.handle(&envelope).await {
-                        Ok(()) => {
-                            debug!(
-                                handler = handler.name(),
-                                event_type = envelope.event.event_type(),
-                                "Handler completed successfully"
-                            );
-                            break;
-                        }
-                        Err(error) => {
-                            if attempts < max_attempts {
-                                warn!(
-                                    handler = handler.name(),
-                                    attempt = attempts,
-                                    max_attempts = max_attempts,
-                                    error = %error,
-                                    "Handler failed, retrying"
-                                );
-                                tokio::time::sleep(tokio::time::Duration::from_millis(
-                                    config.retry_delay_ms,
-                                ))
-                                .await;
-                            } else {
-                                handler.on_error(&envelope, &error).await;
-                                if config.fail_fast {
-                                    error!("Fail fast enabled, stopping dispatch");
-                                }
-                                break;
-                            }
-                        }
+    async fn handle_with_retry(
+        handler: Arc<dyn EventHandler>,
+        envelope: EventEnvelope,
+        config: &DispatcherConfig,
+    ) -> Result<(), Error> {
+        let mut attempts = 0;
+        let max_attempts = config.retry_count + 1;
+
+        loop {
+            attempts += 1;
+            match handler.handle(&envelope).await {
+                Ok(()) => {
+                    debug!(
+                        handler = handler.name(),
+                        event_type = envelope.event.event_type(),
+                        "Handler completed successfully"
+                    );
+                    return Ok(());
+                }
+                Err(error) => {
+                    if attempts < max_attempts {
+                        warn!(
+                            handler = handler.name(),
+                            attempt = attempts,
+                            max_attempts = max_attempts,
+                            error = %error,
+                            "Handler failed, retrying"
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_millis(
+                            config.retry_delay_ms,
+                        ))
+                        .await;
+                    } else {
+                        handler.on_error(&envelope, &error).await;
+                        return Err(error);
                     }
                 }
-            });
-
-            if config.fail_fast {
-                break;
             }
         }
     }

@@ -1,4 +1,3 @@
-pub mod backend;
 pub mod config;
 pub mod consumer;
 pub mod dlq;
@@ -10,9 +9,6 @@ pub mod serialization;
 pub mod topology;
 pub mod transport;
 
-pub use backend::embedded::EmbeddedBackend;
-pub use backend::remote::RemoteBackend;
-pub use backend::IggyBackend;
 pub use config::{
     EmbeddedConfig, IggyConfig, IggyMode, RemoteConfig, RetentionConfig, SerializationFormat,
     TopologyConfig,

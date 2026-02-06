@@ -19,6 +19,7 @@ use rustok_core::Permission;
 // Структура, которую мы будем просить в контроллерах
 pub struct CurrentUser {
     pub user: users::Model,
+    pub session_id: uuid::Uuid,
     pub permissions: Vec<Permission>,
 }
 
@@ -101,7 +102,11 @@ where
             )
         })?;
 
-    Ok(CurrentUser { user, permissions })
+    Ok(CurrentUser {
+        user,
+        session_id: claims.session_id,
+        permissions,
+    })
 }
 
 impl<S> FromRequestParts<S> for CurrentUser

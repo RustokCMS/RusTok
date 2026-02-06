@@ -1,14 +1,15 @@
 use rustok_core::events::EventEnvelope;
 use rustok_core::Result;
+use rustok_iggy_connector::PublishRequest;
 
 use crate::config::IggyConfig;
 use crate::serialization::EventSerializer;
 
-pub async fn publish(
+pub fn build_publish_request(
     config: &IggyConfig,
     serializer: &dyn EventSerializer,
     envelope: EventEnvelope,
-) -> Result<()> {
+) -> Result<PublishRequest> {
     let topic = match envelope.event.event_type() {
         event_type if event_type.starts_with("system.") => "system",
         _ => "domain",
@@ -17,14 +18,11 @@ pub async fn publish(
 
     let payload = serializer.serialize(&envelope)?;
 
-    tracing::debug!(
-        stream = %config.topology.stream_name,
-        topic,
+    Ok(PublishRequest {
+        stream: config.topology.stream_name.clone(),
+        topic: topic.to_string(),
         partition_key,
-        event_id = %envelope.id,
-        payload_size = payload.len(),
-        "Publishing event to iggy"
-    );
-
-    Ok(())
+        payload,
+        event_id: envelope.id.to_string(),
+    })
 }

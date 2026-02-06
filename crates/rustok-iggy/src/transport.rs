@@ -4,10 +4,7 @@ use async_trait::async_trait;
 
 use rustok_core::events::{EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_core::Result;
-
-use crate::backend::embedded::EmbeddedBackend;
-use crate::backend::remote::RemoteBackend;
-use crate::backend::IggyBackend;
+use rustok_iggy_connector::{ConnectorConfig, EmbeddedConnector, IggyConnector, RemoteConnector};
 use crate::config::{IggyConfig, IggyMode};
 use crate::consumer::ConsumerGroupManager;
 use crate::serialization::{BincodeSerializer, EventSerializer, JsonSerializer};
@@ -16,7 +13,7 @@ use crate::{producer, topology};
 
 pub struct IggyTransport {
     config: IggyConfig,
-    backend: Arc<dyn IggyBackend>,
+    connector: Arc<dyn IggyConnector>,
     topology: TopologyManager,
     consumers: ConsumerGroupManager,
     serializer: Arc<dyn EventSerializer>,
@@ -24,12 +21,13 @@ pub struct IggyTransport {
 
 impl IggyTransport {
     pub async fn new(config: IggyConfig) -> Result<Self> {
-        let backend: Arc<dyn IggyBackend> = match config.mode {
-            IggyMode::Remote => Arc::new(RemoteBackend),
-            IggyMode::Embedded => Arc::new(EmbeddedBackend),
+        let connector: Arc<dyn IggyConnector> = match config.mode {
+            IggyMode::Remote => Arc::new(RemoteConnector::default()),
+            IggyMode::Embedded => Arc::new(EmbeddedConnector::default()),
         };
 
-        backend.connect(&config).await?;
+        let connector_config = ConnectorConfig::from(&config);
+        connector.connect(&connector_config).await?;
         topology::ensure_topology(&config).await?;
 
         let serializer: Arc<dyn EventSerializer> = match config.serialization {
@@ -39,7 +37,7 @@ impl IggyTransport {
 
         Ok(Self {
             config,
-            backend,
+            connector,
             topology: TopologyManager,
             consumers: ConsumerGroupManager,
             serializer,
@@ -47,7 +45,10 @@ impl IggyTransport {
     }
 
     pub async fn shutdown(&self) -> Result<()> {
-        self.backend.shutdown().await
+        self.connector
+            .shutdown()
+            .await
+            .map_err(|error| rustok_core::Error::External(error.to_string()))
     }
 
     pub async fn subscribe_as_group(&self, _group: &str) -> Result<()> {
@@ -64,7 +65,11 @@ impl IggyTransport {
 #[async_trait]
 impl EventTransport for IggyTransport {
     async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
-        producer::publish(&self.config, &*self.serializer, envelope).await
+        let request = producer::build_publish_request(&self.config, &*self.serializer, envelope)?;
+        self.connector
+            .publish(request)
+            .await
+            .map_err(|error| rustok_core::Error::External(error.to_string()))
     }
 
     fn reliability_level(&self) -> ReliabilityLevel {

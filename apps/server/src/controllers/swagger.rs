@@ -14,6 +14,7 @@ use utoipa::OpenApi;
         crate::controllers::auth::refresh,
         crate::controllers::auth::logout,
         crate::controllers::auth::me,
+        crate::controllers::auth::accept_invite,
         // Content
         crate::controllers::content::nodes::list_nodes,
         crate::controllers::content::nodes::get_node,
@@ -70,6 +71,8 @@ use utoipa::OpenApi;
             crate::controllers::auth::LoginParams,
             crate::controllers::auth::RegisterParams,
             crate::controllers::auth::RefreshRequest,
+            crate::controllers::auth::AcceptInviteParams,
+            crate::controllers::auth::InviteAcceptResponse,
             crate::controllers::auth::UserResponse,
             crate::controllers::auth::AuthResponse,
             crate::controllers::auth::UserInfo,

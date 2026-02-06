@@ -22,6 +22,29 @@ pub struct Claims {
     pub iat: usize,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InviteClaims {
+    pub sub: String,
+    pub tenant_id: Uuid,
+    pub role: UserRole,
+    pub purpose: String,
+    pub iss: String,
+    pub aud: String,
+    pub exp: usize,
+    pub iat: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PasswordResetClaims {
+    pub sub: String,
+    pub tenant_id: Uuid,
+    pub purpose: String,
+    pub iss: String,
+    pub aud: String,
+    pub exp: usize,
+    pub iat: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct AuthConfig {
     pub secret: String,
@@ -158,4 +181,76 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool> {
     Ok(argon2::Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
         .is_ok())
+}
+
+pub fn encode_password_reset_token(
+    config: &AuthConfig,
+    tenant_id: Uuid,
+    email: &str,
+    ttl_seconds: u64,
+) -> Result<String> {
+    let now = Utc::now();
+    let exp = now + Duration::seconds(ttl_seconds as i64);
+
+    let claims = PasswordResetClaims {
+        sub: email.to_lowercase(),
+        tenant_id,
+        purpose: "password_reset".to_string(),
+        iss: config.issuer.clone(),
+        aud: config.audience.clone(),
+        exp: exp.timestamp() as usize,
+        iat: now.timestamp() as usize,
+    };
+
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(config.secret.as_bytes()),
+    )
+    .map_err(|_| Error::InternalServerError)
+}
+
+pub fn decode_password_reset_token(
+    config: &AuthConfig,
+    token: &str,
+) -> Result<PasswordResetClaims> {
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = true;
+    validation.set_issuer(&[config.issuer.as_str()]);
+    validation.set_audience(&[config.audience.as_str()]);
+
+    let claims = decode::<PasswordResetClaims>(
+        token,
+        &DecodingKey::from_secret(config.secret.as_bytes()),
+        &validation,
+    )
+    .map(|data| data.claims)
+    .map_err(|_| Error::Unauthorized("Invalid reset token".to_string()))?;
+
+    if claims.purpose != "password_reset" {
+        return Err(Error::Unauthorized("Invalid reset token".to_string()));
+    }
+
+    Ok(claims)
+}
+
+pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteClaims> {
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.validate_exp = true;
+    validation.set_issuer(&[config.issuer.as_str()]);
+    validation.set_audience(&[config.audience.as_str()]);
+
+    let claims = decode::<InviteClaims>(
+        token,
+        &DecodingKey::from_secret(config.secret.as_bytes()),
+        &validation,
+    )
+    .map(|data| data.claims)
+    .map_err(|_| Error::Unauthorized("Invalid invite token".to_string()))?;
+
+    if claims.purpose != "invite" {
+        return Err(Error::Unauthorized("Invalid invite token".to_string()));
+    }
+
+    Ok(claims)
 }

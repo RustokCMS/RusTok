@@ -16,11 +16,14 @@ pub struct AuthContext {
     pub set_user: WriteSignal<Option<User>>,
     pub token: ReadSignal<Option<String>>,
     pub set_token: WriteSignal<Option<String>>,
+    pub tenant_slug: ReadSignal<Option<String>>,
+    pub set_tenant_slug: WriteSignal<Option<String>>,
 }
 
 pub fn provide_auth_context() {
     let (user, set_user) = signal(load_user_from_storage());
     let (token, set_token) = signal(load_token_from_storage());
+    let (tenant_slug, set_tenant_slug) = signal(load_tenant_slug_from_storage());
 
     Effect::new(move |_| {
         if let Some(storage) = local_storage() {
@@ -30,6 +33,19 @@ pub fn provide_auth_context() {
                 }
                 None => {
                     let _ = storage.remove_item("rustok-admin-token");
+                }
+            }
+        }
+    });
+
+    Effect::new(move |_| {
+        if let Some(storage) = local_storage() {
+            match tenant_slug.get() {
+                Some(value) => {
+                    let _ = storage.set_item("rustok-admin-tenant", &value);
+                }
+                None => {
+                    let _ = storage.remove_item("rustok-admin-tenant");
                 }
             }
         }
@@ -55,6 +71,8 @@ pub fn provide_auth_context() {
         set_user,
         token,
         set_token,
+        tenant_slug,
+        set_tenant_slug,
     });
 }
 
@@ -75,4 +93,9 @@ fn load_user_from_storage() -> Option<User> {
     let storage = local_storage()?;
     let raw = storage.get_item("rustok-admin-user").ok().flatten()?;
     serde_json::from_str(&raw).ok()
+}
+
+fn load_tenant_slug_from_storage() -> Option<String> {
+    let storage = local_storage()?;
+    storage.get_item("rustok-admin-tenant").ok().flatten()
 }

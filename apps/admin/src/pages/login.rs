@@ -61,6 +61,7 @@ pub fn Login() -> impl IntoView {
         let password_value = password.get();
         let set_token = auth.set_token;
         let set_user = auth.set_user;
+        let set_tenant_slug = auth.set_tenant_slug;
         let locale = locale.locale;
         let navigate = navigate.clone();
 
@@ -75,13 +76,14 @@ pub fn Login() -> impl IntoView {
                     password: password_value,
                 },
                 None,
-                Some(tenant_value),
+                Some(tenant_value.clone()),
             )
             .await;
 
             match result {
                 Ok(response) => {
                     set_token.set(Some(response.access_token));
+                    set_tenant_slug.set(Some(tenant_value));
                     set_user.set(Some(User {
                         id: response.user.id,
                         email: response.user.email,
