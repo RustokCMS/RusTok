@@ -1,7 +1,7 @@
-use serde::Deserialize;
 use rustok_iggy_connector::{
     ConnectorConfig, ConnectorMode, EmbeddedConnectorConfig, RemoteConnectorConfig,
 };
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct IggyConfig {
