@@ -181,10 +181,20 @@ rustok/
     │   └── src/
     │       ├── app.rs         # Loco hooks & routes
     │       └── main.rs
-    ├── admin/                 # Admin UI (Next.js)
+    ├── admin/                 # Admin UI (Leptos CSR)
+    ├── next-admin/            # Admin UI (Next.js App Router)
     ├── storefront/            # Storefront UI (Next.js)
     └── mcp/                   # MCP server (stdio)
 ```
+
+Admin docs:
+- `docs/admin-auth-phase3.md`
+- `docs/admin-phase3-architecture.md`
+- `docs/admin-phase3-gap-analysis.md`
+- `docs/ui-parity.md`
+- `docs/tech-parity.md`
+- `docs/admin-template-integration-plan.md`
+- `docs/admin-libraries-parity.md`
 
 ---
 

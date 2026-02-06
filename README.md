@@ -342,6 +342,10 @@ cargo loco generate controller products --api
 - [Admin auth phase 3 scope](docs/admin-auth-phase3.md)
 - [Gap analysis (Leptos + Next.js)](docs/admin-phase3-gap-analysis.md)
 - [Architecture (Server + Leptos + Next.js)](docs/admin-phase3-architecture.md)
+- [UI parity (admin + storefront)](docs/ui-parity.md)
+- [Tech parity tracker](docs/tech-parity.md)
+- [Template integration plan](docs/admin-template-integration-plan.md)
+- [Admin libraries parity](docs/admin-libraries-parity.md)
 
 ---
 
