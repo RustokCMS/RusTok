@@ -16,7 +16,6 @@
     "@tanstack/react-table": "^8.20.5",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "daisyui": "^4.12.12",
     "date-fns": "^3.6.0",
     "graphql-request": "^7.1.0",
     "lucide-react": "^0.414.0",

@@ -7,7 +7,7 @@
     "dashboard": {
       "eyebrow": "RusToK Admin",
       "title": "Control center",
-      "subtitle": "Next.js admin skeleton with fast libraries: React Query, React Hook Form, Zod, DaisyUI, and shadcn/ui.",
+      "subtitle": "Next.js admin skeleton with fast libraries: React Query, React Hook Form, Zod, and shadcn/ui.",
       "notifications": "Notifications hub",
       "stats": {
         "requests": "Requests",

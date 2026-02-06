@@ -1,5 +1,4 @@
 import type { Config } from "tailwindcss";
-import daisyui from "daisyui";
 import tailwindcssAnimate from "tailwindcss-animate";
 
 const config: Config = {
@@ -15,10 +14,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [tailwindcssAnimate, daisyui],
-  daisyui: {
-    themes: ["light"],
-  },
+  plugins: [tailwindcssAnimate],
 };
 
 export default config;
