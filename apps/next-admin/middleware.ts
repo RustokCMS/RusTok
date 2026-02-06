@@ -22,6 +22,10 @@ export default function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  if (isLocaleRoute) {
+    response.cookies.set("NEXT_LOCALE", locale, { path: "/", maxAge: 60 * 60 * 24 * 365 });
+  }
+
   return response;
 }
 
