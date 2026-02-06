@@ -163,9 +163,10 @@ impl EventDispatcher {
         if config.fail_fast {
             for handler in matching_handlers {
                 let envelope = envelope.clone();
+                let event_type = envelope.event.event_type().to_string();
                 if let Err(error) = Self::handle_with_retry(handler, envelope, config).await {
                     error!(
-                        event_type = envelope.event.event_type(),
+                        event_type = event_type.as_str(),
                         error = %error,
                         "Fail fast enabled, stopping dispatch after handler error"
                     );

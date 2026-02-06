@@ -27,4 +27,7 @@ pub enum Error {
 
     #[error("Scripting error: {0}")]
     Scripting(String),
+
+    #[error("External error: {0}")]
+    External(String),
 }

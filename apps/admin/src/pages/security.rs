@@ -283,7 +283,11 @@ pub fn Security() -> impl IntoView {
                                         <div class="session-item">
                                             <div>
                                                 <strong>{label}</strong>
-                                                <p class="form-hint">{move || translate(locale.locale.get(), "security.sessionIp")} ": " {ip}</p>
+                                                <p class="form-hint">
+                                                    {move || translate(locale.locale.get(), "security.sessionIp")}
+                                                    {" : "}
+                                                    {ip}
+                                                </p>
                                             </div>
                                             <div class="session-meta">
                                                 <span class="status-pill">{status_label}</span>
@@ -318,7 +322,11 @@ pub fn Security() -> impl IntoView {
                                         <div class="session-item">
                                             <div>
                                                 <strong>{label}</strong>
-                                                <p class="form-hint">{move || translate(locale.locale.get(), "security.sessionIp")} ": " {ip}</p>
+                                                <p class="form-hint">
+                                                    {move || translate(locale.locale.get(), "security.sessionIp")}
+                                                    {" : "}
+                                                    {ip}
+                                                </p>
                                             </div>
                                             <span class="status-pill">{event.created_at}</span>
                                         </div>
