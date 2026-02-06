@@ -50,7 +50,7 @@ pub fn Security() -> impl IntoView {
     let (current_password, set_current_password) = signal(String::new());
     let (new_password, set_new_password) = signal(String::new());
     let (status, set_status) = signal(Option::<String>::None);
-    let (error, set_error) = signal(Option::<String>::None);
+    let (_error, set_error) = signal(Option::<String>::None);
     let (sessions, set_sessions) = signal(Vec::<SessionItem>::new());
     let (history, set_history) = signal(Vec::<HistoryItem>::new());
 
