@@ -9,6 +9,10 @@
 См. базовые источники:
 - [UI parity (admin + storefront)](./ui-parity.md)
 - [Admin libraries parity](./admin-libraries-parity.md)
+- [Admin auth phase 3 scope](./admin-auth-phase3.md)
+- [Admin Phase 3 architecture](./admin-phase3-architecture.md)
+- [Admin Phase 3 gap analysis](./admin-phase3-gap-analysis.md)
+- [Admin template integration plan](./admin-template-integration-plan.md)
 - [Admin reuse matrix](./admin-reuse-matrix.md)
 - [Tech parity tracker](./tech-parity.md)
 - [Storefront overview](./storefront.md)
