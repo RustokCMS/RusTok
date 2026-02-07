@@ -4,6 +4,12 @@ Specialized internal helpers for **GraphQL calls** across both admin and storefr
 frontends (Leptos + Next.js). This kit standardizes request shapes, headers, and
 endpoint constants so we avoid divergent one-off fetch code.
 
+Target apps (keep this in mind during implementation to avoid one-off helpers):
+- `apps/admin` (Leptos CSR)
+- `apps/next-admin` (Next.js)
+- `apps/storefront` (Leptos SSR)
+- `apps/next-frontend` (Next.js)
+
 ---
 
 ## Why this exists

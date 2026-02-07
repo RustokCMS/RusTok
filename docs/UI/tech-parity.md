@@ -33,6 +33,8 @@ feature parity **in behavior and integration**, independent of UI design.
 | Forms/validation | ✅ | ⚠️ | ✅ | ⚠️ | Same constraints, messages, and server mapping.
 | SSR/CSR strategy | ✅ | ⚠️ | ✅ | ⚠️ | Align hydration and caching strategy.
 | SEO | ✅ | ⚠️ | ✅ | ⚠️ | Same metadata, structured data, and robots rules.
+| Auth kit helpers (`leptos-auth`) | ✅ | ✅ | ✅ | ✅ | Use in `apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`.
+| GraphQL kit helpers (`leptos-graphql`) | ✅ | ✅ | ✅ | ✅ | Standardize `/api/graphql` headers and request shapes across all apps.
 
 Legend: ✅ implemented, ⚠️ pending, ❌ not planned.
 
