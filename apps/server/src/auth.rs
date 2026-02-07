@@ -290,7 +290,9 @@ pub fn decode_email_verification_token(
     .map_err(|_| Error::Unauthorized("Invalid verification token".to_string()))?;
 
     if claims.purpose != "email_verification" {
-        return Err(Error::Unauthorized("Invalid verification token".to_string()));
+        return Err(Error::Unauthorized(
+            "Invalid verification token".to_string(),
+        ));
     }
 
     Ok(claims)
