@@ -167,9 +167,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.100"
+version = "1.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
+checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 
 [[package]]
 name = "ar_archive_writer"
@@ -2755,10 +2755,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "leptos-auth"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "leptos-graphql"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "leptos-hook-form"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "leptos-shadcn-pagination"
 version = "0.1.0"
 dependencies = [
  "leptos",
+]
+
+[[package]]
+name = "leptos-table"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "leptos-zod"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "leptos-zustand"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -4536,6 +4579,12 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "leptos",
+ "leptos-auth",
+ "leptos-graphql",
+ "leptos-hook-form",
+ "leptos-table",
+ "leptos-zod",
+ "leptos-zustand",
  "leptos_router",
  "log",
  "reqwest",
@@ -4808,6 +4857,12 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "leptos",
+ "leptos-auth",
+ "leptos-graphql",
+ "leptos-hook-form",
+ "leptos-table",
+ "leptos-zod",
+ "leptos-zustand",
  "serde",
  "tokio",
 ]
