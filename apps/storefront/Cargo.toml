@@ -15,3 +15,13 @@ leptos-zod = { workspace = true }
 leptos-table = { workspace = true }
 leptos-zustand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+
+[package.metadata.cargo-udeps.ignore]
+normal = [
+  "leptos-auth",
+  "leptos-graphql",
+  "leptos-hook-form",
+  "leptos-table",
+  "leptos-zod",
+  "leptos-zustand",
+]

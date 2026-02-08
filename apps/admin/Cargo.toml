@@ -24,3 +24,13 @@ serde_json = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
 thiserror = { workspace = true }
 web-sys = { version = "0.3", features = ["Storage", "Window"] }
+
+[package.metadata.cargo-udeps.ignore]
+normal = [
+  "leptos-auth",
+  "leptos-graphql",
+  "leptos-hook-form",
+  "leptos-table",
+  "leptos-zod",
+  "leptos-zustand",
+]
