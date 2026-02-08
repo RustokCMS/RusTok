@@ -7,7 +7,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "node -e \"const path=require('path');const fs=require('fs');const{spawnSync}=require('child_process');const cwd=process.cwd();const initCwd=process.env.INIT_CWD||cwd;const candidates=[cwd,path.resolve(cwd,'apps/next-admin'),initCwd,path.resolve(initCwd,'apps/next-admin')];const appDir=candidates.find((dir)=>fs.existsSync(path.join(dir,'next.config.mjs'))&&fs.existsSync(path.join(dir,'package.json')))||cwd;const result=spawnSync('next',['lint'],{stdio:'inherit',cwd:appDir});process.exit(result.status??1);\"",
+    "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
