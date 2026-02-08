@@ -2,7 +2,7 @@
 
 # 🦀 RusToK
 
-**Event-Driven Enterprise Headless Platform Built with Rust**
+**Headless API (GraphQL + REST) CQRS-lite modular platform**
 
 *The stability of a tank. The speed of compiled code. The first CMS designed for the AI-Agent era.*
 
