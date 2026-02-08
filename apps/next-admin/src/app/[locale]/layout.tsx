@@ -3,13 +3,15 @@ import { setRequestLocale } from "next-intl/server";
 
 import LocaleSync from "@/components/locale-sync";
 
-export default function LocaleLayout({
+export default async function LocaleLayout({
   children,
-  params: { locale },
+  params,
 }: {
   children: ReactNode;
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
+
   setRequestLocale(locale);
 
   return (
