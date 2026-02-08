@@ -2,13 +2,13 @@
 
 # Architecture & System Logic
 
-RusTok is a high-performance, event-driven modular monolith designed for enterprise content and commerce. It balances the developer productivity of frameworks like Rails (via Loco.rs) with the uncompromising performance and safety of Rust.
+RusTok is a high-performance, event-driven modular platform designed for enterprise content and commerce. It balances the developer productivity of frameworks like Rails (via Loco.rs) with the uncompromising performance and safety of Rust.
 
 ---
 
 ## 🛰️ High-Level Architecture
 
-The platform is structured as a **Modular Monolith**. While all modules are compiled into a single binary, they remain decoupled through a central **Event Bus** and a **Module Registry**.
+The platform is structured as a **Modular Platform**. While all modules are compiled into a single binary, they remain decoupled through a central **Event Bus** and a **Module Registry**.
 
 ```mermaid
 graph TD

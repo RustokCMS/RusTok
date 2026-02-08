@@ -207,7 +207,7 @@ Best for: Teams wanting type safety without sacrificing DX.
 |--------|--------|--------|
 | Focus | E-commerce only | Modular (commerce optional) |
 | Language | TypeScript | Rust |
-| Architecture | Microservices encouraged | Modular monolith |
+| Architecture | Microservices encouraged | Modular platform |
 | Plugins | Runtime | Compile-time |
 | Admin | React | Leptos (Rust) |
 | Storefront | Next.js templates | Leptos SSR |
