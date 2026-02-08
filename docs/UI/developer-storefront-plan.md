@@ -10,14 +10,9 @@
 См. базовые источники:
 - [UI parity (admin + storefront)](./ui-parity.md)
 - [Admin libraries parity](./admin-libraries-parity.md)
-- [Admin auth phase 3 scope](./admin-auth-phase3.md)
-- [Admin Phase 3 architecture](./admin-phase3-architecture.md)
-- [Admin Phase 3 gap analysis](./admin-phase3-gap-analysis.md)
-- [Admin template integration plan](./admin-template-integration-plan.md)
 - [Admin reuse matrix](./admin-reuse-matrix.md)
 - [Tech parity tracker](./tech-parity.md)
 - [Storefront overview](./storefront.md)
-- [Phase 2.1 — Users vertical slice](./phase2-users-vertical-slice.md)
 
 ---
 
@@ -575,12 +570,12 @@ Still open in Phase 3 scope:
 
 ## Phase 3 — Gap analysis & parity plan (полный текст)
 
-This document compares the current implementation with the target scope from
-`docs/UI/admin-auth-phase3.md` and adds parity guidance for a unified admin UX.
+This section compares the current implementation with the target Phase 3 scope
+and adds parity guidance for a unified admin UX.
 
 ### Scope source
 
-Phase 3 target scope is defined in `docs/UI/admin-auth-phase3.md`:
+Phase 3 target scope is defined in this document:
 
 - Auth core (`/login`)
 - Password recovery (`/reset`)
@@ -722,7 +717,7 @@ Phase 3 can be considered done when:
 ### 1. Подготовка и аудит
 
 1. Зафиксировать исходные цели (scope Phase 3 и требования к паритету).
-   - Документы: `docs/UI/admin-auth-phase3.md`, `docs/UI/admin-phase3-architecture.md`, `docs/UI/admin-phase3-gap-analysis.md`.
+   - Документы: см. разделы Phase 3 в этом документе (scope/architecture/gap analysis).
 2. Снять инвентаризацию шаблона:
    - Список страниц, layouts, UI-компонентов, токены дизайна, типографика.
    - Зависимости (Tailwind/shadcn/ui/иконки/таблицы/формы).
