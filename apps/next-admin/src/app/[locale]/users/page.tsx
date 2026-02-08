@@ -58,8 +58,8 @@ const apiBaseUrl =
 const apiToken = process.env.ADMIN_API_TOKEN;
 const tenantSlug = process.env.ADMIN_TENANT_SLUG;
 
-const buildHeaders = () => {
-  const cookieStore = cookies();
+const buildHeaders = async () => {
+  const cookieStore = await cookies();
   const cookieToken = cookieStore.get("rustok-admin-token")?.value;
   const cookieTenant = cookieStore.get("rustok-admin-tenant")?.value;
   const resolvedToken = cookieToken ?? apiToken;
@@ -82,7 +82,7 @@ const buildHeaders = () => {
 async function fetchRestUser() {
   try {
     const response = await fetch(`${apiBaseUrl}/api/auth/me`, {
-      headers: buildHeaders(),
+      headers: await buildHeaders(),
     });
 
     if (!response.ok) {
@@ -122,7 +122,7 @@ async function fetchGraphqlUsers(options: {
   try {
     const response = await fetch(`${apiBaseUrl}/api/graphql`, {
       method: "POST",
-      headers: buildHeaders(),
+      headers: await buildHeaders(),
       body: JSON.stringify({
         query: graphqlQuery,
         variables: {
