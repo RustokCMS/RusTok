@@ -1,3 +1,5 @@
+**Это альфа версия и требует уточнения. Будьте внимательны, в тексте могут быть ошибки. Чтобы никто не думал, что это незыблемое правило.**
+
 # Admin Phase 3 architecture (Server + Leptos + Next.js)
 
 This document describes the **implemented architecture** for Phase 3 admin auth/security

@@ -1,3 +1,5 @@
+**Это альфа версия и требует уточнения. Будьте внимательны, в тексте могут быть ошибки. Чтобы никто не думал, что это незыблемое правило.**
+
 # Cargo.lock checksum troubleshooting
 
 If Cargo reports a checksum mismatch such as:

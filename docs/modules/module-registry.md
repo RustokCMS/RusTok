@@ -1,3 +1,5 @@
+**Это альфа версия и требует уточнения. Будьте внимательны, в тексте могут быть ошибки. Чтобы никто не думал, что это незыблемое правило.**
+
 # Module Registry (Step 7)
 
 This document describes how the module registry works in the current codebase

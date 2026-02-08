@@ -1,3 +1,5 @@
+**Это альфа версия и требует уточнения. Будьте внимательны, в тексте могут быть ошибки. Чтобы никто не думал, что это незыблемое правило.**
+
 # MCP adapter (rustok-mcp)
 
 RusToK ships an MCP adapter that uses the official Rust SDK (`rmcp`). The goal is to keep MCP

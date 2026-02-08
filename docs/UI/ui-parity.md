@@ -1,3 +1,5 @@
+**Это альфа версия и требует уточнения. Будьте внимательны, в тексте могут быть ошибки. Чтобы никто не думал, что это незыблемое правило.**
+
 # UI parity plan (Leptos + Next.js)
 
 This document describes how we keep **identical UI** across the Leptos and Next.js apps (admin + storefront)

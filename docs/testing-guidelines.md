@@ -1,3 +1,5 @@
+**Это альфа версия и требует уточнения. Будьте внимательны, в тексте могут быть ошибки. Чтобы никто не думал, что это незыблемое правило.**
+
 # Testing guidelines
 
 These guidelines capture what we should take from the shared rules to keep tests reliable and fast.

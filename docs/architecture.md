@@ -1,3 +1,5 @@
+**Это альфа версия и требует уточнения. Будьте внимательны, в тексте могут быть ошибки. Чтобы никто не думал, что это незыблемое правило.**
+
 # Architecture & System Logic
 
 RusTok is a high-performance, event-driven modular monolith designed for enterprise content and commerce. It balances the developer productivity of frameworks like Rails (via Loco.rs) with the uncompromising performance and safety of Rust.

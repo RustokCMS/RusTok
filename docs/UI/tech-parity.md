@@ -1,3 +1,5 @@
+**Это альфа версия и требует уточнения. Будьте внимательны, в тексте могут быть ошибки. Чтобы никто не думал, что это незыблемое правило.**
+
 # Technical parity plan (Leptos + Next.js)
 
 This document tracks **technical parity** between the Leptos and Next.js implementations (admin + storefront).

@@ -1,3 +1,5 @@
+**Это альфа версия и требует уточнения. Будьте внимательны, в тексте могут быть ошибки. Чтобы никто не думал, что это незыблемое правило.**
+
 # Admin Phase 3 gap analysis (Leptos + Next.js)
 
 This document compares the current implementation with the target scope from

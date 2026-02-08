@@ -1,3 +1,5 @@
+**Это альфа версия и требует уточнения. Будьте внимательны, в тексте могут быть ошибки. Чтобы никто не думал, что это незыблемое правило.**
+
 # Phase 3: Admin Auth & User Security (Standard Flow, No SSO)
 
 This document outlines the Phase 3 scope for **standard** multi-language admin authentication
