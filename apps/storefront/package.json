@@ -2,7 +2,7 @@
   "name": "rustok-storefront",
   "private": true,
   "devDependencies": {
-    "daisyui": "^4.12.10"
+    "daisyui": "^5.5.18"
   },
   "scripts": {
     "build:css": "tailwind-rs -c tailwind.config.cjs -i ./assets/input.css -o ./static/app.css --minify",
