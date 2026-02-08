@@ -1183,3 +1183,5 @@ We keep a lightweight decision log in the manifest to acknowledge complexity and
 This log exists to keep the project realistic and aligned as the system grows.
 
 END OF MANIFEST v4.1
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

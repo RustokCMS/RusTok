@@ -788,3 +788,5 @@ Phase 3 can be considered done when:
 - Локализация покрывает новые UI строки.
 - Нет регрессий по API/валидации/роутингу.
 - Документация обновлена и содержит ссылки на шаблон и план интеграции.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

@@ -176,3 +176,5 @@ tags = ["community"]
 
 Если нужно, следующий шаг — разложить эти этапы в задачи по репозиторию
 (`apps/server`, `apps/admin`, `docs`, `CI`) и оценить трудозатраты.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

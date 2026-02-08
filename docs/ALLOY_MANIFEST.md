@@ -91,3 +91,5 @@ Alloy — это не «ещё одна CRM/ERP», а платформа для 
 
 ## 7. Итог
 Alloy — это сплав производительности Rust и гибкости скриптов, который позволяет бизнесу строить свои процессы и аккуратно поглощать legacy-данные, а не подстраиваться под чужие ограничения.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

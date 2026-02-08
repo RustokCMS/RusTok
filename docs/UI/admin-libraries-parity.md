@@ -38,3 +38,5 @@
 
 Чтобы не раздувать документ, отдельная матрица с источниками и ссылками ведётся здесь:
 [`docs/UI/admin-reuse-matrix.md`](./admin-reuse-matrix.md).
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

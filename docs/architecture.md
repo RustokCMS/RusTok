@@ -143,3 +143,5 @@ Interaction follows a strict hierarchy:
 5. `rustok-index` receives the event and runs its **Indexer**.
 6. The **Indexer** fetches the updated post, merges it with tags and author info, and saves it to the `index_content` table.
 7. **Storefront** users see the update near-instantly by querying the fast `index_content` table.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

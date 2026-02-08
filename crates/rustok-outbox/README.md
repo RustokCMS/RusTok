@@ -21,3 +21,5 @@
 
 ## Кому нужен
 Продакшену на одном узле, когда in-memory событий недостаточно, но полноценный стриминг ещё не нужен.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

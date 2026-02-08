@@ -246,3 +246,5 @@ Flex — это **новый концепт** из архитектурного 
 | `docs/ARCHITECTURE_GUIDE.md` | Пометить реализованные пункты как ✅ |
 | `docs/ROADMAP.md` | Обновить статусы Phase 1 задач |
 | `docs/MANIFEST_ADDENDUM.md` | Добавить отметки "уже реализовано" |
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

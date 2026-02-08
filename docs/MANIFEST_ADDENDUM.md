@@ -238,3 +238,5 @@ m20250201_commerce_002_create_variants.rs
 - [ROADMAP.md](./ROADMAP.md)
 - [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md)  
 - [modules/flex.md](./modules/flex.md)
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

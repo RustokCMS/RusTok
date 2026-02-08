@@ -30,3 +30,5 @@ npm run dev
 - Analytics: posthog-js
 - Monitoring: @sentry/nextjs
 - Notifications: react-hot-toast
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

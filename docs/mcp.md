@@ -49,3 +49,5 @@ managed and deployed independently. To wire actual modules, construct a `ModuleR
 
 - The adapter should remain thin; heavy logic belongs in domain services.
 - Updating MCP protocol behavior should be handled by updating the `rmcp` dependency.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

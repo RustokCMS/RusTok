@@ -26,3 +26,5 @@
 | Большие Leptos‑проекты (поиск) | https://github.com/search?q=leptos+admin+stars%3A%3E20&type=repositories | UI/архитектура админки, auth, data‑fetching | backlog | Отфильтровать активные репозитории. |
 | Большие Leptos‑проекты (поиск) | https://github.com/search?q=leptos+dashboard+stars%3A%3E20&type=repositories | Таблицы, графики, layout | backlog | Отфильтровать активные репозитории. |
 | Большие Leptos‑проекты (поиск) | https://github.com/search?q=leptos+cms+stars%3A%3E20&type=repositories | Контентные админки, формы | backlog | Отфильтровать активные репозитории. |
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

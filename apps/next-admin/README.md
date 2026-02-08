@@ -40,3 +40,5 @@ npm run dev
 - [Tech parity tracker](../../docs/UI/tech-parity.md)
 - [Template integration plan](../../docs/UI/admin-template-integration-plan.md)
 - [Admin libraries parity](../../docs/UI/admin-libraries-parity.md)
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

@@ -123,3 +123,5 @@ Use a short, consistent marker near the custom implementation:
 - Define shared route maps for admin and storefront.
 - Add a standard error code map and i18n keys list.
 - Add a parity gap log (custom implementations + planned migrations).
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

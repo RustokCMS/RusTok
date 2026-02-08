@@ -186,3 +186,5 @@ API для admin rebuild, пайплайн сборки и rollback).
 
 - Модуль объявляет миграции через `MigrationSource`.
 - Registry собирает список миграций для запуска в рамках общей миграции.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

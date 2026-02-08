@@ -60,3 +60,5 @@
 1. Сначала фиксируем контракт и минимальный API.
 2. Реализуем его в Rust и TS.
 3. Подключаем на 1–2 экранах, только затем масштабируем.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

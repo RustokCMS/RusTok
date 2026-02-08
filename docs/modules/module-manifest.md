@@ -178,3 +178,5 @@ UI шаги:
 
 - `build_id`, `release_id`, `status`, `started_at`, `finished_at`
 - `manifest_hash`, `modules_delta`, `requested_by`, `reason`
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

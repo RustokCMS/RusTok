@@ -646,3 +646,4 @@ graph TD
 От Opus взяли: полную модульную раскладку, таблицы ролей/приватности/жизненных циклов, админку, безопасность, поиск, уведомления, форумный движок как ядро
 
 В итоге: единый документ, который можно резать на модули и сразу проектировать домены/контракты.
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

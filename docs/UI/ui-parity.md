@@ -130,3 +130,5 @@ and can consume the same design tokens and shadcn-style component contracts.
 | Users Table | ✅ | Implemented with URL sync and PageHeader |
 | Auth Guards | ✅ | Refactored to generic `ProtectedRoute` |
 | Tailwind | ✅ | Build pipeline via `Trunk` configured |
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
