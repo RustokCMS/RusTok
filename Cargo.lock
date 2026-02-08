@@ -2755,10 +2755,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "leptos-auth"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "leptos-graphql"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "leptos-hook-form"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "leptos-shadcn-pagination"
 version = "0.1.0"
 dependencies = [
  "leptos",
+]
+
+[[package]]
+name = "leptos-table"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "leptos-zod"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "leptos-zustand"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -3466,7 +3509,7 @@ dependencies = [
  "md-5",
  "percent-encoding",
  "quick-xml",
- "reqwest",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tokio",
@@ -4265,6 +4308,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "reqwest"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab3f43e3283ab1488b624b44b0e988d0acea0b3214e694730a055cb6b2efa801"
+dependencies = [
+ "base64",
+ "bytes",
+ "futures-core",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "js-sys",
+ "log",
+ "percent-encoding",
+ "pin-project-lite",
+ "serde",
+ "serde_json",
+ "sync_wrapper",
+ "tokio",
+ "tower 0.5.3",
+ "tower-http",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "reserve-port"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4536,9 +4610,15 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "leptos",
+ "leptos-auth",
+ "leptos-graphql",
+ "leptos-hook-form",
+ "leptos-table",
+ "leptos-zod",
+ "leptos-zustand",
  "leptos_router",
  "log",
- "reqwest",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -4808,6 +4888,12 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "leptos",
+ "leptos-auth",
+ "leptos-graphql",
+ "leptos-hook-form",
+ "leptos-table",
+ "leptos-zod",
+ "leptos-zustand",
  "serde",
  "tokio",
 ]
