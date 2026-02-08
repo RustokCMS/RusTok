@@ -7,7 +7,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "node -e \"const path=require('path');const{spawnSync}=require('child_process');const cwd=path.dirname(process.env.npm_package_json||process.cwd());const result=spawnSync('next',['lint',cwd],{stdio:'inherit',cwd});process.exit(result.status??1);\"",
+    "lint": "node -e \"const path=require('path');const{spawnSync}=require('child_process');const pkg=process.env.npm_package_json;const cwd=pkg?path.dirname(pkg):path.resolve(process.cwd(),'apps/next-frontend');const result=spawnSync('next',['lint',cwd],{stdio:'inherit',cwd});process.exit(result.status??1);\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
