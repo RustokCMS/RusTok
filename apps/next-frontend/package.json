@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.0",
-    "@sentry/nextjs": "^8.25.0",
+    "@sentry/nextjs": "^10.38.0",
     "@tanstack/react-query": "^5.51.1",
     "@tanstack/react-table": "^8.20.5",
     "class-variance-authority": "^0.7.0",
@@ -32,12 +32,12 @@
     "next-seo": "^6.6.0",
     "openapi-fetch": "^0.11.0",
     "posthog-js": "^1.161.0",
-    "react": "^18.3.1",
+    "react": "^19.2.4",
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.4.1",
     "tailwind-merge": "^2.4.0",
     "tailwindcss-animate": "^1.0.7",
-    "zod": "^3.23.8",
+    "zod": "^4.3.6",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
@@ -48,7 +48,7 @@
     "eslint": "^8.57.0",
     "eslint-config-next": "^16.1.0",
     "postcss": "^8.4.39",
-    "tailwindcss": "^3.4.7",
+    "tailwindcss": "^4.1.18",
     "typescript": "^5.5.4"
   }
 }

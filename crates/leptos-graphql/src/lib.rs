@@ -31,4 +31,3 @@ pub struct GraphqlResponse<T> {
 pub struct GraphqlError {
     pub message: String,
 }
-
