@@ -189,6 +189,43 @@ tags = ["community"]
 в сборку; если подключён — сборка автоматически тянет нужные UI‑пакеты вместе
 с серверной частью.
 
+### 6.4.1 Эталонная реализация модуля (полная версия с таблицами)
+
+Чтобы сторонние разработчики могли повторять процесс без догадок, нужен
+**эталонный модуль** с максимально полным набором частей: server + admin UI +
+storefront UI. В качестве образца стоит взять **самый полный серверный модуль**
+— то есть с таблицами, миграциями, CRUD, событиями и настройками.
+
+Рекомендуемый состав и структура (монорепо‑формат, всё в одной папке модуля):
+
+```
+modules/rustok-catalog/
+├─ crates/
+│  ├─ catalog-server/          # Rust crate: таблицы, сущности, сервисы, GraphQL/REST
+│  ├─ catalog-migrations/      # Rust crate: миграции SeaORM
+│  └─ catalog-events/          # Rust crate: доменные события (если выделяются отдельно)
+├─ admin/
+│  ├─ next/                    # npm пакет для apps/next-admin
+│  └─ leptos/                  # Rust crate для apps/admin (Leptos UI)
+├─ storefront/
+│  ├─ next/                    # npm пакет для apps/next-frontend
+│  └─ leptos/                  # Rust crate для apps/storefront (Leptos UI)
+├─ module.toml                 # metadata/compatibility для marketplace
+└─ README.md                   # краткая инструкция по локальной сборке/тестам
+```
+
+Минимальный функционал в эталонном серверном модуле:
+- **Таблицы и миграции** (SeaORM), валидный MigrationSource.
+- **Entities/DTO/Services** для CRUD.
+- **События** (event publish) + outbox/transport.
+- **Регистрация в ModuleRegistry** и зависимости.
+- **Настройки модуля** (settings payload + schema).
+- **API слой**: GraphQL/REST контракты для UI‑пакетов.
+
+Задача эталонного модуля — показать полный end‑to‑end путь:
+manifest → registry → UI‑пакеты → build → deploy.
+Это критично для внешних разработчиков и для маркетплейса.
+
 ### 6.5 Надёжный механизм установки и сборки по команде бэкенда
 
 Цель — сделать **детерминированный** и **безопасный** контур, где бэкенд
