@@ -7,7 +7,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "node -e \"const path=require('path');const fs=require('fs');const{spawnSync}=require('child_process');const cwd=process.cwd();const initCwd=process.env.INIT_CWD||cwd;const candidates=[cwd,path.resolve(cwd,'apps/next-frontend'),initCwd,path.resolve(initCwd,'apps/next-frontend')];const appDir=candidates.find((dir)=>fs.existsSync(path.join(dir,'next.config.mjs'))&&fs.existsSync(path.join(dir,'package.json')))||cwd;const result=spawnSync('next',['lint'],{stdio:'inherit',cwd:appDir});process.exit(result.status??1);\"",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -41,10 +41,11 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.1.0",
     "@types/node": "^25.2.2",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.0",
+    "@typescript-eslint/parser": "^8.46.0",
+    "@tailwindcss/postcss": "^4.1.18",
     "autoprefixer": "^10.4.19",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.1.0",

@@ -39,8 +39,8 @@ const apiBaseUrl =
 const apiToken = process.env.ADMIN_API_TOKEN;
 const tenantSlug = process.env.ADMIN_TENANT_SLUG;
 
-const buildHeaders = () => {
-  const cookieStore = cookies();
+const buildHeaders = async () => {
+  const cookieStore = await cookies();
   const cookieToken = cookieStore.get("rustok-admin-token")?.value;
   const cookieTenant = cookieStore.get("rustok-admin-tenant")?.value;
   const resolvedToken = cookieToken ?? apiToken;
@@ -64,7 +64,7 @@ async function fetchGraphqlUser(id: string) {
   try {
     const response = await fetch(`${apiBaseUrl}/api/graphql`, {
       method: "POST",
-      headers: buildHeaders(),
+      headers: await buildHeaders(),
       body: JSON.stringify({
         query: graphqlQuery,
         variables: { id },

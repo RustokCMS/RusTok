@@ -5,6 +5,11 @@ on:
     - cron: "0 4 * * 1"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+  security-events: write
+
 env:
   CARGO_TERM_COLOR: always
 
