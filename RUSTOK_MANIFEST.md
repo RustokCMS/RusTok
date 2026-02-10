@@ -38,6 +38,48 @@
 ---
 
 
+### 1.1 Паспорт платформы (простым языком)
+
+> Этот блок — «объяснение для человека с нулевым контекстом». Если прочитать только его, уже понятно что такое RusToK.
+
+#### Что такое RusToK в одном абзаце
+RusToK — это headless-платформа на Rust для e-commerce и контента.  
+Она хранит данные по арендаторам (tenant), отдаёт API (REST + GraphQL), использует модульную архитектуру и события между модулями.  
+Главная идея: безопасные записи (write path) + быстрые чтения (read path/index), чтобы система держала высокую нагрузку.
+
+#### Что платформа делает
+- Управляет tenants (магазины/сайты) и изолирует их данные.
+- Даёт API для админки, storefront и внешних интеграций.
+- Позволяет включать/отключать модули через manifest + rebuild.
+- Публикует доменные события, на которых строятся read-модели и интеграции.
+
+#### Для кого это
+- **Backend/Platform команды**: ядро, модули, API, миграции.
+- **Frontend команды**: admin/storefront через стабильные API.
+- **DevOps/SRE**: деплой, мониторинг, очереди, кэш, поиск.
+- **Product/Analyst**: понимание границ модулей и бизнес-флоу.
+
+#### Границы и ответственность
+- `apps/server` — основной HTTP/API рантайм.
+- `crates/rustok-core` — инфраструктурное ядро (контракты, events, cache abstractions).
+- `crates/rustok-*` — доменные модули (commerce/content/blog/…); каждый владеет своими таблицами и логикой.
+- Модули не ходят друг к другу напрямую по БД — только через контракты и события.
+
+#### Как читать код (рекомендуемый порядок)
+1. `apps/server/src/app.rs` — boot, routes, middleware.
+2. `apps/server/src/middleware/tenant.rs` — tenant resolution и кэш.
+3. `apps/server/src/controllers/*` + `apps/server/src/graphql/*` — API слой.
+4. `crates/rustok-core` — инфраструктурные интерфейсы.
+5. `crates/rustok-*/src/services` — бизнес-логика модулей.
+
+#### Операционные правила (must know)
+- Tenant isolation обязательна: каждый запрос и каждая сущность должны быть scoped по `tenant_id`.
+- Изменение состава модулей = изменение manifest + rebuild (а не hot-plug в runtime).
+- Кэш tenant resolver должен быть консистентным между инстансами (Redis + pub/sub invalidation).
+- Метрики `/metrics` должны отражать реальное состояние shared cache (а не только локальный процесс).
+
+---
+
 ### 📍 Политика размещения документации
 
 - **Общая документация платформы** хранится в корневой папке [`docs/`](docs/).
@@ -107,7 +149,7 @@
 
 - **Config:** `apps/server/config/*.yaml`, секция `rustok` для кастомных настроек.
 - **Auth:** встроенные Users + JWT access/refresh + bcrypt.
-- **Cache:** Redis через Loco cache.
+- **Cache:** shared `CacheBackend` (Redis optional, in-memory fallback).
 - **Workers/Queue:** фоновые задачи и очереди Loco.
 - **Mailer:** SMTP через Loco mailer.
 - **Storage:** Local/S3 через Loco storage (`object_store`).
@@ -140,11 +182,11 @@
 | **Events (L0)** | tokio::sync::mpsc | In-memory transport |
 | **Events (L1)** | Outbox Pattern | Custom crate `rustok-outbox` |
 | **Events (L2)** | Iggy | Streaming (remote/embedded via connector layer) |
-| **Cache** | Loco Cache (Redis) | Built-in cache integration |
+| **Cache** | `rustok-core::CacheBackend` + Redis/InMemory | Shared cache backend, Redis optional (`redis-cache` feature) |
 | **Search** | PostgreSQL FTS + Tantivy/Meilisearch (optional) | Start with `tsvector`, add Tantivy or Meilisearch when needed |
 | **Storage** | object_store | Unified object storage API |
 | **Tracing** | tracing | `tracing` |
-| **Metrics** | Placeholder | telemetry stub (no exporter) |
+| **Metrics** | Prometheus text endpoint + telemetry | `/metrics` + tenant cache hit/miss counters (shared-aware) |
 | **Auth** | Loco Auth (JWT) | Users + JWT access/refresh, bcrypt hashing |
 | **Mailer** | Loco Mailer (SMTP) | Built-in mail delivery + templates |
 | **Workers/Queue** | Loco Workers | Async workers + Redis/Postgres queue |
