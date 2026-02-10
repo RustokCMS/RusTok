@@ -1,21 +1,22 @@
-use axum::http::{header, StatusCode};
-use axum::response::IntoResponse;
-use axum::routing::get;
-use loco_rs::prelude::*;
+use axum::{
+    extract::State,
+    http::{header::CONTENT_TYPE, StatusCode},
+    response::{IntoResponse, Response},
+};
+use loco_rs::{app::AppContext, controller::Routes, prelude::*, Result};
 
 use crate::middleware::tenant::tenant_cache_stats;
 
-pub async fn metrics() -> Result<Response> {
+pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
     match rustok_telemetry::metrics_handle() {
         Some(handle) => {
             let mut payload = handle.render();
-            if !payload.ends_with('\n') {
-                payload.push('\n');
-            }
-            payload.push_str(&render_tenant_cache_metrics());
+            payload.push('\n');
+            payload.push_str(&render_tenant_cache_metrics(&ctx).await);
 
             Ok((
-                [(header::CONTENT_TYPE, "text/plain; version=0.0.4")],
+                StatusCode::OK,
+                [(CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
                 payload,
             )
                 .into_response())
@@ -28,8 +29,8 @@ pub fn routes() -> Routes {
     Routes::new().prefix("metrics").add("/", get(metrics))
 }
 
-fn render_tenant_cache_metrics() -> String {
-    let stats = tenant_cache_stats();
+async fn render_tenant_cache_metrics(ctx: &AppContext) -> String {
+    let stats = tenant_cache_stats(ctx).await;
     format!(
         "rustok_tenant_cache_hits {hits}\n\
 rustok_tenant_cache_misses {misses}\n\

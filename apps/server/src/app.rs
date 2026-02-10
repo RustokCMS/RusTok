@@ -61,6 +61,7 @@ impl Hooks for App {
 
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
         let registry = modules::build_registry();
+        middleware::tenant::init_tenant_cache_infrastructure(ctx).await;
         let engine = Arc::new(alloy_scripting::create_default_engine());
         let storage = Arc::new(alloy_scripting::SeaOrmStorage::new(ctx.db.clone()));
         let orchestrator = Arc::new(alloy_scripting::ScriptOrchestrator::new(
