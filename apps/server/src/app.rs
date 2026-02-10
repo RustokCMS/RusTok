@@ -80,9 +80,6 @@ impl Hooks for App {
 
         Ok(router
             .layer(Extension(registry))
-            .layer(Extension(EventTransportExtension {
-                _transport: event_runtime.transport.clone(),
-            }))
             .layer(Extension(alloy_state))
             .layer(axum_middleware::from_fn_with_state(
                 ctx.clone(),

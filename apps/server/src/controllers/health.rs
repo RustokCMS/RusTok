@@ -109,6 +109,7 @@ pub async fn ready(
             search: Default::default(),
             features: Default::default(),
             rate_limit: Default::default(),
+            events: Default::default(),
         });
 
     let mut checks = vec![
@@ -123,7 +124,7 @@ pub async fn ready(
             "cache_backend",
             DependencyCriticality::NonCritical,
             "dependency",
-            check_cache_backend,
+            || check_cache_backend(&ctx),
         )
         .await,
         run_guarded_check(
@@ -211,8 +212,8 @@ async fn check_database(db: &DatabaseConnection) -> std::result::Result<(), Stri
         .map_err(|error| format!("database check failed: {error}"))
 }
 
-async fn check_cache_backend() -> std::result::Result<(), String> {
-    let _ = tenant_cache_stats();
+async fn check_cache_backend(ctx: &AppContext) -> std::result::Result<(), String> {
+    let _ = tenant_cache_stats(ctx).await;
     Ok(())
 }
 
