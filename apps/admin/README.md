@@ -13,3 +13,8 @@
 - [Admin libraries parity](../../docs/UI/admin-libraries-parity.md)
 
 This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+
+## Взаимодействие
+- apps/server (HTTP/GraphQL API)
+- crates/rustok-core (контракты и события через API-слой)
+- crates/rustok-rbac (авторизация/права через backend)

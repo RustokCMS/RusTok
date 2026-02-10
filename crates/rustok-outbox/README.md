@@ -16,3 +16,8 @@
 
 ## Документация
 Дополнительная документация модуля хранится в `docs/`.
+
+## Взаимодействие
+- crates/rustok-core (EventTransport/EventEnvelope)
+- apps/server (миграции/рантайм relay)
+- target transport (например rustok-iggy)

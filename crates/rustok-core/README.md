@@ -23,3 +23,12 @@
 Этот модуль подключают **все** остальные crates, потому что без него нет единого языка событий и базовых типов.
 
 This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+
+## Взаимодействие
+- все crates/rustok-*
+- apps/server
+- apps/mcp
+
+## Документация
+- Локальная документация: `./docs/`
+- Общая документация платформы: `/docs`
