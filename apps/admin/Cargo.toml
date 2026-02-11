@@ -21,7 +21,6 @@ leptos-use = { workspace = true }
 leptos_i18n = { workspace = true }
 leptos-next-metadata = { workspace = true }
 leptos_query = { workspace = true }
-tailwind-rs = { workspace = true }
 console_error_panic_hook = "0.1"
 console_log = "1"
 log = "0.4"
@@ -46,5 +45,4 @@ normal = [
   "leptos_i18n",
   "leptos-next-metadata",
   "leptos_query",
-  "tailwind-rs",
 ]

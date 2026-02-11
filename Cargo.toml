@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "apps/server",
-    "apps/admin",      # Note: Currently blocked by parcel_css v1.0.0-alpha.32 compilation issue (see CODE_AUDIT_REPORT)
-    "apps/storefront", # Note: Currently blocked by parcel_css v1.0.0-alpha.32 compilation issue (see CODE_AUDIT_REPORT)
+    "apps/admin",
+    "apps/storefront",
     "apps/mcp",
     "crates/*",
 ]
@@ -80,7 +80,6 @@ leptos-use = "*"
 leptos_i18n = "*"
 leptos-next-metadata = "*"
 leptos_query = "*"
-tailwind-rs = "*"
 
 # Logging
 tracing = "0.1"

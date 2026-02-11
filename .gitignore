@@ -6,3 +6,7 @@
 .env
 *.log
 **/node_modules
+
+# Tailwind CSS generated files
+apps/admin/output.css
+apps/storefront/static/output.css

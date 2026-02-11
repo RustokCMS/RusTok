@@ -1,0 +1,13 @@
+{
+  "name": "rustok",
+  "private": true,
+  "scripts": {
+    "css:admin": "npx tailwindcss -c apps/admin/tailwind.config.js -i apps/admin/input.css -o apps/admin/output.css --watch",
+    "css:admin:build": "npx tailwindcss -c apps/admin/tailwind.config.js -i apps/admin/input.css -o apps/admin/output.css --minify",
+    "css:storefront": "npx tailwindcss -c apps/storefront/tailwind.config.js -i apps/storefront/assets/input.css -o apps/storefront/static/output.css --watch",
+    "css:storefront:build": "npx tailwindcss -c apps/storefront/tailwind.config.js -i apps/storefront/assets/input.css -o apps/storefront/static/output.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
+  }
+}

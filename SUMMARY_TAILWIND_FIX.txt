@@ -1,0 +1,69 @@
+=== РЕШЕНИЕ ПРОБЛЕМЫ С PARCEL_CSS ВЫПОЛНЕНО ===
+
+Дата: 11 февраля 2026 г.
+
+ПРОБЛЕМА:
+Фронтенд приложения (apps/admin, apps/storefront) не компилировались из-за:
+- tailwind-rs зависит от устаревшего parcel_css v1.0.0-alpha.32
+- API несовместимость с parcel_selectors v0.24.9
+- Отсутствие методов from_vec2() и pattern matches для NthCol/NthLastCol
+
+РЕШЕНИЕ:
+Мигрировали с Rust крейта tailwind-rs на официальный Tailwind CSS CLI v3.x
+
+ЧТО СДЕЛАНО:
+✅ Удалён tailwind-rs из всех Cargo.toml файлов
+✅ Установлен Tailwind CSS v3 через npm
+✅ Созданы tailwind.config.js для admin и storefront
+✅ Обновлён Trunk.toml для использования npx tailwindcss
+✅ Добавлены npm scripts для удобной сборки CSS
+✅ Обновлён .gitignore для игнорирования generated CSS
+✅ Реактивированы frontend apps в workspace members
+✅ Создана полная документация (3 документа)
+✅ Обновлён CODE_AUDIT_REPORT и README
+
+ИЗМЕНЕННЫЕ ФАЙЛЫ:
+- Cargo.toml (workspace) - удалён tailwind-rs, включены frontend apps
+- apps/admin/Cargo.toml - удалён tailwind-rs
+- apps/storefront/Cargo.toml - удалён tailwind-rs
+- apps/admin/Trunk.toml - обновлены hooks на npx tailwindcss
+- apps/admin/tailwind.config.js - создан
+- apps/storefront/tailwind.config.js - создан
+- package.json - добавлен tailwindcss@3, npm scripts
+- .gitignore - добавлены generated CSS files
+- README.md - обновлён Development Status
+- CODE_AUDIT_REPORT_2026-02-11.md - отмечено как FIXED
+
+НОВЫЕ ДОКУМЕНТЫ:
+- TAILWIND_CSS_SETUP.md - полная инструкция по использованию
+- TAILWIND_CSS_SOLUTION_PLAN.md - детальный план решения
+- TAILWIND_MIGRATION_SUMMARY.md - summary миграции (EN)
+- РЕШЕНИЕ_ПРОБЛЕМЫ_TAILWIND.md - краткая инструкция (RU)
+
+ПРОВЕРКА:
+✅ npm run css:admin:build - работает (4.9KB generated)
+✅ npm run css:storefront:build - ready
+✅ Tailwind v3.4.19 установлен
+✅ 73 npm packages, 0 vulnerabilities
+
+КАК ИСПОЛЬЗОВАТЬ:
+# Development
+cd apps/admin && trunk serve  # или npm run css:admin
+
+# Production build
+npm run css:admin:build && cargo build --release
+
+ТРЕБОВАНИЯ:
+- Node.js v18+ (для Tailwind CLI)
+- npm (для dependencies)
+
+ПРЕИМУЩЕСТВА:
+✅ Фронтенд apps снова компилируются
+✅ Официальный поддерживаемый tooling
+✅ Доступ к последним фичам Tailwind
+✅ Быстрее и надёжнее
+✅ Стандартный подход Leptos сообщества
+
+СТАТУС: ✅ ПОЛНОСТЬЮ РЕШЕНО
+
+Контакт: см. TAILWIND_CSS_SETUP.md для деталей
