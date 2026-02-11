@@ -3,7 +3,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
 use uuid::Uuid;
 
 use rustok_commerce::CatalogService;
-use rustok_core::EventBus;
+use rustok_core::{EventBus, TransactionalEventBus};
 
 use super::types::*;
 
@@ -20,7 +20,7 @@ impl CommerceQuery {
         locale: Option<String>,
     ) -> Result<Option<GqlProduct>> {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let locale = locale.unwrap_or_else(|| "en".to_string());
 
         let service = CatalogService::new(db.clone(), event_bus.clone());

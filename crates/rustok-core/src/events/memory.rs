@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -46,5 +47,9 @@ impl EventTransport for MemoryTransport {
 
     fn reliability_level(&self) -> ReliabilityLevel {
         ReliabilityLevel::InMemory
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }

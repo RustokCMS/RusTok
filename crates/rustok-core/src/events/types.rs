@@ -5,6 +5,10 @@ use uuid::Uuid;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EventEnvelope {
     pub id: Uuid,
+    /// Event type string for fast filtering and routing
+    pub event_type: String,
+    /// Schema version for this event type (for evolution tracking)
+    pub schema_version: u16,
     pub correlation_id: Uuid,
     pub causation_id: Option<Uuid>,
     pub tenant_id: Uuid,
@@ -18,8 +22,12 @@ pub struct EventEnvelope {
 impl EventEnvelope {
     pub fn new(tenant_id: Uuid, actor_id: Option<Uuid>, event: DomainEvent) -> Self {
         let id = crate::id::generate_id();
+        let event_type = event.event_type().to_string();
+        let schema_version = event.schema_version();
         Self {
             id,
+            event_type,
+            schema_version,
             correlation_id: id,
             causation_id: None,
             tenant_id,
@@ -273,6 +281,70 @@ impl DomainEvent {
             Self::TenantUpdated { .. } => "tenant.updated",
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
+        }
+    }
+
+    /// Returns the schema version for this event type.
+    /// Increment this version when making breaking changes to the event structure.
+    ///
+    /// Version History:
+    /// - v1: Initial schema for all events
+    pub fn schema_version(&self) -> u16 {
+        match self {
+            // Content events (v1)
+            Self::NodeCreated { .. } => 1,
+            Self::NodeUpdated { .. } => 1,
+            Self::NodeTranslationUpdated { .. } => 1,
+            Self::NodePublished { .. } => 1,
+            Self::NodeUnpublished { .. } => 1,
+            Self::NodeDeleted { .. } => 1,
+            Self::BodyUpdated { .. } => 1,
+
+            // Category events (v1)
+            Self::CategoryCreated { .. } => 1,
+            Self::CategoryUpdated { .. } => 1,
+            Self::CategoryDeleted { .. } => 1,
+
+            // Tag events (v1)
+            Self::TagCreated { .. } => 1,
+            Self::TagAttached { .. } => 1,
+            Self::TagDetached { .. } => 1,
+
+            // Media events (v1)
+            Self::MediaUploaded { .. } => 1,
+            Self::MediaDeleted { .. } => 1,
+
+            // User events (v1)
+            Self::UserRegistered { .. } => 1,
+            Self::UserLoggedIn { .. } => 1,
+            Self::UserUpdated { .. } => 1,
+            Self::UserDeleted { .. } => 1,
+
+            // Commerce events (v1)
+            Self::ProductCreated { .. } => 1,
+            Self::ProductUpdated { .. } => 1,
+            Self::ProductPublished { .. } => 1,
+            Self::ProductDeleted { .. } => 1,
+            Self::VariantCreated { .. } => 1,
+            Self::VariantUpdated { .. } => 1,
+            Self::VariantDeleted { .. } => 1,
+            Self::InventoryUpdated { .. } => 1,
+            Self::InventoryLow { .. } => 1,
+            Self::PriceUpdated { .. } => 1,
+            Self::OrderPlaced { .. } => 1,
+            Self::OrderStatusChanged { .. } => 1,
+            Self::OrderCompleted { .. } => 1,
+            Self::OrderCancelled { .. } => 1,
+
+            // Index events (v1)
+            Self::ReindexRequested { .. } => 1,
+            Self::IndexUpdated { .. } => 1,
+
+            // Tenant events (v1)
+            Self::TenantCreated { .. } => 1,
+            Self::TenantUpdated { .. } => 1,
+            Self::LocaleEnabled { .. } => 1,
+            Self::LocaleDisabled { .. } => 1,
         }
     }
 

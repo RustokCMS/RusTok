@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::context::TenantContext;
 use crate::extractors::auth::CurrentUser;
-use crate::services::event_bus::event_bus_from_context;
+use crate::services::event_bus::transactional_event_bus_from_context;
 
 /// List content nodes
 #[utoipa::path(
@@ -30,7 +30,7 @@ pub async fn list_nodes(
     user: CurrentUser,
     Query(filter): Query<ListNodesFilter>,
 ) -> Result<Json<Vec<NodeListItem>>> {
-    let service = NodeService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = NodeService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let (items, _) = service
         .list_nodes(tenant.id, user.security_context(), filter)
         .await
@@ -58,7 +58,7 @@ pub async fn get_node(
     _user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<NodeResponse>> {
-    let service = NodeService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = NodeService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let node = service
         .get_node(id)
         .await
@@ -84,7 +84,7 @@ pub async fn create_node(
     user: CurrentUser,
     Json(input): Json<CreateNodeInput>,
 ) -> Result<Json<NodeResponse>> {
-    let service = NodeService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = NodeService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let node = service
         .create_node(tenant.id, user.security_context(), input)
         .await
@@ -114,7 +114,7 @@ pub async fn update_node(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateNodeInput>,
 ) -> Result<Json<NodeResponse>> {
-    let service = NodeService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = NodeService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let node = service
         .update_node(id, user.security_context(), input)
         .await
@@ -142,7 +142,7 @@ pub async fn delete_node(
     user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
-    let service = NodeService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = NodeService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .delete_node(id, user.security_context())
         .await

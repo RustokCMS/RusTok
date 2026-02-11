@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::context::AuthContext;
 use rustok_blog::PostService;
-use rustok_core::{EventBus, SecurityContext};
+use rustok_core::{EventBus, SecurityContext, TransactionalEventBus};
 
 use super::types::*;
 
@@ -20,7 +20,7 @@ impl BlogMutation {
         input: CreatePostInput,
     ) -> Result<Uuid> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = ctx
             .data::<AuthContext>()
             .map(|a| a.security_context())
@@ -41,7 +41,7 @@ impl BlogMutation {
         input: UpdatePostInput,
     ) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = ctx
             .data::<AuthContext>()
             .map(|a| a.security_context())
@@ -62,7 +62,7 @@ impl BlogMutation {
 
     async fn delete_post(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let security = ctx
             .data::<AuthContext>()
             .map(|a| a.security_context())

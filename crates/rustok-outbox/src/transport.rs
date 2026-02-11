@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Set};
+use std::any::Any;
 
 use rustok_core::events::{EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_core::Result;
@@ -17,6 +18,29 @@ impl OutboxTransport {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
+
+    pub async fn write_to_outbox<C>(&self, txn: &C, envelope: EventEnvelope) -> Result<()>
+    where
+        C: ConnectionTrait,
+    {
+        let payload = serde_json::to_value(&envelope)?;
+        let model = entity::ActiveModel {
+            id: Set(envelope.id),
+            event_type: Set(envelope.event_type.clone()),
+            schema_version: Set(envelope.schema_version as i16),
+            payload: Set(payload),
+            status: Set(SysEventStatus::Pending),
+            retry_count: Set(0),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
+            created_at: Set(Utc::now()),
+            dispatched_at: Set(None),
+        };
+        model.insert(txn).await?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -25,6 +49,8 @@ impl EventTransport for OutboxTransport {
         let payload = serde_json::to_value(&envelope)?;
         let model = entity::ActiveModel {
             id: Set(envelope.id),
+            event_type: Set(envelope.event_type.clone()),
+            schema_version: Set(envelope.schema_version as i16),
             payload: Set(payload),
             status: Set(SysEventStatus::Pending),
             retry_count: Set(0),
@@ -56,5 +82,9 @@ impl EventTransport for OutboxTransport {
 
     fn reliability_level(&self) -> ReliabilityLevel {
         ReliabilityLevel::Outbox
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }

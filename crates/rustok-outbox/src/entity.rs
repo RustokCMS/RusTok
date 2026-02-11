@@ -19,6 +19,10 @@ pub enum SysEventStatus {
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: Uuid,
+    /// Event type string for fast filtering (e.g., "node.created")
+    pub event_type: String,
+    /// Schema version for this event type
+    pub schema_version: i16,
     pub payload: Json,
     pub status: SysEventStatus,
     pub retry_count: i32,

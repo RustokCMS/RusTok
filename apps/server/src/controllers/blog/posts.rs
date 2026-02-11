@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::context::TenantContext;
 use crate::extractors::auth::CurrentUser;
-use crate::services::event_bus::event_bus_from_context;
+use crate::services::event_bus::transactional_event_bus_from_context;
 
 /// List blog posts
 #[utoipa::path(
@@ -28,7 +28,7 @@ pub async fn list_posts(
     user: CurrentUser,
     Query(mut filter): Query<ListNodesFilter>,
 ) -> Result<Json<Vec<NodeListItem>>> {
-    let service = NodeService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = NodeService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     // Force kind="post"
     filter.kind = Some("post".to_string());
     let (items, _) = service
@@ -58,7 +58,7 @@ pub async fn get_post(
     _user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<NodeResponse>> {
-    let service = NodeService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = NodeService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let node = service
         .get_node(id)
         .await
@@ -88,7 +88,7 @@ pub async fn create_post(
     user: CurrentUser,
     Json(input): Json<CreatePostInput>,
 ) -> Result<Json<Uuid>> {
-    let service = PostService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let post_id = service
         .create_post(tenant.id, user.security_context(), input)
         .await
@@ -118,7 +118,7 @@ pub async fn update_post(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateNodeInput>,
 ) -> Result<()> {
-    let service = PostService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .update_post(id, user.security_context(), input)
         .await
@@ -146,7 +146,7 @@ pub async fn delete_post(
     user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
-    let service = PostService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .delete_post(id, user.security_context())
         .await

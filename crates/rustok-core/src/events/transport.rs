@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::any::Any;
 use uuid::Uuid;
 
 use crate::Result;
@@ -28,4 +29,6 @@ pub trait EventTransport: Send + Sync {
     }
 
     fn reliability_level(&self) -> ReliabilityLevel;
+
+    fn as_any(&self) -> &dyn Any;
 }
