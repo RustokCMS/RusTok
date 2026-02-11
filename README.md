@@ -331,6 +331,7 @@ cargo loco generate controller products --api
 - [MCP adapter](docs/mcp.md)
 - [Storefront SSR notes](docs/UI/storefront.md)
 - [Testing guidelines](docs/testing-guidelines.md)
+- [Loco.rs server context pack](apps/server/docs/loco/README.md)
 
 ### Admin Auth (Phase 3)
 
