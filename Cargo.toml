@@ -76,7 +76,7 @@ leptos-shadcn-pagination = { path = "crates/leptos-shadcn-pagination" }
 leptos-use = "*"
 leptos_i18n = "*"
 leptos-next-metadata = "*"
-leptos-query = "*"
+leptos_query = "*"
 tailwind-rs = "*"
 
 # Logging
