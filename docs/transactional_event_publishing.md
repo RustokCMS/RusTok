@@ -246,3 +246,68 @@ When upgrading existing systems:
 2. Implement dead letter handling for failed events
 3. Monitor event delivery rates and latencies
 4. Set up alerting for stuck outbox entries
+
+---
+
+## Modules Using TransactionalEventBus
+
+**Status (2026-02-11)**: The following modules have been migrated to use `TransactionalEventBus` from `rustok-outbox`:
+
+### Content Modules
+
+| Module | Services | Dependency Added | Status |
+|--------|----------|------------------|--------|
+| `rustok-content` | `NodeService` | ✅ Yes | ✅ Migrated |
+| `rustok-blog` | `PostService` | ✅ Yes | ✅ Migrated |
+| `rustok-forum` | `CategoryService`, `TopicService`, `ReplyService`, `ModerationService` | ✅ Yes | ✅ Migrated |
+| `rustok-pages` | `PageService`, `BlockService`, `MenuService` | ✅ Yes | ✅ Migrated |
+
+### Migration Details
+
+All service constructors now accept `TransactionalEventBus` instead of `EventBus`:
+
+```rust
+// Before (deprecated)
+use rustok_core::EventBus;
+
+impl NodeService {
+    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self { ... }
+}
+
+// After (current)
+use rustok_outbox::TransactionalEventBus;
+
+impl NodeService {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self { ... }
+}
+```
+
+### Required Changes for New Modules
+
+When creating new modules that publish events:
+
+1. **Add dependency** in `Cargo.toml`:
+   ```toml
+   [dependencies]
+   rustok-outbox.workspace = true
+   ```
+
+2. **Import TransactionalEventBus**:
+   ```rust
+   use rustok_outbox::TransactionalEventBus;
+   ```
+
+3. **Update service constructor**:
+   ```rust
+   pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self
+   ```
+
+4. **Use transactional publishing**:
+   ```rust
+   event_bus.publish_in_tx(&txn, tenant_id, user_id, event).await?;
+   ```
+
+See module READMEs for specific implementation details:
+- [rustok-blog/README.md](../crates/rustok-blog/README.md)
+- [rustok-forum/README.md](../crates/rustok-forum/README.md)
+- [rustok-pages/README.md](../crates/rustok-pages/README.md)

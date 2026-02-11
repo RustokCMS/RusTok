@@ -11,7 +11,7 @@
 ## Как работает (простыми словами)
 1. Блоговые операции используют сервисы контентного ядра.
 2. Поверх добавляется специфическая логика (например, workflow публикации).
-3. События отправляются через EventBus.
+3. События отправляются через `TransactionalEventBus` из `rustok-outbox` для надёжной доставки.
 
 ## Ключевые компоненты
 - `services/` — логика блога (поверх контента).
@@ -25,6 +25,7 @@ This is an alpha version and requires clarification. Be careful, there may be er
 ## Взаимодействие
 - crates/rustok-core
 - crates/rustok-content
+- crates/rustok-outbox (TransactionalEventBus)
 - crates/rustok-index
 
 ## Документация
@@ -37,6 +38,7 @@ This is an alpha version and requires clarification. Be careful, there may be er
 - **Взаимодействует с:**
   - crates/rustok-core
   - crates/rustok-content
+  - crates/rustok-outbox (TransactionalEventBus)
   - crates/rustok-index
 - **Точки входа:**
   - `crates/rustok-blog/src/lib.rs`

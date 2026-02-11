@@ -121,6 +121,12 @@ Total: 6/22 tasks (27%)
 - ✅ Cache Stampede Protection
 - ✅ RBAC Enforcement
 
+**Backend Compilation Fixes (2026-02-11):**
+- ✅ IggyTransport: Added missing `as_any()` method
+- ✅ TransactionalEventBus: Fixed imports in 8 service files
+- ✅ Added `rustok-outbox` dependencies to blog/forum/pages modules
+- ✅ Backend compiles successfully
+
 **Phase 2:**
 - ✅ Rate Limiting Middleware (sliding window algorithm)
 - ✅ Input Validation Framework (7 custom validators)
@@ -369,6 +375,7 @@ cargo loco generate controller products --api
 | [ARCHITECTURE_GUIDE.md](docs/ARCHITECTURE_GUIDE.md) | Архитектурные принципы и решения |
 | [ROADMAP.md](docs/ROADMAP.md) | Фазы разработки (Forge → Blueprint → Construction) |
 | [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Статус реализации vs документация |
+| [BACKEND_FIXES_2026-02-11.md](docs/BACKEND_FIXES_2026-02-11.md) | **NEW** Backend compilation fixes and TransactionalEventBus migration |
 
 ### Implementation Guides
 

@@ -38,6 +38,8 @@
 | [CODE_AUDIT_VERIFICATION.md](CODE_AUDIT_VERIFICATION.md) | Результаты проверки реализации и согласование чеклистов |
 | [TESTING_PROGRESS.md](TESTING_PROGRESS.md) | Testing coverage progress and test suites |
 | [rbac-enforcement.md](docs/rbac-enforcement.md) | RBAC permission system documentation |
+| [BACKEND_FIXES_2026-02-11.md](docs/BACKEND_FIXES_2026-02-11.md) | **NEW** Backend compilation fixes and TransactionalEventBus migration |
+| [transactional_event_publishing.md](docs/transactional_event_publishing.md) | Transactional event publishing guide with module migration status |
 
 ### 🧭 Governance Update (2026-02-11)
 
@@ -50,11 +52,18 @@
 - ✅ RBAC enforcement extractors and middleware
 - ✅ Unit test coverage 31% (exceeded 30% goal)
 
+**Backend Compilation Fixes (2026-02-11)** ✅:
+- ✅ IggyTransport: Added missing `as_any()` method implementation
+- ✅ TransactionalEventBus: Fixed imports in 8 service files (blog/forum/pages)
+- ✅ Added `rustok-outbox` dependency to `rustok-blog`, `rustok-forum`, `rustok-pages`
+- ✅ Backend compiles successfully (frontend apps temporarily disabled due to parcel_css issue)
+
 **Documentation Status**:
 - ✅ New: I18N_ARCHITECTURE.md - Complete multi-language guide
 - ✅ Updated: DATABASE_SCHEMA.md with i18n reference
 - ✅ Updated: TESTING_PROGRESS.md with 226 tests tracked
 - ✅ New: docs/rbac-enforcement.md - Permission system guide
+- ✅ Updated: Module READMEs with TransactionalEventBus usage
 - ✅ Для завершённых critical tasks статус в `IMPLEMENTATION_CHECKLIST.md` и `PROGRESS_TRACKER.md` синхронизирован
 
 ---
@@ -897,12 +906,15 @@ graph TD
 **Роль:** надёжная доставка событий (Outbox pattern).
 
 - Не заменяет EventBus, а расширяет транспорт.
+- Предоставляет `TransactionalEventBus` для сервисов модулей.
+- Используется в `rustok-content`, `rustok-blog`, `rustok-forum`, `rustok-pages` для надёжной публикации событий.
 
 ### 15.12 `rustok-iggy` (Streaming transport)
 
 **Роль:** потоковый транспорт событий (опционально).
 
 - Реализация `EventTransport` для L2.
+- **Status (2026-02-11)**: Реализован метод `as_any()` для trait `EventTransport` ✅
 
 ---
 
@@ -928,17 +940,28 @@ graph TD
 Контроллеры (REST) и резолверы (GraphQL) — это просто тонкие обертки. Вся логика живет в `Services`.
 
 ```rust
-pub struct NodeService;
+use rustok_outbox::TransactionalEventBus;
+
+pub struct NodeService {
+    db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
+}
 
 impl NodeService {
-    pub async fn create(db: &DatabaseConnection, input: CreateNodeInput) -> Result<NodeResponse, RusToKError> {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self { db, event_bus }
+    }
+
+    pub async fn create(&self, input: CreateNodeInput) -> Result<NodeResponse, RusToKError> {
         // 1. Logic & Validation
         // 2. Database Persistence
-        // 3. Event Dispatching
+        // 3. Event Dispatching via TransactionalEventBus
         // 4. Transform to DTO Response
     }
 }
 ```
+
+**Important (2026-02-11)**: Сервисы модулей должны использовать `TransactionalEventBus` из `rustok-outbox`, а не `EventBus` из `rustok-core`. Это обеспечивает надёжную доставку событий через Outbox pattern.
 
 ### 17.2 The Transactional Pattern
 

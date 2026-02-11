@@ -1,7 +1,7 @@
 # RusToK Module Matrix
 
 > **Полная карта модулей системы**  
-> **Обновлено:** 2026-02-06
+> **Обновлено:** 2026-02-11
 
 ---
 
@@ -64,11 +64,13 @@
 
 ## Wrapper Modules
 
-| Crate | Slug | Назначение | Base Module |
-|-------|------|------------|-------------|
-| `rustok-blog` | blog | Blog functionality (nodes kind='post') | rustok-content |
-| `rustok-forum` | forum | Forum/discussions (nodes kind='topic') | rustok-content |
-| `rustok-pages` | pages | Static pages (nodes kind='page') | rustok-content |
+| Crate | Slug | Назначение | Base Module | Dependencies |
+|-------|------|------------|-------------|--------------|
+| `rustok-blog` | blog | Blog functionality (nodes kind='post') | rustok-content | rustok-core, rustok-content, rustok-outbox |
+| `rustok-forum` | forum | Forum/discussions (nodes kind='topic') | rustok-content | rustok-core, rustok-content, rustok-outbox, rustok-rbac |
+| `rustok-pages` | pages | Static pages (nodes kind='page') | rustok-content | rustok-core, rustok-content, rustok-outbox |
+
+**Note (2026-02-11)**: All wrapper modules now use `TransactionalEventBus` from `rustok-outbox` for reliable event publishing.
 
 ---
 
@@ -139,8 +141,11 @@ graph TD
     COMMERCE --> CORE
     COMMERCE --> CONTENT
     BLOG --> CONTENT
+    BLOG --> OUTBOX
     FORUM --> CONTENT
+    FORUM --> OUTBOX
     PAGES --> CONTENT
+    PAGES --> OUTBOX
 ```
 
 ---
