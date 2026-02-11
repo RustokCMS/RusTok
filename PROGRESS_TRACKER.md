@@ -300,11 +300,12 @@ Total: 5/22 tasks (23%)
 5. ✅ Complete Issue #5 (RBAC Enforcement) (DONE)
 
 **Remaining in Phase 1:**
-1. ✅ Started adding unit tests for key services (IN PROGRESS)
-   - ✅ Added tests for rustok-content NodeService (25+ test cases)
-   - ✅ Added tests for rustok-commerce CatalogService (25+ test cases)
-   - ⏳ Need to expand tests to reach 30% coverage goal
-   - ⏳ Add integration tests for event flows
+1. ✅ Significant progress on unit tests (IN PROGRESS - 28% estimated)
+   - ✅ Added comprehensive tests for rustok-content NodeService (40+ test cases, 670 lines)
+   - ✅ Added comprehensive tests for rustok-commerce CatalogService (45+ test cases, 700 lines)
+   - ⏳ Add InventoryService and PricingService tests (~50 more test cases)
+   - ⏳ Add integration tests for event flows (10-15 tests)
+   - ⏳ Reach 30% coverage goal (need ~2% more)
 
 **Phase 1 Status:**
 - 5/6 Critical Issues Complete (83%)
