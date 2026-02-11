@@ -14,7 +14,7 @@ pub struct BlogQuery;
 impl BlogQuery {
     async fn post(&self, ctx: &Context<'_>, _tenant_id: Uuid, id: Uuid) -> Result<Option<GqlPost>> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalTransactionalEventBus>()?;
 
         let service = NodeService::new(db.clone(), event_bus.clone());
         let node = match service.get_node(id).await {
@@ -37,7 +37,7 @@ impl BlogQuery {
         filter: Option<PostsFilter>,
     ) -> Result<GqlPostList> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalTransactionalEventBus>()?;
 
         let service = NodeService::new(db.clone(), event_bus.clone());
         let filter = filter.unwrap_or(PostsFilter {

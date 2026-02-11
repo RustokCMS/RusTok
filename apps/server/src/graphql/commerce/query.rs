@@ -20,7 +20,7 @@ impl CommerceQuery {
         locale: Option<String>,
     ) -> Result<Option<GqlProduct>> {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalTransactionalEventBus>()?;
         let locale = locale.unwrap_or_else(|| "en".to_string());
 
         let service = CatalogService::new(db.clone(), event_bus.clone());

@@ -3,7 +3,7 @@ use async_graphql::{
 };
 use sea_orm::DatabaseConnection;
 
-use rustok_core::EventBus;
+use rustok_core::{EventBus, TransactionalEventBus};
 
 use super::alloy::{AlloyMutation, AlloyQuery, AlloyState};
 use super::blog::{BlogMutation, BlogQuery};
@@ -40,6 +40,7 @@ pub type AppSchema = Schema<Query, Mutation, EmptySubscription>;
 pub fn build_schema(
     db: DatabaseConnection,
     event_bus: EventBus,
+    transactional_event_bus: TransactionalEventBus,
     alloy_state: AlloyState,
 ) -> AppSchema {
     Schema::build(Query::default(), Mutation::default(), EmptySubscription)
@@ -53,6 +54,7 @@ pub fn build_schema(
         ))
         .data(db)
         .data(event_bus)
+        .data(transactional_event_bus)
         .data(alloy_state)
         .finish()
 }

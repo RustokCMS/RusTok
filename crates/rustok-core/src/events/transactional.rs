@@ -4,6 +4,7 @@ use sea_orm::ConnectionTrait;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct TransactionalEventBus {
     transport: Arc<dyn EventTransport>,
 }

@@ -5,7 +5,9 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use rustok_core::{Action, DomainEvent, EventBus, PermissionScope, Resource, SecurityContext};
+use rustok_core::{
+    Action, DomainEvent, PermissionScope, Resource, SecurityContext, TransactionalEventBus,
+};
 
 use crate::dto::{
     BodyInput, BodyResponse, CreateNodeInput, ListNodesFilter, NodeListItem, NodeResponse,
@@ -16,11 +18,11 @@ use crate::error::{ContentError, ContentResult};
 
 pub struct NodeService {
     db: DatabaseConnection,
-    event_bus: EventBus,
+    event_bus: TransactionalEventBus,
 }
 
 impl NodeService {
-    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self { db, event_bus }
     }
 
@@ -113,17 +115,20 @@ impl NodeService {
             upsert_body(&txn, node_id, body_input, now).await?;
         }
 
-        txn.commit().await?;
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                DomainEvent::NodeCreated {
+                    node_id,
+                    kind: input.kind.clone(),
+                    author_id: input.author_id,
+                },
+            )
+            .await?;
 
-        self.event_bus.publish(
-            tenant_id,
-            security.user_id,
-            DomainEvent::NodeCreated {
-                node_id,
-                kind: input.kind,
-                author_id: input.author_id,
-            },
-        )?;
+        txn.commit().await?;
 
         let response = self.get_node(node_model.id).await?;
         Ok(response)
@@ -193,10 +198,11 @@ impl NodeService {
 
         active.updated_at = Set(now);
 
-        let updated = active.update(&self.db).await?;
+        let txn = self.db.begin().await?;
+
+        let updated = active.update(&txn).await?;
 
         if let Some(translations) = update.translations {
-            let txn = self.db.begin().await?;
             node_translation::Entity::delete_many()
                 .filter(node_translation::Column::NodeId.eq(node_id))
                 .exec(&txn)
@@ -217,12 +223,9 @@ impl NodeService {
                 .insert(&txn)
                 .await?;
             }
-
-            txn.commit().await?;
         }
 
         if let Some(bodies) = update.bodies {
-            let txn = self.db.begin().await?;
             body::Entity::delete_many()
                 .filter(body::Column::NodeId.eq(node_id))
                 .exec(&txn)
@@ -231,18 +234,21 @@ impl NodeService {
             for body_input in bodies {
                 upsert_body(&txn, node_id, body_input, now).await?;
             }
-
-            txn.commit().await?;
         }
 
-        self.event_bus.publish(
-            updated.tenant_id,
-            security.user_id,
-            DomainEvent::NodeUpdated {
-                node_id: updated.id,
-                kind: updated.kind.clone(),
-            },
-        )?;
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                updated.tenant_id,
+                security.user_id,
+                DomainEvent::NodeUpdated {
+                    node_id: updated.id,
+                    kind: updated.kind.clone(),
+                },
+            )
+            .await?;
+
+        txn.commit().await?;
 
         let translations = node_translation::Entity::find()
             .filter(node_translation::Column::NodeId.eq(node_id))
@@ -269,14 +275,16 @@ impl NodeService {
         };
         let updated = self.update_node(node_id, security.clone(), update).await?;
 
-        self.event_bus.publish(
-            updated.tenant_id,
-            security.user_id,
-            DomainEvent::NodePublished {
-                node_id: updated.id,
-                kind: updated.kind.clone(),
-            },
-        )?;
+        self.event_bus
+            .publish(
+                updated.tenant_id,
+                security.user_id,
+                DomainEvent::NodePublished {
+                    node_id: updated.id,
+                    kind: updated.kind.clone(),
+                },
+            )
+            .await?;
 
         Ok(updated)
     }
@@ -293,14 +301,16 @@ impl NodeService {
         };
         let updated = self.update_node(node_id, security.clone(), update).await?;
 
-        self.event_bus.publish(
-            updated.tenant_id,
-            security.user_id,
-            DomainEvent::NodeUnpublished {
-                node_id: updated.id,
-                kind: updated.kind.clone(),
-            },
-        )?;
+        self.event_bus
+            .publish(
+                updated.tenant_id,
+                security.user_id,
+                DomainEvent::NodeUnpublished {
+                    node_id: updated.id,
+                    kind: updated.kind.clone(),
+                },
+            )
+            .await?;
 
         Ok(updated)
     }
@@ -326,16 +336,23 @@ impl NodeService {
             }
         }
 
-        node::Entity::delete_by_id(node_id).exec(&self.db).await?;
+        let txn = self.db.begin().await?;
 
-        self.event_bus.publish(
-            node_model.tenant_id,
-            security.user_id,
-            DomainEvent::NodeDeleted {
-                node_id: node_model.id,
-                kind: node_model.kind,
-            },
-        )?;
+        node::Entity::delete_by_id(node_id).exec(&txn).await?;
+
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                node_model.tenant_id,
+                security.user_id,
+                DomainEvent::NodeDeleted {
+                    node_id: node_model.id,
+                    kind: node_model.kind,
+                },
+            )
+            .await?;
+
+        txn.commit().await?;
 
         Ok(())
     }
