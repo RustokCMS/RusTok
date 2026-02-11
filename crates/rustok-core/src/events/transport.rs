@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use std::any::Any;
+use sea_orm::DatabaseTransaction;
 use uuid::Uuid;
 
 use crate::Result;
@@ -17,6 +17,14 @@ pub enum ReliabilityLevel {
 pub trait EventTransport: Send + Sync {
     async fn publish(&self, envelope: EventEnvelope) -> Result<()>;
 
+    async fn publish_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> Result<()> {
+        self.publish(envelope).await
+    }
+
     async fn publish_batch(&self, events: Vec<EventEnvelope>) -> Result<()> {
         for envelope in events {
             self.publish(envelope).await?;
@@ -29,6 +37,4 @@ pub trait EventTransport: Send + Sync {
     }
 
     fn reliability_level(&self) -> ReliabilityLevel;
-
-    fn as_any(&self) -> &dyn Any;
 }
