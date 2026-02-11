@@ -16,6 +16,10 @@ leptos-struct-table = { workspace = true }
 leptos-zustand = { workspace = true }
 leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
+leptos_i18n = { workspace = true }
+leptos-next-metadata = { workspace = true }
+leptos-query = { workspace = true }
+tailwind-rs = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
 [package.metadata.cargo-udeps.ignore]
@@ -28,4 +32,8 @@ normal = [
   "leptos-zustand",
   "leptos-shadcn-pagination",
   "leptos-use",
+  "leptos_i18n",
+  "leptos-next-metadata",
+  "leptos-query",
+  "tailwind-rs",
 ]

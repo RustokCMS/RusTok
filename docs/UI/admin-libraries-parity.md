@@ -21,6 +21,10 @@
 | Pagination | `leptos-shadcn-pagination` | admin + storefront | Пагинация в shadcn-style |
 | Local state | `leptos-zustand` | admin + storefront | Store snapshots/updates |
 | Reactive/browser utils | `leptos-use` | admin + storefront | Подписки/observer/storage/events/debounce |
+| I18n | `leptos_i18n` | admin + storefront | Мультиязычность (RU/EN и далее) |
+| Metadata/SEO | `leptos-next-metadata` | storefront (+ при необходимости admin) | Next-like модель метаданных для Leptos |
+| Async data/query | `leptos-query` | admin + storefront | Кэш, stale/refetch, query lifecycle |
+| Styling pipeline | `tailwind-rs` | admin + storefront | TailwindCSS pipeline и токены |
 
 ## Правило для разработки
 

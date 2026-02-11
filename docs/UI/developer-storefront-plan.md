@@ -14,6 +14,10 @@
 > | **GraphQL** | [`leptos-graphql`](../../crates/leptos-graphql) | `graphql-request` / `urql` |
 > | **Pagination** | [`leptos-shadcn-pagination`](../../crates/leptos-shadcn-pagination) | `shadcn/ui` pagination |
 > | **Reactive/browser utils** | `leptos-use` | `usehooks-ts` / custom |
+> | **I18n** | `leptos_i18n` | `next-intl` |
+> | **Metadata/SEO** | `leptos-next-metadata` | `next/metadata` |
+> | **Async data/query** | `leptos-query` | `@tanstack/react-query` |
+> | **Styling** | `tailwind-rs` | TailwindCSS |
 
 ## Принципы
 

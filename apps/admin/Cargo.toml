@@ -18,6 +18,10 @@ leptos-struct-table = { workspace = true }
 leptos-zustand = { workspace = true }
 leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
+leptos_i18n = { workspace = true }
+leptos-next-metadata = { workspace = true }
+leptos-query = { workspace = true }
+tailwind-rs = { workspace = true }
 console_error_panic_hook = "0.1"
 console_log = "1"
 log = "0.4"
@@ -39,4 +43,8 @@ normal = [
   "leptos-zustand",
   "leptos-shadcn-pagination",
   "leptos-use",
+  "leptos_i18n",
+  "leptos-next-metadata",
+  "leptos-query",
+  "tailwind-rs",
 ]

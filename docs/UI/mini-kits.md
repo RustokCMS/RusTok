@@ -39,6 +39,20 @@
 - Лёгкий state-management слой для Leptos
 - Rust реализации
 
+### 7) Leptos I18n
+- Библиотека `leptos_i18n` для мультиязычности интерфейса
+- Базовый набор локалей для storefront/admin
+
+### 8) Leptos Query
+- Библиотека `leptos-query` для lifecycle асинхронных запросов
+- Кэш/рефетч/инвалидация query-данных
+
+### 9) Leptos Next Metadata
+- Библиотека `leptos-next-metadata` для метаданных страниц и SEO
+
+### 10) Tailwind-rs
+- Библиотеки `tailwind-rs` для единого пайплайна стилей
+
 ## Что ещё можно закрывать мини-китами (по мере надобности)
 
 ### Формы и валидация
@@ -51,8 +65,8 @@
 - **Leptos:** покрыто `leptos-zustand` (контракт store snapshots/updates)
 
 ### Утилиты для реактивности и браузерных API
-- **Leptos:** `leptos-use` можно подключать точечно (debounce/throttle, media queries, storage, events).
-- В базовый обязательный стек не входит: добавляем только при явной потребности экрана, чтобы не раздувать зависимости.
+- **Leptos:** `leptos-use` (debounce/throttle, media queries, storage, events)
+- Включено в приоритетный стек фронтендов.
 
 ## Принцип расширения
 
