@@ -4,7 +4,7 @@ use sea_orm::{
     TransactionTrait,
 };
 use std::collections::{HashMap, HashSet};
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
 use rustok_core::{generate_id, DomainEvent, EventBus};
@@ -30,17 +30,28 @@ impl CatalogService {
         actor_id: Uuid,
         input: CreateProductInput,
     ) -> CommerceResult<ProductResponse> {
+        debug!(
+            translations_count = input.translations.len(),
+            variants_count = input.variants.len(),
+            options_count = input.options.len(),
+            publish = input.publish,
+            "Creating product"
+        );
+
         if input.translations.is_empty() {
+            warn!("Product creation rejected: no translations");
             return Err(CommerceError::Validation(
                 "At least one translation is required".into(),
             ));
         }
         if input.variants.is_empty() {
+            warn!("Product creation rejected: no variants");
             return Err(CommerceError::NoVariants);
         }
 
         let product_id = generate_id();
         let now = Utc::now();
+        debug!(product_id = %product_id, "Generated product ID");
 
         let txn = self.db.begin().await?;
 
@@ -64,6 +75,7 @@ impl CatalogService {
             }),
         };
         product.insert(&txn).await?;
+        debug!("Product entity inserted");
 
         let mut seen = HashSet::new();
         for trans_input in &input.translations {
@@ -74,6 +86,7 @@ impl CatalogService {
 
             let key = format!("{}::{}", trans_input.locale, handle.clone());
             if !seen.insert(key) {
+                warn!(handle = %handle, locale = %trans_input.locale, "Duplicate handle detected");
                 return Err(CommerceError::DuplicateHandle {
                     handle,
                     locale: trans_input.locale.clone(),
@@ -104,6 +117,7 @@ impl CatalogService {
             };
             translation.insert(&txn).await?;
         }
+        debug!(translations_count = input.translations.len(), "Product translations inserted");
 
         for (position, opt_input) in input.options.iter().enumerate() {
             let option = entities::product_option::ActiveModel {
@@ -116,6 +130,7 @@ impl CatalogService {
             };
             option.insert(&txn).await?;
         }
+        debug!(options_count = input.options.len(), "Product options inserted");
 
         for (position, var_input) in input.variants.iter().enumerate() {
             let variant_id = generate_id();
@@ -127,6 +142,7 @@ impl CatalogService {
                     .one(&txn)
                     .await?;
                 if existing.is_some() {
+                    warn!(sku = %sku, "Duplicate SKU detected");
                     return Err(CommerceError::DuplicateSku(sku.clone()));
                 }
             }
@@ -164,10 +180,18 @@ impl CatalogService {
                 price.insert(&txn).await?;
             }
         }
+        debug!(variants_count = input.variants.len(), "Product variants and prices inserted");
 
         txn.commit().await?;
+        debug!("Transaction committed");
 
-        info!(product_id = %product_id, "Product created");
+        info!(
+            product_id = %product_id,
+            translations_count = input.translations.len(),
+            variants_count = input.variants.len(),
+            status = if input.publish { "active" } else { "draft" },
+            "Product created successfully"
+        );
 
         let _ = self.event_bus.publish(
             tenant_id,
@@ -184,11 +208,16 @@ impl CatalogService {
         tenant_id: Uuid,
         product_id: Uuid,
     ) -> CommerceResult<ProductResponse> {
+        debug!(product_id = %product_id, "Fetching product");
+        
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+            .ok_or_else(|| {
+                warn!(product_id = %product_id, "Product not found");
+                CommerceError::ProductNotFound(product_id)
+            })?;
 
         let translations = entities::product_translation::Entity::find()
             .filter(entities::product_translation::Column::ProductId.eq(product_id))
@@ -271,7 +300,7 @@ impl CatalogService {
             .all(&self.db)
             .await?;
 
-        Ok(ProductResponse {
+        let response = ProductResponse {
             id: product.id,
             tenant_id: product.tenant_id,
             status: product.status,
@@ -312,7 +341,15 @@ impl CatalogService {
                     position: image.position,
                 })
                 .collect(),
-        })
+        };
+
+        debug!(
+            product_id = %product_id,
+            variants_count = response.variants.len(),
+            "Product fetched successfully"
+        );
+
+        Ok(response)
     }
 
     #[instrument(skip(self, input))]
@@ -323,13 +360,18 @@ impl CatalogService {
         product_id: Uuid,
         input: UpdateProductInput,
     ) -> CommerceResult<ProductResponse> {
+        debug!(product_id = %product_id, "Updating product");
+        
         let txn = self.db.begin().await?;
 
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
             .one(&txn)
             .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+            .ok_or_else(|| {
+                warn!(product_id = %product_id, "Product not found for update");
+                CommerceError::ProductNotFound(product_id)
+            })?;
 
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.updated_at = Set(Utc::now().into());
@@ -398,6 +440,7 @@ impl CatalogService {
         }
 
         txn.commit().await?;
+        info!(product_id = %product_id, "Product updated successfully");
 
         let _ = self.event_bus.publish(
             tenant_id,
@@ -415,17 +458,23 @@ impl CatalogService {
         actor_id: Uuid,
         product_id: Uuid,
     ) -> CommerceResult<ProductResponse> {
+        debug!(product_id = %product_id, "Publishing product");
+        
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
-            .ok_or(CommerceError::ProductNotFound(product_id))?;
+            .ok_or_else(|| {
+                warn!(product_id = %product_id, "Product not found for publishing");
+                CommerceError::ProductNotFound(product_id)
+            })?;
 
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.status = Set(entities::product::ProductStatus::Active);
         product_active.published_at = Set(Some(Utc::now().into()));
         product_active.updated_at = Set(Utc::now().into());
         product_active.update(&self.db).await?;
+        info!(product_id = %product_id, "Product published successfully");
 
         let _ = self.event_bus.publish(
             tenant_id,
@@ -443,6 +492,8 @@ impl CatalogService {
         actor_id: Uuid,
         product_id: Uuid,
     ) -> CommerceResult<ProductResponse> {
+        debug!(product_id = %product_id, "Unpublishing product");
+        
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -453,6 +504,7 @@ impl CatalogService {
         product_active.status = Set(entities::product::ProductStatus::Draft);
         product_active.updated_at = Set(Utc::now().into());
         product_active.update(&self.db).await?;
+        info!(product_id = %product_id, "Product unpublished successfully");
 
         let _ = self.event_bus.publish(
             tenant_id,
@@ -470,6 +522,8 @@ impl CatalogService {
         actor_id: Uuid,
         product_id: Uuid,
     ) -> CommerceResult<()> {
+        debug!(product_id = %product_id, "Deleting product");
+        
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -477,12 +531,14 @@ impl CatalogService {
             .ok_or(CommerceError::ProductNotFound(product_id))?;
 
         if product.status == entities::product::ProductStatus::Active {
+            warn!(product_id = %product_id, "Cannot delete published product");
             return Err(CommerceError::CannotDeletePublished);
         }
 
         entities::product::Entity::delete_by_id(product_id)
             .exec(&self.db)
             .await?;
+        info!(product_id = %product_id, "Product deleted successfully");
 
         let _ = self.event_bus.publish(
             tenant_id,

@@ -1,7 +1,9 @@
 # RusToK — Детальный план устранения проблем
 
+> ⚠️ **NOTE**: This document is now legacy. Please use **[PROJECT_STATUS.md](PROJECT_STATUS.md)** for current status and consolidated plan.
+
 > **Дата:** 11 февраля 2026  
-> **Статус:** Ready to implement  
+> **Статус:** Legacy - See PROJECT_STATUS.md  
 > **Приоритет:** Critical issues first
 
 ---

@@ -3,6 +3,7 @@ use sea_orm::{
     prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, Set, TransactionTrait,
 };
+use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
 use rustok_core::{Action, DomainEvent, PermissionScope, Resource, SecurityContext};
@@ -34,23 +35,30 @@ impl NodeService {
         }
     }
 
+    #[instrument(skip(self, security, input), fields(tenant_id = %tenant_id, kind = %input.kind, user_id = ?security.user_id))]
     pub async fn create_node(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         mut input: CreateNodeInput,
     ) -> ContentResult<NodeResponse> {
+        info!("Creating node");
+        
         // Scope Enforcement
         let resource = Self::kind_to_resource(&input.kind);
         let scope = security.get_scope(resource, Action::Create);
 
         match scope {
-            PermissionScope::All => {}
+            PermissionScope::All => {
+                debug!("User has All scope for node creation");
+            }
             PermissionScope::Own => {
+                debug!("User has Own scope, setting author_id to user_id");
                 // Force user_id as author_id
                 input.author_id = security.user_id;
             }
             PermissionScope::None => {
+                warn!("User lacks permission to create node");
                 return Err(ContentError::Forbidden("Permission denied".into()));
             }
         }
@@ -62,11 +70,13 @@ impl NodeService {
             .unwrap_or(crate::entities::node::ContentStatus::Draft);
         let metadata = input.metadata;
         if input.translations.is_empty() {
+            error!("Node creation failed: no translations provided");
             return Err(ContentError::Validation(
                 "At least one translation is required".to_string(),
             ));
         }
 
+        debug!(translations_count = input.translations.len(), bodies_count = input.bodies.len(), "Starting transaction");
         let txn = self.db.begin().await?;
 
         let node_model = node::ActiveModel {
@@ -129,16 +139,19 @@ impl NodeService {
 
         txn.commit().await?;
 
+        info!(node_id = %node_id, "Node created successfully");
         let response = self.get_node(node_model.id).await?;
         Ok(response)
     }
 
+    #[instrument(skip(self, security, update), fields(node_id = %node_id, user_id = ?security.user_id))]
     pub async fn update_node(
         &self,
         node_id: Uuid,
         security: SecurityContext,
         update: UpdateNodeInput,
     ) -> ContentResult<NodeResponse> {
+        info!("Updating node");
         let node_model = self.find_node(node_id).await?;
 
         // Scope Enforcement
@@ -261,11 +274,13 @@ impl NodeService {
         Ok(Self::to_response(updated, translations, bodies))
     }
 
+    #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
     pub async fn publish_node(
         &self,
         node_id: Uuid,
         security: SecurityContext,
     ) -> ContentResult<NodeResponse> {
+        info!("Publishing node");
         let now = Utc::now().into();
 
         // Perform the update and event publication in a single transaction
@@ -337,11 +352,13 @@ impl NodeService {
         Ok(Self::to_response(updated, translations, bodies))
     }
 
+    #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
     pub async fn unpublish_node(
         &self,
         node_id: Uuid,
         security: SecurityContext,
     ) -> ContentResult<NodeResponse> {
+        info!("Unpublishing node");
         let now = Utc::now().into();
 
         // Perform update and event publication in a single transaction
@@ -413,7 +430,9 @@ impl NodeService {
         Ok(Self::to_response(updated, translations, bodies))
     }
 
+    #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
     pub async fn delete_node(&self, node_id: Uuid, security: SecurityContext) -> ContentResult<()> {
+        info!("Deleting node");
         let node_model = self.find_node(node_id).await?;
 
         // Scope Enforcement
@@ -462,7 +481,9 @@ impl NodeService {
             .ok_or(ContentError::NodeNotFound(node_id))
     }
 
+    #[instrument(skip(self), fields(node_id = %node_id))]
     pub async fn get_node(&self, node_id: Uuid) -> ContentResult<NodeResponse> {
+        debug!("Fetching node");
         let node_model = self.find_node(node_id).await?;
         let translations = node_translation::Entity::find()
             .filter(node_translation::Column::NodeId.eq(node_id))
@@ -498,12 +519,14 @@ impl NodeService {
         }
     }
 
+    #[instrument(skip(self, security, filter), fields(tenant_id = %tenant_id, user_id = ?security.user_id, kind = ?filter.kind))]
     pub async fn list_nodes(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         mut filter: ListNodesFilter,
     ) -> ContentResult<(Vec<NodeListItem>, u64)> {
+        debug!(page = filter.page, per_page = filter.per_page, "Listing nodes");
         // Scope Enforcement for List
         // We assume 'kind' is provided or we use a generic Resource::Posts if not.
         let resource = filter
