@@ -202,9 +202,54 @@ fn default_relay_interval_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{EventTransportKind, RustokSettings};
+    use std::sync::{Mutex, OnceLock};
+
+    const EVENT_TRANSPORT_ENV: &str = "RUSTOK_EVENT_TRANSPORT";
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn clear(key: &'static str) -> Self {
+            let original = std::env::var(key).ok();
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, original }
+        }
+
+        fn set(key: &'static str, value: &str) -> Self {
+            let original = std::env::var(key).ok();
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.original {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
 
     #[test]
     fn reads_transport_from_config() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+
         let raw = serde_json::json!({
             "rustok": {
                 "events": {
@@ -219,18 +264,13 @@ mod tests {
 
     #[test]
     fn rejects_invalid_env_transport() {
-        unsafe {
-            std::env::set_var("RUSTOK_EVENT_TRANSPORT", "broken");
-        }
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::set(EVENT_TRANSPORT_ENV, "broken");
 
         let err = RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} })))
             .expect_err("transport should fail");
         assert!(err
             .to_string()
             .contains("Invalid RUSTOK_EVENT_TRANSPORT='broken'"));
-
-        unsafe {
-            std::env::remove_var("RUSTOK_EVENT_TRANSPORT");
-        }
     }
 }
