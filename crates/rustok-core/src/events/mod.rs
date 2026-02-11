@@ -2,7 +2,6 @@ mod bus;
 mod handler;
 mod memory;
 mod schema;
-mod transactional;
 mod transport;
 mod types;
 
@@ -13,6 +12,5 @@ pub use handler::{
 };
 pub use memory::MemoryTransport;
 pub use schema::{event_schema, EventSchema, FieldSchema, EVENT_SCHEMAS};
-pub use transactional::TransactionalEventBus;
 pub use transport::{EventTransport, ReliabilityLevel};
 pub use types::{DomainEvent, EventEnvelope};

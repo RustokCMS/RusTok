@@ -8,6 +8,7 @@ license.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 rustok-core.workspace = true
+rustok-outbox.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

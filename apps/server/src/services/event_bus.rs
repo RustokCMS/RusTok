@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use loco_rs::app::AppContext;
 use rustok_core::events::EventTransport;
-use rustok_core::{EventBus, TransactionalEventBus};
+use rustok_core::EventBus;
+use rustok_outbox::TransactionalEventBus;
 use tokio::task::JoinHandle;
 
 #[derive(Clone)]

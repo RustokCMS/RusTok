@@ -1,5 +1,6 @@
-use crate::events::{DomainEvent, EventEnvelope, EventTransport};
-use crate::{Error, Result};
+use crate::transport::OutboxTransport;
+use rustok_core::events::{DomainEvent, EventEnvelope, EventTransport};
+use rustok_core::Result;
 use sea_orm::ConnectionTrait;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -26,11 +27,7 @@ impl TransactionalEventBus {
     {
         let envelope = EventEnvelope::new(tenant_id, actor_id, event);
 
-        if let Some(outbox) = self
-            .transport
-            .as_any()
-            .downcast_ref::<rustok_outbox::OutboxTransport>()
-        {
+        if let Some(outbox) = self.transport.as_any().downcast_ref::<OutboxTransport>() {
             outbox.write_to_outbox(txn, envelope).await?;
         } else {
             tracing::warn!(
