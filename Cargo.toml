@@ -72,6 +72,12 @@ leptos-hook-form = { path = "crates/leptos-hook-form" }
 leptos-zod = { path = "crates/leptos-zod" }
 leptos-struct-table = "*"
 leptos-zustand = { path = "crates/leptos-zustand" }
+leptos-shadcn-pagination = { path = "crates/leptos-shadcn-pagination" }
+leptos-use = "*"
+leptos_i18n = "*"
+leptos-next-metadata = "*"
+leptos-query = "*"
+tailwind-rs = "*"
 
 # Logging
 tracing = "0.1"

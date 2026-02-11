@@ -8,11 +8,16 @@
 > | :--- | :--- | :--- |
 > | **Forms** | [`leptos-hook-form`](../../crates/leptos-hook-form) | `react-hook-form` |
 > | **Validation** | [`leptos-zod`](../../crates/leptos-zod) | `zod` |
-> | **Tables** | [`leptos-table`](../../crates/leptos-table) | `@tanstack/react-table` |
+> | **Tables** | `leptos-struct-table` | `@tanstack/react-table` |
 > | **State** | [`leptos-zustand`](../../crates/leptos-zustand) | `zustand` |
 > | **Auth** | [`leptos-auth`](../../crates/leptos-auth) | `next-auth` / custom |
 > | **GraphQL** | [`leptos-graphql`](../../crates/leptos-graphql) | `graphql-request` / `urql` |
 > | **Pagination** | [`leptos-shadcn-pagination`](../../crates/leptos-shadcn-pagination) | `shadcn/ui` pagination |
+> | **Reactive/browser utils** | `leptos-use` | `usehooks-ts` / custom |
+> | **I18n** | `leptos_i18n` | `next-intl` |
+> | **Metadata/SEO** | `leptos-next-metadata` | `next/metadata` |
+> | **Async data/query** | `leptos-query` | `@tanstack/react-query` |
+> | **Styling** | `tailwind-rs` | TailwindCSS |
 
 ## Принципы
 
@@ -24,7 +29,7 @@
 См. базовые источники:
 
 - [UI parity (admin + storefront)](./ui-parity.md)
-- [Admin libraries parity](./admin-libraries-parity.md) (Tech stack overlap)
+- [Frontend libraries parity](./admin-libraries-parity.md) (Tech stack overlap)
 - [Admin reuse matrix](./admin-reuse-matrix.md) (Leptos ecosystem references)
 - [Tech parity tracker](./tech-parity.md)
 - [Storefront overview](./storefront.md)
