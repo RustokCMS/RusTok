@@ -14,9 +14,11 @@ use redis::AsyncCommands;
 #[cfg(feature = "redis-cache")]
 use rustok_core::RedisCacheBackend;
 use rustok_core::{CacheBackend, InMemoryCacheBackend};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -51,6 +53,7 @@ pub struct TenantCacheInfrastructure {
     metrics: Arc<TenantCacheMetricsStore>,
     key_builder: TenantCacheKeyBuilder,
     invalidation_publisher: Arc<TenantInvalidationPublisher>,
+    in_flight: Arc<Mutex<HashMap<String, Arc<Notify>>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -136,6 +139,7 @@ struct TenantCacheMetricsStore {
     local_negative_hits: Arc<AtomicU64>,
     local_negative_misses: Arc<AtomicU64>,
     local_negative_inserts: Arc<AtomicU64>,
+    coalesced_requests: Arc<AtomicU64>,
     #[cfg(feature = "redis-cache")]
     redis_client: Option<redis::Client>,
 }
@@ -148,6 +152,7 @@ impl TenantCacheMetricsStore {
             local_negative_hits: Arc::new(AtomicU64::new(0)),
             local_negative_misses: Arc::new(AtomicU64::new(0)),
             local_negative_inserts: Arc::new(AtomicU64::new(0)),
+            coalesced_requests: Arc::new(AtomicU64::new(0)),
             #[cfg(feature = "redis-cache")]
             redis_client: resolve_redis_client(),
         }
@@ -186,6 +191,9 @@ impl TenantCacheMetricsStore {
             negative_inserts: self
                 .read_metric("negative_inserts", &self.local_negative_inserts)
                 .await,
+            coalesced_requests: self
+                .read_metric("coalesced_requests", &self.coalesced_requests)
+                .await,
         }
     }
 
@@ -213,6 +221,7 @@ impl TenantCacheInfrastructure {
             metrics: Arc::new(TenantCacheMetricsStore::new()),
             key_builder: TenantCacheKeyBuilder::new(TENANT_CACHE_VERSION),
             invalidation_publisher: Arc::new(TenantInvalidationPublisher::new()),
+            in_flight: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -288,6 +297,61 @@ impl TenantCacheInfrastructure {
     async fn invalidate_pair(&self, cache_key: &str, negative_key: &str) {
         let _ = self.tenant_cache.invalidate(cache_key).await;
         let _ = self.tenant_negative_cache.invalidate(negative_key).await;
+    }
+
+    async fn get_or_load_with_coalescing<F, Fut>(
+        &self,
+        cache_key: &str,
+        loader: F,
+    ) -> Result<TenantContext, StatusCode>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<Option<TenantContext>, StatusCode>>,
+    {
+        loop {
+            let notify = {
+                let mut in_flight = self.in_flight.lock().await;
+                
+                if let Some(existing) = in_flight.get(cache_key) {
+                    let notify = existing.clone();
+                    drop(in_flight);
+                    
+                    self.metrics
+                        .incr("coalesced_requests", &self.metrics.coalesced_requests)
+                        .await;
+                    
+                    notify.notified().await;
+                    
+                    if let Some(cached) = self.get_cached_tenant(cache_key).await? {
+                        return Ok(cached);
+                    }
+                    
+                    continue;
+                }
+                
+                let notify = Arc::new(Notify::new());
+                in_flight.insert(cache_key.to_string(), notify.clone());
+                notify
+            };
+            
+            let result = loader().await;
+            
+            {
+                let mut in_flight = self.in_flight.lock().await;
+                in_flight.remove(cache_key);
+            }
+            
+            notify.notify_waiters();
+            
+            match result {
+                Ok(Some(context)) => {
+                    self.set_cached_tenant(cache_key.to_string(), &context).await?;
+                    return Ok(context);
+                }
+                Ok(None) => return Err(StatusCode::NOT_FOUND),
+                Err(e) => return Err(e),
+            }
+        }
     }
 }
 
@@ -438,30 +502,40 @@ pub async fn resolve(
         return Ok(next.run(req).await);
     }
 
-    let tenant = match identifier.kind {
-        TenantIdentifierKind::Uuid => tenants::Entity::find_by_id(&ctx.db, identifier.uuid)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-        TenantIdentifierKind::Slug => tenants::Entity::find_by_slug(&ctx.db, &identifier.value)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-        TenantIdentifierKind::Host => tenants::Entity::find_by_domain(&ctx.db, &identifier.value)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-    };
+    let db = ctx.db.clone();
+    let ident_kind = identifier.kind;
+    let ident_value = identifier.value.clone();
+    let ident_uuid = identifier.uuid;
+    let negative_key_clone = negative_key.clone();
+    let infra_clone = infra.clone();
 
-    match tenant {
-        Some(tenant) => {
-            let context = TenantContext::from_model(&tenant);
-            infra.set_cached_tenant(cache_key, &context).await?;
-            req.extensions_mut().insert(TenantContextExtension(context));
-            Ok(next.run(req).await)
-        }
-        None => {
-            infra.set_negative(negative_key).await?;
-            Err(StatusCode::NOT_FOUND)
-        }
-    }
+    let context = infra
+        .get_or_load_with_coalescing(&cache_key, || async move {
+            let tenant = match ident_kind {
+                TenantIdentifierKind::Uuid => tenants::Entity::find_by_id(&db, ident_uuid)
+                    .await
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+                TenantIdentifierKind::Slug => tenants::Entity::find_by_slug(&db, &ident_value)
+                    .await
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+                TenantIdentifierKind::Host => tenants::Entity::find_by_domain(&db, &ident_value)
+                    .await
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+            };
+
+            match tenant {
+                Some(tenant) => Ok(Some(TenantContext::from_model(&tenant))),
+                None => {
+                    infra_clone.set_negative(negative_key_clone).await?;
+                    Ok(None)
+                }
+            }
+        })
+        .await?;
+
+    req.extensions_mut()
+        .insert(TenantContextExtension(context));
+    Ok(next.run(req).await)
 }
 
 fn resolve_identifier(
@@ -564,6 +638,7 @@ pub struct TenantCacheStats {
     pub entries: u64,
     pub negative_entries: u64,
     pub negative_inserts: u64,
+    pub coalesced_requests: u64,
 }
 
 pub async fn tenant_cache_stats(ctx: &AppContext) -> TenantCacheStats {
@@ -578,6 +653,7 @@ pub async fn tenant_cache_stats(ctx: &AppContext) -> TenantCacheStats {
             entries: 0,
             negative_entries: 0,
             negative_inserts: 0,
+            coalesced_requests: 0,
         };
     };
 
