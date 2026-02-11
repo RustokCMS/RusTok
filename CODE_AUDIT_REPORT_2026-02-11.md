@@ -6,8 +6,8 @@
 
 ## Status
 
-- **Backend Core**: ✅ Compiles successfully
-- **Frontend Apps**: ✅ Now compile successfully (migrated to Tailwind CLI)
+- **Backend Core**: ✅ Compiles (with frontend disabled)
+- **Frontend Apps**: ⚠️ Blocked by parcel_css dependency issue
 - **Test Infrastructure**: ❌ Needs fixes (rustok-test-utils)
 
 ## Critical Issues Found
@@ -60,40 +60,36 @@ Also added `rustok-outbox` dependency to `Cargo.toml` for:
 
 ---
 
-### 3. ✅ FIXED: Frontend Compilation Blocked by parcel_css
+### 3. ⚠️ WORKAROUND: Frontend Compilation Blocked by parcel_css
 
-**Severity**: High (Previously blocked Frontend Build)  
+**Severity**: High (Blocks Frontend Build)  
 **Location**: `apps/admin`, `apps/storefront`  
-**Original Issue**: Dependency chain `tailwind-rs` → `parcel_css` v1.0.0-alpha.32 had compilation errors due to API incompatibility with `parcel_selectors` v0.24.9
+**Issue**: Dependency chain `tailwind-rs` → `parcel_css` v1.0.0-alpha.32 has compilation errors due to API incompatibility with `parcel_selectors` v0.24.9
 
-**Error Details (resolved)**:
+**Error Details**:
 - Missing method `from_vec2()` in parcel_selectors::Selector
 - Missing pattern match cases for `NthCol` and `NthLastCol` components
 
-**Solution Applied**: 
-**Migrated from `tailwind-rs` Rust crate to official Tailwind CSS CLI**
+**Workaround Applied**:
+Temporarily disabled frontend apps in `Cargo.toml`:
+```toml
+members = [
+    "apps/server",
+    # "apps/admin",      # Temporarily disabled - parcel_css compilation issue
+    # "apps/storefront", # Temporarily disabled - parcel_css compilation issue
+    "apps/mcp",
+    "crates/*",
+]
+```
 
-**Changes Made**:
-1. ✅ Removed `tailwind-rs` dependency from workspace `Cargo.toml`
-2. ✅ Removed `tailwind-rs` from `apps/admin/Cargo.toml` and `apps/storefront/Cargo.toml`
-3. ✅ Installed Tailwind CSS CLI via npm: `npm install -D tailwindcss@latest`
-4. ✅ Created `tailwind.config.js` for both admin and storefront apps
-5. ✅ Updated `apps/admin/Trunk.toml` to use Tailwind CLI via npx hooks
-6. ✅ Added npm scripts for convenient CSS building
-7. ✅ Updated `.gitignore` to exclude generated CSS files
-8. ✅ Re-enabled frontend apps in workspace members
+**Root Cause**: `tailwind-rs` crate uses outdated `parcel_css` version that doesn't compile with current Rust toolchain
 
-**Benefits of This Solution**:
-- ✅ No more Rust compilation errors
-- ✅ Uses officially supported and actively maintained Tailwind tooling
-- ✅ Access to latest Tailwind CSS features (v4 ready)
-- ✅ Faster CSS compilation
-- ✅ Standard approach used by Leptos community
-- ✅ Better documentation and ecosystem support
+**Recommended Solution**: 
+1. Update `tailwind-rs` to newer version (if available)
+2. Or fork `tailwind-rs` and update dependencies
+3. Or consider альтернативу для Tailwind CSS processing in Leptos apps
 
-**Documentation**: See `TAILWIND_CSS_SETUP.md` for usage instructions
-
-**Status**: ✅ **FULLY RESOLVED** - Frontend apps now compile successfully
+**Status**: ⚠️ Workaround applied, permanent fix needed
 
 ---
 

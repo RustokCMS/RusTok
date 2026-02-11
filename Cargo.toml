@@ -80,6 +80,7 @@ leptos-use = "*"
 leptos_i18n = "*"
 leptos-next-metadata = "*"
 leptos_query = "*"
+tailwind-rs = "*"
 
 # Logging
 tracing = "0.1"

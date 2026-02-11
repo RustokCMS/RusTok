@@ -126,10 +126,7 @@ Total: 6/22 tasks (27%)
 - ✅ Input Validation Framework (7 custom validators)
 - ✅ Cargo Aliases (40+ developer productivity aliases)
 - ✅ Module Metrics (11 Prometheus metrics)
-- ✅ **Tailwind CSS Migration** - Migrated from broken `tailwind-rs` to official Tailwind CLI
 - ⏳ Structured Logging (next up)
-
-> **Note:** Frontend apps (`apps/admin`, `apps/storefront`) now require Node.js for Tailwind CSS compilation. See [`TAILWIND_CSS_SETUP.md`](TAILWIND_CSS_SETUP.md) for details.
 
 ### What's Next
 
