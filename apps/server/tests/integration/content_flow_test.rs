@@ -14,9 +14,9 @@ use std::time::Duration;
 
 /// Test the complete node lifecycle from creation to publication
 #[tokio::test]
-#[ignore] // Requires test server to be running
 async fn test_complete_node_lifecycle() {
-    let app = spawn_test_app().await;
+    let server = TestServer::spawn().await.unwrap();
+    let app = spawn_test_app_with_url(server.base_url.clone()).await;
     
     // 1. Create a node
     let node = app
@@ -97,7 +97,6 @@ async fn test_complete_node_lifecycle() {
 
 /// Test node creation with different content types
 #[tokio::test]
-#[ignore]
 async fn test_node_with_different_content_types() {
     let app = spawn_test_app().await;
     
@@ -149,7 +148,6 @@ async fn test_node_with_different_content_types() {
 
 /// Test node translation management
 #[tokio::test]
-#[ignore]
 async fn test_node_translations() {
     let app = spawn_test_app().await;
     
@@ -213,7 +211,6 @@ async fn test_node_translations() {
 
 /// Test node search functionality
 #[tokio::test]
-#[ignore]
 async fn test_node_search() {
     let app = spawn_test_app().await;
     
@@ -272,7 +269,6 @@ async fn test_node_search() {
 
 /// Test node validation (invalid kind, empty title, etc.)
 #[tokio::test]
-#[ignore]
 async fn test_node_validation() {
     let app = spawn_test_app().await;
     
@@ -322,7 +318,6 @@ async fn test_node_validation() {
 
 /// Test node state transitions
 #[tokio::test]
-#[ignore]
 async fn test_node_state_transitions() {
     let app = spawn_test_app().await;
     
@@ -359,7 +354,6 @@ async fn test_node_state_transitions() {
 
 /// Test node retrieval
 #[tokio::test]
-#[ignore]
 async fn test_node_retrieval() {
     let app = spawn_test_app().await;
     
@@ -389,7 +383,6 @@ async fn test_node_retrieval() {
 
 /// Test node slug uniqueness
 #[tokio::test]
-#[ignore]
 async fn test_node_slug_uniqueness() {
     let app = spawn_test_app().await;
     
@@ -434,7 +427,6 @@ async fn test_node_slug_uniqueness() {
 
 /// Test node with different body formats
 #[tokio::test]
-#[ignore]
 async fn test_node_with_different_body_formats() {
     let app = spawn_test_app().await;
     

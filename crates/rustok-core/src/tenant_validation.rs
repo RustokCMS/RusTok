@@ -289,6 +289,7 @@ impl TenantIdentifierValidator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     // ═══════════════════════════════════════════════════════════════════
     // SLUG VALIDATION TESTS
@@ -474,6 +475,43 @@ mod tests {
             TenantIdentifierValidator::validate_any("example.com"),
             Ok("example.com".to_string())
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PROPERTY-BASED TESTS
+    // ═══════════════════════════════════════════════════════════════════
+
+    proptest! {
+        #[test]
+        fn prop_validate_slug_roundtrip(slug in "[a-z0-9][a-z0-9-]{0,62}") {
+            prop_assume!(!RESERVED_SLUGS.contains(&slug.as_str()));
+            let result = TenantIdentifierValidator::validate_slug(&slug);
+            prop_assert_eq!(result.unwrap(), slug);
+        }
+
+        #[test]
+        fn prop_validate_slug_rejects_invalid_chars(
+            prefix in "[a-z0-9]{1,10}",
+            suffix in "[a-z0-9-]{0,10}",
+            invalid in prop::sample::select(vec!['@', '_', '.', '/', '#'])
+        ) {
+            let raw = format!("{prefix}{invalid}{suffix}");
+            let result = TenantIdentifierValidator::validate_slug(&raw);
+            prop_assert!(matches!(result, Err(TenantValidationError::InvalidCharacters)));
+        }
+
+        #[test]
+        fn prop_validate_slug_rejects_too_long(slug in "[a-z0-9][a-z0-9-]{64,80}") {
+            let result = TenantIdentifierValidator::validate_slug(&slug);
+            prop_assert!(matches!(result, Err(TenantValidationError::TooLong)));
+        }
+
+        #[test]
+        fn prop_validate_host_roundtrip(labels in prop::collection::vec("[a-z0-9]{1,10}", 2..4)) {
+            let host = labels.join(".");
+            let result = TenantIdentifierValidator::validate_host(&host);
+            prop_assert_eq!(result.unwrap(), host);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════

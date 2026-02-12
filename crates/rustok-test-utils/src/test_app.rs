@@ -15,6 +15,8 @@ use rustok_commerce::dto::{
 };
 use rustok_core::events::types::DomainEvent;
 
+use crate::test_server::{TestServer, TestServerConfig, spawn_test_server};
+
 /// Test application for integration testing
 pub struct TestApp {
     /// Database connection
@@ -31,6 +33,8 @@ pub struct TestApp {
     pub events: Arc<Mutex<Vec<DomainEvent>>>,
     /// User ID
     pub user_id: Uuid,
+    /// Optional test server handle (if spawned)
+    pub server: Option<TestServer>,
 }
 
 impl TestApp {
@@ -39,12 +43,79 @@ impl TestApp {
         let db = Self::create_test_db().await?;
         let base_url = std::env::var("TEST_SERVER_URL")
             .unwrap_or_else(|_| "http://localhost:3000".to_string());
-        
+
         let auth_token = std::env::var("TEST_AUTH_TOKEN")
             .unwrap_or_else(|_| "test_token".to_string());
-        
+
         let tenant_id = std::env::var("TEST_TENANT_ID")
             .unwrap_or_else(|_| "test-tenant".to_string());
+
+        let user_id = std::env::var("TEST_USER_ID")
+            .ok()
+            .and_then(|s| Uuid::parse_str(&s).ok())
+            .unwrap_or_else(Uuid::new_v4);
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| TestAppError::ClientError(e.to_string()))?;
+
+        Ok(Self {
+            db: Arc::new(db),
+            client,
+            base_url,
+            auth_token,
+            tenant_id,
+            events: Arc::new(Mutex::new(Vec::new())),
+            user_id,
+        })
+    }
+
+    /// Create a new test application with a custom server URL
+    pub async fn with_server_url(base_url: String) -> Result<Self, TestAppError> {
+        let db = Self::create_test_db().await?;
+
+        let auth_token = std::env::var("TEST_AUTH_TOKEN")
+            .unwrap_or_else(|_| "test_token".to_string());
+
+        let tenant_id = std::env::var("TEST_TENANT_ID")
+            .unwrap_or_else(|_| "test-tenant".to_string());
+
+        let user_id = std::env::var("TEST_USER_ID")
+            .ok()
+            .and_then(|s| Uuid::parse_str(&s).ok())
+            .unwrap_or_else(Uuid::new_v4);
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| TestAppError::ClientError(e.to_string()))?;
+
+        Ok(Self {
+            db: Arc::new(db),
+            client,
+            base_url,
+            auth_token,
+            tenant_id,
+            events: Arc::new(Mutex::new(Vec::new())),
+            user_id,
+            server: None,
+        })
+    }
+
+    /// Create a new test application with a spawned server
+    pub async fn new_with_server() -> Result<Self, TestAppError> {
+        let config = TestServerConfig::default();
+        Self::new_with_config(config).await
+    }
+
+    /// Create a new test application with custom server configuration
+    pub async fn new_with_config(config: TestServerConfig) -> Result<Self, TestAppError> {
+        let server = spawn_test_server(config.clone()).await;
+        let db = Self::create_test_db().await?;
+        
+        let auth_token = config.auth_token;
+        let tenant_id = config.tenant_id;
         
         let user_id = std::env::var("TEST_USER_ID")
             .ok()
@@ -59,12 +130,20 @@ impl TestApp {
         Ok(Self {
             db: Arc::new(db),
             client,
-            base_url,
+            base_url: server.base_url().to_string(),
             auth_token,
             tenant_id,
             events: Arc::new(Mutex::new(Vec::new())),
             user_id,
+            server: Some(server),
         })
+    }
+
+    /// Shutdown the test application and server
+    pub async fn shutdown(self) {
+        if let Some(server) = self.server {
+            server.shutdown().await;
+        }
     }
     
     /// Create a test database connection
@@ -562,6 +641,13 @@ pub async fn spawn_test_app() -> TestApp {
         .expect("Failed to create test application")
 }
 
+/// Helper function to spawn a test application with a running server
+pub async fn spawn_test_app_with_server() -> TestApp {
+    TestApp::new_with_server()
+        .await
+        .expect("Failed to create test application with server")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -573,8 +659,8 @@ mod tests {
         assert!(!app.tenant_id.is_empty());
     }
 
-    #[test]
-    fn test_auth_header_format() {
+    #[tokio::test]
+    async fn test_auth_header_format() {
         let app = TestApp {
             db: Arc::new(
                 sea_orm::Database::connect("sqlite::memory:")
@@ -587,8 +673,18 @@ mod tests {
             tenant_id: "test-tenant".to_string(),
             events: Arc::new(Mutex::new(vec![])),
             user_id: Uuid::new_v4(),
+            server: None,
         };
         
         assert_eq!(app.auth_header(), "Bearer test_token");
+    }
+
+    #[tokio::test]
+    #[ignore] // Requires server implementation
+    async fn test_app_with_server() {
+        let app = spawn_test_app_with_server().await;
+        assert!(!app.base_url.is_empty());
+        assert!(app.server.is_some());
+        app.shutdown().await;
     }
 }

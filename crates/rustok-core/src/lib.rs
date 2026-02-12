@@ -13,6 +13,7 @@ pub mod rbac;
 pub mod registry;
 pub mod resilience;
 pub mod scripting;
+pub mod security;
 pub mod state_machine;
 pub mod tenant_validation;
 pub mod tracing;
@@ -47,6 +48,11 @@ pub use resilience::{
     RetryStrategy,
 };
 pub use scripting::ScriptingContext;
+pub use security::{
+    AuditContext, AuditScope, BatchSecurityAuditor, ComponentAuditResult, DataRetentionPolicy,
+    PasswordPolicy, RateLimitPolicy, Remediation, SecurityAuditor, SecurityCategory,
+    SecurityConfig, SecurityMonitor, SecurityPolicies, SecurityReportGenerator, SessionPolicy,
+};
 pub use types::{UserRole, UserStatus};
 
 pub mod prelude {
@@ -61,6 +67,10 @@ pub mod prelude {
     pub use crate::module::HealthStatus;
     pub use crate::permissions::{Action, Permission, Resource};
     pub use crate::rbac::{PermissionScope, Rbac, SecurityContext};
+    pub use crate::security::{
+        SecurityAuditor, SecurityCategory, SecurityConfig, SecurityFinding, SecurityLevel,
+        SecurityReport, SecurityStatus,
+    };
     pub use crate::types::{UserRole, UserStatus};
     #[cfg(feature = "redis-cache")]
     pub use crate::RedisCacheBackend;
