@@ -221,56 +221,50 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_test
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_test
       TEST_SERVER_URL: http://localhost:3000
-      TEST_AUTH_TOKEN: test_token_ci
-      TEST_TENANT_ID: test-tenant-ci
-      TEST_MODE: 1
+      TEST_AUTH_TOKEN: test_token
+      TEST_TENANT_ID: test-tenant
+      TEST_USER_ID: 00000000-0000-0000-0000-000000000000
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       
-      - name: Run database migrations
-        run: |
-          cd apps/server
-          cargo loco db migrate
-      
+      # Start the test server in the background
       - name: Start test server
         run: |
           cd apps/server
-          TEST_MODE=1 cargo loco start > /tmp/server.log 2>&1 &
-          echo $! > /tmp/server.pid
-          sleep 30  # Wait for server to be ready
-          tail -20 /tmp/server.log
-      
-      - name: Verify server is running
-        run: |
+          cargo build --release
+          cargo run --release &
+          echo $! > /tmp/test_server.pid
+          
+          # Wait for server to be ready
           for i in {1..30}; do
-            if curl -f http://localhost:3000/health || curl -f http://localhost:3000/_health; then
-              echo "Server is ready"
+            if curl -s http://localhost:3000/health > /dev/null; then
+              echo "Server is ready!"
               break
             fi
-            echo "Waiting for server... ($i/30)"
-            sleep 2
+            if [ $i -eq 30 ]; then
+              echo "Server failed to start"
+              exit 1
+            fi
+            sleep 1
           done
       
+      # Run integration tests
       - name: Run integration tests
-        run: |
-          cargo test --test '*' --workspace -- --ignored --test-threads=1 --nocapture
+        run: cargo test --package rustok-server --test integration -- --nocapture
+        env:
+          RUST_BACKTRACE: full
       
-      - name: Upload server logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: server-logs
-          path: /tmp/server.log
-          retention-days: 3
-      
-      - name: Stop server
+      # Cleanup (always run)
+      - name: Stop test server
         if: always()
         run: |
-          if [ -f /tmp/server.pid ]; then
-            kill $(cat /tmp/server.pid) || true
+          if [ -f /tmp/test_server.pid ]; then
+            kill $(cat /tmp/test_server.pid) || true
+            rm /tmp/test_server.pid
           fi
 
   next-apps:

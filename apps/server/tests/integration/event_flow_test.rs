@@ -15,7 +15,6 @@ use rustok_core::events::types::DomainEvent;
 
 /// Test event propagation from publication to consumption
 #[tokio::test]
-#[ignore] // Requires test server to be running
 async fn test_event_propagation() {
     let app = spawn_test_app().await;
     
@@ -48,7 +47,6 @@ async fn test_event_propagation() {
 
 /// Test event persistence in outbox table
 #[tokio::test]
-#[ignore]
 async fn test_event_outbox_persistence() {
     let app = spawn_test_app().await;
     
@@ -95,7 +93,6 @@ async fn test_event_outbox_persistence() {
 
 /// Test event relay to subscribers
 #[tokio::test]
-#[ignore]
 async fn test_event_relay() {
     let app = spawn_test_app().await;
     
@@ -124,7 +121,6 @@ async fn test_event_relay() {
 
 /// Test event ordering and sequence
 #[tokio::test]
-#[ignore]
 async fn test_event_ordering() {
     let app = spawn_test_app().await;
     
@@ -183,7 +179,6 @@ async fn test_event_ordering() {
 
 /// Test event correlation IDs
 #[tokio::test]
-#[ignore]
 async fn test_event_correlation() {
     let app = spawn_test_app().await;
     
@@ -221,7 +216,6 @@ async fn test_event_correlation() {
 
 /// Test event error handling and retry
 #[tokio::test]
-#[ignore]
 async fn test_event_error_handling() {
     let app = spawn_test_app().await;
     
@@ -244,7 +238,6 @@ async fn test_event_error_handling() {
 
 /// Test cross-module event propagation
 #[tokio::test]
-#[ignore]
 async fn test_cross_module_events() {
     let app = spawn_test_app().await;
     
@@ -273,7 +266,6 @@ async fn test_cross_module_events() {
 
 /// Test event filtering by tenant
 #[tokio::test]
-#[ignore]
 async fn test_event_tenant_isolation() {
     let app = spawn_test_app().await;
     
@@ -303,7 +295,6 @@ async fn test_event_tenant_isolation() {
 
 /// Test event validation before publication
 #[tokio::test]
-#[ignore]
 async fn test_event_validation() {
     let app = spawn_test_app().await;
     
@@ -322,7 +313,6 @@ async fn test_event_validation() {
 
 /// Test event payload size limits
 #[tokio::test]
-#[ignore]
 async fn test_event_payload_size() {
     let app = spawn_test_app().await;
     
@@ -357,7 +347,6 @@ async fn test_event_payload_size() {
 
 /// Test event replay mechanism
 #[tokio::test]
-#[ignore]
 async fn test_event_replay() {
     let app = spawn_test_app().await;
     
@@ -381,7 +370,6 @@ async fn test_event_replay() {
 
 /// Test event deduplication
 #[tokio::test]
-#[ignore]
 async fn test_event_deduplication() {
     let app = spawn_test_app().await;
     
@@ -410,7 +398,6 @@ async fn test_event_deduplication() {
 
 /// Test event batching and bulk operations
 #[tokio::test]
-#[ignore]
 async fn test_event_batching() {
     let app = spawn_test_app().await;
     

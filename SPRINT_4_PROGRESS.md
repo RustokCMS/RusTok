@@ -271,104 +271,10 @@ crates/rustok-test-utils/src/test_app.rs (NEW - 600 LOC)
 #### Remaining Subtasks for Task 4.1
 
 - [x] CI/CD integration for integration tests
-- [x] Test database migrations (documented, existing migrations work)
-- [x] Mock external services (payment gateway, etc.)
+- [ ] Test database migrations
+- [ ] Mock external services (payment gateway, etc.)
 - [ ] Performance regression testing
 - [x] Test documentation
-
-#### Completed Subtasks
-
-##### 5. CI/CD Integration ✅
-**Completed:** 2026-02-12
-**Effort:** ~1 hour
-
-**Deliverables:**
-- ✅ Added `integration-tests` job to CI workflow (`.github/workflows/ci.yml`)
-- ✅ PostgreSQL service configuration for tests
-- ✅ Database migration step
-- ✅ Test server startup with health checks
-- ✅ Integration test execution with proper flags
-- ✅ Server log artifact upload for debugging
-- ✅ Server cleanup on test completion
-- ✅ Updated `ci-success` job to include integration tests
-
-**Key Features:**
-- Server starts in background with logging
-- Health check verification (up to 60 seconds)
-- Parallel-safe test execution (`--test-threads=1`)
-- Log artifacts retained for 3 days
-- Cleanup ensures server is stopped even on failures
-
-**File Updated:** `.github/workflows/ci.yml`
-
----
-
-##### 6. Test Documentation ✅
-**Completed:** 2026-02-12
-**Effort:** ~2 hours
-
-**Deliverables:**
-- ✅ Comprehensive integration testing guide (`docs/INTEGRATION_TESTING_GUIDE.md`)
-- ✅ 500+ lines of documentation
-- ✅ Quick start instructions
-- ✅ Test utilities framework overview
-- ✅ Running tests guide
-- ✅ Writing tests guide
-- ✅ Test fixtures reference
-- ✅ Event testing patterns
-- ✅ Mock services usage
-- ✅ CI/CD integration guide
-- ✅ Best practices (7 patterns)
-- ✅ Troubleshooting section (10 common issues)
-
-**Sections:**
-1. Overview
-2. Test Utilities Framework
-3. Running Integration Tests
-4. Writing Integration Tests
-5. Test Fixtures
-6. Event Testing
-7. Mock Services
-8. CI/CD Integration
-9. Best Practices
-10. Troubleshooting
-
-**File Created:** `docs/INTEGRATION_TESTING_GUIDE.md` (17.6KB)
-
----
-
-##### 7. Mock Services ✅
-**Completed:** 2026-02-12
-**Effort:** ~1.5 hours
-
-**Deliverables:**
-- ✅ Mock services module (`crates/rustok-test-utils/src/mocks.rs`)
-- ✅ Mock Payment Gateway (success/failure scenarios)
-- ✅ Mock Email Service (tracking sent emails)
-- ✅ Mock SMS Service (tracking sent messages)
-- ✅ Mock API Client (request/response recording)
-- ✅ Helper functions for quick mock creation
-- ✅ Comprehensive unit tests for all mocks
-
-**Key Features:**
-- Configurable success/failure tokens for payments
-- Request tracking for all services
-- Response recording
-- Easy-to-use builder pattern
-- Type-safe request/response handling
-- Helper functions for common scenarios
-
-**Mock Services:**
-- `MockPaymentGateway`: Process mock payments with success/failure
-- `MockEmailService`: Track sent emails, find by recipient/subject
-- `MockSmsService`: Track sent SMS, find by recipient
-- `MockApiClient`: Mock external API calls, record requests
-
-**Files Created:**
-- `crates/rustok-test-utils/src/mocks.rs` (449 lines)
-- Updated `crates/rustok-test-utils/src/lib.rs` (export mocks)
-
----
 
 ---
 
@@ -431,7 +337,7 @@ crates/rustok-test-utils/src/test_app.rs (NEW - 600 LOC)
 
 | Task | Status | LOC | Tests | Docs | Effort |
 |------|--------|-----|-------|------|--------|
-| 4.1: Integration Tests | ✅ Complete | 1050+ | 28 | 18KB | 5d → 12h |
+| 4.1: Integration Tests | 🔄 90% | 600+ | 28 | 5KB | 5d → 6h |
 | 4.2: Property Tests | 📋 Planned | 0 | 0 | 0 | 3d |
 | 4.3: Benchmarks | 📋 Planned | 0 | 0 | 0 | 2d |
 | 4.4: Security Audit | 📋 Planned | 0 | 0 | 15KB | 3d |
@@ -535,9 +441,8 @@ crates/rustok-test-utils/src/test_app.rs (NEW - 600 LOC)
 ### Immediate (Task 4.1 Completion)
 1. Add test database migrations
 2. Mock external services
-3. CI/CD integration
-4. Test documentation
-5. Mark Task 4.1 as complete
+3. Performance regression testing
+4. Mark Task 4.1 as complete
 
 ### Sprint 4 Continuation
 1. Task 4.2: Property-Based Tests (3 days)
@@ -552,10 +457,10 @@ crates/rustok-test-utils/src/test_app.rs (NEW - 600 LOC)
 - `SPRINT_4_START.md` - Sprint planning (22KB)
 - `SPRINT_4_PROGRESS.md` - This file (progress tracking)
 - `crates/rustok-test-utils/` - Test utilities crate
+- `docs/INTEGRATION_TESTING_GUIDE.md` - Testing guide (5KB)
 
 ### Files to Create
 - `SPRINT_4_COMPLETION.md` - Completion report (to be created)
-- `docs/INTEGRATION_TESTING_GUIDE.md` - Testing guide
 - `docs/PROPERTY_TESTING_GUIDE.md` - Proptest guide
 - `docs/PERFORMANCE_BENCHMARKS_GUIDE.md` - Criterion guide
 - `docs/SECURITY_AUDIT_REPORT.md` - Security findings
@@ -580,6 +485,6 @@ crates/rustok-test-utils/src/test_app.rs (NEW - 600 LOC)
 
 ---
 
-**Sprint 4 Status:** 🔄 In Progress (25% - 1/4 tasks)
+**Sprint 4 Status:** 🔄 In Progress (35% - 1/4 tasks)
 **Overall Progress:** 75% (12/16 tasks)
 **Next Task:** Task 4.2: Property-Based Tests or Task 4.4: Security Audit (both P1)
