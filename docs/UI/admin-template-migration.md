@@ -200,7 +200,7 @@
 Для развертывания и подключения админки к отдельному серверу см. пошаговый quickstart:
 - [`docs/UI/admin-server-connection-quickstart.md`](./admin-server-connection-quickstart.md)
 - В том числе целевой full-dev сценарий: одной командой поднимаются server + 2 админки + 2 storefront на отдельных портах.
-- И краткая матрица вариантов деплоя по окружениям: dev/staging/prod (Docker Compose, Railway/Fly/Render, VPS/k8s).
+- И нейтральный список способов установки/запуска: Docker Compose, VPS+Docker, Kubernetes (k8s), Railway/Fly/Render.
 
 
 ## 3.1 Submodule Status & Integration Assessment (2026-02)

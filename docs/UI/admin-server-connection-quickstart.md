@@ -235,34 +235,66 @@ server {
 
 ---
 
-## 7) Варианты деплоя (кратко: dev и prod)
+## 7) Способы установки и запуска
 
-Ниже фиксируем рекомендуемую матрицу по окружениям.
+Ниже — нейтральный список вариантов. Без приоритизации по окружениям.
 
-### Dev (локальная разработка)
+### 7.1 Docker Compose
 
-- **Docker Compose (основной выбор)** — one-command full-dev стек:
-  `server + admin-next + admin-leptos + storefront-next + storefront-leptos + db`.
-- Цель: быстрый onboarding, одинаковая среда у всей команды, smoke без ручной настройки.
+Подходит, если хотите поднять весь стек одной командой.
 
-### Staging
+```bash
+docker compose up -d --build
+docker compose ps
+```
 
-- **Railway / Render / Fly.io** — быстрый managed PaaS деплой для проверки фич и интеграций.
-- Цель: быстро получить shareable окружение, близкое к production.
+Для полного локального стека (если настроен профиль):
 
-### Production
+```bash
+docker compose --profile full-dev up -d --build
+```
 
-- **Вариант A (по умолчанию): VPS + Docker (+ Nginx/Traefik)**
-  - Плюсы: дешево и полный контроль.
-  - Минусы: инфраструктура и поддержка на вашей стороне.
-- **Вариант B (стандарт при росте): Kubernetes (k8s)**
-  - Плюсы: масштаб и зрелые SRE-практики.
-  - Минусы: высокий порог сложности/стоимости.
-- **Managed PaaS (Railway/Fly/Render)**
-  - Рассматривать как ускорение для staging/раннего production, но не как целевой «стандарт по умолчанию».
+### 7.2 VPS + Docker (+ Nginx/Traefik)
 
-### Рекомендация для RusTok
+Базовая схема установки:
 
-1. **Dev:** Docker Compose (one-command).
-2. **Staging:** Railway (или Fly/Render) для скорости.
-3. **Prod (default):** VPS + Docker или сразу k8s (в зависимости от команды и SLA).
+1. Установить Docker и Docker Compose на VPS.
+2. Скопировать проект и `.env`.
+3. Запустить сервисы:
+
+```bash
+docker compose up -d --build
+```
+
+4. Настроить reverse proxy на `/` (admin) и `/api/*` (backend).
+
+### 7.3 Kubernetes (k8s)
+
+Базовая схема установки:
+
+1. Подготовить namespace и секреты.
+2. Применить манифесты приложения (Deployments/Services/Ingress).
+3. Проверить rollout и доступность:
+
+```bash
+kubectl apply -f k8s/
+kubectl rollout status deploy/server -n rustok
+kubectl get ingress -n rustok
+```
+
+### 7.4 Railway / Render / Fly.io
+
+Общий порядок:
+
+1. Подключить репозиторий.
+2. Задать переменные окружения.
+3. Настроить команду сборки/старта.
+4. Проверить, что доступны `/api/auth/*` и `/api/graphql`.
+
+### 7.5 Что проверить после установки (для любого варианта)
+
+1. Открывается страница логина админки.
+2. Успешный вход под валидным пользователем.
+3. В Network есть успешные запросы к `/api/auth/*` и `/api/graphql`.
+4. Открываются основные маршруты админки.
+
