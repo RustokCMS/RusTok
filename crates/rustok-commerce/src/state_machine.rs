@@ -430,6 +430,7 @@ impl<S> Order<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     
     fn create_test_order() -> Order<Pending> {
         Order::new_pending(
@@ -439,6 +440,10 @@ mod tests {
             Decimal::new(10000, 2), // $100.00
             "USD".to_string(),
         )
+    }
+
+    fn uuid_from_bytes(bytes: [u8; 16]) -> Uuid {
+        Uuid::from_bytes(bytes)
     }
     
     #[test]
@@ -526,6 +531,110 @@ mod tests {
         
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), OrderError::PaymentFailed(_)));
+    }
+
+    proptest! {
+        #[test]
+        fn prop_full_flow_preserves_identity(
+            id in any::<[u8; 16]>(),
+            tenant_id in any::<[u8; 16]>(),
+            customer_id in any::<[u8; 16]>(),
+            amount in 1i64..1_000_000,
+            currency in "[A-Z]{3}",
+            payment_id in "[A-Za-z0-9]{1,12}",
+            payment_method in "[A-Za-z0-9]{1,12}",
+            tracking_number in "[A-Za-z0-9]{1,12}",
+            carrier in "[A-Za-z0-9]{1,12}",
+            signature in prop::option::of("[A-Za-z0-9]{1,12}")
+        ) {
+            let id = uuid_from_bytes(id);
+            let tenant_id = uuid_from_bytes(tenant_id);
+            let customer_id = uuid_from_bytes(customer_id);
+            let total_amount = Decimal::new(amount, 2);
+
+            let order = Order::new_pending(
+                id,
+                tenant_id,
+                customer_id,
+                total_amount,
+                currency.clone(),
+            );
+
+            let confirmed = order.confirm().unwrap();
+            prop_assert!(confirmed.state.inventory_reserved);
+
+            let paid = confirmed
+                .pay(payment_id.clone(), payment_method.clone())
+                .unwrap();
+            prop_assert_eq!(paid.state.payment_id, payment_id);
+            prop_assert_eq!(paid.state.payment_method, payment_method);
+
+            let shipped = paid
+                .ship(tracking_number.clone(), carrier.clone())
+                .unwrap();
+            prop_assert_eq!(shipped.state.tracking_number, tracking_number);
+            prop_assert_eq!(shipped.state.carrier, carrier);
+
+            let delivered = shipped.deliver(signature.clone());
+
+            prop_assert_eq!(delivered.id, id);
+            prop_assert_eq!(delivered.tenant_id, tenant_id);
+            prop_assert_eq!(delivered.customer_id, customer_id);
+            prop_assert_eq!(delivered.total_amount, total_amount);
+            prop_assert_eq!(delivered.currency, currency);
+            prop_assert_eq!(delivered.state.signature, signature);
+        }
+
+        #[test]
+        fn prop_pay_rejects_empty_payment_id(
+            id in any::<[u8; 16]>(),
+            tenant_id in any::<[u8; 16]>(),
+            customer_id in any::<[u8; 16]>(),
+            amount in 1i64..1_000_000,
+            currency in "[A-Z]{3}",
+            payment_method in "[A-Za-z0-9]{1,12}"
+        ) {
+            let order = Order::new_pending(
+                uuid_from_bytes(id),
+                uuid_from_bytes(tenant_id),
+                uuid_from_bytes(customer_id),
+                Decimal::new(amount, 2),
+                currency,
+            );
+
+            let confirmed = order.confirm().unwrap();
+            let result = confirmed.pay(String::new(), payment_method);
+            prop_assert!(matches!(result, Err(OrderError::PaymentFailed(_))));
+        }
+
+        #[test]
+        fn prop_ship_rejects_empty_tracking_number(
+            id in any::<[u8; 16]>(),
+            tenant_id in any::<[u8; 16]>(),
+            customer_id in any::<[u8; 16]>(),
+            amount in 1i64..1_000_000,
+            currency in "[A-Z]{3}",
+            payment_id in "[A-Za-z0-9]{1,12}",
+            payment_method in "[A-Za-z0-9]{1,12}",
+            carrier in "[A-Za-z0-9]{1,12}"
+        ) {
+            let order = Order::new_pending(
+                uuid_from_bytes(id),
+                uuid_from_bytes(tenant_id),
+                uuid_from_bytes(customer_id),
+                Decimal::new(amount, 2),
+                currency,
+            );
+
+            let paid = order
+                .confirm()
+                .unwrap()
+                .pay(payment_id, payment_method)
+                .unwrap();
+
+            let result = paid.ship(String::new(), carrier);
+            prop_assert!(matches!(result, Err(OrderError::InvalidTrackingNumber)));
+        }
     }
     
     // Compile-time safety tests (these should NOT compile)

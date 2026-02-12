@@ -287,6 +287,11 @@ impl ToContentStatus for ContentNode<Archived> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    fn uuid_from_bytes(bytes: [u8; 16]) -> Uuid {
+        Uuid::from_bytes(bytes)
+    }
     
     #[test]
     fn test_new_draft() {
@@ -368,6 +373,55 @@ mod tests {
         let node = node.update();
         
         assert!(node.state.updated_at > created_at);
+    }
+
+    proptest! {
+        #[test]
+        fn prop_publish_preserves_metadata(
+            id in any::<[u8; 16]>(),
+            tenant_id in any::<[u8; 16]>(),
+            author_id in prop::option::of(any::<[u8; 16]>()),
+            kind in "[a-z0-9]{1,12}"
+        ) {
+            let id = uuid_from_bytes(id);
+            let tenant_id = uuid_from_bytes(tenant_id);
+            let author_id = author_id.map(uuid_from_bytes);
+            let kind_value = kind.clone();
+
+            let node = ContentNode::new_draft(id, tenant_id, author_id, kind);
+            let published = node.publish();
+
+            prop_assert_eq!(published.id, id);
+            prop_assert_eq!(published.tenant_id, tenant_id);
+            prop_assert_eq!(published.author_id, author_id);
+            prop_assert_eq!(published.kind, kind_value);
+            prop_assert_eq!(published.to_status(), ContentStatus::Published);
+        }
+
+        #[test]
+        fn prop_archive_restore_preserves_metadata(
+            id in any::<[u8; 16]>(),
+            tenant_id in any::<[u8; 16]>(),
+            author_id in prop::option::of(any::<[u8; 16]>()),
+            kind in "[a-z0-9]{1,12}",
+            reason in "[A-Za-z0-9]{1,20}"
+        ) {
+            let id = uuid_from_bytes(id);
+            let tenant_id = uuid_from_bytes(tenant_id);
+            let author_id = author_id.map(uuid_from_bytes);
+            let kind_value = kind.clone();
+
+            let node = ContentNode::new_draft(id, tenant_id, author_id, kind)
+                .publish()
+                .archive(reason)
+                .restore_to_draft();
+
+            prop_assert_eq!(node.id, id);
+            prop_assert_eq!(node.tenant_id, tenant_id);
+            prop_assert_eq!(node.author_id, author_id);
+            prop_assert_eq!(node.kind, kind_value);
+            prop_assert_eq!(node.to_status(), ContentStatus::Draft);
+        }
     }
     
     // Compile-time safety tests (these should NOT compile if uncommented)

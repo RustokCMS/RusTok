@@ -35,3 +35,4 @@ redis-cache = ["redis"]
 tokio.workspace = true
 rustok-outbox.workspace = true
 futures = "0.3"
+proptest.workspace = true

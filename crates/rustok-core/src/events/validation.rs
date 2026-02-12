@@ -146,6 +146,7 @@ pub mod validators {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use uuid::Uuid;
 
     #[test]
@@ -223,5 +224,42 @@ mod tests {
 
         let err = EventValidationError::NilUuid("test_id");
         assert_eq!(err.to_string(), "UUID field 'test_id' cannot be nil");
+    }
+
+    proptest! {
+        #[test]
+        fn prop_validate_not_empty_accepts_non_empty(value in "[A-Za-z0-9]{1,50}") {
+            prop_assert!(validators::validate_not_empty("field", &value).is_ok());
+        }
+
+        #[test]
+        fn prop_validate_not_empty_rejects_whitespace(value in r"[ \t\n]{1,20}") {
+            prop_assert!(validators::validate_not_empty("field", &value).is_err());
+        }
+
+        #[test]
+        fn prop_validate_max_length_enforces_limit(value in ".{0,20}") {
+            let result = validators::validate_max_length("field", &value, 10);
+            if value.len() <= 10 {
+                prop_assert!(result.is_ok());
+            } else {
+                prop_assert!(result.is_err());
+            }
+        }
+
+        #[test]
+        fn prop_validate_currency_code_accepts_uppercase(code in "[A-Z]{3}") {
+            prop_assert!(validators::validate_currency_code("currency", &code).is_ok());
+        }
+
+        #[test]
+        fn prop_validate_range_enforces_bounds(value in -200i64..200i64) {
+            let result = validators::validate_range("field", value, -100, 100);
+            if (-100..=100).contains(&value) {
+                prop_assert!(result.is_ok());
+            } else {
+                prop_assert!(result.is_err());
+            }
+        }
     }
 }
