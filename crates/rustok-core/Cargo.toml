@@ -23,7 +23,7 @@ sea-orm-migration.workspace = true
 rustok-telemetry.workspace = true
 moka.workspace = true
 alloy-scripting = { path = "../alloy-scripting" }
-redis = { version = "0.31", features = ["tokio-comp", "connection-manager"], optional = true }
+redis = { version = "1.0", features = ["tokio-comp", "connection-manager"], optional = true }
 rhai = { version = "1.20", features = ["sync", "metadata"] }
 
 [features]
