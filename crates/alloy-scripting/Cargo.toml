@@ -3,6 +3,7 @@ name = "alloy-scripting"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+description.workspace = true
 
 [dependencies]
 rhai = { version = "1.20", features = ["sync", "metadata"] }
