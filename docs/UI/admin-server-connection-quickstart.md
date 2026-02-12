@@ -51,6 +51,54 @@ docker compose ps
 
 ---
 
+## 0.1 Целевой dev-режим: "одна кнопка" на весь стек
+
+Да — это правильный идеал для вашей команды.
+
+В локальной разработке одной командой должны подниматься:
+
+- `server` (Loco API)
+- `admin-next` (starter/admin на Next)
+- `admin-leptos` (целевая Leptos-admin)
+- `storefront-next` (Next storefront)
+- `storefront-leptos` (Leptos storefront)
+- `db` (+ опционально `redis`, `mailhog`, `nginx`)
+
+### Рекомендуемая карта портов (пример)
+
+- `server`: `http://localhost:5150`
+- `admin-next`: `http://localhost:3000`
+- `admin-leptos`: `http://localhost:3001`
+- `storefront-next`: `http://localhost:3100`
+- `storefront-leptos`: `http://localhost:3101`
+
+### One-command UX
+
+```bash
+docker compose --profile full-dev up -d --build
+```
+
+После этого разработчик:
+
+1. открывает нужный UI по порту;
+2. логинится seed-админом;
+3. проверяет, что запросы идут в `server` (`/api/auth/*`, `/api/graphql`).
+
+### Почему это важно
+
+- мгновенный onboarding новых разработчиков;
+- одинаковая среда для всей команды;
+- быстрые smoke-проверки сразу в 4 UI (2 админки + 2 storefront).
+
+### Практический минимум для реализации
+
+- единый `.env.dev` в корне (shared переменные);
+- `docker-compose.yml` + профили (`core`, `full-dev`);
+- seed-скрипт в `server` для admin user + tenant;
+- healthchecks и `depends_on: condition: service_healthy`.
+
+---
+
 ## 1) Самый простой и рекомендуемый вариант: **один домен через reverse proxy**
 
 Идея: браузер открывает админку и отправляет API-запросы на **тот же origin**.

@@ -199,6 +199,7 @@
 
 Для развертывания и подключения админки к отдельному серверу см. пошаговый quickstart:
 - [`docs/UI/admin-server-connection-quickstart.md`](./admin-server-connection-quickstart.md)
+- В том числе целевой full-dev сценарий: одной командой поднимаются server + 2 админки + 2 storefront на отдельных портах.
 
 
 ## 3.1 Submodule Status & Integration Assessment (2026-02)
