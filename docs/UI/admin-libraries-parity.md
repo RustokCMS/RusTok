@@ -81,6 +81,27 @@ This is an alpha version and requires clarification. Be careful, there may be er
 4. Отсутствие блокирующих лицензий/ограничений.
 5. Возможность завернуть в наш shared API (без прямой привязки к app-слою).
 
+### Rust UI каталог (`/docs/components`) — план проверки
+
+В текущем container-сценарии прямой запрос к `https://www.rust-ui.com/docs/components/` блокируется сетью (`CONNECT tunnel failed, response 403`),
+поэтому полный auto-audit каталога здесь не выполнен.
+
+Что фиксируем как обязательный follow-up при доступной сети:
+
+1. Снять список доступных Rust UI компонентов.
+2. Сопоставить его с нашим gap-логом (DnD, Dropzone, Date picker, Drawer, Command palette, Toast).
+3. Для каждого совпадения зафиксировать решение: `adopt` / `pilot` / `reject`.
+4. Если `adopt` — добавить thin-wrapper в shared crate и пример использования в обоих UI (Next+Leptos).
+
+Шаблон строки для gap-log:
+
+- `component`: `<name>`
+- `source`: `rust-ui`
+- `decision`: `adopt|pilot|reject`
+- `target crate`: `crates/<shared-lib>`
+- `owner`: `<team/person>`
+- `notes`: `compatibility, SSR/CSR, maintenance`
+
 ### Правило внедрения по gap-задачам
 
 - Нельзя закрывать gap ad-hoc кодом в `apps/next-admin` или `apps/admin`.
