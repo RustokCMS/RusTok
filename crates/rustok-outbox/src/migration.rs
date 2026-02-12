@@ -17,6 +17,16 @@ impl MigrationTrait for SysEventsMigration {
                             .not_null()
                             .primary_key(),
                     )
+                    .col(
+                        ColumnDef::new(SysEvents::EventType)
+                            .string_len(255)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(SysEvents::SchemaVersion)
+                            .small_integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(SysEvents::Payload).json_binary().not_null())
                     .col(ColumnDef::new(SysEvents::Status).string_len(32).not_null())
                     .col(
@@ -74,6 +84,8 @@ impl MigrationTrait for SysEventsMigration {
 enum SysEvents {
     Table,
     Id,
+    EventType,
+    SchemaVersion,
     Payload,
     Status,
     RetryCount,
