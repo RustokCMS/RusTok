@@ -35,6 +35,7 @@ pub struct DispatcherConfig {
     pub max_concurrent: usize,
     pub retry_count: usize,
     pub retry_delay_ms: u64,
+    pub max_queue_depth: usize,
 }
 
 impl Default for DispatcherConfig {
@@ -44,6 +45,7 @@ impl Default for DispatcherConfig {
             max_concurrent: 10,
             retry_count: 0,
             retry_delay_ms: 100,
+            max_queue_depth: 10000,
         }
     }
 }

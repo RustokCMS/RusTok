@@ -25,6 +25,7 @@ mod m20250130_000017_create_commerce_collections;
 mod m20250130_000018_create_commerce_categories;
 mod m20250201_000001_alter_status_to_enums;
 mod m20260211_000001_add_event_versioning;
+mod m20250212_000001_create_builds_and_releases;
 
 pub struct Migrator;
 
@@ -55,6 +56,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250101_000006_add_metadata_to_tenants_and_users::Migration),
             Box::new(m20250201_000001_alter_status_to_enums::Migration),
             Box::new(m20260211_000001_add_event_versioning::Migration),
+            Box::new(m20250212_000001_create_builds_and_releases::Migration),
         ]
     }
 }

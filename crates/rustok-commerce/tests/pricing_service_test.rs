@@ -7,13 +7,13 @@ use rust_decimal_macros::dec;
 use rustok_commerce::dto::{CreateProductInput, PriceInput, ProductTranslationInput, ProductVariantInput};
 use rustok_commerce::services::{CatalogService, PricingService};
 use rustok_commerce::CommerceError;
-use rustok_test_utils::{db::setup_test_db, events::mock_event_bus, helpers::unique_slug};
+use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus, helpers::unique_slug};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 async fn setup() -> (DatabaseConnection, PricingService, CatalogService) {
     let db = setup_test_db().await;
-    let (event_bus, _rx) = mock_event_bus();
+    let event_bus = mock_transactional_event_bus();
     let pricing_service = PricingService::new(db.clone(), event_bus.clone());
     let catalog_service = CatalogService::new(db.clone(), event_bus);
     (db, pricing_service, catalog_service)

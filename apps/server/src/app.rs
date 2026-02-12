@@ -23,7 +23,21 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 struct OutboxRelayWorkerHandle {
-    _handle: JoinHandle<()>,
+    handle: std::sync::Mutex<Option<JoinHandle<()>>>,
+}
+
+impl OutboxRelayWorkerHandle {
+    fn new(handle: JoinHandle<()>) -> Self {
+        Self {
+            handle: std::sync::Mutex::new(Some(handle)),
+        }
+    }
+
+    fn shutdown(&self) {
+        if let Some(handle) = self.handle.lock().unwrap().take() {
+            handle.abort();
+        }
+    }
 }
 
 pub struct App;
@@ -106,7 +120,7 @@ impl Hooks for App {
         if let Some(relay_config) = event_runtime.relay_config {
             let handle = spawn_outbox_relay_worker(relay_config);
             ctx.shared_store
-                .insert(OutboxRelayWorkerHandle { _handle: handle });
+                .insert(OutboxRelayWorkerHandle::new(handle));
         }
 
         Ok(())
@@ -114,5 +128,23 @@ impl Hooks for App {
 
     async fn seed(_ctx: &AppContext, _path: &Path) -> Result<()> {
         Ok(())
+    }
+
+    async fn shutdown(ctx: &AppContext) {
+        tracing::info!("Starting graceful shutdown sequence...");
+
+        // Stop outbox relay worker if running
+        if let Some(handle) = ctx.shared_store.get::<OutboxRelayWorkerHandle>() {
+            tracing::info!("Stopping outbox relay worker...");
+            handle.shutdown();
+        }
+
+        // Close database connections
+        tracing::info!("Closing database connections...");
+        if let Err(e) = ctx.db.close().await {
+            tracing::error!(error = %e, "Error closing database connection");
+        }
+
+        tracing::info!("Graceful shutdown completed");
     }
 }

@@ -5,13 +5,13 @@
 use rustok_commerce::dto::{AdjustInventoryInput, CreateProductInput, ProductTranslationInput, ProductVariantInput};
 use rustok_commerce::services::{CatalogService, InventoryService};
 use rustok_commerce::CommerceError;
-use rustok_test_utils::{db::setup_test_db, events::mock_event_bus, helpers::unique_slug};
+use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus, helpers::unique_slug};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 async fn setup() -> (DatabaseConnection, InventoryService, CatalogService) {
     let db = setup_test_db().await;
-    let (event_bus, _rx) = mock_event_bus();
+    let event_bus = mock_transactional_event_bus();
     let inventory_service = InventoryService::new(db.clone(), event_bus.clone());
     let catalog_service = CatalogService::new(db.clone(), event_bus);
     (db, inventory_service, catalog_service)

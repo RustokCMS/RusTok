@@ -169,6 +169,22 @@ pre-commit = "fmt --all -- --check && clippy --workspace --all-targets -- -D war
 # Run pre-push checks locally  
 pre-push = "test --workspace && audit"
 
+# ============================================================================
+# XTask - Build Automation
+# ============================================================================
+
+# Generate module registry from modules.toml
+xtask = "run -p xtask --"
+
+# Generate registry (convenience alias)
+generate-registry = "run -p xtask -- generate-registry"
+
+# Validate modules.toml
+validate-manifest = "run -p xtask -- validate-manifest"
+
+# List configured modules
+list-modules = "run -p xtask -- list-modules"
+
 [build]
 # Use incremental compilation for faster rebuilds
 incremental = true

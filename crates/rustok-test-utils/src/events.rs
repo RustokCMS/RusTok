@@ -2,9 +2,114 @@
 //!
 //! Provides a mock event bus for testing event publishing and handling.
 
-use rustok_core::{DomainEvent, EventBus, EventEnvelope};
+use rustok_core::{DomainEvent, EventBus, EventEnvelope, EventTransport, ReliabilityLevel};
+use rustok_outbox::TransactionalEventBus;
+use sea_orm::ConnectionTrait;
+use std::any::Any;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
+
+/// Mock event transport that records events for testing.
+#[derive(Debug, Clone)]
+pub struct MockEventTransport {
+    recorded_events: Arc<Mutex<Vec<RecordedEvent>>>,
+}
+
+#[derive(Debug, Clone)]
+struct RecordedEvent {
+    pub tenant_id: Uuid,
+    pub actor_id: Option<Uuid>,
+    pub event_type: String,
+    pub event: DomainEvent,
+}
+
+#[async_trait::async_trait]
+impl EventTransport for MockEventTransport {
+    async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
+        let event_type = event_type_name(&envelope.event);
+        let recorded = RecordedEvent {
+            tenant_id: envelope.tenant_id,
+            actor_id: envelope.actor_id,
+            event_type,
+            event: envelope.event.clone(),
+        };
+        {
+            let mut events = self.recorded_events.lock().unwrap();
+            events.push(recorded);
+        }
+        Ok(())
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel {
+        ReliabilityLevel::Outbox
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl MockEventTransport {
+    pub fn new() -> Self {
+        Self {
+            recorded_events: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn event_count(&self) -> usize {
+        self.recorded_events.lock().unwrap().len()
+    }
+
+    pub fn has_event_of_type(&self, event_type: &str) -> bool {
+        self.recorded_events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e.event_type == event_type)
+    }
+
+    pub fn events_of_type(&self, event_type: &str) -> Vec<DomainEvent> {
+        self.recorded_events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.event_type == event_type)
+            .map(|e| e.event.clone())
+            .collect()
+    }
+
+    pub fn clear(&self) {
+        self.recorded_events.lock().unwrap().clear();
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.recorded_events.lock().unwrap().is_empty()
+    }
+}
+
+impl Default for MockEventTransport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Creates a new TransactionalEventBus for testing.
+///
+/// This is a convenience function for creating a TransactionalEventBus
+/// that records events without requiring a real database.
+///
+/// # Example
+///
+/// ```rust
+/// use rustok_test_utils::mock_transactional_event_bus;
+/// use rustok_outbox::TransactionalEventBus;
+///
+/// let bus: TransactionalEventBus = mock_transactional_event_bus();
+/// ```
+pub fn mock_transactional_event_bus() -> TransactionalEventBus {
+    let transport = Arc::new(MockEventTransport::new());
+    TransactionalEventBus::new(transport)
+}
 
 /// A mock event bus that records all published events for verification.
 ///

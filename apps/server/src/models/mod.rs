@@ -1,10 +1,7 @@
-pub mod _entities;
+//! Database models for the server application
 
-pub use _entities::{
-    Permissions, RolePermissions, Roles, Sessions, TenantModules, Tenants, UserRoles, Users,
-};
+pub mod build;
+pub mod release;
 
-pub mod sessions;
-pub mod tenant_modules;
-pub mod tenants;
-pub mod users;
+pub use build::Entity as Build;
+pub use release::Entity as Release;
