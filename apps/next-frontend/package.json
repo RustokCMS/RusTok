@@ -29,7 +29,7 @@
     "next": "^16.1.0",
     "next-auth": "^4.24.7",
     "next-intl": "^3.17.2",
-    "next-seo": "^6.6.0",
+    "next-seo": "^7.1.0",
     "openapi-fetch": "^0.11.0",
     "posthog-js": "^1.161.0",
     "react": "^18.3.1",
