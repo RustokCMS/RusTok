@@ -43,23 +43,54 @@ impl TestApp {
         let db = Self::create_test_db().await?;
         let base_url = std::env::var("TEST_SERVER_URL")
             .unwrap_or_else(|_| "http://localhost:3000".to_string());
-        
+
         let auth_token = std::env::var("TEST_AUTH_TOKEN")
             .unwrap_or_else(|_| "test_token".to_string());
-        
+
         let tenant_id = std::env::var("TEST_TENANT_ID")
             .unwrap_or_else(|_| "test-tenant".to_string());
-        
+
         let user_id = std::env::var("TEST_USER_ID")
             .ok()
             .and_then(|s| Uuid::parse_str(&s).ok())
             .unwrap_or_else(Uuid::new_v4);
-        
+
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| TestAppError::ClientError(e.to_string()))?;
-        
+
+        Ok(Self {
+            db: Arc::new(db),
+            client,
+            base_url,
+            auth_token,
+            tenant_id,
+            events: Arc::new(Mutex::new(Vec::new())),
+            user_id,
+        })
+    }
+
+    /// Create a new test application with a custom server URL
+    pub async fn with_server_url(base_url: String) -> Result<Self, TestAppError> {
+        let db = Self::create_test_db().await?;
+
+        let auth_token = std::env::var("TEST_AUTH_TOKEN")
+            .unwrap_or_else(|_| "test_token".to_string());
+
+        let tenant_id = std::env::var("TEST_TENANT_ID")
+            .unwrap_or_else(|_| "test-tenant".to_string());
+
+        let user_id = std::env::var("TEST_USER_ID")
+            .ok()
+            .and_then(|s| Uuid::parse_str(&s).ok())
+            .unwrap_or_else(Uuid::new_v4);
+
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| TestAppError::ClientError(e.to_string()))?;
+
         Ok(Self {
             db: Arc::new(db),
             client,

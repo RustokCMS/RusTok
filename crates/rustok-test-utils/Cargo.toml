@@ -8,6 +8,10 @@ edition = "2021"
 rustok-core = { path = "../rustok-core" }
 rustok-content = { path = "../rustok-content" }
 rustok-commerce = { path = "../rustok-commerce" }
+rustok-server = { path = "../../apps/server" }
+
+# Loco
+loco-rs = { workspace = true, features = ["testing"] }
 
 # Async runtime
 tokio = { workspace = true }
