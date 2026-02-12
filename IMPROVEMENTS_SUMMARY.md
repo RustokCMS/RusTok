@@ -43,7 +43,7 @@
 - ✅ EventBus Consistency Audit
 
 ### 🔄 Sprint 2 (Weeks 2-3) — IN PROGRESS
-- [ ] Tenant Cache с moka (2d)
+- [x] Tenant Cache с moka (2d) ✅ DONE
 - [ ] Circuit Breaker (3d)
 - [ ] Type-Safe State Machines (4d)
 - [ ] Error Handling standardization (2d)
