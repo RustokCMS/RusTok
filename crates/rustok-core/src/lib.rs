@@ -22,7 +22,10 @@ pub use auth::{
 pub use cache::RedisCacheBackend;
 pub use cache::{CacheStats, InMemoryCacheBackend};
 pub use context::{AppContext, CacheBackend, SearchBackend};
-pub use error::{Error, Result};
+pub use error::{
+    Error, ErrorContext, ErrorKind, ErrorResponse, FieldError, Result, RichError,
+    ValidationErrorBuilder,
+};
 pub use events::{
     event_schema, DispatcherConfig, DomainEvent, EventBus, EventBusStats, EventDispatcher,
     EventEnvelope, EventHandler, EventSchema, EventTransport, FieldSchema, HandlerBuilder,
