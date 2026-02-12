@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::context::AuthContext;
 use rustok_content::NodeService;
-use rustok_core::{EventBus, SecurityContext, UserRole};
+use rustok_core::{SecurityContext, UserRole};
+use rustok_outbox::TransactionalEventBus;
 
 use super::types::*;
 

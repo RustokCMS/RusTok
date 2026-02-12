@@ -1,5 +1,5 @@
 use crate::transport::OutboxTransport;
-use rustok_core::events::{DomainEvent, EventEnvelope, EventTransport};
+use rustok_core::events::{DomainEvent, EventEnvelope, EventTransport, ValidateEvent};
 use rustok_core::Result;
 use sea_orm::ConnectionTrait;
 use std::sync::Arc;
@@ -25,6 +25,16 @@ impl TransactionalEventBus {
     where
         C: ConnectionTrait,
     {
+        // Validate event before publishing
+        event.validate().map_err(|e| {
+            tracing::error!(
+                event_type = event.event_type(),
+                error = %e,
+                "Event validation failed"
+            );
+            rustok_core::Error::Validation(format!("Event validation failed: {}", e))
+        })?;
+
         let envelope = EventEnvelope::new(tenant_id, actor_id, event);
 
         if let Some(outbox) = self.transport.as_any().downcast_ref::<OutboxTransport>() {
@@ -46,6 +56,16 @@ impl TransactionalEventBus {
         actor_id: Option<Uuid>,
         event: DomainEvent,
     ) -> Result<()> {
+        // Validate event before publishing
+        event.validate().map_err(|e| {
+            tracing::error!(
+                event_type = event.event_type(),
+                error = %e,
+                "Event validation failed"
+            );
+            rustok_core::Error::Validation(format!("Event validation failed: {}", e))
+        })?;
+
         let envelope = EventEnvelope::new(tenant_id, actor_id, event);
         self.transport.publish(envelope).await
     }

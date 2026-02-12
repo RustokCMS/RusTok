@@ -70,13 +70,15 @@ Most platforms are either **fast but complex** (Go/C++) or **productive but slow
 
 ### Core Platform
 
-- 🔐 **Multi-tenant Isolation** — Native support for multiple stores/sites in one deployment.
-- 🔑 **Enterprise Auth** — JWT-based authentication with fine-grained RBAC.
-- 📊 **Hybrid API** — Unified GraphQL for domain data and REST for infrastructure/OpenAPI.
-- 🏗️ **Standardized Modules** — Clean architecture with `entities`, `dto`, and `services` in every crate.
-- 🎣 **Event-Driven Pub/Sub** — Async synchronization between write modules and read models.
-- 📚 **Full OpenAPI Documentation** — Comprehensive Swagger UI for all REST controllers.
-- 🌍 **Global-First** — Built-in i18n and localization support.
+- 🔐 **Multi-tenant Isolation** — Native support for multiple stores/sites in one deployment with security-hardened validation
+- 🔑 **Enterprise Auth** — JWT-based authentication with fine-grained RBAC
+- 📊 **Hybrid API** — Unified GraphQL for domain data and REST for infrastructure/OpenAPI
+- 🏗️ **Standardized Modules** — Clean architecture with `entities`, `dto`, and `services` in every crate
+- 🎣 **Event-Driven Pub/Sub** — Async synchronization with validation, backpressure control, and transactional guarantees
+- 📚 **Full OpenAPI Documentation** — Comprehensive Swagger UI for all REST controllers
+- 🌍 **Global-First** — Built-in i18n and localization support
+- 🛡️ **Security Hardened** — Input validation, injection prevention (SQL/XSS/Path Traversal), reserved name blocking
+- ⚖️ **Backpressure Control** — Automatic rate limiting prevents OOM from event floods
 
 ### Developer Experience
 
@@ -322,7 +324,11 @@ cargo loco generate controller products --api
 | [ARCHITECTURE_GUIDE.md](docs/ARCHITECTURE_GUIDE.md) | Архитектурные принципы и решения |
 | [ROADMAP.md](docs/ROADMAP.md) | Фазы разработки (Forge → Blueprint → Construction) |
 | [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Статус реализации vs документация |
-| [BACKEND_FIXES_2026-02-11.md](docs/BACKEND_FIXES_2026-02-11.md) | **NEW** Backend compilation fixes and TransactionalEventBus migration |
+| [BACKEND_FIXES_2026-02-11.md](docs/BACKEND_FIXES_2026-02-11.md) | Backend compilation fixes and TransactionalEventBus migration |
+| [ARCHITECTURE_REVIEW_2026-02-12.md](docs/ARCHITECTURE_REVIEW_2026-02-12.md) | **NEW** Complete architecture review with security analysis |
+| [SPRINT_1_COMPLETION.md](docs/SPRINT_1_COMPLETION.md) | **NEW** Sprint 1 P0 fixes completion report |
+| [EVENTBUS_CONSISTENCY_AUDIT.md](docs/EVENTBUS_CONSISTENCY_AUDIT.md) | **NEW** EventBus consistency audit (100% pass) |
+| [IMPLEMENTATION_PROGRESS.md](docs/IMPLEMENTATION_PROGRESS.md) | **NEW** Sprint progress tracking with metrics |
 
 ### Implementation Guides
 

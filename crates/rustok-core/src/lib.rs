@@ -11,6 +11,7 @@ pub mod permissions;
 pub mod rbac;
 pub mod registry;
 pub mod scripting;
+pub mod tenant_validation;
 pub mod types;
 pub use auth::{
     AuthError, AuthService, AuthTokens, RegisterInput, User, UserRepository, UsersMigration,

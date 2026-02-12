@@ -13,6 +13,7 @@ use loco_rs::app::AppContext;
 use redis::AsyncCommands;
 #[cfg(feature = "redis-cache")]
 use rustok_core::RedisCacheBackend;
+use rustok_core::tenant_validation::TenantIdentifierValidator;
 use rustok_core::{CacheBackend, InMemoryCacheBackend};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -561,13 +562,35 @@ fn resolve_identifier(
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| settings.tenant.default_id.to_string());
-            Ok(classify_identifier(identifier))
+            
+            // Validate and classify the identifier
+            classify_and_validate_identifier(&identifier)
+                .map_err(|e| {
+                    tracing::warn!(
+                        identifier = %identifier,
+                        error = %e,
+                        "Invalid tenant identifier from header"
+                    );
+                    StatusCode::BAD_REQUEST
+                })
         }
         "host" | "domain" | "subdomain" => {
             let host = extract_host(req.headers()).ok_or(StatusCode::BAD_REQUEST)?;
-            let host = host.split(':').next().unwrap_or(host).to_lowercase();
+            let host_without_port = host.split(':').next().unwrap_or(host);
+            
+            // Validate hostname
+            let validated_host = TenantIdentifierValidator::validate_host(host_without_port)
+                .map_err(|e| {
+                    tracing::warn!(
+                        host = %host_without_port,
+                        error = %e,
+                        "Invalid tenant hostname"
+                    );
+                    StatusCode::BAD_REQUEST
+                })?;
+            
             Ok(ResolvedTenantIdentifier {
-                value: host,
+                value: validated_host,
                 kind: TenantIdentifierKind::Host,
                 uuid: settings.tenant.default_id,
             })
@@ -611,20 +634,27 @@ fn parse_forwarded_host(forwarded: &str) -> Option<&str> {
         .map(|host| host.trim_matches('"').trim())
 }
 
-fn classify_identifier(value: String) -> ResolvedTenantIdentifier {
-    if let Ok(uuid) = Uuid::parse_str(&value) {
-        return ResolvedTenantIdentifier {
-            value,
+/// Classifies and validates a tenant identifier with security checks
+fn classify_and_validate_identifier(
+    value: &str,
+) -> Result<ResolvedTenantIdentifier, rustok_core::tenant_validation::TenantValidationError> {
+    // Try UUID first (most specific)
+    if let Ok(uuid) = TenantIdentifierValidator::validate_uuid(value) {
+        return Ok(ResolvedTenantIdentifier {
+            value: uuid.to_string(),
             kind: TenantIdentifierKind::Uuid,
             uuid,
-        };
+        });
     }
 
-    ResolvedTenantIdentifier {
-        value,
+    // Try slug (with security validation)
+    let validated_slug = TenantIdentifierValidator::validate_slug(value)?;
+    
+    Ok(ResolvedTenantIdentifier {
+        value: validated_slug,
         kind: TenantIdentifierKind::Slug,
         uuid: Uuid::nil(),
-    }
+    })
 }
 
 #[derive(Debug, Clone, Copy)]

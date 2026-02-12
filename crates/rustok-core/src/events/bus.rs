@@ -6,6 +6,7 @@ use std::sync::{
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use super::backpressure::BackpressureController;
 use super::{DomainEvent, EventEnvelope};
 
 const DEFAULT_CHANNEL_CAPACITY: usize = 128;
@@ -14,6 +15,7 @@ const DEFAULT_CHANNEL_CAPACITY: usize = 128;
 pub struct EventBus {
     sender: broadcast::Sender<EventEnvelope>,
     stats: Arc<EventBusStats>,
+    backpressure: Option<Arc<BackpressureController>>,
 }
 
 #[derive(Debug, Default)]
@@ -47,11 +49,30 @@ impl EventBus {
         Self {
             sender,
             stats: Arc::new(EventBusStats::default()),
+            backpressure: None,
+        }
+    }
+
+    /// Creates an EventBus with backpressure control enabled
+    pub fn with_backpressure(
+        capacity: usize,
+        backpressure: BackpressureController,
+    ) -> Self {
+        let (sender, _) = broadcast::channel(capacity);
+        Self {
+            sender,
+            stats: Arc::new(EventBusStats::default()),
+            backpressure: Some(Arc::new(backpressure)),
         }
     }
 
     pub fn stats(&self) -> Arc<EventBusStats> {
         Arc::clone(&self.stats)
+    }
+
+    /// Returns the backpressure controller if enabled
+    pub fn backpressure(&self) -> Option<Arc<BackpressureController>> {
+        self.backpressure.as_ref().map(Arc::clone)
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<EventEnvelope> {
@@ -73,6 +94,22 @@ impl EventBus {
     }
 
     pub fn publish_envelope(&self, envelope: EventEnvelope) -> crate::Result<()> {
+        // Check backpressure if enabled
+        if let Some(backpressure) = &self.backpressure {
+            if let Err(e) = backpressure.try_acquire() {
+                tracing::warn!(
+                    error = %e,
+                    event_type = envelope.event.event_type(),
+                    "Event rejected due to backpressure"
+                );
+                self.stats.events_dropped.fetch_add(1, Ordering::Relaxed);
+                return Err(crate::Error::External(format!(
+                    "Event rejected due to backpressure: {}",
+                    e
+                )));
+            }
+        }
+
         if self.sender.receiver_count() == 0 {
             tracing::debug!(event = ?envelope.event, "Event published without subscribers");
         }
@@ -82,6 +119,10 @@ impl EventBus {
                 self.stats.events_published.fetch_add(1, Ordering::Relaxed);
             }
             Err(error) => {
+                // Release backpressure slot on send failure
+                if let Some(backpressure) = &self.backpressure {
+                    backpressure.release();
+                }
                 self.stats.events_dropped.fetch_add(1, Ordering::Relaxed);
                 tracing::warn!(
                     ?error,
@@ -106,6 +147,7 @@ impl Clone for EventBus {
         Self {
             sender: self.sender.clone(),
             stats: Arc::clone(&self.stats),
+            backpressure: self.backpressure.as_ref().map(Arc::clone),
         }
     }
 }

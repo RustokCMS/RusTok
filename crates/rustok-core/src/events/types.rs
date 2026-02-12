@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::validation::{validators, EventValidationError, ValidateEvent};
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EventEnvelope {
     pub id: Uuid,
@@ -370,102 +372,422 @@ impl DomainEvent {
         )
     }
 
-    /// Validates the event data according to business rules.
-    /// Returns Ok(()) if valid, or an error message if invalid.
-    pub fn validate(&self) -> Result<(), String> {
+}
+
+impl ValidateEvent for DomainEvent {
+    /// Validates the event data according to business rules using the validation framework.
+    /// Returns Ok(()) if valid, or EventValidationError if invalid.
+    fn validate(&self) -> Result<(), EventValidationError> {
         match self {
-            // Validate inventory events
-            Self::InventoryUpdated { old_quantity, new_quantity, .. } => {
-                if old_quantity < &0 {
-                    return Err("old_quantity cannot be negative".to_string());
-                }
-                if new_quantity < &0 {
-                    return Err("new_quantity cannot be negative".to_string());
-                }
+            // ════════════════════════════════════════════════════════════════
+            // CONTENT EVENTS
+            // ════════════════════════════════════════════════════════════════
+            Self::NodeCreated { node_id, kind, author_id } => {
+                validators::validate_not_nil_uuid("node_id", node_id)?;
+                validators::validate_not_empty("kind", kind)?;
+                validators::validate_max_length("kind", kind, 64)?;
+                validators::validate_alphanumeric_with_dash("kind", kind)?;
+                validators::validate_optional_uuid("author_id", author_id)?;
                 Ok(())
             }
-            Self::InventoryLow { remaining, threshold, .. } => {
-                if remaining < &0 {
-                    return Err("remaining cannot be negative".to_string());
-                }
-                if threshold < &0 {
-                    return Err("threshold cannot be negative".to_string());
-                }
-                if remaining >= threshold {
-                    return Err("remaining should be less than threshold for low inventory".to_string());
-                }
+            Self::NodeUpdated { node_id, kind } => {
+                validators::validate_not_nil_uuid("node_id", node_id)?;
+                validators::validate_not_empty("kind", kind)?;
+                validators::validate_max_length("kind", kind, 64)?;
                 Ok(())
             }
-
-            // Validate price events
-            Self::PriceUpdated { new_amount, .. } => {
-                if new_amount < &0 {
-                    return Err("new_amount cannot be negative".to_string());
-                }
+            Self::NodeTranslationUpdated { node_id, locale } => {
+                validators::validate_not_nil_uuid("node_id", node_id)?;
+                validators::validate_not_empty("locale", locale)?;
+                validators::validate_max_length("locale", locale, 10)?;
                 Ok(())
             }
-
-            // Validate order events
-            Self::OrderPlaced { total, .. } => {
-                if total < &0 {
-                    return Err("total cannot be negative".to_string());
-                }
+            Self::NodePublished { node_id, kind } | Self::NodeUnpublished { node_id, kind } | Self::NodeDeleted { node_id, kind } => {
+                validators::validate_not_nil_uuid("node_id", node_id)?;
+                validators::validate_not_empty("kind", kind)?;
+                validators::validate_max_length("kind", kind, 64)?;
                 Ok(())
             }
-            Self::OrderStatusChanged { old_status, new_status, .. } => {
-                if old_status.is_empty() {
-                    return Err("old_status cannot be empty".to_string());
-                }
-                if new_status.is_empty() {
-                    return Err("new_status cannot be empty".to_string());
-                }
-                if old_status == new_status {
-                    return Err("old_status and new_status must be different".to_string());
-                }
+            Self::BodyUpdated { node_id, locale } => {
+                validators::validate_not_nil_uuid("node_id", node_id)?;
+                validators::validate_not_empty("locale", locale)?;
+                validators::validate_max_length("locale", locale, 10)?;
                 Ok(())
             }
 
-            // Validate user events
-            Self::UserRegistered { email, .. } => {
-                if email.is_empty() {
-                    return Err("email cannot be empty".to_string());
+            // ════════════════════════════════════════════════════════════════
+            // CATEGORY EVENTS
+            // ════════════════════════════════════════════════════════════════
+            Self::CategoryCreated { category_id } | Self::CategoryUpdated { category_id } | Self::CategoryDeleted { category_id } => {
+                validators::validate_not_nil_uuid("category_id", category_id)?;
+                Ok(())
+            }
+
+            // ════════════════════════════════════════════════════════════════
+            // TAG EVENTS
+            // ════════════════════════════════════════════════════════════════
+            Self::TagCreated { tag_id } => {
+                validators::validate_not_nil_uuid("tag_id", tag_id)?;
+                Ok(())
+            }
+            Self::TagAttached { tag_id, target_type, target_id } | Self::TagDetached { tag_id, target_type, target_id } => {
+                validators::validate_not_nil_uuid("tag_id", tag_id)?;
+                validators::validate_not_empty("target_type", target_type)?;
+                validators::validate_max_length("target_type", target_type, 64)?;
+                validators::validate_not_nil_uuid("target_id", target_id)?;
+                Ok(())
+            }
+
+            // ════════════════════════════════════════════════════════════════
+            // MEDIA EVENTS
+            // ════════════════════════════════════════════════════════════════
+            Self::MediaUploaded { media_id, mime_type, size } => {
+                validators::validate_not_nil_uuid("media_id", media_id)?;
+                validators::validate_not_empty("mime_type", mime_type)?;
+                validators::validate_max_length("mime_type", mime_type, 255)?;
+                if !mime_type.contains('/') {
+                    return Err(EventValidationError::InvalidValue(
+                        "mime_type",
+                        "must be in format 'type/subtype'".to_string(),
+                    ));
                 }
+                validators::validate_range("size", *size, 0, i64::MAX)?;
+                Ok(())
+            }
+            Self::MediaDeleted { media_id } => {
+                validators::validate_not_nil_uuid("media_id", media_id)?;
+                Ok(())
+            }
+
+            // ════════════════════════════════════════════════════════════════
+            // USER EVENTS
+            // ════════════════════════════════════════════════════════════════
+            Self::UserRegistered { user_id, email } => {
+                validators::validate_not_nil_uuid("user_id", user_id)?;
+                validators::validate_not_empty("email", email)?;
+                validators::validate_max_length("email", email, 255)?;
                 // Basic email validation
                 if !email.contains('@') || !email.contains('.') {
-                    return Err("email format is invalid".to_string());
+                    return Err(EventValidationError::InvalidValue(
+                        "email",
+                        "invalid email format".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::UserLoggedIn { user_id } | Self::UserUpdated { user_id } | Self::UserDeleted { user_id } => {
+                validators::validate_not_nil_uuid("user_id", user_id)?;
+                Ok(())
+            }
+
+            // ════════════════════════════════════════════════════════════════
+            // COMMERCE EVENTS - Products
+            // ════════════════════════════════════════════════════════════════
+            Self::ProductCreated { product_id } 
+            | Self::ProductUpdated { product_id } 
+            | Self::ProductPublished { product_id } 
+            | Self::ProductDeleted { product_id } => {
+                validators::validate_not_nil_uuid("product_id", product_id)?;
+                Ok(())
+            }
+
+            // ════════════════════════════════════════════════════════════════
+            // COMMERCE EVENTS - Variants
+            // ════════════════════════════════════════════════════════════════
+            Self::VariantCreated { variant_id, product_id } 
+            | Self::VariantUpdated { variant_id, product_id } 
+            | Self::VariantDeleted { variant_id, product_id } => {
+                validators::validate_not_nil_uuid("variant_id", variant_id)?;
+                validators::validate_not_nil_uuid("product_id", product_id)?;
+                Ok(())
+            }
+
+            // ════════════════════════════════════════════════════════════════
+            // COMMERCE EVENTS - Inventory
+            // ════════════════════════════════════════════════════════════════
+            Self::InventoryUpdated { variant_id, product_id, location_id, old_quantity, new_quantity } => {
+                validators::validate_not_nil_uuid("variant_id", variant_id)?;
+                validators::validate_not_nil_uuid("product_id", product_id)?;
+                validators::validate_not_nil_uuid("location_id", location_id)?;
+                validators::validate_range("old_quantity", *old_quantity as i64, 0, i64::MAX)?;
+                validators::validate_range("new_quantity", *new_quantity as i64, 0, i64::MAX)?;
+                Ok(())
+            }
+            Self::InventoryLow { variant_id, product_id, remaining, threshold } => {
+                validators::validate_not_nil_uuid("variant_id", variant_id)?;
+                validators::validate_not_nil_uuid("product_id", product_id)?;
+                validators::validate_range("remaining", *remaining as i64, 0, i64::MAX)?;
+                validators::validate_range("threshold", *threshold as i64, 0, i64::MAX)?;
+                if remaining >= threshold {
+                    return Err(EventValidationError::InvalidValue(
+                        "remaining",
+                        "must be less than threshold for low inventory".to_string(),
+                    ));
                 }
                 Ok(())
             }
 
-            // Validate media events
-            Self::MediaUploaded { size, mime_type, .. } => {
-                if size < &0 {
-                    return Err("size cannot be negative".to_string());
+            // ════════════════════════════════════════════════════════════════
+            // COMMERCE EVENTS - Pricing
+            // ════════════════════════════════════════════════════════════════
+            Self::PriceUpdated { variant_id, product_id, currency, old_amount, new_amount } => {
+                validators::validate_not_nil_uuid("variant_id", variant_id)?;
+                validators::validate_not_nil_uuid("product_id", product_id)?;
+                validators::validate_currency_code("currency", currency)?;
+                if let Some(old) = old_amount {
+                    validators::validate_range("old_amount", *old, 0, i64::MAX)?;
                 }
-                if mime_type.is_empty() {
-                    return Err("mime_type cannot be empty".to_string());
+                validators::validate_range("new_amount", *new_amount, 0, i64::MAX)?;
+                Ok(())
+            }
+
+            // ════════════════════════════════════════════════════════════════
+            // COMMERCE EVENTS - Orders
+            // ════════════════════════════════════════════════════════════════
+            Self::OrderPlaced { order_id, customer_id, total, currency } => {
+                validators::validate_not_nil_uuid("order_id", order_id)?;
+                validators::validate_optional_uuid("customer_id", customer_id)?;
+                validators::validate_range("total", *total, 0, i64::MAX)?;
+                validators::validate_currency_code("currency", currency)?;
+                Ok(())
+            }
+            Self::OrderStatusChanged { order_id, old_status, new_status } => {
+                validators::validate_not_nil_uuid("order_id", order_id)?;
+                validators::validate_not_empty("old_status", old_status)?;
+                validators::validate_max_length("old_status", old_status, 50)?;
+                validators::validate_not_empty("new_status", new_status)?;
+                validators::validate_max_length("new_status", new_status, 50)?;
+                if old_status == new_status {
+                    return Err(EventValidationError::InvalidValue(
+                        "new_status",
+                        "must be different from old_status".to_string(),
+                    ));
                 }
-                // Validate mime_type format (should contain /)
-                if !mime_type.contains('/') {
-                    return Err("mime_type format is invalid".to_string());
+                Ok(())
+            }
+            Self::OrderCompleted { order_id } => {
+                validators::validate_not_nil_uuid("order_id", order_id)?;
+                Ok(())
+            }
+            Self::OrderCancelled { order_id, reason } => {
+                validators::validate_not_nil_uuid("order_id", order_id)?;
+                if let Some(r) = reason {
+                    validators::validate_max_length("reason", r, 500)?;
                 }
                 Ok(())
             }
 
-            // Validate locale events
-            Self::LocaleEnabled { locale, .. } | Self::LocaleDisabled { locale, .. } => {
-                if locale.is_empty() {
-                    return Err("locale cannot be empty".to_string());
-                }
-                // Basic locale validation (should be 2-5 chars like "en", "en-US")
-                if locale.len() < 2 || locale.len() > 10 {
-                    return Err("locale format is invalid".to_string());
-                }
+            // ════════════════════════════════════════════════════════════════
+            // INDEX EVENTS
+            // ════════════════════════════════════════════════════════════════
+            Self::ReindexRequested { target_type, target_id } => {
+                validators::validate_not_empty("target_type", target_type)?;
+                validators::validate_max_length("target_type", target_type, 64)?;
+                validators::validate_optional_uuid("target_id", target_id)?;
+                Ok(())
+            }
+            Self::IndexUpdated { index_name, target_id } => {
+                validators::validate_not_empty("index_name", index_name)?;
+                validators::validate_max_length("index_name", index_name, 64)?;
+                validators::validate_not_nil_uuid("target_id", target_id)?;
                 Ok(())
             }
 
-            // All other events are valid by default
-            _ => Ok(()),
+            // ════════════════════════════════════════════════════════════════
+            // TENANT EVENTS
+            // ════════════════════════════════════════════════════════════════
+            Self::TenantCreated { tenant_id } | Self::TenantUpdated { tenant_id } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                Ok(())
+            }
+            Self::LocaleEnabled { tenant_id, locale } | Self::LocaleDisabled { tenant_id, locale } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("locale", locale)?;
+                validators::validate_max_length("locale", locale, 10)?;
+                Ok(())
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_node_created_valid() {
+        let event = DomainEvent::NodeCreated {
+            node_id: Uuid::new_v4(),
+            kind: "post".to_string(),
+            author_id: Some(Uuid::new_v4()),
+        };
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_node_created_nil_id() {
+        let event = DomainEvent::NodeCreated {
+            node_id: Uuid::nil(),
+            kind: "post".to_string(),
+            author_id: None,
+        };
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_node_created_empty_kind() {
+        let event = DomainEvent::NodeCreated {
+            node_id: Uuid::new_v4(),
+            kind: "".to_string(),
+            author_id: None,
+        };
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_node_created_invalid_kind_characters() {
+        let event = DomainEvent::NodeCreated {
+            node_id: Uuid::new_v4(),
+            kind: "invalid@kind".to_string(),
+            author_id: None,
+        };
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_order_placed_valid() {
+        let event = DomainEvent::OrderPlaced {
+            order_id: Uuid::new_v4(),
+            customer_id: Some(Uuid::new_v4()),
+            total: 10000,
+            currency: "USD".to_string(),
+        };
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_order_placed_negative_total() {
+        let event = DomainEvent::OrderPlaced {
+            order_id: Uuid::new_v4(),
+            customer_id: None,
+            total: -100,
+            currency: "USD".to_string(),
+        };
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_order_placed_invalid_currency() {
+        let event = DomainEvent::OrderPlaced {
+            order_id: Uuid::new_v4(),
+            customer_id: None,
+            total: 10000,
+            currency: "US".to_string(), // too short
+        };
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_user_registered_valid() {
+        let event = DomainEvent::UserRegistered {
+            user_id: Uuid::new_v4(),
+            email: "user@example.com".to_string(),
+        };
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_user_registered_invalid_email() {
+        let event = DomainEvent::UserRegistered {
+            user_id: Uuid::new_v4(),
+            email: "invalid-email".to_string(),
+        };
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_inventory_updated_valid() {
+        let event = DomainEvent::InventoryUpdated {
+            variant_id: Uuid::new_v4(),
+            product_id: Uuid::new_v4(),
+            location_id: Uuid::new_v4(),
+            old_quantity: 10,
+            new_quantity: 5,
+        };
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_inventory_updated_negative_quantity() {
+        let event = DomainEvent::InventoryUpdated {
+            variant_id: Uuid::new_v4(),
+            product_id: Uuid::new_v4(),
+            location_id: Uuid::new_v4(),
+            old_quantity: -5,
+            new_quantity: 10,
+        };
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_inventory_low_valid() {
+        let event = DomainEvent::InventoryLow {
+            variant_id: Uuid::new_v4(),
+            product_id: Uuid::new_v4(),
+            remaining: 5,
+            threshold: 10,
+        };
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_inventory_low_invalid_remaining_above_threshold() {
+        let event = DomainEvent::InventoryLow {
+            variant_id: Uuid::new_v4(),
+            product_id: Uuid::new_v4(),
+            remaining: 15,
+            threshold: 10,
+        };
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_order_status_changed_valid() {
+        let event = DomainEvent::OrderStatusChanged {
+            order_id: Uuid::new_v4(),
+            old_status: "pending".to_string(),
+            new_status: "processing".to_string(),
+        };
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_order_status_changed_same_status() {
+        let event = DomainEvent::OrderStatusChanged {
+            order_id: Uuid::new_v4(),
+            old_status: "pending".to_string(),
+            new_status: "pending".to_string(),
+        };
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_media_uploaded_valid() {
+        let event = DomainEvent::MediaUploaded {
+            media_id: Uuid::new_v4(),
+            mime_type: "image/jpeg".to_string(),
+            size: 102400,
+        };
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_media_uploaded_invalid_mime_type() {
+        let event = DomainEvent::MediaUploaded {
+            media_id: Uuid::new_v4(),
+            mime_type: "invalid".to_string(), // no slash
+            size: 102400,
+        };
+        assert!(event.validate().is_err());
     }
 }
