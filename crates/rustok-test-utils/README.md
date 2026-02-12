@@ -4,10 +4,11 @@ Test utilities for the RusToK platform. This crate provides fixtures, mocks, and
 
 ## Features
 
-- **Database utilities** - Setup test databases (with optional explicit migrations)
-- **Mock event bus** - Record and verify event publishing
-- **Test fixtures** - Builder patterns for users, tenants, nodes, products
-- **Helper functions** - Common testing utilities and macros
+- **Database utilities** - Setup test databases with migrations, cleanup, and reset
+- **Mock services** - Payment gateway, email service, storage service
+- **Test fixtures** - Builder patterns for users, tenants, nodes, products, orders
+- **Test application wrapper** - High-level API for integration testing
+- **Helper functions** - Common testing utilities and assertions
 
 ## Usage
 
@@ -104,12 +105,44 @@ fn test_with_security_context() {
 }
 ```
 
+### Mock External Services
+
+```rust
+use rustok_test_utils::mocks::{MockPaymentGateway, MockEmailService};
+
+#[tokio::test]
+async fn test_payment_processing() {
+    let gateway = MockPaymentGateway::new().await;
+    gateway.configure_successful_payment("tok_visa", "txn_123").await;
+    
+    // Make payment request to gateway.url()
+    // ...
+    
+    // Verify transaction
+    let txn = gateway.get_transaction("tok_visa").unwrap();
+    assert_eq!(txn.transaction_id, "txn_123");
+}
+
+#[tokio::test]
+async fn test_email_sending() {
+    let email_service = MockEmailService::new().await;
+    email_service.mount().await;
+    
+    // Send email to email_service.url()
+    // ...
+    
+    // Verify email was sent
+    assert!(email_service.was_sent_to("user@example.com"));
+    assert_eq!(email_service.sent_count(), 1);
+}
+```
+
 ## Modules
 
-- `db` - Database testing utilities
-- `events` - Mock event bus for testing
-- `fixtures` - Test data builders
-- `helpers` - Common testing utilities and macros
+- `database` - Database testing utilities with migrations and cleanup
+- `fixtures` - Test data builders for entities
+- `mocks` - Mock implementations of external services
+- `test_app` - Test application wrapper for integration tests
 
 ## License
 

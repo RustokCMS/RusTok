@@ -45,6 +45,7 @@ lazy_static = { workspace = true }
 # Testing
 wiremock = "0.5"
 testcontainers = "0.15"
+proptest = { workspace = true }
 
 [dev-dependencies]
 tokio-test = "0.4"

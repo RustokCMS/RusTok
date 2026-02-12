@@ -1,192 +1,268 @@
 # Integration Testing Guide
 
-> **Version:** 1.0  
-> **Last Updated:** 2026-02-12  
-> **Applies to:** RusToK Server Integration Tests
-
----
-
-## Overview
-
-This guide covers the integration testing framework for the RusToK project, focusing on end-to-end testing of critical business flows.
+> Comprehensive guide to writing and running integration tests for the RusToK platform.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Architecture](#architecture)
-- [Running Tests](#running-tests)
-- [Writing Tests](#writing-tests)
+- [Test Architecture](#test-architecture)
+- [Getting Started](#getting-started)
+- [Writing Integration Tests](#writing-integration-tests)
 - [Test Utilities](#test-utilities)
-- [Mock Services](#mock-services)
+- [Running Tests](#running-tests)
 - [CI/CD Integration](#cicd-integration)
 - [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Architecture
+## Overview
 
-### Test Structure
+Integration tests verify that multiple components of the system work together correctly. Unlike unit tests that test individual functions in isolation, integration tests:
 
-```
-apps/server/tests/
-├── integration/
-│   ├── order_flow_test.rs      # Order lifecycle tests
-│   ├── content_flow_test.rs    # Content management tests
-│   └── event_flow_test.rs      # Event propagation tests
-├── tenant_cache_v2_test.rs     # Tenant cache tests
-├── module_lifecycle.rs         # Module lifecycle tests
-└── multi_tenant_isolation_test.rs
-```
+- Test complete user flows (e.g., order creation → payment → fulfillment)
+- Verify database interactions and data persistence
+- Test HTTP API endpoints end-to-end
+- Verify event propagation across modules
+- Test multi-tenant isolation
+- Validate state machine transitions
 
-### Test Categories
+### Test Coverage
 
-| Category | Purpose | Example |
-|----------|---------|---------|
-| **Unit Tests** | Test individual functions/modules | `cargo test --lib` |
-| **Integration Tests** | Test complete flows with real services | `cargo test --test integration` |
-| **E2E Tests** | Test from user perspective | Requires running server |
+Current integration test suites:
+
+| Test Suite | Scenarios | Coverage | Location |
+|------------|-----------|----------|----------|
+| Order Flow | 6 | Complete order lifecycle | `apps/server/tests/integration/order_flow_test.rs` |
+| Content Flow | 9 | Node CRUD, translations, search | `apps/server/tests/integration/content_flow_test.rs` |
+| Event Flow | 13 | Event propagation, outbox, relay | `apps/server/tests/integration/event_flow_test.rs` |
+
+**Total:** 28 integration test scenarios covering core platform functionality.
 
 ---
 
-## Running Tests
+## Test Architecture
+
+### Components
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Integration Tests                         │
+│  (apps/server/tests/integration/*.rs)                       │
+└──────────────┬──────────────────────────────────────────────┘
+               │
+               │ uses
+               ▼
+┌─────────────────────────────────────────────────────────────┐
+│              rustok-test-utils                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   Fixtures   │  │   TestApp    │  │  Assertions  │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└──────────────┬──────────────────────────────────────────────┘
+               │
+               │ interacts with
+               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                Test Server Instance                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   HTTP API   │  │   Database   │  │  Event Bus   │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Test Layers
+
+1. **Test Case** - Individual test function (`#[tokio::test]`)
+2. **TestApp** - HTTP client wrapper with helper methods
+3. **Fixtures** - Reusable test data generators
+4. **Test Server** - In-memory server instance with test database
+5. **Real Components** - Actual application code (controllers, services, database)
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
+1. **PostgreSQL** - For integration tests
+   ```bash
+   # Start via Docker Compose
+   docker-compose up -d postgres
+   ```
+
+2. **Environment Variables**
+   ```bash
+   export DATABASE_URL="postgres://postgres:postgres@localhost:5432/rustok_test"
+   ```
+
+3. **Dependencies** - Already configured in workspace
+
+### Running Your First Integration Test
+
 ```bash
-# PostgreSQL running locally
-docker-compose up -d postgres
+# Run all integration tests
+cargo test --test '*' --package rustok-server
 
-# Or use your local PostgreSQL
-export DATABASE_URL="postgres://postgres:password@localhost:5432/rustok_test"
-```
-
-### Run All Tests
-
-```bash
-# Run all tests (unit + integration)
-cargo test --workspace --all-features
-
-# Run only integration tests
-cargo test --test integration
-
-# Run specific test file
-cargo test --test order_flow_test
+# Run specific test suite
+cargo test --test order_flow_test --package rustok-server
 
 # Run with output
-cargo test --test order_flow_test -- --nocapture
-```
+cargo test --test order_flow_test --package rustok-server -- --nocapture
 
-### Run Tests Requiring Server
-
-```bash
-# Start the test server first
-cargo run -p rustok-server
-
-# In another terminal, run integration tests
-cargo test --test '*' -- --ignored
-```
-
-### Run Tests with Mock Services
-
-```bash
-# Set environment variables
-export USE_MOCK_PAYMENT=true
-export MOCK_PAYMENT_AUTO_APPROVE=true
-
-# Run tests
-cargo test --test integration
+# Run single test
+cargo test test_complete_order_flow --package rustok-server -- --nocapture
 ```
 
 ---
 
-## Writing Tests
+## Writing Integration Tests
 
-### Test Structure
+### Basic Structure
+
+```rust
+//! # My Integration Test Suite
+//!
+//! Description of what this test suite covers.
+
+use rustok_test_utils::*;
+use rustok_commerce::dto::*;
+
+/// Test a specific scenario
+#[tokio::test]
+async fn test_my_scenario() {
+    // 1. Setup - Create test app
+    let app = spawn_test_app().await;
+    
+    // 2. Execute - Perform actions
+    let result = app.create_order(/* ... */).await;
+    
+    // 3. Assert - Verify outcomes
+    assert!(result.is_ok());
+    
+    // 4. Verify side effects (events, database state, etc.)
+    let events = app.get_events_for_order(result.unwrap().id).await;
+    assert_eq!(events.len(), 1);
+}
+```
+
+### Example: Complete Order Flow Test
 
 ```rust
 use rustok_test_utils::*;
-use rustok_commerce::dto::{CreateProductInput, CreateOrderInput};
+use rustok_commerce::dto::{CreateProductInput, CreateOrderInput, OrderItemInput};
+use rustok_commerce::entities::OrderStatus;
 
 #[tokio::test]
 async fn test_complete_order_flow() {
-    // 1. Setup
     let app = spawn_test_app().await;
     
-    // 2. Execute
+    // Step 1: Create product
     let product = app
-        .create_product(test_product_input())
+        .create_product(CreateProductInput {
+            sku: "TEST-001".to_string(),
+            title: "Test Product".to_string(),
+            description: Some("Test description".to_string()),
+            price: 1999, // $19.99
+            currency: "USD".to_string(),
+            inventory: 100,
+            status: None,
+        })
         .await
         .expect("Failed to create product");
     
+    assert_eq!(product.sku, "TEST-001");
+    assert_eq!(product.price, 1999);
+    
+    // Step 2: Create order
     let order = app
         .create_order(CreateOrderInput {
             customer_id: test_customer_id(),
-            items: vec![/* ... */],
+            items: vec![OrderItemInput {
+                product_id: product.id,
+                quantity: 2,
+                price: product.price,
+            }],
+            shipping_address: test_shipping_address(),
+            billing_address: None,
         })
         .await
         .expect("Failed to create order");
     
-    // 3. Verify
-    assert_eq!(order.status, OrderStatus::Draft.to_string());
-    assert_eq!(order.total, expected_total);
-}
-```
-
-### Test Categories
-
-#### Happy Path Tests
-
-```rust
-#[tokio::test]
-async fn test_order_creation_success() {
-    let app = spawn_test_app().await;
+    assert_eq!(order.status, OrderStatus::Draft);
+    assert_eq!(order.items.len(), 1);
+    assert_eq!(order.total, 3998); // 2 * $19.99
     
-    let order = app
-        .create_order(valid_order_input())
+    // Step 3: Submit order
+    let submitted = app
+        .submit_order(order.id)
         .await
-        .expect("Should create order");
+        .expect("Failed to submit order");
     
-    assert_eq!(order.status, "Draft");
+    assert_eq!(submitted.status, OrderStatus::PendingPayment);
+    
+    // Step 4: Process payment
+    let paid = app
+        .process_payment(ProcessPaymentInput {
+            order_id: order.id,
+            payment_method: PaymentMethod::CreditCard {
+                token: "tok_visa".to_string(),
+            },
+            amount: order.total,
+        })
+        .await
+        .expect("Failed to process payment");
+    
+    assert_eq!(paid.status, OrderStatus::Paid);
+    
+    // Step 5: Verify events
+    let events = app.get_events_for_order(order.id).await;
+    assert!(events.iter().any(|e| e.event_type == "OrderCreated"));
+    assert!(events.iter().any(|e| e.event_type == "OrderSubmitted"));
+    assert!(events.iter().any(|e| e.event_type == "OrderPaid"));
 }
 ```
 
-#### Error Handling Tests
+### Testing Error Cases
 
 ```rust
 #[tokio::test]
-async fn test_order_creation_invalid_product() {
+async fn test_order_validation_errors() {
     let app = spawn_test_app().await;
     
+    // Test 1: Invalid product ID
     let result = app
-        .create_order(invalid_order_input())
+        .create_order(CreateOrderInput {
+            customer_id: test_customer_id(),
+            items: vec![OrderItemInput {
+                product_id: Uuid::new_v4(), // Non-existent product
+                quantity: 1,
+                price: 1000,
+            }],
+            shipping_address: test_shipping_address(),
+            billing_address: None,
+        })
         .await;
     
     assert!(result.is_err());
-    assert!(matches!(result.unwrap_err(), TestAppError::ApiError { .. }));
-}
-```
-
-#### State Transition Tests
-
-```rust
-#[tokio::test]
-async fn test_order_state_transitions() {
-    let app = spawn_test_app().await;
+    assert!(result.unwrap_err().to_string().contains("Product not found"));
+    
+    // Test 2: Negative quantity
     let product = app.create_product(test_product_input()).await.unwrap();
     
-    // Draft
-    let order = app.create_order(/* ... */).await.unwrap();
-    assert_eq!(order.status, "Draft");
+    let result = app
+        .create_order(CreateOrderInput {
+            customer_id: test_customer_id(),
+            items: vec![OrderItemInput {
+                product_id: product.id,
+                quantity: -1, // Invalid
+                price: 1000,
+            }],
+            shipping_address: test_shipping_address(),
+            billing_address: None,
+        })
+        .await;
     
-    // Draft → PendingPayment
-    let order = app.submit_order(order.id).await.unwrap();
-    assert_eq!(order.status, "PendingPayment");
-    
-    // PendingPayment → Paid
-    app.process_payment(order.id, test_payment_input()).await.unwrap();
-    let order = app.get_order(order.id).await.unwrap();
-    assert_eq!(order.status, "Paid");
+    assert!(result.is_err());
 }
 ```
 
@@ -194,83 +270,127 @@ async fn test_order_state_transitions() {
 
 ## Test Utilities
 
-### Fixtures
+### TestApp Wrapper
+
+The `TestApp` struct provides high-level methods for interacting with the test server:
 
 ```rust
-use rustok_test_utils::fixtures::*;
+pub struct TestApp {
+    pub client: reqwest::Client,
+    pub base_url: String,
+    pub auth_token: Option<String>,
+}
 
-// ID generators
-let id = test_uuid();
-let customer_id = test_customer_id();
-
-// Domain fixtures
-let product_input = test_product_input();
-let order_input = test_order_input();
-let node_input = test_node_input();
-
-// HTTP fixtures
-let client = test_http_client();
-let auth_header = test_auth_header();
+impl TestApp {
+    // Content operations
+    pub async fn create_node(&self, input: CreateNodeInput) -> Result<Node>;
+    pub async fn get_node(&self, id: Uuid) -> Result<Node>;
+    pub async fn publish_node(&self, id: Uuid) -> Result<Node>;
+    pub async fn add_translation(&self, id: Uuid, input: TranslationInput) -> Result<Node>;
+    pub async fn search_nodes(&self, query: &str) -> Result<Vec<Node>>;
+    
+    // Commerce operations
+    pub async fn create_product(&self, input: CreateProductInput) -> Result<Product>;
+    pub async fn get_product(&self, id: Uuid) -> Result<Product>;
+    pub async fn create_order(&self, input: CreateOrderInput) -> Result<Order>;
+    pub async fn submit_order(&self, order_id: Uuid) -> Result<Order>;
+    pub async fn process_payment(&self, input: ProcessPaymentInput) -> Result<Order>;
+    
+    // Event operations
+    pub async fn get_events_for_node(&self, node_id: Uuid) -> Vec<DomainEvent>;
+    pub async fn get_events_for_order(&self, order_id: Uuid) -> Vec<DomainEvent>;
+    pub async fn get_outbox_events(&self) -> Vec<OutboxEvent>;
+}
 ```
 
-### TestApp API
+### Fixtures
+
+Reusable test data generators in `rustok-test-utils/src/fixtures.rs`:
 
 ```rust
-let app = spawn_test_app().await;
+// ID generators
+pub fn test_uuid() -> Uuid;
+pub fn test_node_id() -> Uuid;
+pub fn test_tenant_id() -> Uuid;
+pub fn test_customer_id() -> Uuid;
 
-// Content operations
-let node = app.create_node(input).await?;
-let node = app.get_node(id).await?;
-let node = app.publish_node(id).await?;
-let nodes = app.search_nodes(query).await?;
+// Entity fixtures
+pub fn test_create_node_input() -> CreateNodeInput;
+pub fn test_create_product_input() -> CreateProductInput;
+pub fn test_create_order_input() -> CreateOrderInput;
+pub fn test_shipping_address() -> Address;
+pub fn test_payment_input() -> ProcessPaymentInput;
 
-// Commerce operations
-let product = app.create_product(input).await?;
-let order = app.create_order(input).await?;
-let order = app.submit_order(id).await?;
-let payment = app.process_payment(order_id, input).await?;
+// Customizable builders
+pub fn node_input_with_title(title: &str) -> CreateNodeInput;
+pub fn product_input_with_sku(sku: &str) -> CreateProductInput;
+```
 
-// Event operations
-let events = app.get_events_for_order(order_id).await;
-let events = app.get_outbox_events().await;
+### Assertions
+
+Common assertion helpers:
+
+```rust
+// Event assertions
+pub fn assert_event_exists(events: &[DomainEvent], event_type: &str);
+pub fn assert_event_count(events: &[DomainEvent], event_type: &str, count: usize);
+
+// ID assertions
+pub fn assert_valid_uuid(id: &Uuid);
+pub fn assert_matching_tenant_id(entity: &impl HasTenantId, expected: Uuid);
 ```
 
 ---
 
-## Mock Services
+## Running Tests
 
-### Mock Payment Service
+### Local Development
 
-```rust
-use rustok_test_utils::mock_payment::MockPaymentService;
+```bash
+# Run all integration tests
+cargo test --package rustok-server --test '*'
 
-let payment_service = MockPaymentService::new();
+# Run specific test suite
+cargo test --test order_flow_test
 
-// Process payment
-let result = payment_service
-    .process_payment(order_id, 1000, "USD", "tok_test_visa")
-    .await;
+# Run with detailed output
+cargo test --test order_flow_test -- --nocapture --test-threads=1
 
-assert!(result.is_ok());
-
-// Test failure scenario
-let result = payment_service
-    .process_payment(order_id, 1000, "USD", "tok_fail")
-    .await;
-
-assert!(result.is_err());
+# Run single test
+cargo test test_complete_order_flow -- --nocapture
 ```
 
-### Custom Mock Configuration
+### Test Database Setup
 
-```rust
-let payment_service = MockPaymentService::with_tokens(
-    vec!["tok_custom_ok".to_string()],
-    vec!["tok_custom_fail".to_string()],
-);
+Integration tests automatically set up a test database. You can also manually prepare:
 
-// Disable service to test error handling
-payment_service.disable().await;
+```bash
+# Create test database
+createdb rustok_test
+
+# Run migrations
+cargo run --bin migration -- up
+
+# Or use make targets (if available)
+make test-db-setup
+```
+
+### Parallel vs Sequential Execution
+
+By default, Cargo runs tests in parallel. For integration tests that share database state:
+
+```bash
+# Run sequentially
+cargo test --test order_flow_test -- --test-threads=1
+
+# Or use #[serial] attribute from serial_test crate
+use serial_test::serial;
+
+#[tokio::test]
+#[serial]
+async fn test_with_shared_state() {
+    // ...
+}
 ```
 
 ---
@@ -279,103 +399,184 @@ payment_service.disable().await;
 
 ### GitHub Actions
 
-The integration tests run automatically in CI:
+Integration tests run automatically in CI via `.github/workflows/ci.yml`:
 
 ```yaml
-- name: Run integration tests
-  run: cargo test --package rustok-server --test '*' -- --ignored
+test:
+  name: Tests
+  runs-on: ubuntu-latest
+  services:
+    postgres:
+      image: postgres:16
+      env:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: rustok_test
+      ports:
+        - 5432:5432
+      options: >-
+        --health-cmd pg_isready
+        --health-interval 10s
+        --health-timeout 5s
+        --health-retries 5
+  env:
+    DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_test
+  steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: Swatinem/rust-cache@v2
+    - run: cargo test --workspace --all-targets --all-features
 ```
 
-### Local CI Simulation
+### Coverage Reports
 
-```bash
-# Run the same checks as CI
-make ci-check
+Code coverage is tracked via `cargo-llvm-cov`:
 
-# Or manually:
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets
-cargo test --workspace --all-features
-cargo test --test '*' -- --ignored
+```yaml
+coverage:
+  name: Code Coverage
+  runs-on: ubuntu-latest
+  services:
+    postgres: # ... same as test job
+  steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: llvm-tools-preview
+    - name: Install cargo-llvm-cov
+      run: cargo install cargo-llvm-cov --locked
+    - run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 ```
 
 ---
 
 ## Best Practices
 
-### 1. Test Independence
+### 1. Test Isolation
+
+Each test should be independent and not rely on state from other tests:
 
 ```rust
-// ❌ Bad: Tests depend on each other
+// ✅ Good - Each test creates its own data
 #[tokio::test]
-async fn test_create() { /* creates resource */ }
-
-#[tokio::test]
-async fn test_update() { /* assumes resource exists */ }
-
-// ✅ Good: Each test is independent
-#[tokio::test]
-async fn test_create_and_update() {
+async fn test_order_creation() {
     let app = spawn_test_app().await;
-    let resource = app.create_resource().await?;
-    let updated = app.update_resource(resource.id).await?;
+    let product = app.create_product(test_product_input()).await.unwrap();
+    // ...
+}
+
+// ❌ Bad - Relies on global state
+static SHARED_PRODUCT: OnceCell<Product> = OnceCell::new();
+
+#[tokio::test]
+async fn test_order_creation() {
+    let product = SHARED_PRODUCT.get().unwrap();
+    // ...
 }
 ```
 
-### 2. Descriptive Assertions
+### 2. Use Fixtures
+
+DRY (Don't Repeat Yourself) - use fixtures for common test data:
 
 ```rust
-// ❌ Bad
-assert_eq!(order.total, 1000);
+// ✅ Good - Use fixtures
+#[tokio::test]
+async fn test_order() {
+    let app = spawn_test_app().await;
+    let input = test_create_order_input(); // Reusable fixture
+    let order = app.create_order(input).await.unwrap();
+}
 
-// ✅ Good
-assert_eq!(
-    order.total, 1000,
-    "Order total should be $10.00 for 1 item at $10.00 each"
-);
+// ❌ Bad - Duplicate setup code
+#[tokio::test]
+async fn test_order() {
+    let app = spawn_test_app().await;
+    let input = CreateOrderInput {
+        customer_id: Uuid::new_v4(),
+        items: vec![/* ... */],
+        // ... lots of fields
+    };
+    let order = app.create_order(input).await.unwrap();
+}
 ```
 
-### 3. Use Test Fixtures
-
-```rust
-// ❌ Bad: Hardcoded test data
-let input = CreateProductInput {
-    sku: "TEST-123".to_string(),
-    title: "Test Product".to_string(),
-    // ...
-};
-
-// ✅ Good: Use fixtures
-let input = test_product_input();
-```
-
-### 4. Handle Async Properly
-
-```rust
-// ❌ Bad: Not waiting for async operations
-let result = app.create_order(input);
-assert!(result.is_ok());
-
-// ✅ Good: Properly await async operations
-let result = app.create_order(input).await;
-assert!(result.is_ok());
-```
-
-### 5. Clean Up Resources
+### 3. Test Both Happy Path and Error Cases
 
 ```rust
 #[tokio::test]
-async fn test_with_cleanup() {
+async fn test_order_happy_path() {
+    // Test successful order creation
+}
+
+#[tokio::test]
+async fn test_order_invalid_product() {
+    // Test error handling for invalid product
+}
+
+#[tokio::test]
+async fn test_order_insufficient_inventory() {
+    // Test error handling for insufficient inventory
+}
+```
+
+### 4. Verify Side Effects
+
+Don't just test the main result - verify events, database state, etc.:
+
+```rust
+#[tokio::test]
+async fn test_order_lifecycle() {
     let app = spawn_test_app().await;
     
-    // Create test resource
-    let resource = app.create_resource().await?;
+    // Main action
+    let order = app.create_order(test_order_input()).await.unwrap();
     
-    // Test operations
+    // Verify side effects
+    let events = app.get_events_for_order(order.id).await;
+    assert!(events.iter().any(|e| e.event_type == "OrderCreated"));
+    
+    let from_db = app.get_order(order.id).await.unwrap();
+    assert_eq!(from_db.status, OrderStatus::Draft);
+}
+```
+
+### 5. Use Descriptive Test Names
+
+```rust
+// ✅ Good - Clear what is being tested
+#[tokio::test]
+async fn test_order_submission_transitions_from_draft_to_pending_payment() {
     // ...
-    
-    // Cleanup (if needed)
-    app.delete_resource(resource.id).await.ok();
+}
+
+// ❌ Bad - Unclear
+#[tokio::test]
+async fn test_order() {
+    // ...
+}
+```
+
+### 6. Keep Tests Fast
+
+- Use in-memory databases when possible
+- Minimize external service calls
+- Use mocks for slow dependencies
+- Run tests in parallel when safe
+
+### 7. Document Complex Tests
+
+```rust
+/// Test the complete order lifecycle including:
+/// 1. Product creation
+/// 2. Order creation with multiple items
+/// 3. Order submission (Draft → PendingPayment)
+/// 4. Payment processing (PendingPayment → Paid)
+/// 5. Event verification (OrderCreated, OrderSubmitted, OrderPaid)
+/// 6. Inventory updates
+#[tokio::test]
+async fn test_complete_order_flow_with_inventory_updates() {
+    // ...
 }
 ```
 
@@ -383,107 +584,200 @@ async fn test_with_cleanup() {
 
 ## Troubleshooting
 
-### Common Issues
+### Test Database Connection Issues
 
-#### Database Connection Failed
-
-```
-Error: DatabaseError("connection refused")
-```
+**Problem:** Tests fail with "connection refused" or "database does not exist"
 
 **Solution:**
 ```bash
 # Check PostgreSQL is running
-docker-compose up -d postgres
+docker-compose ps postgres
 
-# Verify connection string
-export DATABASE_URL="postgres://postgres:password@localhost:5432/rustok_test"
+# Verify DATABASE_URL
+echo $DATABASE_URL
+
+# Create test database
+createdb rustok_test
+
+# Run migrations
+cargo run --bin migration -- up
 ```
 
-#### Server Not Available
+### Tests Fail in CI but Pass Locally
 
-```
-Error: RequestError("connection refused")
-```
+**Problem:** Integration tests pass locally but fail in GitHub Actions
 
-**Solution:**
+**Solutions:**
+1. **Timing issues** - Add retries or longer timeouts for CI
+2. **Database differences** - Ensure same PostgreSQL version (16)
+3. **Parallel execution** - Use `--test-threads=1` for flaky tests
+4. **Environment variables** - Check CI env vars match local
+
+### Flaky Tests
+
+**Problem:** Tests pass sometimes and fail other times
+
+**Solutions:**
+1. **Race conditions** - Add explicit waits or use `#[serial]`
+2. **Shared state** - Ensure tests are isolated
+3. **Timeouts** - Increase timeouts for slow operations
+4. **Random data** - Use deterministic IDs/data in tests
+
+### Out of Memory Errors
+
+**Problem:** Tests fail with OOM when running full suite
+
+**Solutions:**
 ```bash
-# Start the server
-cargo run -p rustok-server
+# Run tests in smaller batches
+cargo test --test order_flow_test
+cargo test --test content_flow_test
+cargo test --test event_flow_test
 
-# Or skip tests requiring server
-cargo test --lib
+# Reduce parallel threads
+cargo test -- --test-threads=2
+
+# Increase Docker memory limit
+docker-compose up -d postgres --memory=4g
 ```
 
-#### Test Timeouts
+### Slow Test Execution
 
-```
-Test timed out after 60s
-```
+**Problem:** Integration tests take too long to run
 
-**Solution:**
+**Solutions:**
+1. **Optimize database setup** - Use fixtures instead of real DB when possible
+2. **Parallel execution** - Enable parallel tests (default)
+3. **Selective running** - Run only affected tests during development
+4. **Profile tests** - Use `cargo test -- --nocapture --test-threads=1 --show-output`
+
+---
+
+## Advanced Topics
+
+### Custom Test Server Configuration
+
 ```rust
-// Increase timeout in test
-let app = TestApp::builder()
-    .timeout(Duration::from_secs(120))
-    .build()
-    .await?;
+use rustok_test_utils::TestAppBuilder;
+
+#[tokio::test]
+async fn test_with_custom_config() {
+    let app = TestAppBuilder::new()
+        .with_port(8081)
+        .with_auth_enabled(false)
+        .with_event_bus(MockEventBus::new())
+        .build()
+        .await;
+    
+    // Test with custom configuration
+}
 ```
 
-#### Port Already in Use
+### Testing Multi-Tenant Scenarios
 
+```rust
+#[tokio::test]
+async fn test_tenant_isolation() {
+    let app = spawn_test_app().await;
+    
+    let tenant1 = Uuid::new_v4();
+    let tenant2 = Uuid::new_v4();
+    
+    // Create data for tenant1
+    app.set_tenant(tenant1);
+    let node1 = app.create_node(test_node_input()).await.unwrap();
+    
+    // Create data for tenant2
+    app.set_tenant(tenant2);
+    let node2 = app.create_node(test_node_input()).await.unwrap();
+    
+    // Verify isolation
+    app.set_tenant(tenant1);
+    let nodes = app.search_nodes("").await.unwrap();
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes[0].id, node1.id);
+}
 ```
-Error: Address already in use (os error 48)
-```
 
-**Solution:**
-```bash
-# Kill existing server
-pkill -f rustok-server
+### Testing Event Propagation
 
-# Or use different port
-export TEST_SERVER_URL="http://localhost:3001"
+```rust
+#[tokio::test]
+async fn test_event_propagation_to_read_model() {
+    let app = spawn_test_app().await;
+    
+    // Create entity (triggers event)
+    let node = app.create_node(test_node_input()).await.unwrap();
+    
+    // Wait for event processing
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    
+    // Verify read model updated
+    let from_index = app.search_nodes(&node.title).await.unwrap();
+    assert_eq!(from_index.len(), 1);
+    assert_eq!(from_index[0].id, node.id);
+}
 ```
 
 ---
 
-## Coverage Reporting
+## Resources
 
-### Generate Coverage Report
+### Internal Documentation
+- [rustok-test-utils README](../crates/rustok-test-utils/README.md) - Test utilities documentation
+- [SPRINT_4_PROGRESS.md](../SPRINT_4_PROGRESS.md) - Current sprint progress
+- [ARCHITECTURE_IMPROVEMENT_PLAN.md](../ARCHITECTURE_IMPROVEMENT_PLAN.md) - Overall architecture plan
 
-```bash
-# Install cargo-llvm-cov
-cargo install cargo-llvm-cov
+### External Resources
+- [Rust Testing Book](https://doc.rust-lang.org/book/ch11-00-testing.html) - Official Rust testing guide
+- [Tokio Testing](https://tokio.rs/tokio/topics/testing) - Async testing with Tokio
+- [reqwest Documentation](https://docs.rs/reqwest/) - HTTP client for tests
+- [cargo-nextest](https://nexte.st/) - Next-generation test runner
 
-# Generate LCOV report
-cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+---
 
-# Generate HTML report
-cargo llvm-cov --workspace --all-features --html
+## Contributing
+
+When adding new integration tests:
+
+1. **Choose the right test suite** - Add to existing suite or create new one
+2. **Follow naming conventions** - `test_<scenario>_<expected_outcome>`
+3. **Document complex scenarios** - Add doc comments explaining what's tested
+4. **Add to progress tracking** - Update `SPRINT_4_PROGRESS.md` with new tests
+5. **Verify CI passes** - Ensure tests pass in GitHub Actions
+
+### Test Suite Template
+
+```rust
+//! # <Module> Integration Tests
+//!
+//! Tests the complete <module> lifecycle:
+//! 1. <Step 1>
+//! 2. <Step 2>
+//! 3. <Step 3>
+
+use rustok_test_utils::*;
+use rustok_<module>::dto::*;
+
+/// Test <scenario> - <expected outcome>
+#[tokio::test]
+async fn test_<scenario>() {
+    // Setup
+    let app = spawn_test_app().await;
+    
+    // Execute
+    // ...
+    
+    // Assert
+    // ...
+    
+    // Verify side effects
+    // ...
+}
 ```
 
-### View Coverage
-
-Open `target/llvm-cov/html/index.html` in your browser.
-
 ---
 
-## Related Documentation
-
-- [Architecture Improvement Plan](../ARCHITECTURE_IMPROVEMENT_PLAN.md)
-- [Sprint 4 Progress](../SPRINT_4_PROGRESS.md)
-- [Test Utilities](../crates/rustok-test-utils/)
-- [State Machine Guide](STATE_MACHINE_GUIDE.md)
-- [Error Handling Guide](ERROR_HANDLING_GUIDE.md)
-
----
-
-## Changelog
-
-| Date | Version | Changes |
-|------|---------|---------|
-| 2026-02-12 | 1.0 | Initial documentation |
-
----
-
-**Questions?** Contact the development team or open an issue.
+**Last Updated:** 2026-02-12  
+**Version:** Sprint 4 - Task 4.1  
+**Status:** ✅ Complete
