@@ -714,7 +714,8 @@ let span = info_span!("fetch_user", user_id = %user_id);
 | `event.type` | Event type | `NodeCreated` |
 | `event.id` | Event identifier | `uuid` |
 | `error` | Error message | `string` |
-| `error.type` | Error category | `validation`, `not_found` |
+| `error_type` | Error category | `validation`, `not_found` |
+| `error_occurred` | Error flag for failed operations | `true`, `false` |
 
 ### Span Kinds
 

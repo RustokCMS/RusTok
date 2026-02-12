@@ -89,6 +89,7 @@ docs/DISTRIBUTED_TRACING_GUIDE.md (17KB) - NEW
 - 🔧 Aligned error field naming (`error_type`, `error_occurred`) to avoid invalid dotted keys and simplify query filters.
 - 🔧 Refactored `traced!` macro from non-working pseudo-attribute form into executable span wrapper macro with block result.
 - ✅ Added unit test for `traced!` return behavior.
+- 🔧 Hardened API rate-limit middleware to avoid panic on response header insertion (`X-RateLimit-*`, `Retry-After`) by switching to fail-safe header conversion with warning logs.
 
 ---
 

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-12
+
+- **Tracing field consistency and runtime recording**
+  - `create_span()` now declares all fields that are later recorded (`tenant_id`, `user_id`, `error`, `error_type`, `error_occurred`, `success`, `result`, `duration_ms`) so trace backends receive consistent attributes.
+  - `record_error()` uses normalized field names (`error_type`, `error_occurred`) for stable querying across tools.
+  - `traced!` macro refactored into an executable span-wrapper form that records passed fields and returns the wrapped block result.
+
+- **Rate-limit middleware hardening**
+  - Removed panic-prone `unwrap()` usage when constructing `X-RateLimit-*` and `Retry-After` headers in `apps/server/src/middleware/rate_limit.rs`.
+  - Added fail-safe header insertion with warning logs for invalid values to keep request handling resilient.
+
 ### Added - Sprint 1 (2026-02-12) - P0 Critical Architecture Fixes
 
 #### Security & Validation

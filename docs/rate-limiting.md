@@ -103,6 +103,8 @@ X-RateLimit-Reset: 1704063600
 ...
 ```
 
+> Implementation note: header values are now inserted with a safe conversion path (`HeaderValue::from_str`) and invalid values are skipped with a warning instead of causing a panic in middleware.
+
 ### When Rate Limited
 
 ```http
