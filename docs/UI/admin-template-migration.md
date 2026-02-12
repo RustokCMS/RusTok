@@ -46,9 +46,15 @@
 
 ---
 
-## 2. Migration Checklist
+## 2. Migration Checklist (актуализирован: сначала Auth/RBAC/Navigation)
 
-### Phase 1: Shell (Layout & Navigation)
+Приоритеты обновлены под быстрый запуск рабочей админки:
+
+1. **Auth + роли + навигация** (чтобы можно было безопасно ходить по всем разделам)
+2. Адаптация готовых экранов из шаблона под наш API/permissions
+3. Таблицы и тяжелые data-grid сценарии — **в последнюю очередь**
+
+### Phase 1: Shell + Auth + RBAC Navigation (P0)
 
 Самая важная часть. Переносим обертку приложения.
 
@@ -59,8 +65,27 @@
 | **Header**: Create `PageHeader` with Breadcrumbs. | ⬜ | ⬜ | Хлебные крошки должны быть динамическими. |
 | **Theme**: Dark/Light mode toggle. | ⬜ | ⬜ | У нас уже есть, проверить стили. |
 | **UserMenu**: Dropdown with Avatar & Logout. | ⬜ | ⬜ | Подключить `auth.logout()`. |
+| **Auth Guard**: Защита приватных роутов. | ⬜ | ⬜ | Redirect + сохранение return URL. |
+| **Role Guard**: Проверки ролей/permissions на уровне страниц. | ⬜ | ⬜ | Backend source of truth + UX fallback (403). |
+| **Nav RBAC**: Фильтрация пунктов sidebar по permissions. | ⬜ | ⬜ | Не показывать недоступные разделы. |
+| **Access UX**: Страница/компонент `Forbidden`. | ⬜ | ⬜ | Единый UX при 403. |
 
-### Phase 2: Dashboard (Overview)
+### Phase 2: Адаптация готовых страниц (без heavy tables)
+
+Ниже — страницы, которые уже есть в starter и их нужно адаптировать под RusTok-контракты.
+
+| Template Route | Приоритет | Что адаптируем |
+| :--- | :--- | :--- |
+| `/auth/sign-in`, `/auth/sign-up` | P0 | Подключение к нашему auth flow/redirect semantics |
+| `/dashboard/overview` | P0 | Реальные KPI/виджеты и permission-aware блоки |
+| `/dashboard/profile` | P0 | Профиль текущего пользователя + security actions |
+| `/dashboard/workspaces` | P0 | Tenant/workspace switching под нашу модель |
+| `/dashboard/workspaces/team` | P0 | Управление участниками/ролями в рамках RBAC |
+| `/dashboard/billing` | P1 | Статусы тарифа/лимитов (если включено фичефлагом) |
+| `/dashboard/exclusive` | P1 | Пример feature-gated страницы под наши фичи |
+| `/dashboard/kanban` | P2 | Опционально, после ядра админки |
+
+### Phase 3: Dashboard (Overview polish)
 
 Главная страница с виджетами.
 
@@ -71,7 +96,7 @@
 | **Recent Sales**: List widget. | ⬜ | ⬜ | Simple table/list. |
 | **Layout**: Grid system responsive check. | ⬜ | ⬜ | Mobile check. |
 
-### Phase 3: Tables & Lists (Users/Products)
+### Phase 4: Tables & Lists (Users/Products) — в последнюю очередь
 
 Самая сложная часть — таблицы с данными.
 
@@ -82,7 +107,7 @@
 | **Filters**: Port Toolbar (Search/Filter). | ⬜ | ⬜ | Connect to URL state. |
 | **Columns**: Define User/Product columns. | ⬜ | ⬜ | `Avatar`, `StatusBadge`, `Actions`. |
 
-### Phase 4: Forms (Profile/Auth)
+### Phase 5: Forms (Profile/Auth)
 
 Формы ввода данных.
 
