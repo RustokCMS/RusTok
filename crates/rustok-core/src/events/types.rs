@@ -369,4 +369,103 @@ impl DomainEvent {
                 | Self::TagDetached { .. }
         )
     }
+
+    /// Validates the event data according to business rules.
+    /// Returns Ok(()) if valid, or an error message if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            // Validate inventory events
+            Self::InventoryUpdated { old_quantity, new_quantity, .. } => {
+                if old_quantity < &0 {
+                    return Err("old_quantity cannot be negative".to_string());
+                }
+                if new_quantity < &0 {
+                    return Err("new_quantity cannot be negative".to_string());
+                }
+                Ok(())
+            }
+            Self::InventoryLow { remaining, threshold, .. } => {
+                if remaining < &0 {
+                    return Err("remaining cannot be negative".to_string());
+                }
+                if threshold < &0 {
+                    return Err("threshold cannot be negative".to_string());
+                }
+                if remaining >= threshold {
+                    return Err("remaining should be less than threshold for low inventory".to_string());
+                }
+                Ok(())
+            }
+
+            // Validate price events
+            Self::PriceUpdated { new_amount, .. } => {
+                if new_amount < &0 {
+                    return Err("new_amount cannot be negative".to_string());
+                }
+                Ok(())
+            }
+
+            // Validate order events
+            Self::OrderPlaced { total, .. } => {
+                if total < &0 {
+                    return Err("total cannot be negative".to_string());
+                }
+                Ok(())
+            }
+            Self::OrderStatusChanged { old_status, new_status, .. } => {
+                if old_status.is_empty() {
+                    return Err("old_status cannot be empty".to_string());
+                }
+                if new_status.is_empty() {
+                    return Err("new_status cannot be empty".to_string());
+                }
+                if old_status == new_status {
+                    return Err("old_status and new_status must be different".to_string());
+                }
+                Ok(())
+            }
+
+            // Validate user events
+            Self::UserRegistered { email, .. } => {
+                if email.is_empty() {
+                    return Err("email cannot be empty".to_string());
+                }
+                // Basic email validation
+                if !email.contains('@') || !email.contains('.') {
+                    return Err("email format is invalid".to_string());
+                }
+                Ok(())
+            }
+
+            // Validate media events
+            Self::MediaUploaded { size, mime_type, .. } => {
+                if size < &0 {
+                    return Err("size cannot be negative".to_string());
+                }
+                if mime_type.is_empty() {
+                    return Err("mime_type cannot be empty".to_string());
+                }
+                // Validate mime_type format (should contain /)
+                if !mime_type.contains('/') {
+                    return Err("mime_type format is invalid".to_string());
+                }
+                Ok(())
+            }
+
+            // Validate locale events
+            Self::LocaleEnabled { locale, .. } | Self::LocaleDisabled { locale, .. } => {
+                if locale.is_empty() {
+                    return Err("locale cannot be empty".to_string());
+                }
+                // Basic locale validation (should be 2-5 chars like "en", "en-US")
+                if locale.len() < 2 || locale.len() > 10 {
+                    return Err("locale format is invalid".to_string());
+                }
+                Ok(())
+            }
+
+            // All other events are valid by default
+            _ => Ok(()),
+        }
+    }
 }

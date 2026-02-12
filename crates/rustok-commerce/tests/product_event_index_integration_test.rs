@@ -5,7 +5,7 @@ use rustok_commerce::dto::{CreateProductInput, ProductTranslationInput, ProductV
 use rustok_commerce::services::CatalogService;
 use rustok_core::events::DomainEvent;
 use rustok_core::SecurityContext;
-use rustok_test_utils::{db::setup_test_db, events::mock_event_bus};
+use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -14,7 +14,7 @@ use uuid::Uuid;
 async fn test_product_creation_triggers_event() {
     // Setup test database and services
     let db = setup_test_db().await;
-    let event_bus = mock_event_bus();
+    let event_bus = mock_transactional_event_bus();
     let service = CatalogService::new(db.clone(), event_bus);
     
     let tenant_id = Uuid::new_v4();

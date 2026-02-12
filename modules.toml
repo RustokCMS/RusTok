@@ -1,0 +1,28 @@
+# RusToK Module Manifest
+# Этот файл определяет состав модулей для сборки
+# Изменение = пересборка проекта
+
+schema = 1
+app = "rustok-server"
+
+[build]
+target = "x86_64-unknown-linux-gnu"
+profile = "release"
+deployment_profile = "monolith" # monolith | headless
+
+[modules]
+# Core modules (required)
+content = { crate = "rustok-content", source = "path", path = "crates/rustok-content" }
+
+# Domain modules (optional)
+commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce" }
+blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog" }
+forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum" }
+pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages" }
+
+# Infrastructure modules
+index = { crate = "rustok-index", source = "path", path = "crates/rustok-index" }
+outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbox" }
+
+[settings]
+default_enabled = ["content", "commerce", "pages"]

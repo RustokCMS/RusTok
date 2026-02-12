@@ -7,7 +7,8 @@ use std::collections::{HashMap, HashSet};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
-use rustok_core::{generate_id, DomainEvent, EventBus};
+use rustok_core::{generate_id, DomainEvent};
+use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
 use crate::entities;
@@ -15,11 +16,11 @@ use crate::error::{CommerceError, CommerceResult};
 
 pub struct CatalogService {
     db: DatabaseConnection,
-    event_bus: EventBus,
+    event_bus: TransactionalEventBus,
 }
 
 impl CatalogService {
-    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self { db, event_bus }
     }
 
@@ -182,6 +183,15 @@ impl CatalogService {
         }
         debug!(variants_count = input.variants.len(), "Product variants and prices inserted");
 
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductCreated { product_id },
+            )
+            .await?;
+
         txn.commit().await?;
         debug!("Transaction committed");
 
@@ -191,12 +201,6 @@ impl CatalogService {
             variants_count = input.variants.len(),
             status = if input.publish { "active" } else { "draft" },
             "Product created successfully"
-        );
-
-        let _ = self.event_bus.publish(
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::ProductCreated { product_id },
         );
 
         self.get_product(tenant_id, product_id).await
@@ -439,14 +443,17 @@ impl CatalogService {
             }
         }
 
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductUpdated { product_id },
+            )
+            .await?;
+
         txn.commit().await?;
         info!(product_id = %product_id, "Product updated successfully");
-
-        let _ = self.event_bus.publish(
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::ProductUpdated { product_id },
-        );
 
         self.get_product(tenant_id, product_id).await
     }
@@ -460,9 +467,11 @@ impl CatalogService {
     ) -> CommerceResult<ProductResponse> {
         debug!(product_id = %product_id, "Publishing product");
         
+        let txn = self.db.begin().await?;
+        
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or_else(|| {
                 warn!(product_id = %product_id, "Product not found for publishing");
@@ -473,14 +482,19 @@ impl CatalogService {
         product_active.status = Set(entities::product::ProductStatus::Active);
         product_active.published_at = Set(Some(Utc::now().into()));
         product_active.updated_at = Set(Utc::now().into());
-        product_active.update(&self.db).await?;
+        let updated = product_active.update(&txn).await?;
+        
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductPublished { product_id },
+            )
+            .await?;
+        
+        txn.commit().await?;
         info!(product_id = %product_id, "Product published successfully");
-
-        let _ = self.event_bus.publish(
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::ProductPublished { product_id },
-        );
 
         self.get_product(tenant_id, product_id).await
     }
@@ -494,23 +508,30 @@ impl CatalogService {
     ) -> CommerceResult<ProductResponse> {
         debug!(product_id = %product_id, "Unpublishing product");
         
+        let txn = self.db.begin().await?;
+        
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(CommerceError::ProductNotFound(product_id))?;
 
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.status = Set(entities::product::ProductStatus::Draft);
         product_active.updated_at = Set(Utc::now().into());
-        product_active.update(&self.db).await?;
+        product_active.update(&txn).await?;
+        
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductUpdated { product_id },
+            )
+            .await?;
+        
+        txn.commit().await?;
         info!(product_id = %product_id, "Product unpublished successfully");
-
-        let _ = self.event_bus.publish(
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::ProductUpdated { product_id },
-        );
 
         self.get_product(tenant_id, product_id).await
     }
@@ -524,9 +545,11 @@ impl CatalogService {
     ) -> CommerceResult<()> {
         debug!(product_id = %product_id, "Deleting product");
         
+        let txn = self.db.begin().await?;
+        
         let product = entities::product::Entity::find_by_id(product_id)
             .filter(entities::product::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(CommerceError::ProductNotFound(product_id))?;
 
@@ -536,28 +559,69 @@ impl CatalogService {
         }
 
         entities::product::Entity::delete_by_id(product_id)
-            .exec(&self.db)
+            .exec(&txn)
             .await?;
+        
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                Some(actor_id),
+                DomainEvent::ProductDeleted { product_id },
+            )
+            .await?;
+        
+        txn.commit().await?;
         info!(product_id = %product_id, "Product deleted successfully");
-
-        let _ = self.event_bus.publish(
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::ProductDeleted { product_id },
-        );
 
         Ok(())
     }
 
     fn slugify(text: &str) -> String {
-        text.to_lowercase()
+        use unicode_normalization::UnicodeNormalization;
+        
+        const MAX_LENGTH: usize = 255;
+        const RESERVED_NAMES: &[&str] = &["admin", "api", "null", "undefined", "new", "edit", "delete"];
+        
+        // 1. Unicode normalization (NFC) to prevent homograph attacks
+        let normalized: String = text.nfc().collect();
+        
+        // 2. Convert to lowercase and filter valid characters
+        // Allow: a-z, 0-9, hyphen, space (will become hyphen)
+        let slug: String = normalized
+            .to_lowercase()
             .chars()
-            .map(|c| if c.is_alphanumeric() { c } else { '-' })
-            .collect::<String>()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == ' ' || *c == '_')
+            .map(|c| if c == ' ' || c == '_' { '-' } else { c })
+            .collect();
+        
+        // 3. Remove consecutive hyphens and trim
+        let slug = slug
             .split('-')
             .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
-            .join("-")
+            .join("-");
+        
+        // 4. Limit length
+        let slug = if slug.len() > MAX_LENGTH {
+            slug[..MAX_LENGTH].to_string()
+        } else {
+            slug
+        };
+        
+        // 5. Prevent reserved names by adding suffix
+        let slug = if RESERVED_NAMES.contains(&slug.as_str()) {
+            format!("{}-1", slug)
+        } else {
+            slug
+        };
+        
+        // 6. Ensure non-empty
+        if slug.is_empty() {
+            "untitled".to_string()
+        } else {
+            slug
+        }
     }
 
     fn generate_variant_title(variant: &entities::product_variant::Model) -> String {
