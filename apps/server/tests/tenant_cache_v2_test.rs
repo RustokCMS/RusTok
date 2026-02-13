@@ -40,18 +40,18 @@ mod tests {
         // Setup:
         // let db = setup_test_db().await;
         // let cache = SimplifiedTenantCache::new(db);
-        
+
         // First call: tenant not found
         // let result1 = cache.get_or_load(&non_existent_identifier).await;
         // assert!(result1.is_err());
-        
+
         // Second call: should return cached negative result without DB query
         // let result2 = cache.get_or_load(&non_existent_identifier).await;
         // assert!(result2.is_err());
-        
+
         // Verify DB was only called once
     }
-    
+
     #[tokio::test]
     #[ignore]
     async fn test_stampede_protection() {
@@ -59,7 +59,7 @@ mod tests {
         // let db = setup_test_db().await;
         // let cache = Arc::new(SimplifiedTenantCache::new(db));
         // let db_call_count = Arc::new(AtomicU32::new(0));
-        
+
         // Spawn 100 concurrent requests for the same tenant
         // let mut handles = vec![];
         // for _ in 0..100 {
@@ -69,75 +69,75 @@ mod tests {
         //         cache_clone.get_or_load(&identifier_clone).await
         //     }));
         // }
-        
+
         // Wait for all requests
         // let results = futures::future::join_all(handles).await;
-        
+
         // All requests should succeed
         // assert!(results.iter().all(|r| r.is_ok()));
-        
+
         // But DB should only be called ONCE (stampede protection!)
         // assert_eq!(db_call_count.load(Ordering::Relaxed), 1);
     }
-    
+
     #[tokio::test]
     #[ignore]
     async fn test_ttl_expiration() {
         // Setup with short TTL
         // let db = setup_test_db().await;
         // let cache = SimplifiedTenantCache::new_with_ttl(db, Duration::from_millis(100));
-        
+
         // First call: loads from DB
         // let tenant1 = cache.get_or_load(&identifier).await.unwrap();
-        
+
         // Wait for TTL to expire
         // sleep(Duration::from_millis(150)).await;
-        
+
         // Second call: should reload from DB (TTL expired)
         // let tenant2 = cache.get_or_load(&identifier).await.unwrap();
-        
+
         // Verify DB was called twice
     }
-    
+
     #[tokio::test]
     #[ignore]
     async fn test_invalidation() {
         // Setup:
         // let db = setup_test_db().await;
         // let cache = SimplifiedTenantCache::new(db);
-        
+
         // First call: loads from DB
         // let tenant1 = cache.get_or_load(&identifier).await.unwrap();
-        
+
         // Invalidate cache
         // cache.invalidate(&identifier).await;
-        
+
         // Second call: should reload from DB (cache invalidated)
         // let tenant2 = cache.get_or_load(&identifier).await.unwrap();
-        
+
         // Verify DB was called twice
     }
-    
+
     #[tokio::test]
     #[ignore]
     async fn test_case_insensitive_host() {
         // Setup:
         // let db = setup_test_db().await;
         // let cache = SimplifiedTenantCache::new(db);
-        
+
         // Test that "Example.COM" and "example.com" use the same cache key
         // let id1 = ResolvedTenantIdentifier {
         //     value: "Example.COM".to_string(),
         //     kind: TenantIdentifierKind::Host,
         //     uuid: Uuid::nil(),
         // };
-        
+
         // let id2 = ResolvedTenantIdentifier {
         //     value: "example.com".to_string(),
         //     kind: TenantIdentifierKind::Host,
         //     uuid: Uuid::nil(),
         // };
-        
+
         // assert_eq!(cache.build_cache_key(&id1), cache.build_cache_key(&id2));
     }
 }
@@ -146,7 +146,7 @@ mod tests {
 #[cfg(test)]
 mod integration_tests {
     // These would test the full middleware stack with a real AppContext
-    
+
     #[tokio::test]
     #[ignore]
     async fn test_middleware_with_uuid_header() {
