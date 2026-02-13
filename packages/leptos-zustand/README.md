@@ -5,7 +5,6 @@ storefront frontends (Leptos + Next.js).
 
 Target apps:
 - `apps/admin` (Leptos CSR)
-- `apps/next-admin` (Next.js)
 - `apps/storefront` (Leptos SSR)
 - `apps/next-frontend` (Next.js)
 
@@ -67,3 +66,5 @@ const snapshot: StoreSnapshot<string> = { state: "ready" };
 ## Status
 
 **Minimal baseline** for shared store shapes. Extend only when needed.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

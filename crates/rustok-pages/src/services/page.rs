@@ -5,7 +5,8 @@ use uuid::Uuid;
 use rustok_content::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::{EventBus, SecurityContext};
+use rustok_core::SecurityContext;
+use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
 use crate::error::{PagesError, PagesResult};
@@ -19,7 +20,7 @@ pub struct PageService {
 }
 
 impl PageService {
-    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             nodes: NodeService::new(db.clone(), event_bus.clone()),
             blocks: BlockService::new(db, event_bus),

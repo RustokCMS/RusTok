@@ -5,7 +5,7 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use rustok_commerce::CatalogService;
-use rustok_core::EventBus;
+use rustok_core::{EventBus, TransactionalEventBus};
 
 use super::types::*;
 
@@ -22,7 +22,7 @@ impl CommerceMutation {
         input: CreateProductInput,
     ) -> Result<GqlProduct> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
 
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
         let domain_input = convert_create_product_input(input)?;
@@ -42,7 +42,7 @@ impl CommerceMutation {
         input: UpdateProductInput,
     ) -> Result<GqlProduct> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
 
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
         let domain_input = rustok_commerce::dto::UpdateProductInput {
@@ -82,7 +82,7 @@ impl CommerceMutation {
         id: Uuid,
     ) -> Result<GqlProduct> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
 
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
         let product = catalog.publish_product(tenant_id, user_id, id).await?;
@@ -98,7 +98,7 @@ impl CommerceMutation {
         id: Uuid,
     ) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
 
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
         catalog.delete_product(tenant_id, user_id, id).await?;

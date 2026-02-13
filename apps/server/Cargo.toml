@@ -3,9 +3,14 @@ name = "rustok-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description.workspace = true
+
+[features]
+default = ["redis-cache"]
+redis-cache = []
 
 [dependencies]
-rustok-core.workspace = true
+rustok-core = { workspace = true, features = ["redis-cache"] }
 rustok-commerce.workspace = true
 rustok-blog.workspace = true
 rustok-content.workspace = true
@@ -14,6 +19,8 @@ rustok-pages.workspace = true
 rustok-tenant.workspace = true
 rustok-rbac.workspace = true
 rustok-telemetry.workspace = true
+rustok-iggy.workspace = true
+rustok-outbox.workspace = true
 alloy-scripting.workspace = true
 
 loco-rs.workspace = true
@@ -21,7 +28,7 @@ tokio.workspace = true
 axum.workspace = true
 axum-extra = { version = "0.12", features = ["typed-header"] }
 sea-orm.workspace = true
-async-graphql.workspace = true
+async-graphql = { workspace = true, features = ["dataloader"] }
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
@@ -36,19 +43,22 @@ argon2.workspace = true
 hex.workspace = true
 jsonwebtoken.workspace = true
 password-hash.workspace = true
-rand.workspace = true
 rhai.workspace = true
 sha2.workspace = true
 moka = { workspace = true, features = ["future"] }
 once_cell.workspace = true
 utoipa = { workspace = true, features = ["axum_extras", "uuid", "chrono", "yaml"] }
+redis = { version = "1.0", features = ["tokio-comp", "connection-manager"] }
+futures-util = "0.3"
 
 # Loco extras
 migration = { path = "migration" }
 
 [dev-dependencies]
+sea-orm-migration.workspace = true
 loco-rs = { workspace = true, features = ["testing"] }
 serial_test = "3.1"
+rustok-test-utils.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
 development = ["serial_test"]

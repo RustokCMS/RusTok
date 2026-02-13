@@ -18,6 +18,7 @@ pub enum Resource {
     Discounts,
     Posts,
     Pages,
+    Nodes,
     Media,
     Comments,
     Analytics,
@@ -40,6 +41,7 @@ impl fmt::Display for Resource {
             Self::Discounts => "discounts",
             Self::Posts => "posts",
             Self::Pages => "pages",
+            Self::Nodes => "nodes",
             Self::Media => "media",
             Self::Comments => "comments",
             Self::Analytics => "analytics",
@@ -67,6 +69,7 @@ impl FromStr for Resource {
             "discounts" => Ok(Self::Discounts),
             "posts" => Ok(Self::Posts),
             "pages" => Ok(Self::Pages),
+            "nodes" => Ok(Self::Nodes),
             "media" => Ok(Self::Media),
             "comments" => Ok(Self::Comments),
             "analytics" => Ok(Self::Analytics),
@@ -186,6 +189,13 @@ impl Permission {
     pub const POSTS_DELETE: Self = Self::new(Resource::Posts, Action::Delete);
     pub const POSTS_LIST: Self = Self::new(Resource::Posts, Action::List);
     pub const POSTS_MANAGE: Self = Self::new(Resource::Posts, Action::Manage);
+
+    pub const NODES_CREATE: Self = Self::new(Resource::Nodes, Action::Create);
+    pub const NODES_READ: Self = Self::new(Resource::Nodes, Action::Read);
+    pub const NODES_UPDATE: Self = Self::new(Resource::Nodes, Action::Update);
+    pub const NODES_DELETE: Self = Self::new(Resource::Nodes, Action::Delete);
+    pub const NODES_LIST: Self = Self::new(Resource::Nodes, Action::List);
+    pub const NODES_MANAGE: Self = Self::new(Resource::Nodes, Action::Manage);
 
     pub const SETTINGS_READ: Self = Self::new(Resource::Settings, Action::Read);
     pub const SETTINGS_UPDATE: Self = Self::new(Resource::Settings, Action::Update);

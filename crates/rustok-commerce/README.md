@@ -20,3 +20,27 @@
 
 ## Кому нужен
 Магазин, витрина, аналитика, интеграции и фоновая обработка заказов.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+
+## Взаимодействие
+- crates/rustok-core
+- crates/rustok-index
+- crates/rustok-tenant
+
+## Документация
+- Локальная документация: `./docs/`
+- Общая документация платформы: `/docs`
+
+## Паспорт компонента
+- **Роль в системе:** Доменный модуль commerce: каталог, цены, остатки, заказы и checkout.
+- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
+- **Взаимодействует с:**
+  - crates/rustok-core
+  - crates/rustok-index
+  - crates/rustok-tenant
+- **Точки входа:**
+  - `crates/rustok-commerce/src/lib.rs`
+- **Локальная документация:** `./docs/`
+- **Глобальная документация платформы:** `/docs/`
+

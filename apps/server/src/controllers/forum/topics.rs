@@ -3,7 +3,6 @@ use axum::{
     Json,
 };
 use loco_rs::prelude::*;
-use rustok_core::EventBus;
 use rustok_forum::{
     CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse, TopicService,
     UpdateTopicInput,
@@ -12,6 +11,7 @@ use uuid::Uuid;
 
 use crate::context::TenantContext;
 use crate::extractors::auth::CurrentUser;
+use crate::services::event_bus::event_bus_from_context;
 
 #[utoipa::path(
     get,
@@ -29,7 +29,7 @@ pub async fn list_topics(
     user: CurrentUser,
     Query(filter): Query<ListTopicsFilter>,
 ) -> Result<Json<Vec<TopicListItem>>> {
-    let service = TopicService::new(ctx.db.clone(), EventBus::default());
+    let service = TopicService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let (topics, _) = service
         .list(tenant.id, user.security_context(), filter)
         .await
@@ -59,7 +59,7 @@ pub async fn get_topic(
     Query(filter): Query<ListTopicsFilter>,
 ) -> Result<Json<TopicResponse>> {
     let locale = filter.locale.unwrap_or_else(|| "en".to_string());
-    let service = TopicService::new(ctx.db.clone(), EventBus::default());
+    let service = TopicService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let topic = service
         .get(id, &locale)
         .await
@@ -84,7 +84,7 @@ pub async fn create_topic(
     user: CurrentUser,
     Json(input): Json<CreateTopicInput>,
 ) -> Result<Json<TopicResponse>> {
-    let service = TopicService::new(ctx.db.clone(), EventBus::default());
+    let service = TopicService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let topic = service
         .create(tenant.id, user.security_context(), input)
         .await
@@ -113,7 +113,7 @@ pub async fn update_topic(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateTopicInput>,
 ) -> Result<Json<TopicResponse>> {
-    let service = TopicService::new(ctx.db.clone(), EventBus::default());
+    let service = TopicService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let topic = service
         .update(id, user.security_context(), input)
         .await
@@ -140,7 +140,7 @@ pub async fn delete_topic(
     user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
-    let service = TopicService::new(ctx.db.clone(), EventBus::default());
+    let service = TopicService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     service
         .delete(id, user.security_context())
         .await

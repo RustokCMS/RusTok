@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Semaphore};
 use tokio::task::JoinHandle;
@@ -35,6 +36,7 @@ pub struct DispatcherConfig {
     pub max_concurrent: usize,
     pub retry_count: usize,
     pub retry_delay_ms: u64,
+    pub max_queue_depth: usize,
 }
 
 impl Default for DispatcherConfig {
@@ -44,6 +46,7 @@ impl Default for DispatcherConfig {
             max_concurrent: 10,
             retry_count: 0,
             retry_delay_ms: 100,
+            max_queue_depth: 10000,
         }
     }
 }
@@ -92,6 +95,7 @@ impl EventDispatcher {
         let config = self.config;
         let mut receiver = self.bus.subscribe();
         let bus = self.bus.clone();
+        let backpressure = bus.backpressure();
 
         let handle = tokio::spawn(
             async move {
@@ -109,11 +113,13 @@ impl EventDispatcher {
                                 tenant_id = %envelope.tenant_id
                             );
 
+                            let bp = backpressure.clone();
                             Self::dispatch_to_handlers(
                                 &envelope,
                                 &handlers,
                                 &config,
                                 Arc::clone(&semaphore),
+                                bp,
                             )
                             .instrument(span)
                             .await;
@@ -139,6 +145,7 @@ impl EventDispatcher {
         handlers: &[Arc<dyn EventHandler>],
         config: &DispatcherConfig,
         semaphore: Arc<Semaphore>,
+        backpressure: Option<Arc<super::backpressure::BackpressureController>>,
     ) {
         let matching_handlers: Vec<_> = handlers
             .iter()
@@ -151,6 +158,10 @@ impl EventDispatcher {
                 event_type = envelope.event.event_type(),
                 "No handlers for event"
             );
+            // Release backpressure slot if no handlers
+            if let Some(bp) = backpressure {
+                bp.release();
+            }
             return;
         }
 
@@ -160,6 +171,8 @@ impl EventDispatcher {
             "Dispatching to handlers"
         );
 
+        let handler_count = matching_handlers.len();
+        
         if config.fail_fast {
             for handler in matching_handlers {
                 let envelope = envelope.clone();
@@ -173,17 +186,34 @@ impl EventDispatcher {
                     break;
                 }
             }
+            // Release backpressure slot after all handlers complete
+            if let Some(bp) = backpressure {
+                bp.release();
+            }
             return;
         }
 
+        // For concurrent execution, track handler completion
+        let completion_count = Arc::new(AtomicUsize::new(0));
+        
         for handler in matching_handlers {
             let envelope = envelope.clone();
             let config = config.clone();
             let permit = semaphore.clone().acquire_owned().await;
+            let bp = backpressure.clone();
+            let count = Arc::clone(&completion_count);
 
             tokio::spawn(async move {
                 let _permit = permit;
                 let _ = Self::handle_with_retry(handler, envelope, &config).await;
+                
+                // Release backpressure slot when all handlers complete
+                let completed = count.fetch_add(1, Ordering::Relaxed) + 1;
+                if completed == handler_count {
+                    if let Some(bp) = bp {
+                        bp.release();
+                    }
+                }
             });
         }
     }

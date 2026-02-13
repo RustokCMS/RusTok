@@ -32,10 +32,17 @@ Key pieces:
 
 ## Module lifecycle
 
-The lifecycle hooks are invoked after the tenant state is persisted:
+`toggle_module` delegates orchestration to `ModuleLifecycleService`
+(`apps/server/src/services/module_lifecycle.rs`). The service performs:
 
-- **Enable**: `on_enable` runs after the row is updated to `enabled = true`.
-- **Disable**: `on_disable` runs after the row is updated to `enabled = false`.
+1. Dependency validation and dependent-module checks.
+2. Transactional state persistence in `tenant_modules`.
+3. Hook invocation (`on_enable` / `on_disable`) only when state actually changed
+   (idempotent behavior for repeated toggle requests with the same target state).
+4. Compensating rollback to previous state if hook execution fails.
+
+This keeps GraphQL resolver logic thin and ensures tenant module state remains
+consistent even when hooks return an error.
 
 Hooks receive `ModuleContext`, which includes the database connection, tenant
 ID, and the module settings payload.
@@ -84,3 +91,5 @@ mutation ToggleModule {
   }
 }
 ```
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

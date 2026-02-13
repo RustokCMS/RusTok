@@ -7,9 +7,10 @@ use uuid::Uuid;
 
 use rustok_commerce::dto::{CreateVariantInput, PriceInput, UpdateVariantInput, VariantResponse};
 use rustok_commerce::{entities, PricingService};
-use rustok_core::{generate_id, DomainEvent, EventBus};
+use rustok_core::{generate_id, DomainEvent};
 
 use crate::common::{ApiErrorResponse, ApiResponse, RequestContext};
+use crate::services::event_bus::event_bus_from_context;
 use loco_rs::app::AppContext;
 
 /// List product variants
@@ -218,7 +219,7 @@ pub(super) async fn create_variant(
         ))
     })?;
 
-    let _ = EventBus::default().publish(
+    let _ = event_bus_from_context(&ctx).publish(
         request.tenant_id,
         Some(user_id),
         DomainEvent::VariantCreated {
@@ -371,7 +372,7 @@ pub(super) async fn update_variant(
         ))
     })?;
 
-    let _ = EventBus::default().publish(
+    let _ = event_bus_from_context(&ctx).publish(
         request.tenant_id,
         Some(user_id),
         DomainEvent::VariantUpdated {
@@ -448,7 +449,7 @@ pub(super) async fn delete_variant(
         ))
     })?;
 
-    let _ = EventBus::default().publish(
+    let _ = event_bus_from_context(&ctx).publish(
         request.tenant_id,
         Some(user_id),
         DomainEvent::VariantDeleted {
@@ -483,7 +484,7 @@ pub(super) async fn update_prices(
 ) -> Result<Json<ApiResponse<VariantResponse>>, ApiErrorResponse> {
     let user_id = request.require_user()?;
 
-    let pricing = PricingService::new(ctx.db.clone(), EventBus::default());
+    let pricing = PricingService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     pricing
         .set_prices(request.tenant_id, user_id, id, prices)
         .await

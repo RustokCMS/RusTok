@@ -26,3 +26,5 @@ Internal UI (IU) workspace for shared design tokens and parallel component imple
 - Keep API parity across Next and Leptos components.
 - Base styling on shared tokens and support light/dark themes.
 - Avoid direct duplication of shadcn by treating it as a reference for Next only.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

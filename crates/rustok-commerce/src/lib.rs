@@ -7,10 +7,14 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod services;
+pub mod state_machine;
 
 pub use dto::*;
 pub use error::{CommerceError, CommerceResult};
 pub use services::{CatalogService, InventoryService, PricingService};
+pub use state_machine::{
+    Cancelled, Confirmed, Delivered, Order, OrderError, Paid, Pending, Shipped,
+};
 
 pub struct CommerceModule;
 

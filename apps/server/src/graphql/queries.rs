@@ -151,7 +151,7 @@ impl RootQuery {
             ));
         }
 
-        let (offset, limit) = pagination.normalize();
+        let (offset, limit) = pagination.normalize()?;
         let mut query = users::Entity::find().filter(UsersColumn::TenantId.eq(tenant.id));
 
         if let Some(filter) = filter {

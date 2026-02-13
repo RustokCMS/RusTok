@@ -3,7 +3,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_content::NodeService;
-use rustok_core::events::EventBus;
+use rustok_outbox::TransactionalEventBus;
 use rustok_core::SecurityContext;
 
 use crate::constants::reply_status;
@@ -14,7 +14,7 @@ pub struct ModerationService {
 }
 
 impl ModerationService {
-    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             nodes: NodeService::new(db, event_bus),
         }

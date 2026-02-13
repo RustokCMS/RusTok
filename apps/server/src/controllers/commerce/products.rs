@@ -9,12 +9,12 @@ use uuid::Uuid;
 
 use rustok_commerce::dto::{CreateProductInput, ProductResponse, UpdateProductInput};
 use rustok_commerce::CatalogService;
-use rustok_core::EventBus;
 
 use crate::common::{
     ApiErrorResponse, ApiResponse, PaginatedResponse, PaginationMeta, PaginationParams,
     RequestContext,
 };
+use crate::services::event_bus::transactional_event_bus_from_context;
 use loco_rs::app::AppContext;
 
 /// List commerce products
@@ -161,7 +161,7 @@ pub(super) async fn create_product(
 ) -> Result<(StatusCode, Json<ApiResponse<ProductResponse>>), ApiErrorResponse> {
     let user_id = request.require_user()?;
 
-    let service = CatalogService::new(ctx.db.clone(), EventBus::default());
+    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let product = service
         .create_product(request.tenant_id, user_id, input)
         .await
@@ -189,7 +189,7 @@ pub(super) async fn show_product(
     request: RequestContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<ProductResponse>>, ApiErrorResponse> {
-    let service = CatalogService::new(ctx.db.clone(), EventBus::default());
+    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let product = service
         .get_product(request.tenant_id, id)
         .await
@@ -221,7 +221,7 @@ pub(super) async fn update_product(
 ) -> Result<Json<ApiResponse<ProductResponse>>, ApiErrorResponse> {
     let user_id = request.require_user()?;
 
-    let service = CatalogService::new(ctx.db.clone(), EventBus::default());
+    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let product = service
         .update_product(request.tenant_id, user_id, id, input)
         .await
@@ -251,7 +251,7 @@ pub(super) async fn delete_product(
 ) -> Result<StatusCode, ApiErrorResponse> {
     let user_id = request.require_user()?;
 
-    let service = CatalogService::new(ctx.db.clone(), EventBus::default());
+    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .delete_product(request.tenant_id, user_id, id)
         .await
@@ -281,7 +281,7 @@ pub(super) async fn publish_product(
 ) -> Result<Json<ApiResponse<ProductResponse>>, ApiErrorResponse> {
     let user_id = request.require_user()?;
 
-    let service = CatalogService::new(ctx.db.clone(), EventBus::default());
+    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let product = service
         .publish_product(request.tenant_id, user_id, id)
         .await
@@ -311,7 +311,7 @@ pub(super) async fn unpublish_product(
 ) -> Result<Json<ApiResponse<ProductResponse>>, ApiErrorResponse> {
     let user_id = request.require_user()?;
 
-    let service = CatalogService::new(ctx.db.clone(), EventBus::default());
+    let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let product = service
         .unpublish_product(request.tenant_id, user_id, id)
         .await

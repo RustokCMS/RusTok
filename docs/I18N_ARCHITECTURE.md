@@ -1,0 +1,901 @@
+# RusToK Internationalization (i18n) Architecture
+
+> **Comprehensive guide to multi-language support in RusToK**  
+> **Version**: 1.0  
+> **Last Updated**: February 11, 2026
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Design Principles](#design-principles)
+3. [Data Model](#data-model)
+4. [Implementation Patterns](#implementation-patterns)
+5. [API Design](#api-design)
+6. [Best Practices](#best-practices)
+7. [Migration Strategy](#migration-strategy)
+8. [Performance Considerations](#performance-considerations)
+
+---
+
+## Overview
+
+### Philosophy
+
+RusToK implements **parallel translation storage** where localized content is stored alongside the main entity, not as an afterthought. This design ensures:
+
+- ✅ **First-class i18n support** - Translations are part of core data model
+- ✅ **Performance** - No JOIN overhead for default locale
+- ✅ **Flexibility** - Easy to add new locales without schema changes
+- ✅ **Consistency** - Uniform pattern across all modules
+
+### Supported Entities
+
+| Module | Entity | Translation Table | Body Table |
+|--------|--------|-------------------|------------|
+| **Content** | Node | `node_translations` | `bodies` (locale-aware) |
+| **Commerce** | Product | `product_translations` | N/A |
+| **Commerce** | Variant | `variant_translations` | N/A |
+
+### Locale Format
+
+- **Standard**: ISO 639-1 language codes (e.g., `en`, `ru`, `fr`)
+- **Regional**: BCP 47 format supported (e.g., `en-US`, `pt-BR`)
+- **Storage**: `VARCHAR(10)` column in translation tables
+- **Validation**: Pattern `^[a-z]{2}(-[A-Z]{2})?$`
+
+---
+
+## Design Principles
+
+### 1. Parallel Translation Model
+
+**Pattern**: Separate translation tables with 1:N relationship
+
+```
+┌─────────────┐         ┌──────────────────────┐
+│   nodes     │ 1     N │  node_translations   │
+│             ├─────────┤                      │
+│ id (PK)     │         │ id (PK)              │
+│ tenant_id   │         │ node_id (FK)         │
+│ kind        │         │ locale               │
+│ slug        │         │ title                │
+│ status      │         │ excerpt              │
+│ ...         │         │ metadata (JSONB)     │
+└─────────────┘         └──────────────────────┘
+```
+
+**Benefits**:
+- No NULL fields for unused translations
+- Easy to query specific locale
+- Can add translations without altering main table
+- Clear separation of concerns
+
+### 2. Composite Primary Keys for Content Bodies
+
+**Pattern**: Locale as part of primary key for heavy content
+
+```sql
+CREATE TABLE bodies (
+    node_id UUID NOT NULL,
+    locale VARCHAR(10) NOT NULL,
+    body TEXT NOT NULL,
+    format VARCHAR(32) NOT NULL DEFAULT 'html',
+    PRIMARY KEY (node_id, locale),
+    FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+);
+```
+
+**Benefits**:
+- Natural 1:1 relationship per locale
+- Efficient lookups by (node_id, locale)
+- Automatic uniqueness constraint
+- Optimal for large content (prevents row size issues)
+
+### 3. Default Locale Strategy
+
+**Approach**: Application-level default, not database-level
+
+- Default locale configured per tenant: `tenant.default_locale`
+- Fallback chain: `requested → default → 'en'`
+- Services handle locale resolution, not database
+- Allows dynamic locale switching
+
+---
+
+## Data Model
+
+### Content Module
+
+#### `node_translations`
+
+```rust
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "node_translations")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: Uuid,
+    pub node_id: Uuid,  // FK to nodes
+    pub locale: String,  // e.g., "en", "ru"
+    pub title: String,
+    pub excerpt: Option<String>,
+    pub metadata: Json,  // SEO, custom fields
+}
+```
+
+**Unique Constraint**: `(node_id, locale)` - One translation per locale per node
+
+**Usage**:
+```rust
+// Fetch specific locale
+let translation = NodeTranslation::find()
+    .filter(node_translation::Column::NodeId.eq(node_id))
+    .filter(node_translation::Column::Locale.eq("ru"))
+    .one(&db)
+    .await?;
+
+// Fetch all translations for a node
+let translations = NodeTranslation::find()
+    .filter(node_translation::Column::NodeId.eq(node_id))
+    .all(&db)
+    .await?;
+```
+
+#### `bodies`
+
+```rust
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "bodies")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub node_id: Uuid,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub locale: String,  // Part of composite PK
+    pub body: String,    // Rich content (HTML/Markdown)
+    pub format: String,  // "html", "markdown", "json"
+}
+```
+
+**Primary Key**: Composite `(node_id, locale)`
+
+**Usage**:
+```rust
+// Fetch body for specific locale
+let body = Body::find_by_id((node_id, locale.to_string()))
+    .one(&db)
+    .await?;
+
+// Insert/Update body
+let body = bodies::ActiveModel {
+    node_id: Set(node_id),
+    locale: Set("en".to_string()),
+    body: Set(content),
+    format: Set("html".to_string()),
+};
+body.insert(&db).await?;
+```
+
+### Commerce Module
+
+#### `product_translations`
+
+```rust
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "product_translations")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: Uuid,
+    pub product_id: Uuid,   // FK to products
+    pub locale: String,      // e.g., "en", "de"
+    pub title: String,
+    pub description: Option<String>,
+    pub seo_title: Option<String>,
+    pub seo_description: Option<String>,
+}
+```
+
+**Unique Constraint**: `(product_id, locale)`
+
+**SEO Fields**: Separate from main content for better organization
+
+#### `variant_translations`
+
+```rust
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "variant_translations")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: Uuid,
+    pub variant_id: Uuid,  // FK to product_variants
+    pub locale: String,
+    pub title: String,
+}
+```
+
+**Usage**:
+- Variant-specific titles (e.g., "Small / Маленький")
+- Option values (e.g., "Red / Красный")
+- Less fields than products (lightweight)
+
+---
+
+## Implementation Patterns
+
+### 1. Service Layer Pattern
+
+**Principle**: Services handle translation logic, controllers pass locale
+
+```rust
+// Service method signature
+pub async fn get_node(
+    &self,
+    tenant_id: Uuid,
+    node_id: Uuid,
+    locale: Option<String>,  // Optional locale parameter
+) -> ContentResult<NodeWithTranslation> {
+    let node = // fetch node
+    
+    // Resolve locale (fallback chain)
+    let effective_locale = locale
+        .or_else(|| self.get_tenant_default_locale(tenant_id))
+        .unwrap_or_else(|| "en".to_string());
+    
+    // Fetch translation
+    let translation = self.get_translation(node_id, &effective_locale).await?;
+    
+    Ok(NodeWithTranslation {
+        node,
+        translation,
+        locale: effective_locale,
+    })
+}
+```
+
+### 2. DTO Pattern for Translations
+
+**Input DTOs**:
+```rust
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct NodeTranslationInput {
+    pub locale: String,      // Required
+    pub title: String,
+    pub excerpt: Option<String>,
+    pub body: Option<String>,  // Optional body content
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateNodeInput {
+    pub kind: String,
+    pub slug: String,
+    pub translations: Vec<NodeTranslationInput>,  // Min 1 required
+    pub status: Option<String>,
+}
+```
+
+**Validation**:
+- ✅ At least one translation required on creation
+- ✅ Locale format validation
+- ✅ No duplicate locales in input
+- ✅ Title is required per translation
+
+**Output DTOs**:
+```rust
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NodeOutput {
+    pub id: Uuid,
+    pub kind: String,
+    pub slug: String,
+    pub status: String,
+    pub translations: Vec<NodeTranslationOutput>,
+    pub published_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NodeTranslationOutput {
+    pub locale: String,
+    pub title: String,
+    pub excerpt: Option<String>,
+    pub body: Option<String>,  // Include if requested
+}
+```
+
+### 3. Atomic Translation Updates
+
+**Pattern**: Transaction for main entity + translations
+
+```rust
+pub async fn create_node(
+    &self,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    input: CreateNodeInput,
+) -> ContentResult<NodeOutput> {
+    let txn = self.db.begin().await?;
+    
+    // 1. Create main node
+    let node = nodes::ActiveModel {
+        id: Set(generate_id()),
+        tenant_id: Set(tenant_id),
+        kind: Set(input.kind),
+        slug: Set(input.slug),
+        // ...
+    }.insert(&txn).await?;
+    
+    // 2. Create translations atomically
+    for translation_input in input.translations {
+        let translation = node_translations::ActiveModel {
+            id: Set(generate_id()),
+            node_id: Set(node.id),
+            locale: Set(translation_input.locale.clone()),
+            title: Set(translation_input.title),
+            excerpt: Set(translation_input.excerpt),
+            metadata: Set(json!({})),
+        }.insert(&txn).await?;
+        
+        // 3. Create body if provided
+        if let Some(body_content) = translation_input.body {
+            let body = bodies::ActiveModel {
+                node_id: Set(node.id),
+                locale: Set(translation_input.locale),
+                body: Set(body_content),
+                format: Set("html".to_string()),
+            }.insert(&txn).await?;
+        }
+    }
+    
+    txn.commit().await?;
+    
+    // Return full node with translations
+    self.get_node(tenant_id, node.id, None).await
+}
+```
+
+**Benefits**:
+- All-or-nothing guarantee
+- No orphaned translations
+- Consistent state across locales
+
+---
+
+## API Design
+
+### GraphQL API
+
+#### Query with Locale Selection
+
+```graphql
+query GetNode($id: UUID!, $locale: String) {
+  node(id: $id, locale: $locale) {
+    id
+    kind
+    slug
+    status
+    translation {
+      locale
+      title
+      excerpt
+    }
+    body {
+      content
+      format
+    }
+  }
+}
+```
+
+**Behavior**:
+- If `locale` provided: return that locale or 404
+- If `locale` null: return tenant default locale
+- Fallback: Use `en` if default not available
+
+#### Query All Translations
+
+```graphql
+query GetNodeAllTranslations($id: UUID!) {
+  node(id: $id) {
+    id
+    translations {
+      locale
+      title
+      excerpt
+    }
+    bodies {
+      locale
+      content
+    }
+  }
+}
+```
+
+#### Mutation with Multiple Translations
+
+```graphql
+mutation CreateNode($input: CreateNodeInput!) {
+  createNode(input: $input) {
+    id
+    slug
+    translations {
+      locale
+      title
+    }
+  }
+}
+
+input CreateNodeInput {
+  kind: String!
+  slug: String!
+  translations: [NodeTranslationInput!]!  # Array required
+  status: NodeStatus
+}
+
+input NodeTranslationInput {
+  locale: String!
+  title: String!
+  excerpt: String
+  body: String
+}
+```
+
+### REST API
+
+#### Get Node (Single Locale)
+
+```http
+GET /api/nodes/{id}?locale=ru
+```
+
+**Response**:
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "kind": "post",
+  "slug": "my-post",
+  "status": "published",
+  "locale": "ru",
+  "translation": {
+    "title": "Мой пост",
+    "excerpt": "Краткое описание"
+  }
+}
+```
+
+#### Get Node (All Locales)
+
+```http
+GET /api/nodes/{id}?all_locales=true
+```
+
+**Response**:
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "translations": [
+    {
+      "locale": "en",
+      "title": "My Post",
+      "excerpt": "Short description"
+    },
+    {
+      "locale": "ru",
+      "title": "Мой пост",
+      "excerpt": "Краткое описание"
+    }
+  ]
+}
+```
+
+#### Create Node (Multiple Translations)
+
+```http
+POST /api/nodes
+Content-Type: application/json
+
+{
+  "kind": "post",
+  "slug": "my-multilingual-post",
+  "translations": [
+    {
+      "locale": "en",
+      "title": "My Post",
+      "excerpt": "English description",
+      "body": "<p>English content</p>"
+    },
+    {
+      "locale": "ru",
+      "title": "Мой пост",
+      "excerpt": "Русское описание",
+      "body": "<p>Русский контент</p>"
+    }
+  ]
+}
+```
+
+#### Update Translation
+
+```http
+PUT /api/nodes/{id}/translations/{locale}
+Content-Type: application/json
+
+{
+  "title": "Updated Title",
+  "excerpt": "Updated excerpt",
+  "body": "<p>Updated content</p>"
+}
+```
+
+---
+
+## Best Practices
+
+### 1. Always Require at Least One Translation
+
+```rust
+// Validation in DTO
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateNodeInput {
+    #[validate(length(min = 1, message = "At least one translation required"))]
+    pub translations: Vec<NodeTranslationInput>,
+}
+```
+
+### 2. Validate Locale Format
+
+```rust
+fn validate_locale(locale: &str) -> bool {
+    // ISO 639-1 (en) or BCP 47 (en-US)
+    regex::Regex::new(r"^[a-z]{2}(-[A-Z]{2})?$")
+        .unwrap()
+        .is_match(locale)
+}
+```
+
+### 3. Use Tenant Default Locale
+
+```rust
+// Store in tenant configuration
+pub struct TenantConfig {
+    pub default_locale: String,  // e.g., "en"
+    pub supported_locales: Vec<String>,  // e.g., ["en", "ru", "de"]
+}
+
+// Validation: only accept supported locales
+pub fn validate_locale_for_tenant(
+    locale: &str,
+    config: &TenantConfig
+) -> Result<(), Error> {
+    if !config.supported_locales.contains(&locale.to_string()) {
+        return Err(Error::UnsupportedLocale(locale.to_string()));
+    }
+    Ok(())
+}
+```
+
+### 4. Atomic Translation Operations
+
+```rust
+// Good: All in transaction
+txn.begin();
+create_node(...);
+create_translations(...);
+txn.commit();
+
+// Bad: Separate operations
+create_node(...);  // Could fail here
+create_translations(...);  // Orphaned node if this fails
+```
+
+### 5. Index Translations for Performance
+
+```sql
+-- Essential indexes
+CREATE INDEX idx_node_translations_node_id ON node_translations(node_id);
+CREATE INDEX idx_node_translations_locale ON node_translations(locale);
+CREATE UNIQUE INDEX idx_node_translations_unique ON node_translations(node_id, locale);
+
+-- Composite for common queries
+CREATE INDEX idx_node_translations_node_locale ON node_translations(node_id, locale);
+```
+
+### 6. Consider Fallback Chains
+
+```rust
+pub async fn get_translation_with_fallback(
+    &self,
+    node_id: Uuid,
+    preferred_locale: &str,
+) -> ContentResult<NodeTranslation> {
+    // 1. Try preferred locale
+    if let Some(trans) = self.find_translation(node_id, preferred_locale).await? {
+        return Ok(trans);
+    }
+    
+    // 2. Try tenant default
+    if let Some(trans) = self.find_translation(node_id, &self.default_locale).await? {
+        return Ok(trans);
+    }
+    
+    // 3. Try 'en'
+    if let Some(trans) = self.find_translation(node_id, "en").await? {
+        return Ok(trans);
+    }
+    
+    // 4. Return any available
+    self.find_any_translation(node_id).await?
+        .ok_or(ContentError::NoTranslationsFound(node_id))
+}
+```
+
+### 7. Document Missing Translations
+
+```rust
+#[derive(Debug, Serialize)]
+pub struct NodeOutput {
+    pub id: Uuid,
+    pub available_locales: Vec<String>,  // Document what exists
+    pub requested_locale: String,
+    pub effective_locale: String,  // What was actually returned
+    pub translation: NodeTranslationOutput,
+}
+```
+
+---
+
+## Migration Strategy
+
+### Adding i18n to Existing Entity
+
+**Step 1**: Create translation table migration
+
+```sql
+-- Migration: 20260211_add_product_translations.sql
+CREATE TABLE product_translations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    locale VARCHAR(10) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    UNIQUE(product_id, locale)
+);
+
+CREATE INDEX idx_product_translations_product_id ON product_translations(product_id);
+CREATE INDEX idx_product_translations_locale ON product_translations(locale);
+```
+
+**Step 2**: Migrate existing data
+
+```sql
+-- Copy existing titles to 'en' translation
+INSERT INTO product_translations (id, product_id, locale, title, description)
+SELECT 
+    gen_random_uuid(),
+    id,
+    'en',
+    title,
+    description
+FROM products
+WHERE title IS NOT NULL;
+
+-- Drop old columns (after verification)
+ALTER TABLE products DROP COLUMN title;
+ALTER TABLE products DROP COLUMN description;
+```
+
+**Step 3**: Update service layer
+
+```rust
+// Old (direct field access)
+product.title
+
+// New (through translation)
+product.translation.title
+```
+
+---
+
+## Performance Considerations
+
+### 1. Query Optimization
+
+**Bad**: N+1 query problem
+```rust
+// Fetches node, then each translation separately
+for node in nodes {
+    let translation = get_translation(node.id, locale).await?;
+}
+```
+
+**Good**: Eager loading with JOIN
+```rust
+// Single query with LEFT JOIN
+let nodes_with_translations = Node::find()
+    .find_also_related(NodeTranslation)
+    .filter(node_translation::Column::Locale.eq(locale))
+    .all(&db)
+    .await?;
+```
+
+### 2. Caching Strategy
+
+```rust
+// Cache key pattern
+let cache_key = format!("node:{}:translation:{}", node_id, locale);
+
+// Cache per locale
+cache.get_or_set(cache_key, || {
+    db.find_translation(node_id, locale)
+});
+
+// Invalidate all locales on update
+for locale in ["en", "ru", "de"] {
+    cache.delete(format!("node:{}:translation:{}", node_id, locale));
+}
+```
+
+### 3. Body Storage Optimization
+
+**Separate table benefits**:
+- Main table stays small (faster scans)
+- Bodies loaded only when needed
+- Easy to add caching layer
+- Can use compression for large bodies
+
+**Pattern**:
+```rust
+// Fetch without body (fast)
+let node = get_node(id, locale).await?;
+
+// Fetch body only if needed (lazy)
+if include_body {
+    node.body = get_body(id, locale).await?;
+}
+```
+
+### 4. Index-Only Scans
+
+```sql
+-- Create covering index for common queries
+CREATE INDEX idx_node_translations_covering 
+ON node_translations(node_id, locale) 
+INCLUDE (title, excerpt);
+
+-- Query can use index-only scan
+SELECT title, excerpt 
+FROM node_translations 
+WHERE node_id = $1 AND locale = $2;
+```
+
+---
+
+## Testing Patterns
+
+### Unit Tests
+
+```rust
+#[tokio::test]
+async fn test_create_node_multiple_locales() {
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    
+    let input = CreateNodeInput {
+        kind: "post".to_string(),
+        slug: "test-post".to_string(),
+        translations: vec![
+            NodeTranslationInput {
+                locale: "en".to_string(),
+                title: "English Title".to_string(),
+                excerpt: Some("English excerpt".to_string()),
+                body: Some("<p>English body</p>".to_string()),
+            },
+            NodeTranslationInput {
+                locale: "ru".to_string(),
+                title: "Русский заголовок".to_string(),
+                excerpt: Some("Русское описание".to_string()),
+                body: Some("<p>Русский текст</p>".to_string()),
+            },
+        ],
+        status: None,
+    };
+    
+    let node = service.create_node(tenant_id, Uuid::new_v4(), input).await.unwrap();
+    
+    assert_eq!(node.translations.len(), 2);
+    
+    // Verify English
+    let en_trans = node.translations.iter().find(|t| t.locale == "en").unwrap();
+    assert_eq!(en_trans.title, "English Title");
+    
+    // Verify Russian
+    let ru_trans = node.translations.iter().find(|t| t.locale == "ru").unwrap();
+    assert_eq!(ru_trans.title, "Русский заголовок");
+}
+```
+
+### Integration Tests
+
+```rust
+#[tokio::test]
+async fn test_locale_fallback_chain() {
+    let (db, service) = setup().await;
+    
+    // Create node with only 'en' translation
+    let node = create_node_with_locale(&service, "en").await;
+    
+    // Request 'ru' (not available)
+    let result = service.get_node(tenant_id, node.id, Some("ru".to_string())).await;
+    
+    // Should fallback to 'en'
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().locale, "en");
+}
+```
+
+---
+
+## Future Enhancements
+
+### 1. Pluralization Support
+
+```rust
+pub struct PluralTranslation {
+    pub singular: String,
+    pub plural: String,
+    pub zero: Option<String>,  // For Russian, Arabic, etc.
+}
+```
+
+### 2. Translation Status Tracking
+
+```rust
+pub enum TranslationStatus {
+    Complete,
+    Draft,
+    NeedsReview,
+    Outdated,  // Original changed since translation
+}
+```
+
+### 3. Translation Memory
+
+```sql
+CREATE TABLE translation_memory (
+    source_text TEXT,
+    target_text TEXT,
+    source_locale VARCHAR(10),
+    target_locale VARCHAR(10),
+    context JSONB,
+    quality_score FLOAT,
+    PRIMARY KEY (source_text, source_locale, target_locale)
+);
+```
+
+### 4. Machine Translation Integration
+
+```rust
+pub async fn suggest_translation(
+    &self,
+    node_id: Uuid,
+    from_locale: &str,
+    to_locale: &str,
+) -> Result<TranslationSuggestion> {
+    let source = self.get_translation(node_id, from_locale).await?;
+    let suggestion = self.mt_service.translate(source, to_locale).await?;
+    Ok(suggestion)
+}
+```
+
+---
+
+## References
+
+- [PostgreSQL i18n Best Practices](https://www.postgresql.org/docs/current/locale.html)
+- [Unicode CLDR](https://cldr.unicode.org/)
+- [BCP 47 Language Tags](https://www.rfc-editor.org/rfc/bcp/bcp47.txt)
+- [Fluent Localization System](https://projectfluent.org/)
+
+---
+
+**Document Ownership**: Platform Architecture Team  
+**Last Review**: February 11, 2026  
+**Next Review**: March 2026 (or when adding new translatable entity)

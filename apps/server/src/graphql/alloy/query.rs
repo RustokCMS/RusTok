@@ -34,7 +34,7 @@ impl AlloyQuery {
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
         let total = scripts.len() as i64;
-        let (offset, limit) = pagination.normalize();
+        let (offset, limit) = pagination.normalize()?;
         let items = scripts
             .into_iter()
             .skip(offset as usize)

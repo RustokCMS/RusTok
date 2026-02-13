@@ -7,11 +7,13 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod services;
+pub mod state_machine;
 
 pub use dto::*;
 pub use entities::{Body, Node, NodeTranslation};
 pub use error::{ContentError, ContentResult};
 pub use services::NodeService;
+pub use state_machine::{Archived, ContentNode, Draft, Published, ToContentStatus};
 
 pub struct ContentModule;
 

@@ -1,162 +1,93 @@
 # RusToK Module Matrix
 
-> **Полная карта модулей системы**  
-> **Обновлено:** 2026-02-06
+> Полная карта модулей и модульных crate'ов в текущем репозитории.
+> 
+> Последняя верификация: по коду `apps/server/src/modules/mod.rs`, `Cargo.toml` workspace и crate-манифестам.
 
 ---
 
-## Module Taxonomy
+## 1) Что реально зарегистрировано в `rustok-server`
 
-```
-                    ┌─────────────────────────────────────┐
-                    │           INFRASTRUCTURE            │
-                    │  rustok-core, rustok-telemetry,     │
-                    │  rustok-outbox, rustok-iggy,        │
-                    │  rustok-index                       │
-                    └─────────────────────────────────────┘
-                                      ▲
-                    ┌─────────────────┼─────────────────┐
-                    │           DOMAIN MODULES           │
-                    │  rustok-tenant, rustok-rbac,       │
-                    │  rustok-content, rustok-commerce   │
-                    └─────────────────────────────────────┘
-                                      ▲
-                    ┌─────────────────┼─────────────────┐
-                    │          WRAPPER MODULES           │
-                    │  rustok-blog, rustok-forum,        │
-                    │  rustok-pages                      │
-                    └─────────────────────────────────────┘
-```
+Источник истины для runtime-реестра: `apps/server/src/modules/mod.rs`.
+
+| Порядок | Slug | Crate | Статус в сервере | Кратко |
+|---|---|---|---|---|
+| 1 | `content` | `rustok-content` | ✅ зарегистрирован | Базовый контентный модуль |
+| 2 | `commerce` | `rustok-commerce` | ✅ зарегистрирован | Каталог, цены, заказы, склад |
+| 3 | `blog` | `rustok-blog` | ✅ зарегистрирован | Блоговая надстройка |
+| 4 | `forum` | `rustok-forum` | ✅ зарегистрирован | Форум: категории, темы, ответы |
+| 5 | `pages` | `rustok-pages` | ✅ зарегистрирован | Страницы и меню |
+
+> Важно: `tenant`, `rbac`, `index` имеют `RusToKModule`-реализации, но **в текущей серверной сборке не регистрируются** в `build_registry()`.
 
 ---
 
-## Core Components
+## 2) Модульные crates с `RusToKModule`
 
-| Crate | Slug | Назначение | Dependencies |
-|-------|------|------------|--------------|
-| `rustok-core` | core | Базовые traits, events, errors, auth, cache | - |
-| `rustok-telemetry` | telemetry | Tracing, metrics, logging | - |
-
----
-
-## Infrastructure Modules
-
-| Crate | Slug | Назначение | Dependencies |
-|-------|------|------------|--------------|
-| `rustok-outbox` | outbox | Outbox pattern для надёжной доставки событий | rustok-core |
-| `rustok-iggy` | iggy | Streaming transport (Iggy) | rustok-core |
-| `rustok-iggy-connector` | iggy-connector | Коннектор к Iggy | rustok-iggy |
-| `rustok-index` | index | CQRS read model, поиск | rustok-core |
-| `rustok-mcp` | mcp | MCP (Multi-Cloud Platform) интеграция | rustok-core |
+| Slug | Crate | Роль | Зарегистрирован в сервере |
+|---|---|---|---|
+| `content` | `rustok-content` | CMS foundation | ✅ да |
+| `commerce` | `rustok-commerce` | Commerce domain | ✅ да |
+| `blog` | `rustok-blog` | Blog wrapper | ✅ да |
+| `forum` | `rustok-forum` | Forum wrapper | ✅ да |
+| `pages` | `rustok-pages` | Pages/menu wrapper | ✅ да |
+| `tenant` | `rustok-tenant` | Tenant metadata/helpers | ❌ нет |
+| `rbac` | `rustok-rbac` | Access control helpers | ❌ нет |
+| `index` | `rustok-index` | Read model / indexing | ❌ нет |
 
 ---
 
-## Domain Modules
+## 3) Инфраструктурные crates (не registry-модули)
 
-| Crate | Slug | Назначение | Dependencies |
-|-------|------|------------|--------------|
-| `rustok-tenant` | tenant | Multi-tenancy, tenant lifecycle | rustok-core |
-| `rustok-rbac` | rbac | Roles, permissions, access control | rustok-core |
-| `rustok-content` | content | Nodes, bodies, categories (CMS foundation) | rustok-core |
-| `rustok-commerce` | commerce | Products, variants, prices, inventory | rustok-core, rustok-content |
-
----
-
-## Wrapper Modules
-
-| Crate | Slug | Назначение | Base Module |
-|-------|------|------------|-------------|
-| `rustok-blog` | blog | Blog functionality (nodes kind='post') | rustok-content |
-| `rustok-forum` | forum | Forum/discussions (nodes kind='topic') | rustok-content |
-| `rustok-pages` | pages | Static pages (nodes kind='page') | rustok-content |
+| Crate | Роль |
+|---|---|
+| `rustok-core` | Контракты модулей, registry, события, базовые типы |
+| `rustok-outbox` | Надёжная публикация событий (outbox) |
+| `rustok-iggy` | L2 transport/replay через Iggy |
+| `rustok-iggy-connector` | Connector-слой для Iggy runtime |
+| `rustok-telemetry` | Метрики, tracing, observability |
+| `rustok-mcp` | MCP toolkit/integration crate |
+| `alloy-scripting` | Скриптовый движок/оркестрация скриптов |
 
 ---
 
-## Support Crates
+## 4) Приложения и модульный контекст
 
-| Crate | Назначение |
-|-------|------------|
-| `alloy-scripting` | Rhai scripting engine + storage |
-| `leptos-shadcn-pagination` | UI component for Leptos |
-| `utoipa-swagger-ui-vendored` | Swagger UI assets |
+| App | Package | Роль |
+|---|---|---|
+| `apps/server` | `rustok-server` | API-сервер, держит `ModuleRegistry` |
+| `apps/admin` | `rustok-admin` | Админ UI |
+| `apps/storefront` | `rustok-storefront` | Витрина (Leptos SSR) |
+| `apps/mcp` | `rustok-mcp-server` | MCP stdio-сервер, использует `rustok-mcp` |
 
 ---
 
-## Module Registration Flow
+## 5) Актуальный фрагмент регистрации модулей
 
 ```rust
-// apps/server/src/modules.rs
 pub fn build_registry() -> ModuleRegistry {
     ModuleRegistry::new()
-        .register(CoreModule)
-        .register(TenantModule)
-        .register(RbacModule)
         .register(ContentModule)
         .register(CommerceModule)
         .register(BlogModule)
         .register(ForumModule)
         .register(PagesModule)
-        .register(IndexModule)
 }
 ```
 
 ---
 
-## Module Dependency Graph
+## 6) Практические замечания
 
-```mermaid
-graph TD
-    subgraph Core
-        CORE[rustok-core]
-        TELEMETRY[rustok-telemetry]
-    end
-    
-    subgraph Infrastructure
-        OUTBOX[rustok-outbox]
-        IGGY[rustok-iggy]
-        INDEX[rustok-index]
-    end
-    
-    subgraph Domain
-        TENANT[rustok-tenant]
-        RBAC[rustok-rbac]
-        CONTENT[rustok-content]
-        COMMERCE[rustok-commerce]
-    end
-    
-    subgraph Wrappers
-        BLOG[rustok-blog]
-        FORUM[rustok-forum]
-        PAGES[rustok-pages]
-    end
-    
-    OUTBOX --> CORE
-    IGGY --> CORE
-    INDEX --> CORE
-    TENANT --> CORE
-    RBAC --> CORE
-    CONTENT --> CORE
-    COMMERCE --> CORE
-    COMMERCE --> CONTENT
-    BLOG --> CONTENT
-    FORUM --> CONTENT
-    PAGES --> CONTENT
-```
-
----
-
-## Event Flow Between Modules
-
-| Source Module | Event | Consumer Modules |
-|---------------|-------|------------------|
-| content | NodeCreated, NodeUpdated, NodeDeleted | index, blog, pages |
-| commerce | ProductCreated, ProductUpdated | index |
-| commerce | OrderPlaced, OrderCompleted | notifications, analytics |
-| tenant | TenantCreated | all modules |
+- Если нужна модульная функциональность `tenant`/`rbac`/`index` в runtime-реестре, их нужно явно добавить в `apps/server/src/modules/mod.rs`.
+- Для разделения понятий в документации полезно использовать два статуса:
+  - **"реализован как module crate"** (`impl RusToKModule` есть);
+  - **"зарегистрирован в runtime"** (добавлен в `build_registry()`).
 
 ---
 
 ## См. также
 
-- [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) — таблицы БД
-- [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md) — архитектура
+- `docs/modules/modules.md` — обзорная документация по модульной структуре.
+- `docs/modules/module-registry.md` — lifecycle/guards/toggle-логика.
+- `docs/modules/module-manifest.md` — манифест и rebuild-подход.

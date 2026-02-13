@@ -3,7 +3,7 @@ use leptos_router::hooks::{use_navigate, use_params};
 use leptos_router::params::Params;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{request, ApiError};
+use crate::api::{request_with_persisted, ApiError};
 use crate::components::ui::{Button, Input, LanguageToggle};
 use crate::providers::auth::use_auth;
 use crate::providers::locale::translate;
@@ -27,6 +27,8 @@ struct GraphqlUser {
     status: String,
     #[serde(rename = "createdAt")]
     created_at: String,
+    #[serde(rename = "tenantName")]
+    tenant_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -60,9 +62,10 @@ pub fn UserDetails() -> impl IntoView {
             });
 
             async move {
-                request::<UserVariables, GraphqlUserResponse>(
-                    "query User($id: ID!) { user(id: $id) { id email name role status createdAt } }",
+                request_with_persisted::<UserVariables, GraphqlUserResponse>(
+                    "query User($id: UUID!) { user(id: $id) { id email name role status createdAt tenantName } }",
                     UserVariables { id: user_id },
+                    "85f7f7ba212ab47e951fcf7dbb30bb918e66b88710574a576b0088877653f3b7",
                     if token.is_empty() { None } else { Some(token) },
                     if tenant.is_empty() { None } else { Some(tenant) },
                 )
@@ -164,6 +167,12 @@ pub fn UserDetails() -> impl IntoView {
                                                 {move || translate("users.detail.status")}
                                             </span>
                                             <p class="mt-1 text-sm">{user.status}</p>
+                                        </div>
+                                        <div>
+                                            <span class="text-xs text-slate-400">
+                                                Tenant
+                                            </span>
+                                            <p class="mt-1 text-sm">{user.tenant_name.unwrap_or_else(|| "—".to_string())}</p>
                                         </div>
                                         <div>
                                             <span class="text-xs text-slate-400">

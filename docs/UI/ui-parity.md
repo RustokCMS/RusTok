@@ -1,11 +1,11 @@
-# UI parity plan (Leptos + Next.js)
+# UI parity plan (Leptos-first)
 
-This document describes how we keep **identical UI** across the Leptos and Next.js apps (admin + storefront)
+This document describes how we keep **identical UI** between Leptos admin and storefront, with optional parity for the Next.js storefront
 using **shadcn/ui** and **leptos-shadcn-ui** with shared design tokens and a parallel delivery plan.
 
 ## Goals
 
-- Ship **pixel-consistent UI** between Leptos and Next.js for admin and storefront experiences.
+- Ship **pixel-consistent UI** between Leptos admin and storefront experiences.
 - Use a **single component philosophy** (shadcn-style, headless + tokens) to avoid drift.
 - Enable **parallel development** with clear parity checks and documentation.
 - Accept small deviations when a Leptos UI library lacks a 1:1 feature, but document every gap.
@@ -14,7 +14,7 @@ using **shadcn/ui** and **leptos-shadcn-ui** with shared design tokens and a par
 
 Applies to the following apps:
 
-- Admin: `apps/admin` (Leptos CSR) + `apps/next-admin` (Next.js).
+- Admin: `apps/admin` (Leptos CSR).
 - Storefront: `apps/storefront` (Leptos SSR) + `apps/next-frontend` (Next.js).
 
 ## Library decision
@@ -24,7 +24,7 @@ Applies to the following apps:
 
 ## Parallel admin stack (short version)
 
-When we need parity across the Leptos + Next admin apps, we align on the same
+For Leptos admin and storefront parity, we align on the same
 library *roles* even if the exact implementation differs per runtime:
 
 - **Forms**: `leptos-forms-rs` for Leptos, with optional validation via validator/garde.
@@ -36,7 +36,7 @@ library *roles* even if the exact implementation differs per runtime:
 
 ## Parallel admin stack (short version)
 
-When we need parity across the Leptos + Next admin apps, we align on the same
+For Leptos admin and storefront parity, we align on the same
 library *roles* even if the exact implementation differs per runtime:
 
 - **Forms**: `leptos-forms-rs` for Leptos, with optional validation via validator/garde.
@@ -130,3 +130,5 @@ and can consume the same design tokens and shadcn-style component contracts.
 | Users Table | ✅ | Implemented with URL sync and PageHeader |
 | Auth Guards | ✅ | Refactored to generic `ProtectedRoute` |
 | Tailwind | ✅ | Build pipeline via `Trunk` configured |
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

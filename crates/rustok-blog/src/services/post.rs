@@ -2,7 +2,8 @@ use crate::dto::CreatePostInput;
 use rustok_content::{
     BodyInput, ContentResult, CreateNodeInput, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::{EventBus, SecurityContext};
+use rustok_core::SecurityContext;
+use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
@@ -12,7 +13,7 @@ pub struct PostService {
 }
 
 impl PostService {
-    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             node_service: NodeService::new(db, event_bus),
         }

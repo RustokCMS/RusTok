@@ -25,3 +25,27 @@
 
 ## Кому нужен
 Поиску, витрине, любым read-heavy запросам.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+
+## Взаимодействие
+- crates/rustok-core events
+- crates/rustok-content
+- crates/rustok-commerce
+
+## Документация
+- Локальная документация: `./docs/`
+- Общая документация платформы: `/docs`
+
+## Паспорт компонента
+- **Роль в системе:** CQRS/read-модель и индексаторы для быстрых витринных и поисковых запросов.
+- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
+- **Взаимодействует с:**
+  - crates/rustok-core (events)
+  - crates/rustok-content
+  - crates/rustok-commerce
+- **Точки входа:**
+  - `crates/rustok-index/src/lib.rs`
+- **Локальная документация:** `./docs/`
+- **Глобальная документация платформы:** `/docs/`
+

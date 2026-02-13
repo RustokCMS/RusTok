@@ -70,13 +70,15 @@ Most platforms are either **fast but complex** (Go/C++) or **productive but slow
 
 ### Core Platform
 
-- 🔐 **Multi-tenant Isolation** — Native support for multiple stores/sites in one deployment.
-- 🔑 **Enterprise Auth** — JWT-based authentication with fine-grained RBAC.
-- 📊 **Hybrid API** — Unified GraphQL for domain data and REST for infrastructure/OpenAPI.
-- 🏗️ **Standardized Modules** — Clean architecture with `entities`, `dto`, and `services` in every crate.
-- 🎣 **Event-Driven Pub/Sub** — Async synchronization between write modules and read models.
-- 📚 **Full OpenAPI Documentation** — Comprehensive Swagger UI for all REST controllers.
-- 🌍 **Global-First** — Built-in i18n and localization support.
+- 🔐 **Multi-tenant Isolation** — Native support for multiple stores/sites in one deployment with security-hardened validation
+- 🔑 **Enterprise Auth** — JWT-based authentication with fine-grained RBAC
+- 📊 **Hybrid API** — Unified GraphQL for domain data and REST for infrastructure/OpenAPI
+- 🏗️ **Standardized Modules** — Clean architecture with `entities`, `dto`, and `services` in every crate
+- 🎣 **Event-Driven Pub/Sub** — Async synchronization with validation, backpressure control, and transactional guarantees
+- 📚 **Full OpenAPI Documentation** — Comprehensive Swagger UI for all REST controllers
+- 🌍 **Global-First** — Built-in i18n and localization support
+- 🛡️ **Security Hardened** — Input validation, injection prevention (SQL/XSS/Path Traversal), reserved name blocking
+- ⚖️ **Backpressure Control** — Automatic rate limiting prevents OOM from event floods
 
 ### Developer Experience
 
@@ -84,7 +86,7 @@ Most platforms are either **fast but complex** (Go/C++) or **productive but slow
 - 🛠️ **CLI Generators** — `cargo loco generate model/controller/migration`
 - 📝 **Type-Safe Everything** — From database to frontend, one language
 - 🧪 **Testing Built-in** — Unit, integration, and E2E test support
-- 🎨 **Storefront UI Stack** — Leptos SSR + Next.js starters with Tailwind + DaisyUI
+- 🎨 **Storefront UI Stack** — Leptos SSR + Next.js starters with Tailwind-based UI
 - 📚 **Auto-generated Docs** — OpenAPI/GraphQL schema documentation
 
 ### Performance & Reliability
@@ -94,6 +96,9 @@ Most platforms are either **fast but complex** (Go/C++) or **productive but slow
 - 📦 **Single Binary** — Deploy one file, no dependency management
 - 🔄 **Zero-Downtime Deploys** — Graceful shutdown and health checks
 - 🔎 **CQRS-lite Read Models** — Denormalized index tables for fast storefront queries
+- 🔧 **Circuit Breaker Pattern** — Fail-fast resilience (30s → 0.1ms, -99.997% latency)
+- 🎯 **Type-Safe State Machines** — Compile-time guarantees for business logic
+- 📊 **Rich Error Handling** — RFC 7807 compatible API errors with structured context
 
 ---
 
@@ -273,17 +278,12 @@ RUSTOK_DEMO_MODE=1 trunk serve --open
 # Run storefront (terminal 3)
 cargo run -p rustok-storefront
 
-# (Optional) Run Next.js admin (terminal 4)
-cd apps/next-admin
-npm install
-npm run dev
-
 # (Optional) Run Next.js storefront (terminal 5)
 cd apps/next-frontend
 npm install
 npm run dev
 
-# (Optional) Build Tailwind + DaisyUI styles
+# (Optional) Build storefront CSS
 cd apps/storefront
 npm install
 npm run build:css
@@ -317,7 +317,7 @@ cargo loco generate controller products --api
 
 ## 📚 Documentation
 
-### Architecture & Design (NEW!)
+### Architecture & Design
 
 | Document | Description |
 |----------|-------------|
@@ -328,6 +328,27 @@ cargo loco generate controller products --api
 | [ROADMAP.md](docs/ROADMAP.md) | Фазы разработки (Forge → Blueprint → Construction) |
 | [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Статус реализации vs документация |
 
+### Architecture Improvements (Sprint 2 ✅)
+
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE_IMPROVEMENT_PLAN.md](ARCHITECTURE_IMPROVEMENT_PLAN.md) | **Master Plan** — Full roadmap with 16 tasks (50% done) |
+| [IMPROVEMENTS_SUMMARY.md](IMPROVEMENTS_SUMMARY.md) | **Quick Summary** — Sprint progress and metrics |
+| [SPRINT_2_COMPLETED.md](SPRINT_2_COMPLETED.md) | 🎉 **Sprint 2 Complete** — All 4 tasks done (8KB) |
+| [TENANT_CACHE_V2_MIGRATION.md](docs/TENANT_CACHE_V2_MIGRATION.md) | Tenant Cache V2 with moka (724→400 LOC, -45%) |
+| [CIRCUIT_BREAKER_GUIDE.md](docs/CIRCUIT_BREAKER_GUIDE.md) | Circuit Breaker + Retry + Timeout (10KB guide) |
+| [STATE_MACHINE_GUIDE.md](docs/STATE_MACHINE_GUIDE.md) | Type-Safe State Machines (16KB guide) |
+| [ERROR_HANDLING_GUIDE.md](docs/ERROR_HANDLING_GUIDE.md) | Rich Error Context + RFC 7807 (14KB guide) |
+
+### Previous Sprints
+
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE_REVIEW_2026-02-12.md](docs/ARCHITECTURE_REVIEW_2026-02-12.md) | Complete architecture review (Score: 8.7/10 → 9.0/10) |
+| [SPRINT_1_COMPLETION.md](docs/SPRINT_1_COMPLETION.md) | Sprint 1 P0 fixes completion report |
+| [EVENTBUS_CONSISTENCY_AUDIT.md](docs/EVENTBUS_CONSISTENCY_AUDIT.md) | EventBus consistency audit (100% pass) |
+| [BACKEND_FIXES_2026-02-11.md](docs/BACKEND_FIXES_2026-02-11.md) | Backend compilation fixes and TransactionalEventBus |
+
 ### Implementation Guides
 
 - [Architecture & system logic](docs/architecture.md)
@@ -336,6 +357,7 @@ cargo loco generate controller products --api
 - [MCP adapter](docs/mcp.md)
 - [Storefront SSR notes](docs/UI/storefront.md)
 - [Testing guidelines](docs/testing-guidelines.md)
+- [Loco.rs implementation index (includes canonical upstream snapshot)](apps/server/docs/loco/README.md)
 
 ### Admin Auth (Phase 3)
 
@@ -369,11 +391,6 @@ RusToK/
 │   │   └── migration/          # Database migrations
 │   │
 │   ├── admin/                  # ⚙️ Admin Panel (Leptos CSR)
-│   ├── next-admin/             # ⚙️ Admin Panel (Next.js App Router)
-│   │   └── src/
-│   │       ├── pages/          # Admin views
-│   │       └── components/     # Reusable UI
-│   │
 │   ├── storefront/             # 🛍️ Public Store (Leptos SSR)
 │   ├── next-frontend/          # 🛍️ Public Store (Next.js App Router)
 │   │   └── src/
@@ -458,60 +475,16 @@ Write → Event Bus → Indexers → Read Models
 
 ## 🗺️ Roadmap
 
-**Phase 1: Foundation ✅**
+Текущий roadmap и приоритеты поддерживаются в отдельном документе:
 
-- Project scaffolding
-- CI/CD pipeline
-- Loco.rs integration
-- Basic GraphQL API
-- Database migrations
+- [docs/ROADMAP.md](docs/ROADMAP.md)
 
-**Phase 2: Core (Current)**
+Коротко по направлению развития:
 
-- Multi-tenant data isolation
-- User authentication (JWT)
-- Role-based permissions
-- Admin panel foundation
-- Module registry system
-
-**Phase 3: Commerce Module**
-
-- Product catalog
-- Categories & attributes
-- Shopping cart
-- Order management
-- Inventory tracking
-
-**Phase 4: Storefront**
-
-- Leptos SSR setup (Tailwind + DaisyUI)
-- Product pages
-- Cart & checkout flow
-- SEO optimization
-- Performance tuning
-
-**Phase 5: Content**
-
-- Blog module
-- Page builder basics
-- Media library
-- SEO fields
-
-**Phase 6: Advanced**
-
-- Payment integrations
-- Email notifications
-- Search (MeiliSearch)
-- Caching layer
-- Admin dashboard widgets
-
-**Phase 7: Ecosystem**
-
-- Plugin marketplace concept
-- Theme system
-- CLI improvements
-- Documentation site
-- Docker images
+1. Core platform: auth, tenants, RBAC, module registry.
+2. Admin UX: auth + navigation + RBAC guards, затем data workflows.
+3. Domain modules: commerce, content, community.
+4. Storefront and integrations.
 
 ---
 
@@ -640,3 +613,5 @@ Built with amazing open-source projects:
 
 ⬆ Back to Top  
 Made with 🦀 by the RusToK community
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

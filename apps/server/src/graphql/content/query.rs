@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::context::AuthContext;
 use rustok_content::NodeService;
-use rustok_core::{EventBus, SecurityContext, UserRole};
+use rustok_core::{SecurityContext, UserRole};
+use rustok_outbox::TransactionalEventBus;
 
 use super::types::*;
 
@@ -15,7 +16,7 @@ pub struct ContentQuery;
 impl ContentQuery {
     async fn node(&self, ctx: &Context<'_>, _tenant_id: Uuid, id: Uuid) -> Result<Option<GqlNode>> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
 
         let service = NodeService::new(db.clone(), event_bus.clone());
         match service.get_node(id).await {
@@ -32,7 +33,7 @@ impl ContentQuery {
         filter: Option<NodesFilter>,
     ) -> Result<GqlNodeList> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
 
         let service = NodeService::new(db.clone(), event_bus.clone());
         let filter = filter.unwrap_or(NodesFilter {

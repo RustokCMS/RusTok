@@ -20,3 +20,27 @@
 
 ## Кому нужен
 Всем, кто работает с контентом: админка, фронтенд, поисковые индексы.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+
+## Взаимодействие
+- crates/rustok-core
+- crates/rustok-index
+- crates/rustok-tenant
+
+## Документация
+- Локальная документация: `./docs/`
+- Общая документация платформы: `/docs`
+
+## Паспорт компонента
+- **Роль в системе:** CMS-модуль контента: nodes, bodies, таксономии, публикация и локали.
+- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
+- **Взаимодействует с:**
+  - crates/rustok-core
+  - crates/rustok-index
+  - crates/rustok-tenant
+- **Точки входа:**
+  - `crates/rustok-content/src/lib.rs`
+- **Локальная документация:** `./docs/`
+- **Глобальная документация платформы:** `/docs/`
+

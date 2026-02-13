@@ -1,9 +1,10 @@
+use base64::{engine::general_purpose::STANDARD, Engine};
 use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{request, rest_get, ApiError};
+use crate::api::{request_with_persisted, rest_get, ApiError};
 use crate::components::ui::{Button, Input, LanguageToggle, PageHeader};
 use crate::providers::auth::use_auth;
 use crate::providers::locale::translate;
@@ -42,6 +43,8 @@ struct GraphqlUser {
     status: String,
     #[serde(rename = "createdAt")]
     created_at: String,
+    #[serde(rename = "tenantName")]
+    tenant_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -53,12 +56,25 @@ struct GraphqlPageInfo {
 #[derive(Clone, Debug, Serialize)]
 struct UsersVariables {
     pagination: PaginationInput,
+    filter: Option<UsersFilterInput>,
+    search: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 struct PaginationInput {
-    offset: i64,
-    limit: i64,
+    first: i64,
+    after: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct UsersFilterInput {
+    role: Option<String>,
+    status: Option<String>,
+}
+
+fn cursor_for_page(page: i64, limit: i64) -> String {
+    let index = ((page - 1) * limit).saturating_sub(1).max(0);
+    STANDARD.encode(index.to_string())
 }
 
 #[component]
@@ -96,25 +112,25 @@ pub fn Users() -> impl IntoView {
         let st = status_filter.get();
         let p = page.get();
 
-        let mut params = Vec::new();
+        let mut params: Vec<(&str, String)> = Vec::new();
         if !s.is_empty() {
-            params.push(format!("search={}", s));
+            params.push(("search", s));
         }
         if !r.is_empty() {
-            params.push(format!("role={}", r));
+            params.push(("role", r));
         }
         if !st.is_empty() {
-            params.push(format!("status={}", st));
+            params.push(("status", st));
         }
         if p > 1 {
-            params.push(format!("page={}", p));
+            params.push(("page", p.to_string()));
         }
 
-        let search_string = if params.is_empty() {
-            String::new()
-        } else {
-            format!("?{}", params.join("&"))
-        };
+        let search_string = serde_urlencoded::to_string(params)
+            .ok()
+            .filter(|encoded| !encoded.is_empty())
+            .map(|encoded| format!("?{}", encoded))
+            .unwrap_or_default();
 
         // Update URL without reloading page
         navigate(&format!("/users{}", search_string), Default::default());
@@ -145,16 +161,26 @@ pub fn Users() -> impl IntoView {
         move |_| {
             let token = api_token.get().trim().to_string();
             let tenant = tenant_slug.get().trim().to_string();
-            let offset = (page.get().saturating_sub(1)) * limit.get();
+            let after = if page.get() > 1 {
+                Some(cursor_for_page(page.get(), limit.get()))
+            } else {
+                None
+            };
             async move {
-                request::<UsersVariables, GraphqlUsersResponse>(
-                    "query Users($pagination: PaginationInput) { users(pagination: $pagination) { edges { node { id email name role status createdAt } } pageInfo { totalCount } } }",
+                request_with_persisted::<UsersVariables, GraphqlUsersResponse>(
+                    "query Users($pagination: PaginationInput, $filter: UsersFilter, $search: String) { users(pagination: $pagination, filter: $filter, search: $search) { edges { cursor node { id email name role status createdAt tenantName } } pageInfo { totalCount hasNextPage endCursor } } }",
                     UsersVariables {
                         pagination: PaginationInput {
-                            offset,
-                            limit: limit.get(),
+                            first: limit.get(),
+                            after,
                         },
+                        filter: Some(UsersFilterInput {
+                            role: if role_filter.get().is_empty() { None } else { Some(role_filter.get().to_uppercase()) },
+                            status: if status_filter.get().is_empty() { None } else { Some(status_filter.get().to_uppercase()) },
+                        }),
+                        search: if search_query.get().is_empty() { None } else { Some(search_query.get()) },
                     },
+                    "ff1e132e28d2e1c804d8d5ade5966307e17685b9f4b39262d70ecaa4d49abb66",
                     if token.is_empty() { None } else { Some(token) },
                     if tenant.is_empty() {
                         None
@@ -378,6 +404,7 @@ pub fn Users() -> impl IntoView {
                                                                 role,
                                                                 status,
                                                                 created_at,
+                                                                ..
                                                             } = edge.node.clone();
                                                             view! {
                                                                 <tr>

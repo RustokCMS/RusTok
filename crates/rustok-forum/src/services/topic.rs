@@ -5,7 +5,7 @@ use uuid::Uuid;
 use rustok_content::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::events::EventBus;
+use rustok_outbox::TransactionalEventBus;
 use rustok_core::SecurityContext;
 
 use crate::constants::{topic_status, KIND_TOPIC};
@@ -19,7 +19,7 @@ pub struct TopicService {
 }
 
 impl TopicService {
-    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             nodes: NodeService::new(db, event_bus),
         }

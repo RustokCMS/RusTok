@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::context::AuthContext;
 use rustok_content::NodeService;
-use rustok_core::{EventBus, SecurityContext};
+use rustok_core::{EventBus, SecurityContext, TransactionalEventBus};
 
 use super::types::*;
 
@@ -21,7 +21,7 @@ impl ContentMutation {
         input: CreateNodeInput,
     ) -> Result<GqlNode> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx.data::<AuthContext>().map_err(|_| "Unauthorized")?;
         let security = SecurityContext::new(auth.role.clone(), Some(auth.user_id));
 
@@ -72,7 +72,7 @@ impl ContentMutation {
         input: UpdateNodeInput,
     ) -> Result<GqlNode> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx.data::<AuthContext>().map_err(|_| "Unauthorized")?;
         let security = SecurityContext::new(auth.role.clone(), Some(auth.user_id));
 
@@ -122,7 +122,7 @@ impl ContentMutation {
         _author_id: Option<Uuid>,
     ) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<EventBus>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx.data::<AuthContext>().map_err(|_| "Unauthorized")?;
         let security = SecurityContext::new(auth.role.clone(), Some(auth.user_id));
 

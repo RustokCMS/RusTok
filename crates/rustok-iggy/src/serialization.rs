@@ -29,11 +29,9 @@ impl EventSerializer for BincodeSerializer {
         SerializationFormat::Bincode
     }
 
-    fn serialize(&self, envelope: &EventEnvelope) -> Result<Vec<u8>> {
-        let payload = bincode::serialize(envelope).map_err(|error| {
-            let io_error = std::io::Error::other(error);
-            rustok_core::Error::Serialization(serde_json::Error::io(io_error))
-        })?;
-        Ok(payload)
+    fn serialize(&self, _envelope: &EventEnvelope) -> Result<Vec<u8>> {
+        Err(rustok_core::Error::Serialization(serde_json::Error::io(
+            std::io::Error::other("bincode serialization is temporarily unavailable"),
+        )))
     }
 }

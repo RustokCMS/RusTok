@@ -3,7 +3,6 @@ use axum::{
     Json,
 };
 use loco_rs::prelude::*;
-use rustok_core::EventBus;
 use rustok_forum::{
     CreateReplyInput, ReplyListItem, ReplyResponse, ReplyService, UpdateReplyInput,
 };
@@ -12,6 +11,7 @@ use uuid::Uuid;
 
 use crate::context::TenantContext;
 use crate::extractors::auth::CurrentUser;
+use crate::services::event_bus::event_bus_from_context;
 
 #[derive(Deserialize)]
 pub struct ReplyListParams {
@@ -39,7 +39,7 @@ pub async fn list_replies(
     Query(params): Query<ReplyListParams>,
 ) -> Result<Json<Vec<ReplyListItem>>> {
     let locale = params.locale.unwrap_or_else(|| "en".to_string());
-    let service = ReplyService::new(ctx.db.clone(), EventBus::default());
+    let service = ReplyService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let replies = service
         .list_for_topic(tenant.id, user.security_context(), topic_id, &locale)
         .await
@@ -69,7 +69,7 @@ pub async fn get_reply(
     Query(params): Query<ReplyListParams>,
 ) -> Result<Json<ReplyResponse>> {
     let locale = params.locale.unwrap_or_else(|| "en".to_string());
-    let service = ReplyService::new(ctx.db.clone(), EventBus::default());
+    let service = ReplyService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let reply = service
         .get(id, &locale)
         .await
@@ -98,7 +98,7 @@ pub async fn create_reply(
     Path(topic_id): Path<Uuid>,
     Json(input): Json<CreateReplyInput>,
 ) -> Result<Json<ReplyResponse>> {
-    let service = ReplyService::new(ctx.db.clone(), EventBus::default());
+    let service = ReplyService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let reply = service
         .create(tenant.id, user.security_context(), topic_id, input)
         .await
@@ -127,7 +127,7 @@ pub async fn update_reply(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateReplyInput>,
 ) -> Result<Json<ReplyResponse>> {
-    let service = ReplyService::new(ctx.db.clone(), EventBus::default());
+    let service = ReplyService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let reply = service
         .update(id, user.security_context(), input)
         .await
@@ -154,7 +154,7 @@ pub async fn delete_reply(
     user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
-    let service = ReplyService::new(ctx.db.clone(), EventBus::default());
+    let service = ReplyService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     service
         .delete(id, user.security_context())
         .await

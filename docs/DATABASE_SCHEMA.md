@@ -1,7 +1,8 @@
 # RusToK Database Schema
 
-> **Полная карта таблиц БД**  
-> **Обновлено:** 2026-02-06
+> **Полная карта таблиц БД с многоязычной поддержкой**  
+> **Обновлено:** 2026-02-11  
+> **См. также**: [I18N_ARCHITECTURE.md](I18N_ARCHITECTURE.md) - Comprehensive i18n guide
 
 ---
 
@@ -306,3 +307,5 @@ mYYYYMMDD_<module>_<nnn>_<description>.rs
 
 - [MODULE_MATRIX.md](./modules/MODULE_MATRIX.md) — матрица модулей
 - [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md) — архитектура
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

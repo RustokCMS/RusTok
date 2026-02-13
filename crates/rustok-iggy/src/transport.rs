@@ -78,4 +78,8 @@ impl EventTransport for IggyTransport {
     fn reliability_level(&self) -> ReliabilityLevel {
         ReliabilityLevel::Streaming
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

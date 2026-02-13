@@ -24,3 +24,27 @@ async fn main() -> anyhow::Result<()> {
 ```
 
 For more details see `docs/mcp.md`.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+
+## Взаимодействие
+- apps/mcp
+- crates/rustok-core (registry/services)
+- доменные модули через service layer
+
+## Документация
+- Локальная документация: `./docs/`
+- Общая документация платформы: `/docs`
+
+## Паспорт компонента
+- **Роль в системе:** Адаптер MCP-инструментов поверх Rust SDK (`rmcp`) для RusToK сервисов.
+- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
+- **Взаимодействует с:**
+  - apps/mcp
+  - crates/rustok-core (registry/services)
+  - доменные модули через service layer
+- **Точки входа:**
+  - `crates/rustok-mcp/src/lib.rs`
+- **Локальная документация:** `./docs/`
+- **Глобальная документация платформы:** `/docs/`
+

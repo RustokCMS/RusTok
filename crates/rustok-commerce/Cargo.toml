@@ -3,9 +3,11 @@ name = "rustok-commerce"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description.workspace = true
 
 [dependencies]
 rustok-core.workspace = true
+rustok-outbox.workspace = true
 async-trait.workspace = true
 rust_decimal.workspace = true
 sea-orm.workspace = true
@@ -15,8 +17,10 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+unicode-normalization.workspace = true
 utoipa = { workspace = true, features = ["uuid", "chrono", "decimal"] }
 uuid.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+rustok-test-utils.workspace = true

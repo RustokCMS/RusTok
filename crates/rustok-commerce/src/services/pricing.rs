@@ -1,10 +1,13 @@
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
+};
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_core::{generate_id, DomainEvent, EventBus};
+use rustok_core::{generate_id, DomainEvent};
+use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::PriceInput;
 use crate::entities;
@@ -12,11 +15,11 @@ use crate::error::{CommerceError, CommerceResult};
 
 pub struct PricingService {
     db: DatabaseConnection,
-    event_bus: EventBus,
+    event_bus: TransactionalEventBus,
 }
 
 impl PricingService {
-    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self { db, event_bus }
     }
 
@@ -30,9 +33,11 @@ impl PricingService {
         amount: Decimal,
         compare_at_amount: Option<Decimal>,
     ) -> CommerceResult<()> {
+        let txn = self.db.begin().await?;
+        
         let variant = entities::product_variant::Entity::find_by_id(variant_id)
             .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or(CommerceError::VariantNotFound(variant_id))?;
 
@@ -52,7 +57,7 @@ impl PricingService {
         let existing = entities::price::Entity::find()
             .filter(entities::price::Column::VariantId.eq(variant_id))
             .filter(entities::price::Column::CurrencyCode.eq(currency_code))
-            .one(&self.db)
+            .one(&txn)
             .await?;
 
         let old_amount = existing.as_ref().map(|price| price.amount);
@@ -62,7 +67,7 @@ impl PricingService {
                 let mut price_active: entities::price::ActiveModel = price.into();
                 price_active.amount = Set(amount);
                 price_active.compare_at_amount = Set(compare_at_amount);
-                price_active.update(&self.db).await?;
+                price_active.update(&txn).await?;
             }
             None => {
                 let price = entities::price::ActiveModel {
@@ -72,25 +77,29 @@ impl PricingService {
                     amount: Set(amount),
                     compare_at_amount: Set(compare_at_amount),
                 };
-                price.insert(&self.db).await?;
+                price.insert(&txn).await?;
             }
         }
 
         let old_cents = old_amount.and_then(decimal_to_cents);
         let new_cents = decimal_to_cents(amount).unwrap_or(0);
 
-        let _ = self.event_bus.publish(
-            tenant_id,
-            Some(actor_id),
-            DomainEvent::PriceUpdated {
-                variant_id,
-                product_id: variant.product_id,
-                currency: currency_code.to_string(),
-                old_amount: old_cents,
-                new_amount: new_cents,
-            },
-        );
+        // Create and validate event
+        let event = DomainEvent::PriceUpdated {
+            variant_id,
+            product_id: variant.product_id,
+            currency: currency_code.to_string(),
+            old_amount: old_cents,
+            new_amount: new_cents,
+        };
+        event.validate()
+            .map_err(|e| CommerceError::Validation(format!("Invalid price event: {}", e)))?;
 
+        self.event_bus
+            .publish_in_tx(&txn, tenant_id, Some(actor_id), event)
+            .await?;
+
+        txn.commit().await?;
         Ok(())
     }
 

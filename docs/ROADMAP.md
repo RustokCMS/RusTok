@@ -121,3 +121,5 @@ Week 9+:   Phase 3 — Business logic implementation
 - [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md) — архитектурные принципы
 - [modules/flex.md](./modules/flex.md) — спецификация Flex модуля
 - [MANIFEST_ADDENDUM.md](./MANIFEST_ADDENDUM.md) — дополнения к манифесту
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

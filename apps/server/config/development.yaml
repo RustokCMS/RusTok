@@ -47,3 +47,6 @@ settings:
       enabled: true
       requests_per_minute: 60
       burst: 10
+    events:
+      transport: memory
+      relay_interval_ms: 1000

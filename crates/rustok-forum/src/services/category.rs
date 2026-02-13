@@ -5,7 +5,7 @@ use uuid::Uuid;
 use rustok_content::{
     CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::events::EventBus;
+use rustok_outbox::TransactionalEventBus;
 use rustok_core::SecurityContext;
 
 use crate::constants::KIND_CATEGORY;
@@ -17,7 +17,7 @@ pub struct CategoryService {
 }
 
 impl CategoryService {
-    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             nodes: NodeService::new(db, event_bus),
         }

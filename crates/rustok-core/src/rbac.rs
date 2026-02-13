@@ -21,6 +21,7 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Discounts,
         Resource::Posts,
         Resource::Pages,
+        Resource::Nodes,
         Resource::Media,
         Resource::Comments,
         Resource::Analytics,
@@ -46,6 +47,7 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Discounts,
         Resource::Posts,
         Resource::Pages,
+        Resource::Nodes,
         Resource::Media,
         Resource::Comments,
         Resource::Analytics,
@@ -98,6 +100,13 @@ static MANAGER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::POSTS_DELETE);
     permissions.insert(Permission::POSTS_LIST);
 
+    // Node permissions for managers
+    permissions.insert(Permission::NODES_CREATE);
+    permissions.insert(Permission::NODES_READ);
+    permissions.insert(Permission::NODES_UPDATE);
+    permissions.insert(Permission::NODES_DELETE);
+    permissions.insert(Permission::NODES_LIST);
+
     for action in [
         Action::Create,
         Action::Read,
@@ -128,6 +137,10 @@ static CUSTOMER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
 
     permissions.insert(Permission::POSTS_READ);
     permissions.insert(Permission::POSTS_LIST);
+
+    // Nodes read permissions for customers
+    permissions.insert(Permission::NODES_READ);
+    permissions.insert(Permission::NODES_LIST);
 
     permissions.insert(Permission::new(Resource::Comments, Action::Create));
     permissions.insert(Permission::new(Resource::Comments, Action::Read));

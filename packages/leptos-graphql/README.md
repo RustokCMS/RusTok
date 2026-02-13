@@ -6,7 +6,6 @@ endpoint constants so we avoid divergent one-off fetch code.
 
 Target apps (keep this in mind during implementation to avoid one-off helpers):
 - `apps/admin` (Leptos CSR)
-- `apps/next-admin` (Next.js)
 - `apps/storefront` (Leptos SSR)
 - `apps/next-frontend` (Next.js)
 
@@ -73,3 +72,5 @@ const response = await fetchGraphql({
 
 **Minimal baseline** for shared GraphQL fetch behavior. Extend only when a real
 use-case appears in admin or storefront UIs.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

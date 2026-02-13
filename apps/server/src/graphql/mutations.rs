@@ -1,15 +1,14 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_core::auth::password::hash_password;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
-use std::collections::HashSet;
 
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
 use crate::graphql::types::{CreateUserInput, TenantModule, UpdateUserInput, User};
-use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
-use rustok_core::{ModuleContext, ModuleRegistry};
+use crate::services::module_lifecycle::{ModuleLifecycleService, ToggleModuleError};
+use rustok_core::ModuleRegistry;
 
 #[derive(Default)]
 pub struct RootMutation;
@@ -200,69 +199,30 @@ impl RootMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let Some(module_impl) = registry.get(&module_slug) else {
-            return Err(FieldError::new("Unknown module"));
-        };
-
-        let enabled_modules = TenantModulesEntity::find_enabled(&app_ctx.db, tenant.id)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-        let enabled_set: HashSet<String> = enabled_modules.into_iter().collect();
-
-        if enabled {
-            let missing: Vec<String> = module_impl
-                .dependencies()
-                .iter()
-                .filter(|dependency| !enabled_set.contains(**dependency))
-                .map(|dependency| (*dependency).to_string())
-                .collect();
-
-            if !missing.is_empty() {
-                return Err(FieldError::new(format!(
-                    "Missing module dependencies: {}",
-                    missing.join(", ")
-                )));
+        let module = ModuleLifecycleService::toggle_module(
+            &app_ctx.db,
+            registry,
+            tenant.id,
+            &module_slug,
+            enabled,
+        )
+        .await
+        .map_err(|err| match err {
+            ToggleModuleError::UnknownModule => FieldError::new("Unknown module"),
+            ToggleModuleError::MissingDependencies(missing) => {
+                FieldError::new(format!("Missing module dependencies: {}", missing))
             }
-        } else {
-            let dependents: Vec<String> = registry
-                .list()
-                .into_iter()
-                .filter(|module| enabled_set.contains(module.slug()))
-                .filter(|module| module.dependencies().iter().any(|dep| *dep == module_slug))
-                .map(|module| module.slug().to_string())
-                .collect();
-
-            if !dependents.is_empty() {
-                return Err(FieldError::new(format!(
-                    "Module is required by: {}",
-                    dependents.join(", ")
-                )));
+            ToggleModuleError::HasDependents(dependents) => {
+                FieldError::new(format!("Module is required by: {}", dependents))
             }
-        }
-        let module = TenantModulesEntity::toggle(&app_ctx.db, tenant.id, &module_slug, enabled)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        let module_ctx = ModuleContext {
-            db: &app_ctx.db,
-            tenant_id: tenant.id,
-            config: &module.settings,
-        };
-
-        let hook_result = if enabled {
-            module_impl.on_enable(module_ctx).await
-        } else {
-            module_impl.on_disable(module_ctx).await
-        };
-
-        if let Err(err) = hook_result {
-            tracing::error!(
-                "Module hook failed for {} (enabled={}): {}",
-                module_slug,
-                enabled,
+            ToggleModuleError::Database(err) => {
+                <FieldError as GraphQLError>::internal_error(&err.to_string())
+            }
+            ToggleModuleError::HookFailed(err) => FieldError::new(format!(
+                "Module lifecycle hook failed, state rolled back: {}",
                 err
-            );
-        }
+            )),
+        })?;
 
         Ok(TenantModule {
             module_slug: module.module_slug,

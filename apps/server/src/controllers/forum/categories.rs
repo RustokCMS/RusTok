@@ -3,7 +3,6 @@ use axum::{
     Json,
 };
 use loco_rs::prelude::*;
-use rustok_core::EventBus;
 use rustok_forum::{
     CategoryListItem, CategoryResponse, CategoryService, CreateCategoryInput, UpdateCategoryInput,
 };
@@ -13,6 +12,7 @@ use uuid::Uuid;
 
 use crate::context::TenantContext;
 use crate::extractors::auth::CurrentUser;
+use crate::services::event_bus::event_bus_from_context;
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct CategoryListParams {
@@ -36,7 +36,7 @@ pub async fn list_categories(
     Query(params): Query<CategoryListParams>,
 ) -> Result<Json<Vec<CategoryListItem>>> {
     let locale = params.locale.unwrap_or_else(|| "en".to_string());
-    let service = CategoryService::new(ctx.db.clone(), EventBus::default());
+    let service = CategoryService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let categories = service
         .list(tenant.id, user.security_context(), &locale)
         .await
@@ -66,7 +66,7 @@ pub async fn get_category(
     Query(params): Query<CategoryListParams>,
 ) -> Result<Json<CategoryResponse>> {
     let locale = params.locale.unwrap_or_else(|| "en".to_string());
-    let service = CategoryService::new(ctx.db.clone(), EventBus::default());
+    let service = CategoryService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let category = service
         .get(tenant.id, id, &locale)
         .await
@@ -91,7 +91,7 @@ pub async fn create_category(
     user: CurrentUser,
     Json(input): Json<CreateCategoryInput>,
 ) -> Result<Json<CategoryResponse>> {
-    let service = CategoryService::new(ctx.db.clone(), EventBus::default());
+    let service = CategoryService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let category = service
         .create(tenant.id, user.security_context(), input)
         .await
@@ -120,7 +120,7 @@ pub async fn update_category(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateCategoryInput>,
 ) -> Result<Json<CategoryResponse>> {
-    let service = CategoryService::new(ctx.db.clone(), EventBus::default());
+    let service = CategoryService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     let category = service
         .update(tenant.id, id, user.security_context(), input)
         .await
@@ -147,7 +147,7 @@ pub async fn delete_category(
     user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
-    let service = CategoryService::new(ctx.db.clone(), EventBus::default());
+    let service = CategoryService::new(ctx.db.clone(), event_bus_from_context(&ctx));
     service
         .delete(id, user.security_context())
         .await

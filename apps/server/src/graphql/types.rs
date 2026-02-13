@@ -1,9 +1,12 @@
-use async_graphql::{ComplexObject, Context, Enum, InputObject, Result, SimpleObject};
+use async_graphql::{
+    dataloader::DataLoader, ComplexObject, Context, Enum, InputObject, Result, SimpleObject,
+};
 use rustok_core::{Permission, Rbac, UserRole, UserStatus};
 use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::graphql::common::PageInfo;
+use crate::graphql::loaders::TenantNameLoader;
 use crate::models::users;
 
 #[derive(SimpleObject, Clone)]
@@ -22,6 +25,8 @@ pub struct User {
     pub role: String,
     pub status: String,
     pub created_at: String,
+    #[graphql(skip)]
+    pub tenant_id: Uuid,
 }
 
 #[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
@@ -97,6 +102,11 @@ impl User {
         let permission = Permission::from_str(&action).map_err(|err| err.to_string())?;
         Ok(Rbac::has_permission(&role, &permission))
     }
+
+    async fn tenant_name(&self, ctx: &Context<'_>) -> Result<Option<String>> {
+        let loader = ctx.data::<DataLoader<TenantNameLoader>>()?;
+        loader.load_one(self.tenant_id).await
+    }
 }
 
 impl From<&users::Model> for User {
@@ -108,6 +118,7 @@ impl From<&users::Model> for User {
             role: model.role.to_string(),
             status: model.status.to_string(),
             created_at: model.created_at.to_rfc3339(),
+            tenant_id: model.tenant_id,
         }
     }
 }

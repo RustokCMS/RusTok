@@ -30,3 +30,27 @@
 
 ## Кому нужен
 Крупным инсталляциям, где нужны стриминг, replay и горизонтальное масштабирование потребителей.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+
+## Взаимодействие
+- crates/rustok-core (EventTransport)
+- crates/rustok-iggy-connector
+- crates/rustok-outbox (при mixed reliability)
+
+## Документация
+- Локальная документация: `./docs/`
+- Общая документация платформы: `/docs`
+
+## Паспорт компонента
+- **Роль в системе:** Транспорт событий поверх Iggy (streaming L2) для high-throughput сценариев.
+- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
+- **Взаимодействует с:**
+  - crates/rustok-core (EventTransport)
+  - crates/rustok-iggy-connector
+  - crates/rustok-outbox (при staged delivery)
+- **Точки входа:**
+  - `crates/rustok-iggy/src/lib.rs`
+- **Локальная документация:** `./docs/`
+- **Глобальная документация платформы:** `/docs/`
+

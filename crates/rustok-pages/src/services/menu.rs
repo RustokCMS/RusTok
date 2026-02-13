@@ -4,7 +4,8 @@ use std::pin::Pin;
 use uuid::Uuid;
 
 use rustok_content::{CreateNodeInput, ListNodesFilter, NodeService};
-use rustok_core::{EventBus, SecurityContext};
+use rustok_core::SecurityContext;
+use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
 use crate::error::{PagesError, PagesResult};
@@ -17,7 +18,7 @@ pub struct MenuService {
 }
 
 impl MenuService {
-    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             nodes: NodeService::new(db, event_bus),
         }

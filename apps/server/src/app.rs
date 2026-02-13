@@ -16,9 +16,29 @@ use std::path::Path;
 use crate::controllers;
 use crate::middleware;
 use crate::modules;
+use crate::services::event_transport_factory::{build_event_runtime, spawn_outbox_relay_worker};
 use loco_rs::prelude::Queue;
 use migration::Migrator;
 use std::sync::Arc;
+use tokio::task::JoinHandle;
+
+struct OutboxRelayWorkerHandle {
+    handle: std::sync::Mutex<Option<JoinHandle<()>>>,
+}
+
+impl OutboxRelayWorkerHandle {
+    fn new(handle: JoinHandle<()>) -> Self {
+        Self {
+            handle: std::sync::Mutex::new(Some(handle)),
+        }
+    }
+
+    fn shutdown(&self) {
+        if let Some(handle) = self.handle.lock().unwrap().take() {
+            handle.abort();
+        }
+    }
+}
 
 pub struct App;
 
@@ -60,7 +80,10 @@ impl Hooks for App {
     }
 
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
+        let event_runtime = build_event_runtime(ctx).await?;
+        ctx.shared_store.insert(event_runtime.transport.clone());
         let registry = modules::build_registry();
+        middleware::tenant::init_tenant_cache_infrastructure(ctx).await;
         let engine = Arc::new(alloy_scripting::create_default_engine());
         let storage = Arc::new(alloy_scripting::SeaOrmStorage::new(ctx.db.clone()));
         let orchestrator = Arc::new(alloy_scripting::ScriptOrchestrator::new(
@@ -88,11 +111,40 @@ impl Hooks for App {
         Ok(vec![])
     }
 
-    async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
+    async fn connect_workers(ctx: &AppContext, _queue: &Queue) -> Result<()> {
+        if ctx.shared_store.contains::<OutboxRelayWorkerHandle>() {
+            return Ok(());
+        }
+
+        let event_runtime = build_event_runtime(ctx).await?;
+        if let Some(relay_config) = event_runtime.relay_config {
+            let handle = spawn_outbox_relay_worker(relay_config);
+            ctx.shared_store
+                .insert(OutboxRelayWorkerHandle::new(handle));
+        }
+
         Ok(())
     }
 
     async fn seed(_ctx: &AppContext, _path: &Path) -> Result<()> {
         Ok(())
+    }
+
+    async fn shutdown(ctx: &AppContext) {
+        tracing::info!("Starting graceful shutdown sequence...");
+
+        // Stop outbox relay worker if running
+        if let Some(handle) = ctx.shared_store.get::<OutboxRelayWorkerHandle>() {
+            tracing::info!("Stopping outbox relay worker...");
+            handle.shutdown();
+        }
+
+        // Close database connections
+        tracing::info!("Closing database connections...");
+        if let Err(e) = ctx.db.close().await {
+            tracing::error!(error = %e, "Error closing database connection");
+        }
+
+        tracing::info!("Graceful shutdown completed");
     }
 }

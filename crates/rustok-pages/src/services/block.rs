@@ -3,7 +3,8 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_content::{CreateNodeInput, ListNodesFilter, NodeService, UpdateNodeInput};
-use rustok_core::{EventBus, SecurityContext};
+use rustok_core::SecurityContext;
+use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
 use crate::error::{PagesError, PagesResult};
@@ -15,7 +16,7 @@ pub struct BlockService {
 }
 
 impl BlockService {
-    pub fn new(db: DatabaseConnection, event_bus: EventBus) -> Self {
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             nodes: NodeService::new(db, event_bus),
         }

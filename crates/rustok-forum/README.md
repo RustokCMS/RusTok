@@ -11,7 +11,7 @@
 ## Как работает (простыми словами)
 1. API обращается к сервису форума.
 2. Сервис сохраняет данные через `NodeService`.
-3. Событие отправляется в EventBus.
+3. Событие отправляется через `TransactionalEventBus` из `rustok-outbox` для надёжной доставки.
 
 ## Ключевые компоненты
 - `constants.rs` — типы узлов форума.
@@ -21,3 +21,31 @@
 
 ## Кому нужен
 Форуму, комьюнити-разделам, поддержке и контентным обсуждениям.
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+
+## Взаимодействие
+- crates/rustok-core
+- crates/rustok-content
+- crates/rustok-outbox (TransactionalEventBus)
+- crates/rustok-rbac
+- crates/rustok-index
+
+## Документация
+- Локальная документация: `./docs/`
+- Общая документация платформы: `/docs`
+
+## Паспорт компонента
+- **Роль в системе:** Доменный модуль форума: темы, ответы, модерация и события обсуждений.
+- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
+- **Взаимодействует с:**
+  - crates/rustok-core
+  - crates/rustok-content
+  - crates/rustok-outbox (TransactionalEventBus)
+  - crates/rustok-rbac
+  - crates/rustok-index
+- **Точки входа:**
+  - `crates/rustok-forum/src/lib.rs`
+- **Локальная документация:** `./docs/`
+- **Глобальная документация платформы:** `/docs/`
+

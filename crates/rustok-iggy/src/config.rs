@@ -1,9 +1,9 @@
 use rustok_iggy_connector::{
     ConnectorConfig, ConnectorMode, EmbeddedConnectorConfig, RemoteConnectorConfig,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct IggyConfig {
     #[serde(default)]
     pub mode: IggyMode,
@@ -19,7 +19,7 @@ pub struct IggyConfig {
     pub retention: RetentionConfig,
 }
 
-#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum IggyMode {
     #[default]
@@ -27,7 +27,7 @@ pub enum IggyMode {
     Remote,
 }
 
-#[derive(Debug, Deserialize, Clone, Default, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum SerializationFormat {
     #[default]
@@ -35,7 +35,7 @@ pub enum SerializationFormat {
     Bincode,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct EmbeddedConfig {
     pub data_dir: String,
     pub use_binary_fallback: bool,
@@ -54,7 +54,7 @@ impl Default for EmbeddedConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RemoteConfig {
     pub addresses: Vec<String>,
     pub protocol: String,
@@ -73,7 +73,7 @@ impl Default for RemoteConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TopologyConfig {
     pub stream_name: String,
     pub domain_partitions: u32,
@@ -90,7 +90,7 @@ impl Default for TopologyConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RetentionConfig {
     pub domain_max_age_days: u32,
     pub domain_max_size_gb: u32,

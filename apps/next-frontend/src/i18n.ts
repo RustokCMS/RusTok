@@ -4,11 +4,15 @@ export const locales = ["ru", "en"] as const;
 export const defaultLocale = "ru";
 
 export default getRequestConfig(async ({ locale }) => {
-  if (!locales.includes(locale as (typeof locales)[number])) {
-    return { messages: {} };
-  }
+  const requestedLocale = locale ?? defaultLocale;
+  const resolvedLocale = locales.includes(
+    requestedLocale as (typeof locales)[number],
+  )
+    ? requestedLocale
+    : defaultLocale;
 
   return {
-    messages: (await import(`../messages/${locale}.json`)).default,
+    locale: resolvedLocale,
+    messages: (await import(`../messages/${resolvedLocale}.json`)).default,
   };
 });

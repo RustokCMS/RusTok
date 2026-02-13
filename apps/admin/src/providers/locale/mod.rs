@@ -1,5 +1,5 @@
+use gloo_storage::{LocalStorage, Storage};
 use leptos::prelude::*;
-use leptos::web_sys;
 
 use crate::i18n;
 pub use crate::i18n::Locale;
@@ -31,9 +31,7 @@ pub fn provide_locale_context() -> LocaleContext {
     let (locale, set_locale) = signal(initial_locale);
 
     Effect::new(move |_| {
-        if let Some(storage) = local_storage() {
-            let _ = storage.set_item("rustok-admin-locale", locale.get().code());
-        }
+        let _ = LocalStorage::set("rustok-admin-locale", locale.get().code());
     });
 
     let context = LocaleContext { locale, set_locale };
@@ -50,12 +48,7 @@ pub fn translate(key: &str) -> String {
     i18n::translate(locale, key)
 }
 
-fn local_storage() -> Option<web_sys::Storage> {
-    web_sys::window().and_then(|window| window.local_storage().ok().flatten())
-}
-
 fn load_locale_from_storage() -> Option<Locale> {
-    let storage = local_storage()?;
-    let value = storage.get_item("rustok-admin-locale").ok().flatten()?;
+    let value: String = LocalStorage::get("rustok-admin-locale").ok()?;
     Some(Locale::from_code(&value))
 }

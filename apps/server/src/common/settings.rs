@@ -1,3 +1,4 @@
+use rustok_iggy::IggyConfig;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -13,6 +14,27 @@ pub struct RustokSettings {
     pub features: FeatureSettings,
     #[serde(default)]
     pub rate_limit: RateLimitSettings,
+    #[serde(default)]
+    pub events: EventSettings,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct EventSettings {
+    #[serde(default)]
+    pub transport: EventTransportKind,
+    #[serde(default = "default_relay_interval_ms")]
+    pub relay_interval_ms: u64,
+    #[serde(default)]
+    pub iggy: IggyConfig,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum EventTransportKind {
+    #[default]
+    Memory,
+    Outbox,
+    Iggy,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -117,7 +139,27 @@ impl RustokSettings {
             .get("rustok")
             .cloned()
             .unwrap_or_else(|| serde_json::json!({}));
-        serde_json::from_value(rustok)
+        let mut parsed: Self = serde_json::from_value(rustok)?;
+
+        if let Ok(raw_transport) = std::env::var("RUSTOK_EVENT_TRANSPORT") {
+            parsed.events.transport = parse_event_transport(&raw_transport)?;
+        }
+
+        Ok(parsed)
+    }
+}
+
+fn parse_event_transport(value: &str) -> Result<EventTransportKind, serde_json::Error> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "memory" => Ok(EventTransportKind::Memory),
+        "outbox" => Ok(EventTransportKind::Outbox),
+        "iggy" => Ok(EventTransportKind::Iggy),
+        _ => Err(serde_json::Error::io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "Invalid RUSTOK_EVENT_TRANSPORT='{value}'. Expected one of: memory, outbox, iggy"
+            ),
+        ))),
     }
 }
 
@@ -151,4 +193,84 @@ fn default_requests_per_minute() -> u32 {
 
 fn default_burst() -> u32 {
     10
+}
+
+fn default_relay_interval_ms() -> u64 {
+    1_000
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EventTransportKind, RustokSettings};
+    use std::sync::{Mutex, OnceLock};
+
+    const EVENT_TRANSPORT_ENV: &str = "RUSTOK_EVENT_TRANSPORT";
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn clear(key: &'static str) -> Self {
+            let original = std::env::var(key).ok();
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, original }
+        }
+
+        fn set(key: &'static str, value: &str) -> Self {
+            let original = std::env::var(key).ok();
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.original {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn reads_transport_from_config() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "outbox"
+                }
+            }
+        });
+
+        let settings = RustokSettings::from_settings(&Some(raw)).expect("settings parsed");
+        assert_eq!(settings.events.transport, EventTransportKind::Outbox);
+    }
+
+    #[test]
+    fn rejects_invalid_env_transport() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::set(EVENT_TRANSPORT_ENV, "broken");
+
+        let err = RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} })))
+            .expect_err("transport should fail");
+        assert!(err
+            .to_string()
+            .contains("Invalid RUSTOK_EVENT_TRANSPORT='broken'"));
+    }
 }

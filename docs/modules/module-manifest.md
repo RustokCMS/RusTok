@@ -34,6 +34,7 @@ app = "rustok-server"
 [build]
 target = "x86_64-unknown-linux-gnu"
 profile = "release"
+deployment_profile = "monolith" # monolith | headless
 
 [modules]
 # slug = { crate = "...", source = "...", version = "...", features = [...] }
@@ -41,9 +42,10 @@ content = { crate = "rustok-content", source = "crates-io", version = "0.1" }
 commerce = { crate = "rustok-commerce", source = "git", git = "ssh://git/commerce.git", rev = "abc123" }
 blog = { crate = "rustok-blog", source = "path", path = "../modules/rustok-blog" }
 forum = { crate = "rustok-forum", source = "crates-io", version = "0.1", features = ["comments"] }
+pages = { crate = "rustok-pages", source = "path", path = "../modules/rustok-pages" }
 
 [settings]
-default_enabled = ["content", "commerce"]
+default_enabled = ["content", "commerce", "pages"]
 ```
 
 ### Поля
@@ -54,6 +56,7 @@ default_enabled = ["content", "commerce"]
 | `app` | string | да | Целевое приложение/бинарник. |
 | `build.target` | string | нет | Целевой triple сборки. |
 | `build.profile` | string | нет | Профиль сборки (`release`/`debug`). |
+| `build.deployment_profile` | string | нет | Режим деплоя: `monolith` (единый релиз server+admin+storefront) или `headless` (раздельные сервисы). |
 | `modules` | table | да | Карта `slug -> module spec`. |
 | `settings.default_enabled` | array | нет | Какие модули включать по умолчанию после сборки. |
 
@@ -71,6 +74,18 @@ default_enabled = ["content", "commerce"]
 
 > Сами метаданные модуля (slug/name/description/version/deps) всё равно берутся
 > из `RusToKModule` во время сборки и регистрации в `ModuleRegistry`.
+
+
+## Режимы деплоя (monolith/headless)
+
+### `monolith`
+- один release-id и один оркестрируемый pipeline для `apps/server`, `apps/admin`, `apps/storefront`;
+- откат — на единый release.
+
+### `headless`
+- backend и UI деплоятся на разных серверах/сервисах;
+- rebuild от одного `modules.toml` запускает раздельные pipeline-ветки;
+- перед деплоем UI обязателен preflight compatibility-check с целевой версией backend.
 
 ## Жизненный цикл install/uninstall
 
@@ -112,10 +127,11 @@ UI шаги:
 {
   "manifest_ref": "main",
   "requested_by": "admin@rustok",
-  "reason": "install module: forum",
+  "reason": "install module: pages",
   "modules": {
     "content": { "source": "crates-io", "crate": "rustok-content", "version": "0.1" },
-    "forum": { "source": "git", "crate": "rustok-forum", "git": "ssh://git/forum.git", "rev": "abc123" }
+    "forum": { "source": "git", "crate": "rustok-forum", "git": "ssh://git/forum.git", "rev": "abc123" },
+    "pages": { "source": "path", "crate": "rustok-pages", "path": "../modules/rustok-pages" }
   }
 }
 ```
@@ -178,3 +194,5 @@ UI шаги:
 
 - `build_id`, `release_id`, `status`, `started_at`, `finished_at`
 - `manifest_hash`, `modules_delta`, `requested_by`, `reason`
+
+This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

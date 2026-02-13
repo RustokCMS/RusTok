@@ -1,23 +1,37 @@
 # rustok-outbox
 
-## Назначение
-`rustok-outbox` — надежный транспорт событий уровня L1. Сохраняет события в БД (таблица `sys_events`) и доставляет их асинхронно.
+`rustok-outbox` — модуль outbox-доставки событий для RusTok.
 
-## Что делает
-- Пишет события в таблицу `sys_events` транзакционно.
-- Готовит базу для фоновой доставки (relay).
-- Позволяет гарантировать доставку между транзакциями.
+## Что делает модуль
+- сохраняет события в `sys_events` через `OutboxTransport`;
+- ретранслирует pending-события через `OutboxRelay`;
+- поддерживает claim/dispatch/retry/DLQ-поток обработки;
+- предоставляет миграцию схемы `sys_events` и базовые метрики relay.
 
-## Как работает (простыми словами)
-1. Сервис пишет данные в БД.
-2. В той же транзакции записывается событие в `sys_events`.
-3. Фоновый worker читает pending события и отправляет дальше.
+## Основные компоненты
+- `src/transport.rs` — запись событий в outbox и acknowledge.
+- `src/relay.rs` — цикл обработки pending-событий, retry/backoff, DLQ.
+- `src/entity.rs` — ORM-модель `sys_events`.
+- `src/migration.rs` — миграция таблицы и индексов.
 
-## Ключевые компоненты
-- `entity.rs` — модель `sys_events`.
-- `transport.rs` — `OutboxTransport` (EventTransport).
-- `relay.rs` — фоновая доставка (worker).
-- `migration.rs` — миграция таблицы.
+## Документация
+Дополнительная документация модуля хранится в `docs/`.
 
-## Кому нужен
-Продакшену на одном узле, когда in-memory событий недостаточно, но полноценный стриминг ещё не нужен.
+## Взаимодействие
+- crates/rustok-core (EventTransport/EventEnvelope)
+- apps/server (миграции/рантайм relay)
+- target transport (например rustok-iggy)
+
+## Паспорт компонента
+- **Роль в системе:** Outbox-транспорт и relay: надёжная доставка событий с retry/backoff/DLQ.
+- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
+- **Взаимодействует с:**
+  - crates/rustok-core (EventTransport/EventEnvelope)
+  - apps/server (миграции/relay runtime)
+  - target transport (например crates/rustok-iggy)
+- **Точки входа:**
+  - `crates/rustok-outbox/src/lib.rs`
+  - `crates/rustok-outbox/src/relay.rs`
+- **Локальная документация:** `./docs/`
+- **Глобальная документация платформы:** `/docs/`
+

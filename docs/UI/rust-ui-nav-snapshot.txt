@@ -1,0 +1,81 @@
+Logo Rust/UI
+Docs
+Components
+Hooks
+Icons
+Themes
+Blocks
+Charts
+
+Get Started
+Introduction
+Installation
+CLI
+Icons
+Figma
+Changelog
+Components
+Accordion
+Alert
+Alert Dialog
+Animate
+Animate Group
+AutoForm
+Avatar
+Badge
+Bottom Nav
+Breadcrumb
+Button
+Button Action
+Button Group
+Card
+Card Carousel
+Checkbox
+Chips
+Combobox
+Command
+Context Menu
+Data Table
+Date Picker
+Dialog
+Drag and Drop
+Drawer
+Dropdown Menu
+Dropzone
+Empty
+Form
+Input
+Input Group
+Input OTP
+Input Phone
+Item
+Kbd
+Label
+Marquee
+MultiSelect
+Pagination
+Popover
+Pressable
+Radio Button
+Radio Button Group
+Scroll Area
+Select
+Separator
+Sheet
+Shimmer
+Skeleton
+Slider
+Sonner
+Spinner
+Status
+Switch
+Table
+Tabs
+Textarea
+Theme Toggle
+Toast
+Tooltip
+Home
+Components
+Introduction
+Introduction
