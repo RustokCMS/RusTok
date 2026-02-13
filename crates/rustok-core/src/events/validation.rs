@@ -198,7 +198,8 @@ mod tests {
         assert!(validators::validate_currency_code("currency", "US").is_err()); // too short
         assert!(validators::validate_currency_code("currency", "USDD").is_err()); // too long
         assert!(validators::validate_currency_code("currency", "usd").is_err()); // lowercase
-        assert!(validators::validate_currency_code("currency", "US1").is_err()); // not letters
+        assert!(validators::validate_currency_code("currency", "US1").is_err());
+        // not letters
     }
 
     #[test]

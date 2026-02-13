@@ -551,7 +551,11 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_currency_code("currency", currency)?;
                 Ok(())
             }
-            Self::OrderStatusChanged { order_id, old_status, new_status } => {
+            Self::OrderStatusChanged {
+                order_id,
+                old_status,
+                new_status,
+            } => {
                 validators::validate_not_nil_uuid("order_id", order_id)?;
                 validators::validate_not_empty("old_status", old_status)?;
                 validators::validate_max_length("old_status", old_status, 50)?;
@@ -580,13 +584,19 @@ impl ValidateEvent for DomainEvent {
             // ════════════════════════════════════════════════════════════════
             // INDEX EVENTS
             // ════════════════════════════════════════════════════════════════
-            Self::ReindexRequested { target_type, target_id } => {
+            Self::ReindexRequested {
+                target_type,
+                target_id,
+            } => {
                 validators::validate_not_empty("target_type", target_type)?;
                 validators::validate_max_length("target_type", target_type, 64)?;
                 validators::validate_optional_uuid("target_id", target_id)?;
                 Ok(())
             }
-            Self::IndexUpdated { index_name, target_id } => {
+            Self::IndexUpdated {
+                index_name,
+                target_id,
+            } => {
                 validators::validate_not_empty("index_name", index_name)?;
                 validators::validate_max_length("index_name", index_name, 64)?;
                 validators::validate_not_nil_uuid("target_id", target_id)?;
@@ -600,7 +610,8 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
                 Ok(())
             }
-            Self::LocaleEnabled { tenant_id, locale } | Self::LocaleDisabled { tenant_id, locale } => {
+            Self::LocaleEnabled { tenant_id, locale }
+            | Self::LocaleDisabled { tenant_id, locale } => {
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
                 validators::validate_not_empty("locale", locale)?;
                 validators::validate_max_length("locale", locale, 10)?;
