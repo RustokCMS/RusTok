@@ -9,6 +9,9 @@ pub mod error;
 pub mod services;
 pub mod state_machine;
 
+#[cfg(test)]
+mod state_machine_proptest;
+
 pub use dto::*;
 pub use error::{CommerceError, CommerceResult};
 pub use services::{CatalogService, InventoryService, PricingService};

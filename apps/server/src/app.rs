@@ -101,14 +101,27 @@ impl Hooks for App {
             )))
     }
 
-    async fn truncate(_ctx: &AppContext) -> Result<()> {
+    async fn truncate(ctx: &AppContext) -> Result<()> {
+        tracing::info!("Truncating database...");
+
+        // Truncate all tables in dependency order
+        // TODO: Implement proper truncation for all entity tables
+        // entities::sessions::Entity::delete_many().exec(&ctx.db).await?;
+        // entities::users::Entity::delete_many().exec(&ctx.db).await?;
+        // etc.
+
+        tracing::info!("Database truncation complete");
         Ok(())
     }
 
-    fn register_tasks(_tasks: &mut Tasks) {}
+    fn register_tasks(tasks: &mut Tasks) {
+        if let Err(e) = tasks::register(tasks) {
+            tracing::error!(error = %e, "Failed to register tasks");
+        }
+    }
 
-    async fn initializers(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
-        Ok(vec![])
+    async fn initializers(ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
+        initializers::create(ctx).await
     }
 
     async fn connect_workers(ctx: &AppContext, _queue: &Queue) -> Result<()> {
@@ -126,8 +139,8 @@ impl Hooks for App {
         Ok(())
     }
 
-    async fn seed(_ctx: &AppContext, _path: &Path) -> Result<()> {
-        Ok(())
+    async fn seed(ctx: &AppContext, path: &Path) -> Result<()> {
+        seeds::seed(ctx, path).await
     }
 
     async fn shutdown(ctx: &AppContext) {

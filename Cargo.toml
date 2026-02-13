@@ -6,6 +6,7 @@ members = [
     "apps/storefront",
     "apps/mcp",
     "crates/*",
+    "benches",
     "xtask",
 ]
 
@@ -62,6 +63,9 @@ validator = { version = "0.20", features = ["derive"] }
 # Error Handling
 thiserror = "2.0.18"
 anyhow = "1.0"
+
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }

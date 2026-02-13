@@ -9,7 +9,10 @@ use rmcp::{
 };
 use rustok_core::registry::ModuleRegistry;
 
-use crate::tools::{list_modules, module_exists, McpState};
+use crate::tools::{
+    list_modules, module_exists, McpState, ModuleListResponse, ModuleLookupRequest,
+    ModuleLookupResponse,
+};
 
 /// Configuration for the MCP server
 pub struct McpServerConfig {
@@ -25,50 +28,33 @@ impl McpServerConfig {
 /// MCP Server handler for RusToK modules
 #[derive(Clone)]
 pub struct RusToKMcpServer {
-    registry: Arc<ModuleRegistry>,
+    state: Arc<McpState>,
 }
 
 impl RusToKMcpServer {
     pub fn new(registry: ModuleRegistry) -> Self {
         Self {
-            registry: Arc::new(registry),
+            state: Arc::new(McpState { registry }),
         }
     }
 
     /// List all registered modules
     async fn list_modules_internal(&self) -> ModuleListResponse {
-        let modules = self
-            .registry
-            .list()
-            .into_iter()
-            .map(|module| crate::tools::ModuleInfo {
-                slug: module.slug().to_string(),
-                name: module.name().to_string(),
-                description: module.description().to_string(),
-                version: module.version().to_string(),
-                dependencies: module
-                    .dependencies()
-                    .iter()
-                    .map(|dep| dep.to_string())
-                    .collect(),
-            })
-            .collect();
-
-        ModuleListResponse { modules }
+        list_modules(&self.state).await
     }
 
     /// Check if a module exists by slug
     async fn module_exists_internal(&self, slug: &str) -> ModuleLookupResponse {
-        let exists = self.registry.contains(slug);
-
-        ModuleLookupResponse {
-            slug: slug.to_string(),
-            exists,
-        }
+        module_exists(
+            &self.state,
+            ModuleLookupRequest {
+                slug: slug.to_string(),
+            },
+        )
+        .await
     }
 }
 
-// Manual implementation of tool handling without macros for better control
 impl ServerHandler for RusToKMcpServer {
     async fn call_tool(
         &self,
@@ -92,15 +78,13 @@ impl ServerHandler for RusToKMcpServer {
                 let args = request.arguments.ok_or_else(|| {
                     rmcp::ErrorData::invalid_params("Missing arguments", None)
                 })?;
-                let req: ModuleLookupRequest = serde_json::from_value(
-                    serde_json::Value::Object(args),
-                )
-                .map_err(|e| {
-                    rmcp::ErrorData::invalid_params(
-                        format!("Invalid arguments: {}", e),
-                        None,
-                    )
-                })?;
+                let req: ModuleLookupRequest =
+                    serde_json::from_value(serde_json::Value::Object(args)).map_err(|e| {
+                        rmcp::ErrorData::invalid_params(
+                            format!("Invalid arguments: {}", e),
+                            None,
+                        )
+                    })?;
                 let result = self.module_exists_internal(&req.slug).await;
                 let content = serde_json::to_string(&result).map_err(|e| {
                     rmcp::ErrorData::internal_error(
@@ -128,16 +112,17 @@ impl ServerHandler for RusToKMcpServer {
         use rmcp::model::Tool;
         use schemars::schema_for;
 
-        // Convert schema to JsonObject (serde_json::Map<String, Value>)
-        let list_modules_schema = match serde_json::to_value(schema_for!(crate::tools::ModuleListResponse)) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        };
+        let list_modules_schema =
+            match serde_json::to_value(schema_for!(crate::tools::ModuleListResponse)) {
+                Ok(serde_json::Value::Object(map)) => map,
+                _ => serde_json::Map::new(),
+            };
 
-        let module_exists_schema = match serde_json::to_value(schema_for!(crate::tools::ModuleLookupRequest)) {
-            Ok(serde_json::Value::Object(map)) => map,
-            _ => serde_json::Map::new(),
-        };
+        let module_exists_schema =
+            match serde_json::to_value(schema_for!(crate::tools::ModuleLookupRequest)) {
+                Ok(serde_json::Value::Object(map)) => map,
+                _ => serde_json::Map::new(),
+            };
 
         let tools = vec![
             Tool::new(
@@ -182,17 +167,9 @@ impl ServerHandler for RusToKMcpServer {
 
 /// Serve the MCP server over stdio
 pub async fn serve_stdio(config: McpServerConfig) -> Result<()> {
-    let state = Box::leak(Box::new(McpState {
-        registry: config.registry,
-    }));
-
-    // Initialize the MCP server with stdio transport
-    let mut server = rmcp::server::Server::new(state)
-        .with_tool(list_modules)
-        .with_tool(module_exists);
-
-    // Start serving over stdio
-    server.serve_stdio().await?;
-
-    Ok(())
+    let server = RusToKMcpServer::new(config.registry);
+    
+    // Serve over stdio transport using rmcp's stdio transport
+    // The server runs until stdin is closed or an error occurs
+    stdio::serve(server).await.map_err(|e| anyhow::anyhow!("MCP server error: {}", e))
 }

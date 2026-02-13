@@ -1,5 +1,12 @@
+use rustok_core::registry::ModuleRegistry;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+/// State for MCP tools
+#[derive(Clone)]
+pub struct McpState {
+    pub registry: ModuleRegistry,
+}
 
 /// Information about a RusToK module
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -37,4 +44,36 @@ pub struct ModuleLookupResponse {
     pub slug: String,
     /// Whether the module exists
     pub exists: bool,
+}
+
+/// List all registered modules
+pub async fn list_modules(state: &McpState) -> ModuleListResponse {
+    let modules = state
+        .registry
+        .list()
+        .into_iter()
+        .map(|module| ModuleInfo {
+            slug: module.slug().to_string(),
+            name: module.name().to_string(),
+            description: module.description().to_string(),
+            version: module.version().to_string(),
+            dependencies: module
+                .dependencies()
+                .iter()
+                .map(|dep| dep.to_string())
+                .collect(),
+        })
+        .collect();
+
+    ModuleListResponse { modules }
+}
+
+/// Check if a module exists by slug
+pub async fn module_exists(state: &McpState, request: ModuleLookupRequest) -> ModuleLookupResponse {
+    let exists = state.registry.contains(&request.slug);
+
+    ModuleLookupResponse {
+        slug: request.slug,
+        exists,
+    }
 }

@@ -1,0 +1,40 @@
+[package]
+name = "rustok-benchmarks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Performance benchmarks for RusToK platform"
+publish = false
+
+[dependencies]
+criterion = { workspace = true }
+tokio = { workspace = true }
+rustok-core = { workspace = true }
+rustok-content = { workspace = true }
+rustok-commerce = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+rust_decimal = "1.35"
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = "0.3"
+
+[[bench]]
+name = "tenant_cache"
+harness = false
+
+[[bench]]
+name = "state_machine"
+harness = false
+
+[[bench]]
+name = "event_bus"
+harness = false
+
+[[bench]]
+name = "content_operations"
+harness = false
+
+[[bench]]
+name = "order_operations"
+harness = false
