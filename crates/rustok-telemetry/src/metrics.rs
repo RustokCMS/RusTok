@@ -8,8 +8,7 @@
 /// - Error rates by module
 use lazy_static::lazy_static;
 use prometheus::{
-    CounterVec, GaugeVec, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge,
-    IntGaugeVec, Opts, Registry,
+    GaugeVec, HistogramOpts, HistogramVec, IntCounterVec, IntGauge, IntGaugeVec, Opts, Registry,
 };
 
 // ============================================================================

@@ -8,17 +8,13 @@
 /// - Span creation и management
 /// - Resource attributes (service info)
 /// - Batch span processor
-use opentelemetry::{
-    global,
-    sdk::{
-        trace::{self, BatchConfig, RandomIdGenerator, Sampler},
-        Resource,
-    },
-    KeyValue,
+use opentelemetry::{global, KeyValue};
+use opentelemetry_sdk::{
+    trace::{self, BatchConfig, RandomIdGenerator, Sampler},
+    Resource,
 };
 use opentelemetry_otlp::WithExportConfig;
-use tracing::{span, Level};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
+
 
 /// OpenTelemetry configuration
 #[derive(Debug, Clone)]
@@ -136,7 +132,7 @@ pub async fn init_tracing(config: OtelConfig) -> Result<(), OtelError> {
         .map_err(|e| OtelError::InitFailed(e.to_string()))?;
 
     // Set global tracer provider
-    global::set_tracer_provider(tracer.tracer_provider().clone());
+    global::set_tracer_provider(tracer.provider().clone());
 
     tracing::info!(
         service_name = %config.service_name,
