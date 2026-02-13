@@ -1,7 +1,6 @@
 /// Unit tests for custom metrics
 ///
 /// Tests metric registration, recording, and retrieval
-
 use prometheus::Registry;
 use rustok_telemetry::metrics;
 
@@ -13,7 +12,10 @@ fn test_register_all_metrics() {
 
     // Verify metrics are registered
     let metric_families = registry.gather();
-    assert!(!metric_families.is_empty(), "Should have registered metrics");
+    assert!(
+        !metric_families.is_empty(),
+        "Should have registered metrics"
+    );
 
     // Check for key metrics
     let metric_names: Vec<String> = metric_families
@@ -141,9 +143,9 @@ fn test_metric_labels() {
 fn test_histogram_buckets() {
     // Record values across different histogram buckets
     metrics::record_event_processing_duration("TestEvent", "handler", 0.001); // Fast
-    metrics::record_event_processing_duration("TestEvent", "handler", 0.1);   // Medium
-    metrics::record_event_processing_duration("TestEvent", "handler", 1.0);   // Slow
-    metrics::record_event_processing_duration("TestEvent", "handler", 5.0);   // Very slow
+    metrics::record_event_processing_duration("TestEvent", "handler", 0.1); // Medium
+    metrics::record_event_processing_duration("TestEvent", "handler", 1.0); // Slow
+    metrics::record_event_processing_duration("TestEvent", "handler", 5.0); // Very slow
 
     // Histogram should track distribution
 }

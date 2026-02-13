@@ -56,7 +56,6 @@
 /// // Invalid: Pending -> Shipped (compile error!)
 /// // let order = order.ship(tracking); // ❌ method not available
 /// ```
-
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -122,7 +121,7 @@ pub struct Order<S> {
     pub customer_id: Uuid,
     pub total_amount: Decimal,
     pub currency: String,
-    
+
     // State-specific data
     pub state: S,
 }
@@ -147,7 +146,7 @@ impl Order<Pending> {
             amount = %total_amount,
             "Order created in Pending state"
         );
-        
+
         Self {
             id,
             tenant_id,
@@ -172,16 +171,16 @@ impl Order<Pending> {
     pub fn confirm(self) -> Result<Order<Confirmed>, OrderError> {
         // Business rule: validate inventory (stubbed)
         let inventory_reserved = true;
-        
+
         if !inventory_reserved {
             return Err(OrderError::InsufficientInventory);
         }
-        
+
         tracing::info!(
             order_id = %self.id,
             "Order: Pending → Confirmed"
         );
-        
+
         Ok(Order {
             id: self.id,
             tenant_id: self.tenant_id,
@@ -194,7 +193,7 @@ impl Order<Pending> {
             },
         })
     }
-    
+
     /// Cancel order (Pending → Cancelled)
     pub fn cancel(self, reason: String) -> Order<Cancelled> {
         tracing::info!(
@@ -202,7 +201,7 @@ impl Order<Pending> {
             reason = %reason,
             "Order: Pending → Cancelled"
         );
-        
+
         Order {
             id: self.id,
             tenant_id: self.tenant_id,
@@ -233,13 +232,13 @@ impl Order<Confirmed> {
         if payment_id.is_empty() {
             return Err(OrderError::PaymentFailed("Empty payment ID".to_string()));
         }
-        
+
         tracing::info!(
             order_id = %self.id,
             payment_id = %payment_id,
             "Order: Confirmed → Paid"
         );
-        
+
         Ok(Order {
             id: self.id,
             tenant_id: self.tenant_id,
@@ -253,7 +252,7 @@ impl Order<Confirmed> {
             },
         })
     }
-    
+
     /// Cancel confirmed order (Confirmed → Cancelled)
     ///
     /// Releases inventory reservation.
@@ -264,9 +263,9 @@ impl Order<Confirmed> {
             inventory_released = self.state.inventory_reserved,
             "Order: Confirmed → Cancelled"
         );
-        
+
         // Release inventory here
-        
+
         Order {
             id: self.id,
             tenant_id: self.tenant_id,
@@ -296,14 +295,14 @@ impl Order<Paid> {
         if tracking_number.is_empty() {
             return Err(OrderError::InvalidTrackingNumber);
         }
-        
+
         tracing::info!(
             order_id = %self.id,
             tracking_number = %tracking_number,
             carrier = %carrier,
             "Order: Paid → Shipped"
         );
-        
+
         Ok(Order {
             id: self.id,
             tenant_id: self.tenant_id,
@@ -317,24 +316,20 @@ impl Order<Paid> {
             },
         })
     }
-    
+
     /// Cancel paid order (Paid → Cancelled)
     ///
     /// Requires refund processing.
-    pub fn cancel_with_refund(
-        self,
-        reason: String,
-        refund_id: String,
-    ) -> Order<Cancelled> {
+    pub fn cancel_with_refund(self, reason: String, refund_id: String) -> Order<Cancelled> {
         tracing::info!(
             order_id = %self.id,
             reason = %reason,
             refund_id = %refund_id,
             "Order: Paid → Cancelled (with refund)"
         );
-        
+
         // Process refund here
-        
+
         Order {
             id: self.id,
             tenant_id: self.tenant_id,

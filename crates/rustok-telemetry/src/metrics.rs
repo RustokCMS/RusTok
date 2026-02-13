@@ -6,7 +6,6 @@
 /// - Cache hit/miss rates
 /// - Span counts by operation
 /// - Error rates by module
-
 use lazy_static::lazy_static;
 use prometheus::{
     CounterVec, GaugeVec, HistogramOpts, HistogramVec, IntCounter, IntCounterVec, IntGauge,
