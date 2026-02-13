@@ -6,6 +6,7 @@ use sea_orm::DatabaseConnection;
 use rustok_core::{EventBus, TransactionalEventBus};
 
 use super::alloy::{AlloyMutation, AlloyQuery, AlloyState};
+use super::auth::{AuthMutation, AuthQuery};
 use super::blog::{BlogMutation, BlogQuery};
 use super::commerce::{CommerceMutation, CommerceQuery};
 use super::content::{ContentMutation, ContentQuery};
@@ -18,6 +19,7 @@ use super::queries::RootQuery;
 #[derive(MergedObject, Default)]
 pub struct Query(
     RootQuery,
+    AuthQuery,
     CommerceQuery,
     ContentQuery,
     BlogQuery,
@@ -28,6 +30,7 @@ pub struct Query(
 #[derive(MergedObject, Default)]
 pub struct Mutation(
     RootMutation,
+    AuthMutation,
     CommerceMutation,
     ContentMutation,
     BlogMutation,

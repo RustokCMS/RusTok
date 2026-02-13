@@ -2,41 +2,44 @@
 
 ## Назначение
 
-`crates/leptos-auth` — Leptos authentication library для RusToK, использующая **REST API** для auth operations.
+`crates/leptos-auth` — Leptos authentication library для RusToK, использующая **только GraphQL** для всех операций.
 
 ## Архитектура
 
-**Главное правило:** ✅ **Auth через REST API (`/api/auth/*`), Data через GraphQL (`/api/graphql`)**
+**Главное правило:** ✅ **Только GraphQL, никакого REST API!**
 
 Эта библиотека предоставляет:
 - Компоненты для защищённых маршрутов (`ProtectedRoute`, `GuestRoute`)
 - Hooks для работы с аутентификацией (`use_auth`, `use_token`, `use_tenant`)
-- REST API client для auth operations (`sign_in`, `sign_up`, `sign_out`)
+- GraphQL API client для auth operations (`signIn`, `signUp`, `signOut`)
 - LocalStorage helpers для сохранения сессии
 
 ## Взаимодействие
 
 - `apps/admin` — использует для аутентификации
 - `apps/storefront` — использует для аутентификации
-- `apps/server` — REST endpoints (`/api/auth/*`) на backend
-- `crates/leptos-graphql` — используется ТОЛЬКО для `me` query (fetch current user)
+- `crates/leptos-graphql` — использует как HTTP transport layer
+- `apps/server` — GraphQL mutations/queries на backend (`/api/graphql`)
 
-### Почему REST для auth?
+### Почему только GraphQL?
 
-**Best practice:** Auth operations (login, register, logout) через REST, а data queries через GraphQL.
+**Best practice:** Единый API endpoint для всех операций (auth + data).
 
 **Причины:**
-1. ✅ Industry standard (OAuth, JWT обычно через REST)
-2. ✅ Проще отладка (curl, Postman)
-3. ✅ Backend auth уже реализован через REST
-4. ✅ Меньше дублирования кода
+1. ✅ Единая точка входа — `/api/graphql`
+2. ✅ Type-safe queries и mutations
+3. ✅ Меньше конфигурации (не нужно настраивать REST + GraphQL)
+4. ✅ Лучшая производительность (batch запросы, DataLoader)
+5. ✅ Проще для frontend (один клиент вместо двух)
+
+**⚠️ ВАЖНО:** Смешивать REST и GraphQL — плохая практика! Используйте ТОЛЬКО GraphQL.
 
 ## Структура
 
 ```
 src/
 ├── lib.rs          ← Public API, типы (AuthUser, AuthSession, AuthError)
-├── api.rs          ← REST API client (sign_in, sign_up, sign_out via fetch())
+├── api.rs          ← GraphQL mutations & queries (signIn, signUp, signOut, me)
 ├── context.rs      ← AuthProvider component, AuthContext
 ├── hooks.rs        ← use_auth(), use_token(), use_tenant(), etc.
 ├── storage.rs      ← LocalStorage helpers
@@ -67,7 +70,7 @@ pub fn App() -> impl IntoView {
 
 ```rust
 use leptos::*;
-use leptos_auth::{api, use_auth};
+use leptos_auth::{use_auth};
 
 #[component]
 pub fn Login() -> impl IntoView {
@@ -84,7 +87,6 @@ pub fn Login() -> impl IntoView {
         async move {
             match auth.sign_in(email, password, tenant).await {
                 Ok(_) => {
-                    // Success - AuthContext updated automatically
                     use leptos_router::use_navigate;
                     let navigate = use_navigate();
                     navigate("/dashboard", Default::default());
@@ -102,7 +104,7 @@ pub fn Login() -> impl IntoView {
             login_action.dispatch((
                 email.get(),
                 password.get(),
-                "demo".to_string(), // tenant slug
+                "demo".to_string(),
             ));
         }>
             <input
@@ -159,7 +161,7 @@ pub fn App() -> impl IntoView {
 
 ```rust
 use leptos::*;
-use leptos_auth::{use_auth, use_current_user, use_is_authenticated};
+use leptos_auth::{use_current_user, use_is_authenticated};
 
 #[component]
 pub fn Dashboard() -> impl IntoView {
@@ -218,15 +220,32 @@ pub fn LogoutButton() -> impl IntoView {
 
 ## API Reference
 
-### `api` module
+### GraphQL Mutations
 
-#### `sign_in(email, password, tenant) -> Result<(AuthUser, AuthSession), AuthError>`
+#### `signIn(input: SignInInput!): AuthPayload!`
 
 Login with email and password.
 
-**Endpoint:** `POST /api/auth/login`
+**GraphQL:**
+```graphql
+mutation SignIn($input: SignInInput!) {
+    signIn(input: $input) {
+        accessToken
+        refreshToken
+        tokenType
+        expiresIn
+        user {
+            id
+            email
+            name
+            role
+            status
+        }
+    }
+}
+```
 
-**Example:**
+**Rust API:**
 ```rust
 use leptos_auth::api;
 
@@ -239,13 +258,26 @@ let (user, session) = api::sign_in(
 
 ---
 
-#### `sign_up(email, password, name, tenant) -> Result<(AuthUser, AuthSession), AuthError>`
+#### `signUp(input: SignUpInput!): AuthPayload!`
 
 Register new user.
 
-**Endpoint:** `POST /api/auth/register`
+**GraphQL:**
+```graphql
+mutation SignUp($input: SignUpInput!) {
+    signUp(input: $input) {
+        accessToken
+        refreshToken
+        user {
+            id
+            email
+            name
+        }
+    }
+}
+```
 
-**Example:**
+**Rust API:**
 ```rust
 use leptos_auth::api;
 
@@ -259,13 +291,20 @@ let (user, session) = api::sign_up(
 
 ---
 
-#### `sign_out(token, tenant) -> Result<(), AuthError>`
+#### `signOut: SignOutPayload!`
 
 Logout (invalidate session).
 
-**Endpoint:** `POST /api/auth/logout`
+**GraphQL:**
+```graphql
+mutation SignOut {
+    signOut {
+        success
+    }
+}
+```
 
-**Example:**
+**Rust API:**
 ```rust
 use leptos_auth::api;
 
@@ -277,13 +316,25 @@ api::sign_out(
 
 ---
 
-#### `refresh_token(refresh_token, tenant) -> Result<AuthSession, AuthError>`
+#### `refreshToken(input: RefreshTokenInput!): AuthPayload!`
 
 Refresh access token.
 
-**Endpoint:** `POST /api/auth/refresh`
+**GraphQL:**
+```graphql
+mutation RefreshToken($input: RefreshTokenInput!) {
+    refreshToken(input: $input) {
+        accessToken
+        refreshToken
+        user {
+            id
+            email
+        }
+    }
+}
+```
 
-**Example:**
+**Rust API:**
 ```rust
 use leptos_auth::api;
 
@@ -295,13 +346,52 @@ let new_session = api::refresh_token(
 
 ---
 
-#### `fetch_current_user(token, tenant) -> Result<Option<AuthUser>, AuthError>`
+#### `forgotPassword(input: ForgotPasswordInput!): ForgotPasswordPayload!`
 
-Fetch current user (uses GraphQL `me` query).
+Request password reset.
 
-**Endpoint:** `POST /api/graphql` (query `me`)
+**GraphQL:**
+```graphql
+mutation ForgotPassword($input: ForgotPasswordInput!) {
+    forgotPassword(input: $input) {
+        success
+        message
+    }
+}
+```
 
-**Example:**
+**Rust API:**
+```rust
+use leptos_auth::api;
+
+let message = api::forgot_password(
+    "user@example.com".to_string(),
+    "demo".to_string(),
+).await?;
+```
+
+---
+
+### GraphQL Queries
+
+#### `me: User`
+
+Get current authenticated user.
+
+**GraphQL:**
+```graphql
+query CurrentUser {
+    me {
+        id
+        email
+        name
+        role
+        status
+    }
+}
+```
+
+**Rust API:**
 ```rust
 use leptos_auth::api;
 
@@ -437,6 +527,8 @@ pub enum AuthError {
 
 **`window.location.origin`** — используется как API base URL (auto-detected)
 
+Результирующий GraphQL endpoint: `${origin}/api/graphql`
+
 ### SSR (Server)
 
 **`RUSTOK_API_URL`** — API base URL (default: `http://localhost:5150`)
@@ -446,13 +538,49 @@ pub enum AuthError {
 RUSTOK_API_URL=http://localhost:5150
 ```
 
+Результирующий GraphQL endpoint: `${RUSTOK_API_URL}/api/graphql`
+
 ---
 
 ## Testing
 
-Run tests:
+### Unit Tests
+
 ```bash
 cargo test -p leptos-auth
+```
+
+### Integration Testing (Manual)
+
+```bash
+# 1. Start server
+cd apps/server && cargo run
+
+# 2. Test GraphQL mutation via curl
+curl -X POST http://localhost:5150/api/graphql \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-Slug: demo" \
+  -d '{
+    "query": "mutation SignIn($input: SignInInput!) { signIn(input: $input) { accessToken user { email } } }",
+    "variables": {
+      "input": {
+        "email": "admin@local",
+        "password": "admin12345"
+      }
+    }
+  }'
+
+# Expected response:
+{
+  "data": {
+    "signIn": {
+      "accessToken": "eyJ...",
+      "user": {
+        "email": "admin@local"
+      }
+    }
+  }
+}
 ```
 
 ---
@@ -461,54 +589,111 @@ cargo test -p leptos-auth
 
 - `leptos` — reactive framework
 - `leptos_router` — routing
-- `leptos-graphql` — GraphQL transport (for `me` query only)
+- `leptos-graphql` — GraphQL transport layer (HTTP client)
 - `serde`, `serde_json` — serialization
 - `gloo-storage` — LocalStorage wrapper
-- `web-sys` — WASM fetch API
-- `wasm-bindgen`, `wasm-bindgen-futures` — WASM bindings
+- `web-sys` — WASM window.location (только для auto-detect URL)
 
 ---
 
 ## Implementation Notes
 
-### Why REST + GraphQL?
+### Why GraphQL for Auth?
 
-**REST API** (`/api/auth/*`):
-- ✅ Login, Register, Logout, Refresh token
-- ✅ JWT auth flow
-- ✅ Industry standard
+**Consistency:** Все через один endpoint `/api/graphql`.
 
-**GraphQL API** (`/api/graphql`):
-- ✅ Data queries (`me`, `users`, `posts`, etc.)
-- ✅ Mutations (CRUD operations)
-- ✅ Efficient data fetching
+**Type Safety:** GraphQL schema гарантирует type-safe queries.
 
-**This is a common pattern:**
-- Auth operations → REST (OAuth, JWT standards)
-- Data operations → GraphQL (flexibility, efficiency)
+**Performance:** DataLoader для efficient queries, batch requests.
+
+**Developer Experience:** Один клиент (leptos-graphql) вместо двух (REST + GraphQL).
+
+**⚠️ Avoid Mixing:** Смешивать REST и GraphQL — плохая практика! Выбирайте один подход.
 
 ---
 
-## Migration from GraphQL Auth
+## Backend GraphQL Schema
 
-**Old approach (deprecated):**
-```rust
-// ❌ GraphQL mutations (not implemented on server)
-signIn(email, password) -> SignInPayload
-signUp(email, password, name) -> SignUpPayload
-signOut -> Boolean
+На сервере (`apps/server/src/graphql/auth/`) реализованы:
+
+### Mutations
+
+```graphql
+type Mutation {
+    signIn(input: SignInInput!): AuthPayload!
+    signUp(input: SignUpInput!): AuthPayload!
+    signOut: SignOutPayload!
+    refreshToken(input: RefreshTokenInput!): AuthPayload!
+    forgotPassword(input: ForgotPasswordInput!): ForgotPasswordPayload!
+    resetPassword(input: ResetPasswordInput!): ResetPasswordPayload!
+}
 ```
 
-**New approach (current):**
-```rust
-// ✅ REST endpoints (working)
-POST /api/auth/login
-POST /api/auth/register
-POST /api/auth/logout
-POST /api/auth/refresh
+### Input Types
+
+```graphql
+input SignInInput {
+    email: String!
+    password: String!
+}
+
+input SignUpInput {
+    email: String!
+    password: String!
+    name: String
+}
+
+input RefreshTokenInput {
+    refreshToken: String!
+}
+
+input ForgotPasswordInput {
+    email: String!
+}
+
+input ResetPasswordInput {
+    token: String!
+    newPassword: String!
+}
 ```
 
-**If you see GraphQL mutation errors**, update to latest `leptos-auth` which uses REST API.
+### Response Types
+
+```graphql
+type AuthPayload {
+    accessToken: String!
+    refreshToken: String!
+    tokenType: String!
+    expiresIn: Int!
+    user: AuthUser!
+}
+
+type AuthUser {
+    id: String!
+    email: String!
+    name: String
+    role: String!
+    status: String!
+}
+
+type SignOutPayload {
+    success: Boolean!
+}
+
+type ForgotPasswordPayload {
+    success: Boolean!
+    message: String!
+}
+```
+
+### Queries
+
+```graphql
+type Query {
+    me: User
+    authHealth: String!
+}
+```
 
 ---
 
@@ -517,34 +702,34 @@ POST /api/auth/refresh
 ### "Network error" on login
 
 **Check:**
-1. API is running: `curl http://localhost:5150/api/health`
-2. CORS headers are set
+1. Server is running: `curl http://localhost:5150/api/health`
+2. GraphQL endpoint accessible: `curl http://localhost:5150/api/graphql -d '{"query":"query{health}"}'`
 3. Tenant header is correct: `X-Tenant-Slug: demo`
+
+### "Mutation not found"
+
+**Check:**
+1. Backend GraphQL schema includes auth mutations
+2. Server recompiled after adding auth module
+3. GraphQL introspection shows mutations: `curl http://localhost:5150/api/graphql -d '{"query":"{ __schema { mutationType { fields { name } } } }"}'`
 
 ### "Unauthorized" error
 
 **Check:**
-1. Credentials are correct
+1. Credentials are correct: `admin@local` / `admin12345`
 2. Token is not expired
-3. Token is in `Authorization: Bearer <token>` header
-
-### "User not found" after login
-
-**Check:**
-1. Seed data created: `admin@local` / `admin12345`
-2. Tenant exists: `demo`
-3. GraphQL `me` query works: `curl -X POST http://localhost:5150/api/graphql -H "Authorization: Bearer <token>" -d '{"query":"query{me{id email}}"}'`
+3. Token is in GraphQL context (automatic via leptos-graphql)
 
 ---
 
 ## Roadmap
 
-- [x] REST API client (`sign_in`, `sign_up`, `sign_out`)
+- [x] GraphQL mutations (signIn, signUp, signOut, refreshToken)
 - [x] Auth context & hooks
 - [x] Protected routes
 - [x] LocalStorage persistence
-- [ ] Token refresh on expiry (auto-retry)
-- [ ] Password reset flow
+- [ ] Token auto-refresh on expiry
+- [ ] Password reset flow (complete implementation)
 - [ ] Email verification flow
 - [ ] 2FA support
 - [ ] SSR support (server-side auth)
@@ -553,7 +738,19 @@ POST /api/auth/refresh
 
 ## Status
 
-✅ **Ready to use**
+✅ **Ready to use** (GraphQL implementation)
 
 **Last updated:** 2026-02-13  
 **Version:** 0.1.0
+
+---
+
+## ⚠️ Important: REST API Deprecated
+
+**Previous versions** used REST API (`/api/auth/login`, `/api/auth/register`) — **this is deprecated**.
+
+**Current version** uses **only GraphQL** (`/api/graphql`).
+
+**Why?** Mixing REST and GraphQL is bad practice. Choose one approach and stick to it.
+
+If you need REST API for other clients (mobile apps, etc.), use a separate service or reverse proxy, but **admin panel should use GraphQL only**.
