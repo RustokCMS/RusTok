@@ -20,8 +20,8 @@ global:
 #         - targets: ['alertmanager:9093']
 
 # Load rules once and periodically evaluate them
-# rule_files:
-#   - "alerts/*.yml"
+rule_files:
+  - "/etc/prometheus/alert_rules.yml"
 
 scrape_configs:
   # RusToK Server Metrics

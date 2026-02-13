@@ -1,3 +1,4 @@
+pub mod metrics;
 pub mod otel;
 
 use lazy_static::lazy_static;
@@ -163,6 +164,9 @@ pub fn init(config: TelemetryConfig) -> Result<TelemetryHandles, TelemetryError>
         registry.register(Box::new(COMMERCE_ORDERS_TOTAL.clone()))?;
         registry.register(Box::new(HTTP_REQUESTS_TOTAL.clone()))?;
         registry.register(Box::new(HTTP_REQUEST_DURATION_SECONDS.clone()))?;
+
+        // Register all custom metrics
+        metrics::register_all(registry)?;
 
         let _ = REGISTRY.set(registry.clone());
         let _ = METRICS_HANDLE.set(handle.clone());
