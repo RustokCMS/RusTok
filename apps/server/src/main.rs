@@ -18,9 +18,20 @@ fn telemetry_config() -> TelemetryConfig {
         .map(|value| value != "0")
         .unwrap_or(true);
 
+    // Check if OpenTelemetry is enabled
+    let otel = if std::env::var("OTEL_ENABLED")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+    {
+        Some(rustok_telemetry::otel::OtelConfig::from_env())
+    } else {
+        None
+    };
+
     TelemetryConfig {
         service_name: "rustok-server".to_string(),
         log_format,
         metrics,
+        otel,
     }
 }

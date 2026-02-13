@@ -55,6 +55,7 @@ pub struct TelemetryConfig {
     pub service_name: String,
     pub log_format: LogFormat,
     pub metrics: bool,
+    pub otel: Option<otel::OtelConfig>,
 }
 
 #[derive(Clone)]
@@ -152,9 +153,42 @@ pub fn init(config: TelemetryConfig) -> Result<TelemetryHandles, TelemetryError>
             .boxed(),
     };
 
-    let subscriber = TracingRegistry::default().with(env_filter).with(fmt_layer);
-    tracing::subscriber::set_global_default(subscriber)
-        .map_err(|_| TelemetryError::SubscriberAlreadySet)?;
+    // Initialize subscriber with or without OpenTelemetry
+    if let Some(otel_config) = config.otel {
+        // Try to initialize OpenTelemetry layer
+        let subscriber = TracingRegistry::default()
+            .with(env_filter)
+            .with(fmt_layer);
+        
+        // Initialize OTel in a blocking context since we're in a sync function
+        let otel_layer = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                match otel::init_otel_layer(otel_config).await {
+                    Ok(layer) => Some(layer),
+                    Err(e) => {
+                        tracing::warn!("Failed to initialize OpenTelemetry: {}, continuing without it", e);
+                        None
+                    }
+                }
+            })
+        });
+
+        if let Some(otel_layer) = otel_layer {
+            let subscriber = subscriber.with(otel_layer);
+            tracing::subscriber::set_global_default(subscriber)
+                .map_err(|_| TelemetryError::SubscriberAlreadySet)?;
+            tracing::info!("Telemetry initialized with OpenTelemetry support");
+        } else {
+            tracing::subscriber::set_global_default(subscriber)
+                .map_err(|_| TelemetryError::SubscriberAlreadySet)?;
+            tracing::info!("Telemetry initialized without OpenTelemetry");
+        }
+    } else {
+        let subscriber = TracingRegistry::default().with(env_filter).with(fmt_layer);
+        tracing::subscriber::set_global_default(subscriber)
+            .map_err(|_| TelemetryError::SubscriberAlreadySet)?;
+        tracing::info!("Telemetry initialized (OpenTelemetry disabled)");
+    }
 
     let metrics_handle = if config.metrics {
         let handle = Arc::new(MetricsHandle::new());
