@@ -89,6 +89,34 @@ static PATH_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
 impl InputValidator {
     /// Create new input validator with default patterns
     pub fn new() -> Self {
+        let sql_patterns = vec![
+            Regex::new(r"(?i)(SELECT\s+.*\s+FROM|INSERT\s+INTO|UPDATE\s+.*\s+SET|DELETE\s+FROM|DROP\s+TABLE|UNION\s+SELECT|--|;--)").unwrap(),
+            Regex::new(r"(?i)(OR\s+1\s*=\s*1|AND\s+1\s*=\s*1|1\s*=\s*1)").unwrap(),
+            Regex::new(r"(?i)(EXEC\s*\(|EXECUTE\s*\(|sp_executesql)").unwrap(),
+        ];
+
+        let xss_patterns = vec![
+            Regex::new(r"(?i)<script[^>]*>.*?</script>").unwrap(),
+            Regex::new(r"(?i)javascript:").unwrap(),
+            Regex::new(r#"(?i)on\w+\s*=\s*["']?[^"']*["']?"#).unwrap(),
+            Regex::new(r"(?i)<\s*iframe").unwrap(),
+            Regex::new(r"(?i)<\s*object").unwrap(),
+            Regex::new(r"(?i)<\s*embed").unwrap(),
+        ];
+
+        let cmd_patterns = vec![
+            Regex::new(r"[;&|`]\s*\w+").unwrap(),
+            Regex::new(r"\$\(.*\)").unwrap(),
+            Regex::new(r"`.*`").unwrap(),
+        ];
+
+        let path_patterns = vec![
+            Regex::new(r"\.\./").unwrap(),
+            Regex::new(r"\.\.\\").unwrap(),
+            Regex::new(r"%2e%2e[/\\]").unwrap(),
+            Regex::new(r"\x2e\x2e[/\\]").unwrap(),
+        ];
+
         Self {
             sql_patterns: SQL_PATTERNS.clone(),
             xss_patterns: XSS_PATTERNS.clone(),
