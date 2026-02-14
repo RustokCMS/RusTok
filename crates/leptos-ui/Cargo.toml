@@ -1,0 +1,14 @@
+[package]
+name = "leptos-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["RusToK Team"]
+description = "DSD-style UI components for Leptos applications"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leptos = { workspace = true }
+serde = { workspace = true, features = ["derive"] }

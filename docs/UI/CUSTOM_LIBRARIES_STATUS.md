@@ -28,9 +28,16 @@ RusToK использует **модульную архитектуру** с с�
 
 | Crate | Назначение | Статус | Блокирует | Приоритет |
 |-------|-----------|--------|-----------|-----------|
-| `leptos-forms` | Form handling, validation, hooks | 🚧 **WIP** | Phase 1: Auth forms | **P0** |
 | `leptos-table` | Data tables с pagination, sorting, filtering | 🚧 **WIP** | Phase 2: Users list | **P1** |
-| `leptos-ui` | DSD-style UI components (button, input, card) | 🚧 **WIP** | All phases | **P0** |
+
+---
+
+### ✅ Недавно завершено (Phase 1)
+
+| Crate | Назначение | Дата завершения | Используется в |
+|-------|-----------|-----------------|----------------|
+| `leptos-forms` | Form handling, validation, hooks | 2026-02-14 | Phase 1: Auth forms, Phase 2: CRUD forms |
+| `leptos-ui` | DSD-style UI components (Phase 1: Button, Input, Label, Card, Badge, Separator) | 2026-02-14 | All phases |
 
 ---
 
@@ -142,11 +149,12 @@ apps/server (GraphQL backend)
 
 ---
 
-### 🚧 `leptos-forms` (Form Handling)
+### ✅ `leptos-forms` (Form Handling)
 
-**Статус:** 🚧 В разработке  
-**Блокирует:** Phase 1 (Login, Register, User forms)  
-**Приоритет:** **P0** (критично для Phase 1)
+**Статус:** ✅ Реализовано (Core functionality)  
+**Версия:** `0.1.0`  
+**Дата завершения:** 2026-02-14  
+**Файл:** `crates/leptos-forms/src/lib.rs`
 
 **Что должно делать:**
 - Form state management (поля, значения, изменения)
@@ -180,14 +188,22 @@ fn LoginForm() -> impl IntoView {
 }
 ```
 
-**TODO:**
-- [ ] Базовая форм-структура (`Form`, `Field`)
-- [ ] Валидаторы (required, email, min_length, max_length, pattern)
-- [ ] Error handling (per-field errors)
-- [ ] Submit handling (loading state, error state)
-- [ ] Reactive validation (on blur, on change)
-- [ ] Integration с Leptos signals
-- [ ] Документация + примеры
+**Реализовано:**
+- ✅ FormContext — form state management
+- ✅ use_form() hook
+- ✅ Field component — input with error display
+- ✅ Валидаторы (required, email, min_length, max_length, pattern, custom)
+- ✅ Error handling (per-field errors, form-level errors)
+- ✅ Reactive validation (on blur)
+- ✅ Integration с Leptos signals
+- ✅ Документация + README
+
+**TODO (Phase 2):**
+- [ ] Submit handling integration (async submit)
+- [ ] Advanced validation (conditional fields, cross-field validation)
+- [ ] File upload support
+- [ ] Array fields support
+- [ ] Examples в apps/admin/examples/
 
 **Зависимости:**
 - `leptos` — reactive primitives
@@ -264,11 +280,12 @@ fn UsersTable() -> impl IntoView {
 
 ---
 
-### 🚧 `leptos-ui` (UI Components)
+### ✅ `leptos-ui` (UI Components)
 
-**Статус:** 🚧 В разработке (DSD approach)  
-**Блокирует:** Все фазы  
-**Приоритет:** **P0**
+**Статус:** ✅ Реализовано (Phase 1 components)  
+**Версия:** `0.1.0`  
+**Дата завершения:** 2026-02-14  
+**Файл:** `crates/leptos-ui/src/lib.rs`
 
 **Что должно делать:**
 - DSD-style UI components (shadcn подход)
@@ -280,18 +297,23 @@ fn UsersTable() -> impl IntoView {
 **Structure:**
 ```
 crates/leptos-ui/src/
-├── button.rs         — Button с вариантами
-├── input.rs          — Input, Textarea
-├── card.rs           — Card, CardHeader, CardContent
-├── label.rs          — Label
-├── badge.rs          — Badge
-├── separator.rs      — Separator
-├── alert.rs          — Alert
-├── dropdown.rs       — Dropdown menu
-├── dialog.rs         — Modal dialog
-├── tabs.rs           — Tabs
-├── table.rs          — Table primitives
-└── lib.rs            — Re-exports
+├── lib.rs            — Re-exports
+├── types.rs          — Shared types (Size, Variant)
+├── button.rs         — ✅ Button с вариантами
+├── input.rs          — ✅ Input
+├── label.rs          — ✅ Label
+├── card.rs           — ✅ Card, CardHeader, CardContent, CardFooter
+├── badge.rs          — ✅ Badge
+├── separator.rs      — ✅ Separator
+└── (Phase 2+)
+    ├── alert.rs          — ⏳ Alert
+    ├── dropdown.rs       — ⏳ Dropdown menu
+    ├── dialog.rs         — ⏳ Modal dialog
+    ├── tabs.rs           — ⏳ Tabs
+    ├── table.rs          — ⏳ Table primitives
+    ├── textarea.rs       — ⏳ Textarea
+    ├── checkbox.rs       — ⏳ Checkbox
+    └── select.rs         — ⏳ Select/Combobox
 ```
 
 **Example API:**
