@@ -1,0 +1,2 @@
+# This file ensures the temp directory is tracked by git
+# Temporary files should not be committed to the repository

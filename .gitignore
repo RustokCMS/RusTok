@@ -1,8 +1,92 @@
+# Rust
 /target
 **/target
+Cargo.lock
+
+# IDEs
 /.idea
 /.vscode
-.DS_Store
+/.vs
+/.fleet
+*.swp
+*.swo
+*~
+
+# Environment files
 .env
+.env.*
+!.env.example
+!.env.dev.example
+
+# Logs
 *.log
+logs/
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# Build artifacts
+*.wasm
+*.js.map
+*.css.map
+*.css
+
+# Node.js (for frontend integration)
 **/node_modules
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/pnpm-debug.log*
+**/lerna-debug.log*
+**/dist
+**/build
+**/.next
+**/.nuxt
+**/.svelte-kit
+
+# Package manager
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+
+# Testing
+**/coverage
+**/.nyc_output
+**/test-results
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Loco specific
+**/storage/uploads/*
+!**/storage/uploads/.gitkeep
+
+# Docker
+docker-compose.override.yml
+
+# Documentation builds
+docs/book
+
+# Benches
+**/benches/target
+
+# Local development
+.local/
