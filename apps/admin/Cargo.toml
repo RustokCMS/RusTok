@@ -28,6 +28,7 @@ tailwind-rs = { workspace = true }
 leptos-chartistry = { workspace = true }
 gloo-storage = { workspace = true }
 serde_urlencoded = { workspace = true }
+chrono = { workspace = true }
 chrono-humanize = { workspace = true }
 console_error_panic_hook = "0.1"
 console_log = "1"

@@ -1,73 +1,102 @@
 // New Dashboard Page (using leptos-ui components)
 use leptos::prelude::*;
 use leptos_ui::{Card, CardHeader, CardContent, Badge, BadgeVariant};
+use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
 
 use crate::providers::auth::use_auth;
 use crate::providers::locale::translate;
+
+// GraphQL Queries
+const DASHBOARD_STATS_QUERY: &str = r#"
+    query DashboardStats {
+        dashboardStats {
+            totalUsers
+            totalPosts
+            totalOrders
+            totalRevenue
+            usersChange
+            postsChange
+            ordersChange
+            revenueChange
+        }
+    }
+"#;
+
+const RECENT_ACTIVITY_QUERY: &str = r#"
+    query RecentActivity($limit: Int) {
+        recentActivity(limit: $limit) {
+            id
+            type
+            description
+            timestamp
+            user {
+                id
+                name
+            }
+        }
+    }
+"#;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct DashboardStatsData {
+    dashboard_stats: DashboardStats,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct DashboardStats {
+    total_users: i64,
+    total_posts: i64,
+    total_orders: i64,
+    total_revenue: i64,
+    users_change: f64,
+    posts_change: f64,
+    orders_change: f64,
+    revenue_change: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RecentActivityData {
+    recent_activity: Vec<ActivityItem>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ActivityItem {
+    id: String,
+    #[serde(rename = "type")]
+    activity_type: String,
+    description: String,
+    timestamp: String,
+    user: Option<ActivityUser>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ActivityUser {
+    id: String,
+    name: String,
+}
 
 #[component]
 pub fn DashboardNew() -> impl IntoView {
     let auth = use_auth();
 
-    // Mock stats (TODO: replace with GraphQL queries)
-    let stats = vec![
-        StatData {
-            title: "Total Users",
-            value: "2,543",
-            change: "+12%",
-            change_positive: true,
-            icon: "👥",
-        },
-        StatData {
-            title: "Total Posts",
-            value: "1,284",
-            change: "+8%",
-            change_positive: true,
-            icon: "📝",
-        },
-        StatData {
-            title: "Total Orders",
-            value: "892",
-            change: "+23%",
-            change_positive: true,
-            icon: "📦",
-        },
-        StatData {
-            title: "Revenue",
-            value: "$45,231",
-            change: "+15%",
-            change_positive: true,
-            icon: "💰",
-        },
-    ];
+    // Query dashboard stats
+    let stats_result = leptos_graphql::use_query::<serde_json::Value, DashboardStatsData>(
+        leptos_graphql::GRAPHQL_ENDPOINT.to_string(),
+        DASHBOARD_STATS_QUERY.to_string(),
+        None,
+        auth.token.get(),
+        auth.tenant_slug.get(),
+    );
 
-    // Mock recent activity
-    let activities = vec![
-        Activity {
-            user: "John Doe",
-            action: "created a new post",
-            time: "2 minutes ago",
-            icon: "📝",
-        },
-        Activity {
-            user: "Jane Smith",
-            action: "completed an order",
-            time: "15 minutes ago",
-            icon: "✅",
-        },
-        Activity {
-            user: "Bob Wilson",
-            action: "registered as a new user",
-            time: "1 hour ago",
-            icon: "👤",
-        },
-        Activity {
-            user: "Alice Brown",
-            action: "updated their profile",
-            time: "2 hours ago",
-            icon: "✏️",
-        },
-    ];
+    // Query recent activity
+    let activity_result = leptos_graphql::use_query::<serde_json::Value, RecentActivityData>(
+        leptos_graphql::GRAPHQL_ENDPOINT.to_string(),
+        RECENT_ACTIVITY_QUERY.to_string(),
+        Some(serde_json::json!({ "limit": 10 })),
+        auth.token.get(),
+        auth.tenant_slug.get(),
+    );
 
     view! {
         <div class="space-y-6">
@@ -89,7 +118,45 @@ pub fn DashboardNew() -> impl IntoView {
 
             // Stats Grid
             <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                {stats.into_iter().map(|stat| {
+                {move || {
+                    let stats_data = stats_result.data.get();
+                    match stats_data {
+                        Some(data) => {
+                            let stats = &data.dashboard_stats;
+                            vec![
+                                StatData {
+                                    title: "Total Users",
+                                    value: stats.total_users.to_string(),
+                                    change: format!("{:+.1}%", stats.users_change),
+                                    change_positive: stats.users_change >= 0.0,
+                                    icon: "👥",
+                                },
+                                StatData {
+                                    title: "Total Posts",
+                                    value: stats.total_posts.to_string(),
+                                    change: format!("{:+.1}%", stats.posts_change),
+                                    change_positive: stats.posts_change >= 0.0,
+                                    icon: "📝",
+                                },
+                                StatData {
+                                    title: "Total Orders",
+                                    value: stats.total_orders.to_string(),
+                                    change: format!("{:+.1}%", stats.orders_change),
+                                    change_positive: stats.orders_change >= 0.0,
+                                    icon: "📦",
+                                },
+                                StatData {
+                                    title: "Revenue",
+                                    value: format!("${}", stats.total_revenue),
+                                    change: format!("{:+.1}%", stats.revenue_change),
+                                    change_positive: stats.revenue_change >= 0.0,
+                                    icon: "💰",
+                                },
+                            ]
+                        }
+                        None => vec![]
+                    }
+                }.into_iter().map(|stat| {
                     view! { <StatCard stat=stat /> }
                 }).collect_view()}
             </div>
@@ -105,11 +172,36 @@ pub fn DashboardNew() -> impl IntoView {
                             </h3>
                         </CardHeader>
                         <CardContent>
-                            <div class="space-y-4">
-                                {activities.into_iter().map(|activity| {
-                                    view! { <ActivityItem activity=activity /> }
-                                }).collect_view()}
-                            </div>
+                            {move || {
+                                if activity_result.loading.get() {
+                                    view! {
+                                        <div class="flex items-center justify-center py-8">
+                                            <div class="text-gray-500">"Loading activity..."</div>
+                                        </div>
+                                    }.into_any()
+                                } else if let Some(error) = activity_result.error.get() {
+                                    view! {
+                                        <div class="flex items-center justify-center py-8">
+                                            <div class="text-red-500">{format!("Error: {}", error)}</div>
+                                        </div>
+                                    }.into_any()
+                                } else if let Some(data) = activity_result.data.get() {
+                                    let activities = data.recent_activity.clone();
+                                    view! {
+                                        <div class="space-y-4">
+                                            {activities.into_iter().map(|activity| {
+                                                view! { <ActivityItemGraphQL activity=activity /> }
+                                            }).collect_view()}
+                                        </div>
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="flex items-center justify-center py-8">
+                                            <div class="text-gray-500">"No activity yet"</div>
+                                        </div>
+                                    }.into_any()
+                                }
+                            }}
                         </CardContent>
                     </Card>
                 </div>
@@ -192,32 +284,50 @@ fn StatCard(stat: StatData) -> impl IntoView {
 }
 
 // ============================================================================
-// ActivityItem Component
+// ActivityItemGraphQL Component (GraphQL-based)
 // ============================================================================
 
-#[derive(Clone)]
-struct Activity {
-    user: &'static str,
-    action: &'static str,
-    time: &'static str,
-    icon: &'static str,
-}
-
 #[component]
-fn ActivityItem(activity: Activity) -> impl IntoView {
+fn ActivityItemGraphQL(activity: ActivityItem) -> impl IntoView {
+    let (icon, user_name, description) = match activity.activity_type.as_str() {
+        "user.created" => ("👤", activity.user.as_ref().map(|u| u.name.as_str()), Some(activity.description.clone())),
+        "system.started" => ("🚀", None, Some(activity.description.clone())),
+        "tenant.checked" => ("🔍", None, Some(activity.description.clone())),
+        _ => ("📌", activity.user.as_ref().map(|u| u.name.as_str()), Some(activity.description.clone())),
+    };
+
+    // Parse timestamp for relative time
+    let time_ago = match DateTime::parse_from_rfc3339(&activity.timestamp) {
+        Ok(dt) => {
+            let now = Utc::now();
+            let duration = now.signed_duration_since(dt.with_timezone(&Utc));
+            if duration.num_minutes() < 60 {
+                format!("{} minutes ago", duration.num_minutes())
+            } else if duration.num_hours() < 24 {
+                format!("{} hours ago", duration.num_hours())
+            } else {
+                format!("{} days ago", duration.num_days())
+            }
+        }
+        Err(_) => "Recently".to_string(),
+    };
+
     view! {
         <div class="flex items-start gap-4">
             <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-xl">
-                {activity.icon}
+                {icon}
             </div>
             <div class="flex-1">
                 <p class="text-sm text-gray-900">
-                    <span class="font-semibold">{activity.user}</span>
+                    {match user_name {
+                        Some(name) => view! { <span class="font-semibold">{name}</span> }.into_any(),
+                        None => view! {}.into_any(),
+                    }}
                     " "
-                    {activity.action}
+                    {description.unwrap_or_else(|| "Unknown activity".to_string())}
                 </p>
                 <p class="mt-1 text-xs text-gray-500">
-                    {activity.time}
+                    {time_ago}
                 </p>
             </div>
         </div>
