@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - 2026-02-16
 
+#### GraphQL API - User Management Completion
+- **Delete User Mutation** (`apps/server/src/graphql/mutations.rs`)
+  - `deleteUser` mutation for permanent user deletion
+  - RBAC permission check (`users:delete`)
+  - Tenant isolation enforced
+  - Returns boolean success status
+  - Error handling for not found and permission denied cases
+
 #### GraphQL API - Admin Dashboard Support
 - **Dashboard Stats Query** (`apps/server/src/graphql/queries.rs`)
   - `dashboardStats` query providing aggregated statistics for admin dashboard

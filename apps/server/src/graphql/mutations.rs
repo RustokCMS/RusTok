@@ -178,6 +178,34 @@ impl RootMutation {
         Ok(User::from(&user))
     }
 
+    async fn delete_user(&self, ctx: &Context<'_>, id: uuid::Uuid) -> Result<bool> {
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+
+        if !rustok_core::Rbac::has_permission(&auth.role, &rustok_core::Permission::USERS_DELETE) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: users:delete required",
+            ));
+        }
+
+        let user = users::Entity::find_by_id(id)
+            .filter(UsersColumn::TenantId.eq(tenant.id))
+            .one(&app_ctx.db)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .ok_or_else(|| FieldError::new("User not found"))?;
+
+        users::Entity::delete_by_id(user.id)
+            .exec(&app_ctx.db)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        Ok(true)
+    }
+
     async fn toggle_module(
         &self,
         ctx: &Context<'_>,
