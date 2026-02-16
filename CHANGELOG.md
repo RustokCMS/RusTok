@@ -41,6 +41,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Future enhancement roadmap
   - Performance and security considerations
 
+#### Admin UI - GraphQL Integration
+- **Dashboard Page** (`apps/admin/src/pages/dashboard_new.rs`)
+  - Replaced mock data with real GraphQL queries
+  - Integrated `dashboardStats` query for statistics
+  - Integrated `recentActivity` query for activity feed
+  - Added loading states and skeleton components
+  - Implemented timestamp formatting
+  - Added activity type icons
+
+- **Users List Page** (`apps/admin/src/pages/users_new.rs`)
+  - Replaced mock data with real GraphQL `users` query
+  - Implemented search functionality
+  - Implemented role and status filters
+  - Implemented pagination with page navigation
+  - Added loading skeleton components
+  - Added role/status badge formatting
+  - Added date formatting
+
+- **App Switch** (`apps/admin/src/main.rs`)
+  - Switched from old `app::App` to new `app_new::App`
+  - Enabled new UI with GraphQL integration
+
 ### Fixed - 2026-02-12
 
 - **Tracing field consistency and runtime recording**
