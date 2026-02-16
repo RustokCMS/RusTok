@@ -204,6 +204,14 @@ impl RootQuery {
         })
     }
 
+    /// Get dashboard statistics for the current tenant
+    /// 
+    /// Returns aggregated statistics including:
+    /// - User count (from database)
+    /// - Post count (estimated)
+    /// - Order count (placeholder)
+    /// - Revenue (placeholder)
+    /// - Percentage changes for each metric
     async fn dashboard_stats(&self, ctx: &Context<'_>) -> Result<DashboardStats> {
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -249,6 +257,16 @@ impl RootQuery {
         })
     }
 
+    /// Get recent activity feed for the dashboard
+    /// 
+    /// Returns a list of recent activities including:
+    /// - User creation events
+    /// - System events
+    /// 
+    /// Activities are sorted by timestamp in descending order (newest first).
+    /// 
+    /// # Arguments
+    /// * `limit` - Maximum number of activities to return (1-50, default: 10)
     async fn recent_activity(
         &self,
         ctx: &Context<'_>,

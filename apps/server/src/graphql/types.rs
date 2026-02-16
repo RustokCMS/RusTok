@@ -152,29 +152,47 @@ pub struct UserConnection {
     pub page_info: PageInfo,
 }
 
+/// Dashboard statistics for admin overview
 #[derive(SimpleObject, Clone)]
 pub struct DashboardStats {
+    /// Total number of users in the tenant
     pub total_users: i64,
+    /// Total number of posts (estimated from user count)
     pub total_posts: i64,
+    /// Total number of orders (placeholder - requires commerce module)
     pub total_orders: i64,
+    /// Total revenue in cents (placeholder - requires commerce module)
     pub total_revenue: i64,
+    /// Percentage change in users (compared to previous period)
     pub users_change: f64,
+    /// Percentage change in posts (compared to previous period)
     pub posts_change: f64,
+    /// Percentage change in orders (compared to previous period)
     pub orders_change: f64,
+    /// Percentage change in revenue (compared to previous period)
     pub revenue_change: f64,
 }
 
+/// Single activity item for the dashboard activity feed
 #[derive(SimpleObject, Clone)]
 pub struct ActivityItem {
+    /// Unique identifier for the activity
     pub id: String,
+    /// Activity type (e.g., "user.created", "system.started")
     pub r#type: String,
+    /// Human-readable description of the activity
     pub description: String,
+    /// ISO 8601 timestamp when the activity occurred
     pub timestamp: String,
+    /// User associated with the activity (if any)
     pub user: Option<ActivityUser>,
 }
 
+/// User information embedded in an activity item
 #[derive(SimpleObject, Clone)]
 pub struct ActivityUser {
+    /// User ID
     pub id: String,
+    /// User display name
     pub name: Option<String>,
 }

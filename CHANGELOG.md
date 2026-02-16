@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - 2026-02-16
 
+#### GraphQL API - Documentation Improvements
+- **Enhanced GraphQL Schema Documentation** (`apps/server/src/graphql/`)
+  - Added comprehensive doc comments to `DashboardStats`, `ActivityItem`, `ActivityUser` types
+  - Documented all fields with descriptions and usage notes
+  - Added documentation to `dashboard_stats` query explaining return values and placeholders
+  - Added documentation to `recent_activity` query with parameter descriptions
+  - Improves GraphQL schema introspection and developer experience
+
 #### GraphQL API - Admin Dashboard Support
 - **Dashboard Stats Query** (`apps/server/src/graphql/queries.rs`)
   - `dashboardStats` query providing aggregated statistics for admin dashboard
