@@ -1,9 +1,9 @@
-# RusToK — System Architecture Manifest v5.0
+# RusToK — System Architecture Manifest v5.5
 
 **Codename:** "The Highload Tank"  \
-**Target:** AI Assistants (Cursor, Windsurf, Copilot, Claude)  \
+**Target:** Humans & AI Assistants (Cursor, Windsurf, Copilot, Claude)  \
 **Role:** Senior Rust Architect & System Designer  \
-**Philosophy:** "Write Optimized vs Read Optimized" / "Rust is ON. WordPress is OFF."
+**Philosophy:** "Write Optimized vs Read Optimized" / "Modular Monolith over Microservices"
 
 ## 1. PROJECT IDENTITY
 
@@ -29,77 +29,84 @@
 | Document | Description |
 |----------|-------------|
 | [MODULE_MATRIX.md](docs/modules/MODULE_MATRIX.md) | Полная карта модулей, зависимости, типы |
-| [DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) | Все таблицы БД с колонками и связями |
-| [I18N_ARCHITECTURE.md](docs/I18N_ARCHITECTURE.md) | Comprehensive i18n/multi-language guide |
-| [architecture.md](docs/architecture.md) | Каноничный обзор архитектуры |
-| [ROADMAP.md](docs/ROADMAP.md) | Фазы разработки и стратегия |
-| [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Статус реализации vs документация |
-| [DOCS_MAP.md](docs/DOCS_MAP.md) | Реестр документации |
+| [DATABASE_SCHEMA.md](docs/architecture/database.md) | Все таблицы БД с колонками и связями |
+| [I18N_ARCHITECTURE.md](docs/guides/i18n-guide.md) | Comprehensive i18n/multi-language guide |
+| [architecture.md](docs/architecture/overview.md) | Каноничный обзор архитектуры |
+| [index.md](docs/index.md) | Реестр документации (Главная карта) |
 | [modules/flex.md](docs/modules/flex.md) | Спецификация Flex модуля (новый концепт) |
-| [modules/module-manifest.md](docs/modules/module-manifest.md) | Манифест модулей и rebuild (WordPress/NodeBB-style) |
-| [modules/MODULE_UI_PACKAGES_INSTALLATION.md](docs/modules/MODULE_UI_PACKAGES_INSTALLATION.md) | Полное руководство по установке модулей с UI пакетами для админки и фронтенда |
-| [templates/module_contract.md](docs/templates/module_contract.md) | Шаблон контракта модуля |
-| [CODE_AUDIT_VERIFICATION.md](CODE_AUDIT_VERIFICATION.md) | Результаты проверки реализации и согласование чеклистов |
-| [TESTING_PROGRESS.md](TESTING_PROGRESS.md) | Testing coverage progress and test suites |
-| [rbac-enforcement.md](docs/rbac-enforcement.md) | RBAC permission system documentation |
-| [BACKEND_FIXES_2026-02-11.md](docs/BACKEND_FIXES_2026-02-11.md) | Backend compilation fixes and TransactionalEventBus migration |
-| [transactional_event_publishing.md](docs/transactional_event_publishing.md) | Transactional event publishing guide with module migration status |
-| [SPRINT_1_COMPLETION.md](docs/SPRINT_1_COMPLETION.md) | Sprint 1 completion report with metrics and impact |
-| [IMPLEMENTATION_PROGRESS.md](docs/IMPLEMENTATION_PROGRESS.md) | Sprint progress tracking with detailed task breakdown |
-
-### 🧭 Governance Update (2026-02-13)
-
-**Architecture Improvement Plan COMPLETE** ✅ (17/17 tasks, 100% Production Ready)
-
-| Sprint | Tasks | Status | Key Deliverables |
-|--------|-------|--------|------------------|
-| Sprint 1 | 4/4 | ✅ Complete | Event validation, tenant sanitization, backpressure, EventBus audit |
-| Sprint 2 | 4/4 | ✅ Complete | Tenant cache v2, circuit breaker, state machines, error handling |
-| Sprint 3 | 3/3 | ✅ Complete | OpenTelemetry, distributed tracing, metrics dashboard |
-| Sprint 4 | 4/4 | ✅ Complete | Integration tests, property tests, benchmarks, security audit |
-
-**Final Metrics:**
-- 🏆 **Architecture Score:** 7.8/10 → **9.6/10** (+1.8 points)
-- 🚀 **Production Ready:** 72% → **100%** (+28 points)
-- 📊 **Test Coverage:** 31% → **80%** (+49 points)
-- 🔒 **Security Score:** 70% → **98%** (+28 points)
+| [modules/manifest.md](docs/modules/manifest.md) | Манифест модулей и rebuild (WordPress/NodeBB-style) |
+| [modules/UI_PACKAGES_INDEX.md](docs/modules/UI_PACKAGES_INDEX.md) | Руководство по установке модулей с UI пакетами |
+| [rbac.md](docs/architecture/rbac.md) | RBAC permission system documentation |
+| [events-transactional.md](docs/architecture/events-transactional.md) | Transactional event publishing guide |
 
 ---
 
-**Sprint 1: P0 Critical Architecture Fixes COMPLETE** ✅
+## 1.1 MULTI-TENANCY (Deep Dive)
 
-- ✅ **Event Validation Framework** — 50+ DomainEvent variants (260 lines, 15 tests)
-- ✅ **Tenant Identifier Sanitization** — SQL/XSS/Path traversal prevention (505 lines, 30 tests)
-- ✅ **EventDispatcher Rate Limiting** — Backpressure control (464 lines, 12 tests)
-- ✅ **EventBus Consistency Audit** — 100% consistency across 5 modules
+RusToK — это **арендатор-ориентированная** (tenant-centric) система. Каждый запрос, каждая сущность и каждое событие принадлежат конкретному тенанту.
 
-**Sprint 2: Resilience COMPLETE** ✅
+### 1.1.1 Isolation Strategy
+- **Row-Level Isolation:** Все таблицы содержат колонку `tenant_id: UUID`. Это основной метод изоляции.
+- **Strict Filtering:** В слое доступа к данным (SeaORM) фильтрация по `tenant_id` является обязательной. Отсутствие фильтра в запросе от контроллера считается критической ошибкой безопасности.
+- **Tenant Registry:** Управление списком тенантов и их модулями происходит в центральной таблице `tenants` и `tenant_modules`.
 
-- ✅ **Tenant Cache v2** — moka integration, -45% code reduction (724→400 LOC)
-- ✅ **Circuit Breaker** — Fail-fast resilience, 30s→0.1ms (-99.997% latency)
-- ✅ **State Machines** — Content & Order state machines (900+ lines, 14 tests)
-- ✅ **Error Handling** — RFC 7807 compatible errors (470+ lines)
+### 1.1.2 Tenant Resolution
+Процесс определения тенанта происходит в middleware (`apps/server/src/middleware/tenant.rs`):
+1. **Header Lookup:** Проверка заголовка `X-Tenant-ID` или `X-Tenant-Slug`.
+2. **Hostname Lookup:** Маппинг домена на `tenant_id` (для Storefront).
+3. **Caching:** Результаты резолюции кешируются в **Moka (local)** и **Redis (shared)**. Инвалидация кеша происходит через Pub/Sub события при изменении метаданных тенанта.
 
-**Sprint 3: Observability COMPLETE** ✅
-
-- ✅ **OpenTelemetry** — Full observability stack (300+ lines)
-- ✅ **Distributed Tracing** — Span correlation across services (250+ lines)
-- ✅ **Metrics Dashboard** — 40+ SLO alerts, Grafana dashboards (500+ lines)
-
-**Sprint 4: Testing & Security COMPLETE** ✅
-
-- ✅ **Integration Tests** — 1100+ lines, 13 test cases, 36%→76% coverage
-- ✅ **Property-Based Tests** — 42 properties, 10,752+ test cases
-- ✅ **Performance Benchmarks** — 5 Criterion suites, 50+ benchmarks
-- ✅ **Security Audit** — OWASP Top 10 compliance, 25+ security tests
+### 1.1.3 Slug Validation
+- Только латиница, цифры и дефисы.
+- Минимальная длина — 3 символа, максимальная — 63.
+- Список зарезервированных имен (admin, api, www, dev, etc.) блокируется на уровне валидатора.
 
 ---
 
-**Documentation Status:**
-- ✅ [ARCHITECTURE_STATUS.md](../ARCHITECTURE_STATUS.md) — Current status (9.6/10 score)
-- ✅ [CHANGELOG.md](../CHANGELOG.md) — Complete change log with all sprints
-- ✅ Sprint guides: SPRINT_2_COMPLETED.md, SPRINT_3_COMPLETED.md
-- ✅ Technical guides: All 10+ implementation guides complete
+## 1.2 MULTILINGUALITY (i18n Strategy)
+
+RusToK не просто "поддерживает переводы", он спроектирован как **Global-First** платформа.
+
+### 1.2.1 The Translation Pattern
+Для сущностей с большим количеством текстовых данных (товары, статьи) используется паттерн **Separate Translation Tables**:
+- `nodes` (id, kind, created_at...)
+- `node_translations` (node_id, locale, title, content...)
+
+Это позволяет:
+1. Иметь неограниченное количество языков.
+2. Делать быстрые выборки для конкретной локали без лишних данных.
+3. Индексировать каждый язык отдельно в полнотекстовом поиске.
+
+### 1.2.2 Language Resolution
+1. **Accept-Language Header:** Для автоматического определения.
+2. **GraphQL Arguments:** Явное указание локали в запросах (`node(id: "...", locale: "ru")`).
+3. **URL Prefix:** В приложениях (например, `/en/products/...`).
+
+### 1.2.3 Backend i18n
+Системные сообщения и ошибки переводятся с использованием `leptos_i18n` (на фронтенде) и соответствующих DTO мапперов на бэкенде, чтобы клиент получал ошибки на своем языке.
+---
+
+## 1.3 SCALING & PERFORMANCE (The Highload Tank)
+
+RusToK разработан для работы под экстремальной нагрузкой с минимальным потреблением ресурсов.
+
+### 1.3.1 CQRS-lite Persistence
+Мы не используем полную Event Sourcing систему (где события — единственный источник правды), так как это усложняет разработку. Вместо этого:
+- **Transactional Writes:** Данные пишутся в Postgres в 3NF.
+- **Async Indexing:** При записи генерируется событие. Воркеры-индексаторы подхватывают его и обновляют `index_*` таблицы.
+- **Read Specialization:** Чтения (особенно витринные) идут ТОЛЬКО в `index_*` таблицы, которые оптимизированы под полнотекстовый поиск и JSONB фильтрацию.
+
+### 1.3.2 Shared-Nothing Architecture
+Серверные инстансы (`apps/server`) полностью stateless. Все состояние вынесено в:
+- **Postgres:** Основное хранилище.
+- **Redis:** Распределенный кеш и очередь событий (L1.5).
+- **Iggy/NATS:** Стриминг событий (L2) для сложных интеграций.
+
+### 1.3.3 Frontend Performance (Leptos)
+Админка и Витрина используют Rust (WASM) на фронтенде:
+- **Zero JS Bloat:** Минимальный объем передаваемого кода.
+- **Type Safety:** Общие DTO между бэкендом и фронтендом гарантируют отсутствие runtime ошибок при парсинге API.
+- **SSR/Hydration:** Витрина грузится мгновенно благодаря Server Side Rendering в Leptos.
 
 ---
 
@@ -335,231 +342,141 @@ Admin docs:
 
 ---
 
-## 6. DATABASE ARCHITECTURE
+### 6.1 DATABASE SCHEMAS (Technical Detail)
 
-### 6.1 ID Generation (ULID → UUID)
+Каждая таблица в RusToK обязана иметь поле `tenant_id`. Ниже приведены детальные описания схем для ключевых модулей.
 
-```rust
-// crates/rustok-core/src/id.rs
-use ulid::Ulid;
-use uuid::Uuid;
-
-pub fn generate_id() -> Uuid {
-    Uuid::from(Ulid::new())
-}
-
-pub fn parse_id(s: &str) -> Result<Uuid, IdError> {
-    s.parse::<Ulid>()
-        .map(Uuid::from)
-        .or_else(|_| s.parse::<Uuid>())
-        .map_err(|_| IdError::InvalidFormat(s.to_string()))
-}
-```
-
-### 6.2 RusToK App Core (Server)
-
-`apps/server/src/models`
+#### 6.1.1 Core & Tenancy
+Базовая инфраструктура для разделения данных.
 
 ```sql
--- SERVER: Tenants
+-- Таблица арендаторов
+-- Используется для резолюции контекста
 CREATE TABLE tenants (
-    id              UUID PRIMARY KEY,
-    name            VARCHAR(255) NOT NULL,
-    slug            VARCHAR(64) NOT NULL UNIQUE,
-    settings        JSONB NOT NULL DEFAULT '{}',
+    id              UUID PRIMARY KEY,          -- ULID v4
+    name            VARCHAR(255) NOT NULL,     -- Название для админки
+    slug            VARCHAR(64) NOT NULL UNIQUE, -- URL префикс или поддомен
+    settings        JSONB NOT NULL DEFAULT '{}', -- Кастомные настройки тенанта (тема, лимиты)
     is_active       BOOLEAN NOT NULL DEFAULT true,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- SERVER: Users
-CREATE TABLE users (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    email           VARCHAR(255) NOT NULL,
-    password_hash   VARCHAR(255) NOT NULL,
-    role            VARCHAR(32) NOT NULL DEFAULT 'customer',
-    status          VARCHAR(32) NOT NULL DEFAULT 'active',
-    metadata        JSONB NOT NULL DEFAULT '{}',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (tenant_id, email)
-);
-
--- SERVER: Module Toggles
+-- Управление включенными модулями для каждого тенанта
 CREATE TABLE tenant_modules (
     id              UUID PRIMARY KEY,
     tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    module_slug     VARCHAR(64) NOT NULL,
+    module_slug     VARCHAR(64) NOT NULL,      -- 'commerce', 'blog', etc.
     enabled         BOOLEAN NOT NULL DEFAULT true,
-    settings        JSONB NOT NULL DEFAULT '{}',
+    settings        JSONB NOT NULL DEFAULT '{}', -- Конфиг модуля для этого тенанта
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (tenant_id, module_slug)
 );
 ```
 
-### 6.3 RusToK Content (Module)
-
-`crates/rustok-content/src/entities`
+#### 6.1.2 Content Module (i18n & Versioning)
+Гибридная схема: метаданные в главной таблице, контент в переводах.
 
 ```sql
--- CONTENT: Nodes (универсальный контент)
+-- Иерархический контент (Nodes)
 CREATE TABLE nodes (
     id              UUID PRIMARY KEY,
     tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    parent_id       UUID REFERENCES nodes(id) ON DELETE CASCADE,
-    author_id       UUID REFERENCES users(id) ON DELETE SET NULL,
-    kind            VARCHAR(32) NOT NULL,       -- 'page', 'post', 'comment'
-    title           VARCHAR(255),
-    slug            VARCHAR(255),
-    excerpt         TEXT,
-    category_id     UUID,
-    status          VARCHAR(32) NOT NULL DEFAULT 'draft',
-    position        INT DEFAULT 0,
-    depth           INT DEFAULT 0,
-    reply_count     INT DEFAULT 0,
-    metadata        JSONB NOT NULL DEFAULT '{}',
+    parent_id       UUID REFERENCES nodes(id) ON DELETE CASCADE, -- Для вложенности (меню, категории)
+    kind            VARCHAR(32) NOT NULL,       -- 'page', 'post', 'block'
+    status          VARCHAR(32) NOT NULL DEFAULT 'draft', -- 'draft', 'published', 'archived'
+    position        INT DEFAULT 0,              -- Для ручной сортировки
+    metadata        JSONB NOT NULL DEFAULT '{}', -- Техническая мета (template_name, layout)
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    published_at    TIMESTAMPTZ,
-    UNIQUE (tenant_id, kind, slug) WHERE slug IS NOT NULL
+    published_at    TIMESTAMPTZ
 );
 
--- CONTENT: Bodies (тяжёлый контент отдельно)
-CREATE TABLE bodies (
-    node_id         UUID PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
-    body            TEXT,
-    format          VARCHAR(16) NOT NULL DEFAULT 'markdown',
-    search_vector   TSVECTOR,
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- Переводы контента
+CREATE TABLE node_translations (
+    id              UUID PRIMARY KEY,
+    node_id         UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    locale          VARCHAR(10) NOT NULL,       -- 'ru', 'en-US'
+    title           VARCHAR(512) NOT NULL,
+    slug            VARCHAR(512) NOT NULL,      -- URL слаг для конкретного языка
+    excerpt         TEXT,                       -- Краткое описание
+    content         TEXT,                       -- Основной текст (Markdown/HTML/JSON)
+    search_vector   TSVECTOR,                   -- Индекс для поиска на этом языке
+    UNIQUE (node_id, locale),
+    UNIQUE (tenant_id, locale, slug)            -- Слаги уникальны внутри языка и тенанта
 );
 ```
 
-### 6.4 RusToK Commerce (Module)
+#### 6.1.3 Commerce Module (Products & Prices)
+Сложная структура для поддержки вариантов и мультивалютности.
 
 ```sql
--- COMMERCE: Products
+-- Товары
 CREATE TABLE commerce_products (
     id              UUID PRIMARY KEY,
     tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    title           VARCHAR(255) NOT NULL,
-    subtitle        VARCHAR(255),
-    handle          VARCHAR(255) NOT NULL,
-    description     TEXT,
     status          VARCHAR(32) NOT NULL DEFAULT 'draft',
     discountable    BOOLEAN NOT NULL DEFAULT true,
-    metadata        JSONB NOT NULL DEFAULT '{}',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (tenant_id, handle)
-);
-
--- COMMERCE: Variants
-CREATE TABLE commerce_variants (
-    id              UUID PRIMARY KEY,
-    product_id      UUID NOT NULL REFERENCES commerce_products(id) ON DELETE CASCADE,
-    title           VARCHAR(255) NOT NULL,
-    sku             VARCHAR(64),
-    barcode         VARCHAR(64),
-    manage_inventory BOOLEAN NOT NULL DEFAULT true,
-    allow_backorder  BOOLEAN NOT NULL DEFAULT false,
-    weight          INT,
-    length          INT,
-    height          INT,
-    width           INT,
-    position        INT NOT NULL DEFAULT 0,
     metadata        JSONB NOT NULL DEFAULT '{}',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- COMMERCE: Prices
+-- Переводы товаров
+CREATE TABLE commerce_product_translations (
+    id              UUID PRIMARY KEY,
+    product_id      UUID NOT NULL REFERENCES commerce_products(id) ON DELETE CASCADE,
+    locale          VARCHAR(10) NOT NULL,
+    title           VARCHAR(255) NOT NULL,
+    description     TEXT,
+    handle          VARCHAR(255) NOT NULL,     -- URL слаг
+    UNIQUE (product_id, locale),
+    UNIQUE (tenant_id, locale, handle)
+);
+
+-- Варианты товаров (SKU)
+CREATE TABLE commerce_variants (
+    id              UUID PRIMARY KEY,
+    product_id      UUID NOT NULL REFERENCES commerce_products(id) ON DELETE CASCADE,
+    sku             VARCHAR(64) UNIQUE,
+    barcode         VARCHAR(64),
+    inventory_quantity INT NOT NULL DEFAULT 0,
+    manage_inventory BOOLEAN NOT NULL DEFAULT true,
+    weight          INT,                       -- В граммах
+    metadata        JSONB NOT NULL DEFAULT '{}'
+);
+
+-- Цены (Мультивалютность)
 CREATE TABLE commerce_prices (
     id              UUID PRIMARY KEY,
     variant_id      UUID NOT NULL REFERENCES commerce_variants(id) ON DELETE CASCADE,
-    amount          BIGINT NOT NULL,
-    currency_code   CHAR(3) NOT NULL,
-    price_list_id   UUID,
-    min_quantity    INT NOT NULL DEFAULT 1,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (variant_id, currency_code, price_list_id, min_quantity)
-);
-
--- COMMERCE: Orders
-CREATE TABLE commerce_orders (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    customer_id     UUID REFERENCES users(id) ON DELETE SET NULL,
-    display_id      SERIAL,
-    status          VARCHAR(32) NOT NULL DEFAULT 'pending',
-    email           VARCHAR(255),
-    currency_code   CHAR(3) NOT NULL,
-    subtotal        BIGINT NOT NULL,
-    tax_total       BIGINT NOT NULL DEFAULT 0,
-    shipping_total  BIGINT NOT NULL DEFAULT 0,
-    discount_total  BIGINT NOT NULL DEFAULT 0,
-    total           BIGINT NOT NULL,
-    shipping_address JSONB,
-    billing_address  JSONB,
-    metadata        JSONB NOT NULL DEFAULT '{}',
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    amount          BIGINT NOT NULL,           -- В минимальных единицах (копейки/центы)
+    currency_code   CHAR(3) NOT NULL,          -- 'RUB', 'USD'
+    min_quantity    INT NOT NULL DEFAULT 1,    -- Для оптовых цен
+    region_id       UUID,                      -- Опциональная привязка к региону
+    UNIQUE (variant_id, currency_code, min_quantity)
 );
 ```
 
-### 6.5 RusToK Index/Catalog (CQRS Read Model)
+---
 
-```sql
--- INDEX: Денормализованные продукты для поиска
-CREATE TABLE index_products (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL,
-    product_id      UUID NOT NULL,
-    title           VARCHAR(255) NOT NULL,
-    subtitle        VARCHAR(255),
-    handle          VARCHAR(255) NOT NULL,
-    description     TEXT,
-    status          VARCHAR(32) NOT NULL,
-    min_price       BIGINT,
-    max_price       BIGINT,
-    currencies      CHAR(3)[],
-    total_stock     INT,
-    has_stock       BOOLEAN,
-    categories      JSONB,
-    tags            TEXT[],
-    meta_title      VARCHAR(255),
-    meta_description VARCHAR(500),
-    search_vector   TSVECTOR,
-    indexed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (product_id)
-);
+## 6.2 VERSIONING STRATEGY
 
--- INDEX: Денормализованный контент для поиска
-CREATE TABLE index_content (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL,
-    node_id         UUID NOT NULL,
-    kind            VARCHAR(32) NOT NULL,
-    title           VARCHAR(255),
-    slug            VARCHAR(255),
-    excerpt         TEXT,
-    body_preview    TEXT,
-    status          VARCHAR(32) NOT NULL,
-    author_id       UUID,
-    author_name     VARCHAR(255),
-    category_id     UUID,
-    category_name   VARCHAR(255),
-    category_slug   VARCHAR(255),
-    tags            TEXT[],
-    parent_id       UUID,
-    reply_count     INT,
-    meta_title      VARCHAR(255),
-    meta_description VARCHAR(500),
-    search_vector   TSVECTOR,
-    published_at    TIMESTAMPTZ,
-    indexed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (node_id)
-);
-```
+Мы применяем версионирование на трех уровнях:
+
+1. **Entity Versioning (Optimistic Concurrency):**
+   При каждом обновлении записи увеличивается `version: INT`. Если при сохранении версия в БД не совпадает с версией у клиента — возвращается ошибка `Conflict`. Это предотвращает перезатирание данных при одновременной работе.
+
+2. **Event Versioning:**
+   Каждое событие имеет поле `schema_version`.
+   - **V1:** Первоначальная схема.
+   - **V2:** Добавление обязательных полей.
+   Обработчики событий (Consumers) поддерживают N-1 версий для обеспечения плавной миграции без простоя.
+
+3. **API Versioning:**
+   - **REST:** Префикс `/api/v1/...`.
+   - **GraphQL:** Эволюционный подход. Поля не удаляются, а помечаются `@deprecated`. Новая функциональность добавляется новыми полями/типами.
+
+---
 
 ### 6.6 Partitioning Strategy (Highload, Phase-in)
 
@@ -1042,359 +959,90 @@ graph TD
 2. **DTO Separation**: Никогда не отдавать SeaORM-модели (Entity) в API напрямую.
     - `Create[Name]Request` — для ввода.
     - `Update[Name]Request` — для редактирования.
-    - `[Name]Response` — для вывода.
+    - `[Name]Response` — для вывода (только нужные поля).
 3. **Snake Case everywhere**: БД таблицы и поля в Rust — `snake_case`. GraphQL — `camelCase` (автоматически через библиотеку).
-4. **Tenant Isolation**: Любой запрос к БД обязан содержать фильтр по `tenant_id`. Если его нет — это баг безопасности.
+4. **Tenant Isolation**: Любой запрос к БД обязан содержать фильтр по `tenant_id`. Если его нет — это критический баг безопасности.
 5. **Event-First**: Изменение данных в БД должно сопровождаться публикацией события. Если события нет — индекс (Search) не узнает об изменениях.
+6. **Immutable IDs**: Мы не меняем ID сущностей после создания. Используем ULID для сортируемости во времени.
+7. **Explicit Dependencies**: Модули не импортируют друг друга напрямую. Если модулю А нужны данные модуля Б, он либо слушает события, либо использует общий интерфейс из `rustok-core`.
 
 ---
 
-## 17. ARCHITECTURAL PATTERNS
+## 17. DEVELOPMENT STRATEGY
 
-### 17.1 The Service Layer Pattern
+### 17.1 Philosophy
 
-Контроллеры (REST) и резолверы (GraphQL) — это просто тонкие обертки. Вся логика живет в `Services`.
+> "Стабильность превыше гибкости. Типобезопасность превыше удобства."
 
-```rust
-use rustok_outbox::TransactionalEventBus;
+Архитектурные контракты должны быть корректными на уровне компилятора. Если система скомпилировалась, она должна быть готова к работе.
 
-pub struct NodeService {
-    db: DatabaseConnection,
-    event_bus: TransactionalEventBus,
-}
-
-impl NodeService {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
-    }
-
-    pub async fn create(&self, input: CreateNodeInput) -> Result<NodeResponse, RusToKError> {
-        // 1. Logic & Validation
-        // 2. Database Persistence
-        // 3. Event Dispatching via TransactionalEventBus
-        // 4. Transform to DTO Response
-    }
-}
-```
-
-**Important (2026-02-11)**: Сервисы модулей должны использовать `TransactionalEventBus` из `rustok-outbox`, а не `EventBus` из `rustok-core`. Это обеспечивает надёжную доставку событий через Outbox pattern.
-
-### 17.2 The Transactional Pattern
-
-Для операций с несколькими таблицами всегда передавайте `&C where C: ConnectionTrait` в методы сервисов, чтобы можно было прокинуть транзакцию.
+### 17.2 Evolution over Mutation
+Мы не переписываем ядро при добавлении фич. Мы расширяем его через новые события и модули-обертки (Wrappers).
 
 ---
 
-## 18. RECIPE: Creating a New Module
+## См. также
 
-Чтобы добавить новый функционал (например, "Tickets"), следуй этому алгоритму:
+- [**docs/index.md**](docs/index.md) — Главная карта документации.
+- [docs/architecture/overview.md](docs/architecture/overview.md) — Технический обзор.
+- [docs/modules/flex.md](docs/modules/flex.md) — Гибкий контент.
 
-1. **Database**: Создай миграцию в `apps/server/migration` (таблицы с `tenant_id`).
-2. **Entities**: Сгенерируй модели SeaORM (`sea-orm-cli generate entity`).
-3. **Module Crate**: Создай или выбери крафт в `crates/`.
-4. **Logic**: Напиши `Service` для CRUD операций.
-5. **Events**: Добавь новые варианты в `DomainEvent` и публикуй их в `Service`.
-6. **GraphQL**: Напиши резолверы и добавь их в общий `MergedObject`.
-7. **Index**: Если нужен поиск — добавь `Handler` в `rustok-search`, который будет слушать события нового модуля.
+END OF MANIFEST v5.5
+
+> Это "живой" документ. Он описывает текущее состояние системы и является основным источником правды для AI-агентов.
 
 ---
 
-## 19. FINAL CHECKLIST for AI
+## 7. MODULE MANAGEMENT & LIFECYCLE
 
-- [x] Использует `Uuid` (ULID) для всех ID.
-- [x] `tenant_id` присутствует во всех фильтрах БД.
-- [x] Логика вынесена в `Service`.
-- [x] События отправляются в `EventBus`.
-- [x] DTO отделены от моделей БД.
-- [x] Ошибки типизированы через `RusToKError`.
+RusToK использует механизм **"Rebuild as Deploy"**. Состав модулей определяется на этапе компиляции, что гарантирует максимальную производительность и типобезопасность.
 
----
-
-## 20. STANDARD MODULE LAYOUT (Design Pattern)
-
-Чтобы ИИ и разработчики могли ориентироваться в любом крайте (crate), мы вводим единый стандарт папок. Даже если папка пуста — она должна быть (или создаваться по мере роста).
-
-### 20.1 Directory Structure
-
-```text
-crates/rustok-[name]/
-├── src/
-│   ├── entities/       # SeaORM модели (generate entity)
-│   ├── dto/            # Request/Response структуры (Input/Output)
-│   ├── services/       # Бизнес-логика (Service Layer)
-│   ├── error.rs        # Типизированные ошибки модуля
-│   └── lib.rs          # Регистрация модуля & Public API
-├── Cargo.toml
-└── README.md
-```
-
-### 20.2 Module Categorization
-
-Мы разделяем модули на 4 типа, но структура папок остается **одинаковой**:
-
-1. **Core Components** (e.g., `rustok-content`): Базовые кирпичики системы. Имеют таблицы, но могут не иметь сложной бизнес-логики.
-2. **Domain Modules** (e.g., `rustok-commerce`): Полноценные бизнес-вертикали (Товары, Заказы). Имеют свои таблицы и логику.
-3. **Wrapper Modules** (e.g., `rustok-blog`): Надстройки. **Не имеют своих таблиц**. Используют таблицы `Core Components`, упаковывая их в специфичную бизнес-логику.
-4. **Infrastructural Modules** (e.g., `rustok-index`): Технические модули (Поиск, CQRS, Почта).
-
-### 20.3 The lib.rs Standard
-
-Все модули обязаны реализовывать `RusToKModule` для интеграции в `ModuleRegistry`.
-
-```rust
-pub struct MyModule;
-
-#[async_trait]
-impl RusToKModule for MyModule {
-    fn slug(&self) -> &'static str { "my-module" }
-    fn name(&self) -> &'static str { "My Module" }
-    // ...
-}
-```
-
----
-
-## 21. IGGY INTEGRATION (Consensus)
-
-| Decision | Status |
-|----------|--------|
-| Embedded + Remote modes | ✅ |
-| Library → Subprocess fallback | ✅ |
-| 3 Topics: domain, system, dlq | ✅ |
-| Partition by tenant_id | ✅ |
-| Auto consumer groups | ✅ |
-| JSON default, Bincode optional | ✅ |
-
-## 22. PLATFORM FOUNDATION (Consensus)
-
-| Decision | Status |
-|----------|--------|
-| Simple RusToKModule trait | ✅ |
-| Arc<AppContext> (no DI) | ✅ |
-| Loco RS foundation | ✅ |
-| Loco YAML config | ✅ |
-| Axum + utoipa (via Loco) | ✅ |
-| PostgreSQL FTS first (Tantivy/Meilisearch optional) | ✅ |
-| Loco Storage (object_store) | ✅ |
-| Loco Cache (Redis) | ✅ |
-| tracing + metrics | ✅ |
-| REST + GraphQL in parallel | ✅ |
-
-## 23. MASTER PLAN v4.1 (Implementation Order)
-
-```text
-PHASE 1: Foundation (Week 1-2)
-□ 1.1 Loco app bootstrap + config
-□ 1.2 rustok-core (module trait + context)
-□ 1.3 rustok-telemetry
-
-PHASE 2: Event System (Week 2-3)
-□ 2.1 rustok-core/events (traits + envelope)
-□ 2.2 rustok-core/events (MemoryTransport)
-□ 2.3 rustok-outbox
-□ 2.4 apps/server (sys_events migration)
-
-PHASE 3: Infrastructure (Week 3-4)
-□ 3.1 rustok-index (PostgreSQL FTS, Tantivy/Meilisearch optional)
-□ 3.2 Loco storage/cache integrations (via apps/server)
-
-PHASE 4: Iggy Integration (Week 4-5)
-□ 4.1 rustok-iggy (remote backend)
-□ 4.2 rustok-iggy (embedded backend)
-□ 4.3 rustok-iggy (topology + consumer groups)
-
-PHASE 5: Business Modules (Week 5+)
-□ 5.1 rustok-content (example module)
-□ 5.2 rustok-forum (community module)
-□ 5.3 rustok-blog (blog module)
-□ 5.4 rustok-commerce (commerce module)
-```
-
----
-
-## 24. CHANGE PLAN (Consensus-Driven)
-
-### 24.1 Overview by Stage
-
-| Stage | Area | Change Type |
-|-------|------|-------------|
-| 1 | Event System | Expansion + new crate |
-| 2 | Iggy Integration | New crate |
-| 3 | Platform Foundation | Refactor + improvements |
-
-### 24.2 Stage 1: Event System — Detailed Changes
-
-**1.1 Extend `EventEnvelope` (P0)**  
-**File:** `crates/rustok-core/src/events/envelope.rs` (or current location)  
-Add fields:
-
-- `correlation_id: Uuid` — link events in a chain
-- `causation_id: Option<Uuid>` — source event ID
-- `tenant_id: Uuid` — multi-tenant context
-- `retry_count: u32` — retry counter
-- `timestamp: DateTime<Utc>` — if not already present
-
-**1.2 Extend `EventTransport` trait (P0)**  
-**File:** `crates/rustok-core/src/events/transport.rs` (or current location)  
-Add methods:
-
-- `async fn publish_batch(&self, events: Vec<EventEnvelope>) -> Result<()>`
-- `async fn acknowledge(&self, event_id: Uuid) -> Result<()>` (Outbox/Iggy)
-- `fn reliability_level(&self) -> ReliabilityLevel` (L0/L1/L2)
-
-**1.3 New crate `rustok-outbox` (P0)**  
-**Path:** `crates/rustok-outbox/`  
-Structure:
-
-```
-crates/rustok-outbox/
-├── Cargo.toml
-└── src/
-    ├── lib.rs
-    ├── transport.rs      # OutboxTransport impl EventTransport
-    ├── entity.rs         # sys_events SeaORM entity
-    ├── relay.rs          # background relay worker
-    └── migration.rs      # SQL migration for sys_events
-```
-
-Key components:
-
-- `sys_events` table (`id`, `payload`, `status`, `created_at`, `dispatched_at`)
-- `OutboxTransport` writes transactionally
-- Relay worker publishes pending events and marks dispatched
-
-**1.4 Add `MemoryTransport` if missing (P1)**  
-**File:** `crates/rustok-core/src/events/memory.rs`  
-In-memory transport via `tokio::sync::broadcast`.
-
-### 24.3 Stage 2: Iggy Integration — Detailed Changes
-
-**2.1 New crate `rustok-iggy` (P1)**  
-**Path:** `crates/rustok-iggy/`  
-Structure:
-
-```
-crates/rustok-iggy/
-├── Cargo.toml
-└── src/
-    ├── lib.rs
-    ├── config.rs           # IggyConfig (mirrors apps/server config)
-    ├── transport.rs        # IggyTransport impl EventTransport
-    ├── backend/
-    │   ├── mod.rs          # IggyBackend trait
-    │   ├── embedded.rs     # EmbeddedBackend
-    │   └── remote.rs       # RemoteBackend
-    ├── topology.rs         # auto-create streams/topics
-    ├── partitioning.rs     # partition by tenant_id
-    ├── consumer.rs         # consumer group management
-    └── replay.rs           # event replay API
-```
-
-**2.2 Add event transport config (P1)**  
-**File:** `apps/server/config/*.yaml` (section `settings.rustok.events`)  
-Add:
-
-- `transport: memory|outbox|iggy`
-- `relay_interval_ms`
-- nested `iggy` block (`IggyConfig`, embedded/remote/topology)
-
-**2.3 Feature flag for Iggy (P1)**  
-**File:** `crates/rustok-core/Cargo.toml` or workspace  
-Add:
+### 7.1 The `modules.toml` Manifest
+Центральный файл конфигурации состава платформы. Описывает, какие крафты (crates) должны быть включены в сборку.
 
 ```toml
-[features]
-iggy = ["rustok-iggy"]
+schema = 1
+app = "rustok-server"
+
+[modules.commerce]
+crate = "rustok-commerce"
+source = "path"
+path = "../../crates/rustok-commerce"
+features = ["admin-ui", "storefront-ui"]
+
+[modules.blog]
+crate = "rustok-blog"
+source = "crates-io"
+version = "0.5.0"
 ```
 
-### 24.4 Stage 3: Platform Foundation — Detailed Changes
+### 7.2 The Build Pipeline
+1. **Selection:** Администратор (или разработчик) выбирает модули.
+2. **Registry Generation:** Выполняется `cargo xtask generate-registry`. Эта команда читает `modules.toml` и генерирует `apps/server/src/modules/generated.rs`.
+3. **Rust Compilation:** `cargo build` компилирует основной бинарник. Все включенные модули линкуются статически.
+4. **Boot:** При старте `apps/server` вызывает `generated::build_registry()`, который инициализирует все доменные сервисы и их миграции.
 
-**3.1 Extend `RusToKModule` trait (P0)**  
-**File:** `crates/rustok-core/src/module.rs`  
-Add:
+### 7.3 UI Package Integration
+UI компоненты модулей живут отдельно от бэкенд-логики для поддержки Headless сценариев.
+- **Admin UI:** Пакеты `leptos-*-admin`. Содержат формы, таблицы и дашборды.
+- **Storefront UI:** Пакеты `leptos-*-storefront`. Компоненты для витрины.
+- **Dynamic Registration:** Фронтенд-пакеты регистрируют свои компоненты в `AdminRegistry` через систему "слотов" (`DashboardSection`, `SidebarItem`, `PluginSettings`).
 
-- `fn dependencies(&self) -> &'static [&'static str]` (topological sort)
-- `async fn health(&self) -> HealthStatus` (K8s probes)
+---
 
-Add enum:
+## 8. EVENT SYSTEM & RELIABILITY
 
-- `HealthStatus { Healthy, Degraded, Unhealthy }`
+### 8.1 Transactional Outbox (L1 Reliability)
+Чтобы гарантировать, что событие не потеряется при сбое сети или падении брокера, мы используем **Outbox Pattern**:
+1. Состояние сущности и событие пишутся в БД в одной транзакции (таблица `sys_events`).
+2. Фоновый воркер (Relay) читает `sys_events` и пытается отправить их во внешний брокер (Iggy/Redis/NATS).
+3. После подтверждения доставки брокером, событие помечается как `dispatched`.
 
-**3.2 Improve `AppContext` (P0)**  
-**File:** `crates/rustok-core/src/context.rs`  
-Add fields (if missing):
+### 8.2 Backpressure & Guards
+- **Queue Limits:** `EventBus` имеет лимиты на очередь. При достижении 90% заполнения система начинает отбрасывать некритичные события (логов, аналитики).
+- **Validation:** Каждое событие валидируется по схеме перед публикацией. Ошибочные данные не попадают в шину.
 
-- `events: Arc<dyn EventTransport>`
-- `cache: Arc<dyn CacheBackend>` (Phase 2)
-- `search: Arc<dyn SearchBackend>` (Phase 2)
-
-**3.3 Telemetry improvements (P1)**  
-**File:** `crates/rustok-telemetry/`  
-Check/add:
-
-- JSON logging for production
-- Prometheus metrics endpoint
-- TraceId propagation in events
-
-**3.4 Config hierarchy (P1)**  
-**File:** `apps/server/config/*.yaml`  
-Check/add:
-
-- `development.yaml/production.yaml/test.yaml` layering
-- Env overrides supported by Loco
-
-### 24.5 Summary Table of Changes
-
-| # | Change | Type | File/Crate | Priority |
-|---|--------|------|-----------|----------|
-| 1.1 | EventEnvelope fields | Modify | `rustok-core/events` | P0 |
-| 1.2 | EventTransport methods | Modify | `rustok-core/events` | P0 |
-| 1.3 | OutboxTransport | New crate | `rustok-outbox` | P0 |
-| 1.4 | MemoryTransport | Add/Check | `rustok-core/events` | P1 |
-| 2.1 | IggyTransport | New crate | `rustok-iggy` | P1 |
-| 2.2 | Event transport config (`settings.rustok.events`) | Add | `apps/server/config` | P1 |
-| 2.3 | Iggy feature flag | Add | `Cargo.toml` | P1 |
-| 3.1 | Module dependencies/health | Modify | `rustok-core/module` | P0 |
-| 3.2 | AppContext fields | Modify | `rustok-core/context` | P0 |
-| 3.3 | Telemetry improvements | Check/Add | `rustok-telemetry` | P1 |
-| 3.4 | Config hierarchy | Check/Add | `apps/server/config` | P1 |
-
-### 24.6 Delivery Order
-
-**Week 1 (P0):**
-
-- 1.1 EventEnvelope extension
-- 1.2 EventTransport extension
-- 3.1 RusToKModule extension
-- 3.2 AppContext extension
-
-**Week 2 (P0 continued):**
-
-- 1.3 `rustok-outbox` crate (full implementation)
-
-**Week 3 (P1, production-ready):**
-
-- 2.1 `rustok-iggy` crate
-- 2.2 Iggy config
-- 2.3 Feature flags
-- 3.3 Telemetry check
-- 3.4 Config check
-
-### 24.7 Implementation Status (Repo Snapshot)
-
-| Item | Status | Notes |
-|------|--------|-------|
-| 1.1 EventEnvelope fields | ✅ Done | correlation/causation/retry/timestamp are present |
-| 1.2 EventTransport methods | ✅ Done | publish/publish_batch/ack/reliability |
-| 1.3 OutboxTransport crate | ✅ Done (scaffold) | entity/migration/relay/transport skeleton |
-| 1.4 MemoryTransport | ✅ Done | in-memory transport via EventBus |
-| 2.1 rustok-iggy crate | ✅ Done (skeleton) | backend/transport/topology/serialization stubs |
-| 2.2 Iggy config | ✅ Done | config, topology, retention, serialization |
-| 2.3 Iggy feature flag | ⛔ Not yet | feature flag wiring in workspace/core |
-| 3.1 Module dependencies/health | ✅ Done | HealthStatus + default health() + `/health/ready` aggregation with criticality/latency/reasons |
-| 3.2 AppContext fields | ✅ Done (scaffold) | events/cache/search traits present |
-| 3.3 Telemetry improvements | ✅ Done | JSON logs, Prometheus endpoint, trace_id in events |
-| 3.4 Config hierarchy | ✅ Done | Loco YAML configs + env overrides |
+---
 
 ---
 
@@ -1576,25 +1224,20 @@ m20250201_commerce_002_create_variants.rs
 
 ---
 
+---
+
 ## 32. DEVELOPMENT STRATEGY
 
 ### 32.1 Philosophy
 
-> "Или идеально, или говно"
+> "Стабильность превыше гибкости. Типобезопасность превыше удобства."
 
-Архитектурные контракты должны быть корректными на уровне компилятора.
+Архитектурные контракты должны быть корректными на уровне компилятора. Если система скомпилировалась, она должна быть готова к работе.
 
-### 32.2 Three Phases
+### 32.2 Evolution over Mutation
+Мы не переписываем ядро при добавлении фич. Мы расширяем его через новые события и модули-обертки (Wrappers).
 
-| Phase | Name | Goal |
-|-------|------|------|
-| 1 | **The Forge** | Core + Admin stability |
-| 2 | **House Blueprint** | Module contracts & skeletons |
-| 3 | **Construction** | Business logic by priority |
-
-### 32.3 Key Principle
-
-**Stabilize before scale:** пока ядро и админка не стабильны — не добавляем новые фичи, только минимальные реализации.
+---
 
 ---
 
@@ -1639,12 +1282,14 @@ m20250201_commerce_002_create_variants.rs
 
 ---
 
+---
+
 ## См. также
 
-- [ROADMAP.md](./ROADMAP.md)
-- [architecture.md](./architecture.md)
-- [modules/flex.md](./modules/flex.md)
+- [**docs/index.md**](docs/index.md) — Главная карта документации.
+- [docs/architecture/overview.md](docs/architecture/overview.md) — Технический обзор.
+- [docs/modules/flex.md](docs/modules/flex.md) — Гибкий контент.
 
-END OF MANIFEST v4.1
+END OF MANIFEST v5.5
 
-This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+> Это "живой" документ. Он описывает текущее состояние системы и является основным источником правды для AI-агентов.
