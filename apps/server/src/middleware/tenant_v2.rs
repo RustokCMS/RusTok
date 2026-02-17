@@ -1,11 +1,20 @@
+use axum::{
+    body::Body,
+    extract::State,
+    http::{header::HOST, Request, StatusCode},
+    middleware::Next,
+    response::Response,
+};
+use loco_rs::app::AppContext;
 use moka::future::Cache;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use uuid::Uuid;
 use sea_orm::DatabaseConnection;
 use thiserror::Error;
 
-use crate::context::TenantContext;
+use crate::common::settings::RustokSettings;
+use crate::context::{TenantContext, TenantContextExtension};
 use crate::models::tenants;
 
 #[derive(Debug, Error)]
@@ -81,16 +90,13 @@ impl TenantResolver {
         
         let tenant = match key {
             TenantKey::Uuid(id) => {
-                tenants::Entity::find_by_id(&self.db, *id)
-                    .await?
+                tenants::Entity::find_by_id(&self.db, *id).await?
             }
             TenantKey::Slug(slug) => {
-                tenants::Entity::find_by_slug(&self.db, slug)
-                    .await?
+                tenants::Entity::find_by_slug(&self.db, slug).await?
             }
             TenantKey::Host(host) => {
-                tenants::Entity::find_by_domain(&self.db, host)
-                    .await?
+                tenants::Entity::find_by_domain(&self.db, host).await?
             }
         };
         
@@ -166,6 +172,113 @@ pub struct TenantCacheStats {
     
     /// Total weighted size of cached entries
     pub weighted_size: u64,
+}
+
+/// Extract tenant identifier from request
+fn resolve_identifier(
+    req: &Request<Body>,
+    settings: &RustokSettings,
+) -> Result<TenantKey, StatusCode> {
+    // Check for configured tenant header first (from settings)
+    if let Ok(tenant_id) = req
+        .headers()
+        .get(&settings.tenant.header_name)
+        .ok_or(())
+        .and_then(|h| h.to_str().map_err(|_| ()))
+        .and_then(|s| Uuid::parse_str(s).map_err(|_| ()))
+    {
+        return Ok(TenantKey::Uuid(tenant_id));
+    }
+
+    // Check for X-Tenant-ID header (standard header)
+    if let Ok(tenant_id) = req
+        .headers()
+        .get("X-Tenant-ID")
+        .ok_or(())
+        .and_then(|h| h.to_str().map_err(|_| ()))
+        .and_then(|s| Uuid::parse_str(s).map_err(|_| ()))
+    {
+        return Ok(TenantKey::Uuid(tenant_id));
+    }
+
+    // Check for X-Tenant-Slug header
+    if let Ok(slug) = req
+        .headers()
+        .get("X-Tenant-Slug")
+        .ok_or(())
+        .and_then(|h| h.to_str().map_err(|_| ()))
+    {
+        if !slug.is_empty() {
+            return Ok(TenantKey::Slug(slug.to_string()));
+        }
+    }
+
+    // Fall back to Host header
+    if let Ok(host) = req
+        .headers()
+        .get(HOST)
+        .ok_or(())
+        .and_then(|h| h.to_str().map_err(|_| ()))
+    {
+        if !host.is_empty() {
+            return Ok(TenantKey::Host(host.to_string()));
+        }
+    }
+
+    Err(StatusCode::BAD_REQUEST)
+}
+
+/// Global tenant resolver instance
+static TENANT_RESOLVER: OnceLock<Arc<TenantResolver>> = OnceLock::new();
+
+/// Initialize tenant resolver in app context
+pub async fn init_tenant_resolver(ctx: &AppContext) {
+    if TENANT_RESOLVER.get().is_none() {
+        let resolver = Arc::new(TenantResolver::new(ctx.db.clone()));
+        let _ = TENANT_RESOLVER.set(resolver);
+    }
+}
+
+/// Get tenant resolver from global instance
+fn get_resolver() -> Option<Arc<TenantResolver>> {
+    TENANT_RESOLVER.get().cloned()
+}
+
+/// Axum middleware for tenant resolution using moka cache
+/// 
+/// This middleware resolves the tenant from the request and injects
+/// it into the request extensions for downstream handlers.
+/// 
+/// # Example
+/// ```rust
+/// use axum::{Router, middleware::from_fn};
+/// use rustok_server::middleware::tenant_v2;
+///
+/// let app = Router::new()
+///     .layer(from_fn(tenant_v2::resolve));
+/// ```
+pub async fn resolve(
+    State(ctx): State<AppContext>,
+    mut req: Request<Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let settings = RustokSettings::from_settings(&ctx.config.settings)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let key = resolve_identifier(&req, &settings)?;
+    
+    let resolver = get_resolver().unwrap_or_else(|| {
+        // Fallback: create resolver on demand if not initialized
+        Arc::new(TenantResolver::new(ctx.db.clone()))
+    });
+    
+    match resolver.resolve(key).await {
+        Ok(context) => {
+            req.extensions_mut().insert(TenantContextExtension((*context).clone()));
+            Ok(next.run(req).await)
+        }
+        Err(_) => Err(StatusCode::NOT_FOUND),
+    }
 }
 
 #[cfg(test)]
