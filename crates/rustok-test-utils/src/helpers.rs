@@ -2,7 +2,7 @@
 //!
 //! Provides utility functions for common testing scenarios.
 
-use rustok_core::{PermissionScope, SecurityContext, UserRole};
+use rustok_core::{SecurityContext, UserRole};
 use uuid::Uuid;
 
 /// Creates a security context for a super admin user.
@@ -311,7 +311,7 @@ where
     Fut: std::future::Future<Output = ()>,
 {
     for role in roles {
-        let ctx = SecurityContext::new(*role, Some(Uuid::new_v4()));
+        let ctx = SecurityContext::new(role.clone(), Some(Uuid::new_v4()));
         test(ctx).await;
     }
 }

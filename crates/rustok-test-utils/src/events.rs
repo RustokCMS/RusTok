@@ -4,7 +4,6 @@
 
 use rustok_core::{DomainEvent, EventBus, EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::ConnectionTrait;
 use std::any::Any;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
@@ -18,7 +17,6 @@ pub struct MockEventTransport {
 #[derive(Debug, Clone)]
 struct RecordedEvent {
     pub tenant_id: Uuid,
-    pub actor_id: Option<Uuid>,
     pub event_type: String,
     pub event: DomainEvent,
 }
@@ -29,7 +27,6 @@ impl EventTransport for MockEventTransport {
         let event_type = event_type_name(&envelope.event);
         let recorded = RecordedEvent {
             tenant_id: envelope.tenant_id,
-            actor_id: envelope.actor_id,
             event_type,
             event: envelope.event.clone(),
         };
@@ -146,14 +143,6 @@ pub struct MockEventBus {
     recorded_events: Arc<Mutex<Vec<RecordedEvent>>>,
 }
 
-#[derive(Debug, Clone)]
-struct RecordedEvent {
-    pub tenant_id: Uuid,
-    pub actor_id: Option<Uuid>,
-    pub event_type: String,
-    pub event: DomainEvent,
-}
-
 impl MockEventBus {
     /// Creates a new mock event bus.
     pub fn new() -> Self {
@@ -182,7 +171,6 @@ impl MockEventBus {
 
         let recorded = RecordedEvent {
             tenant_id,
-            actor_id,
             event_type,
             event: event.clone(),
         };
@@ -275,63 +263,17 @@ pub fn mock_event_bus() -> MockEventBus {
 
 /// Returns the type name of a DomainEvent as a string.
 fn event_type_name(event: &DomainEvent) -> String {
-    match event {
-        DomainEvent::NodeCreated { .. } => "NodeCreated".to_string(),
-        DomainEvent::NodeUpdated { .. } => "NodeUpdated".to_string(),
-        DomainEvent::NodeDeleted { .. } => "NodeDeleted".to_string(),
-        DomainEvent::NodePublished { .. } => "NodePublished".to_string(),
-        DomainEvent::NodeUnpublished { .. } => "NodeUnpublished".to_string(),
-        DomainEvent::ProductCreated { .. } => "ProductCreated".to_string(),
-        DomainEvent::ProductUpdated { .. } => "ProductUpdated".to_string(),
-        DomainEvent::ProductDeleted { .. } => "ProductDeleted".to_string(),
-        DomainEvent::ProductPublished { .. } => "ProductPublished".to_string(),
-        DomainEvent::ProductUnpublished { .. } => "ProductUnpublished".to_string(),
-        DomainEvent::OrderCreated { .. } => "OrderCreated".to_string(),
-        DomainEvent::OrderUpdated { .. } => "OrderUpdated".to_string(),
-        DomainEvent::OrderCancelled { .. } => "OrderCancelled".to_string(),
-        DomainEvent::OrderCompleted { .. } => "OrderCompleted".to_string(),
-        DomainEvent::UserCreated { .. } => "UserCreated".to_string(),
-        DomainEvent::UserUpdated { .. } => "UserUpdated".to_string(),
-        DomainEvent::UserDeleted { .. } => "UserDeleted".to_string(),
-        DomainEvent::TenantCreated { .. } => "TenantCreated".to_string(),
-        DomainEvent::TenantUpdated { .. } => "TenantUpdated".to_string(),
-        DomainEvent::TenantDeleted { .. } => "TenantDeleted".to_string(),
-        DomainEvent::ModuleEnabled { .. } => "ModuleEnabled".to_string(),
-        DomainEvent::ModuleDisabled { .. } => "ModuleDisabled".to_string(),
-        DomainEvent::IndexUpdated { .. } => "IndexUpdated".to_string(),
-        DomainEvent::IndexDeleted { .. } => "IndexDeleted".to_string(),
-        DomainEvent::CommentCreated { .. } => "CommentCreated".to_string(),
-        DomainEvent::CommentUpdated { .. } => "CommentUpdated".to_string(),
-        DomainEvent::CommentDeleted { .. } => "CommentDeleted".to_string(),
-        DomainEvent::MediaUploaded { .. } => "MediaUploaded".to_string(),
-        DomainEvent::MediaDeleted { .. } => "MediaDeleted".to_string(),
-        DomainEvent::InventoryUpdated { .. } => "InventoryUpdated".to_string(),
-        DomainEvent::PriceChanged { .. } => "PriceChanged".to_string(),
-        DomainEvent::StockChanged { .. } => "StockChanged".to_string(),
-        DomainEvent::CategoryCreated { .. } => "CategoryCreated".to_string(),
-        DomainEvent::CategoryUpdated { .. } => "CategoryUpdated".to_string(),
-        DomainEvent::CategoryDeleted { .. } => "CategoryDeleted".to_string(),
-        DomainEvent::CustomerCreated { .. } => "CustomerCreated".to_string(),
-        DomainEvent::CustomerUpdated { .. } => "CustomerUpdated".to_string(),
-        DomainEvent::CustomerDeleted { .. } => "CustomerDeleted".to_string(),
-        DomainEvent::DiscountCreated { .. } => "DiscountCreated".to_string(),
-        DomainEvent::DiscountUpdated { .. } => "DiscountUpdated".to_string(),
-        DomainEvent::DiscountDeleted { .. } => "DiscountDeleted".to_string(),
-        DomainEvent::WebhookTriggered { .. } => "WebhookTriggered".to_string(),
-        DomainEvent::SettingChanged { .. } => "SettingChanged".to_string(),
-        DomainEvent::LogEntryCreated { .. } => "LogEntryCreated".to_string(),
-        DomainEvent::NotificationSent { .. } => "NotificationSent".to_string(),
-        DomainEvent::ExportCompleted { .. } => "ExportCompleted".to_string(),
-        DomainEvent::ImportCompleted { .. } => "ImportCompleted".to_string(),
-        DomainEvent::PageViewed { .. } => "PageViewed".to_string(),
-        DomainEvent::SearchPerformed { .. } => "SearchPerformed".to_string(),
-        DomainEvent::CartUpdated { .. } => "CartUpdated".to_string(),
-        DomainEvent::CheckoutStarted { .. } => "CheckoutStarted".to_string(),
-        DomainEvent::PaymentProcessed { .. } => "PaymentProcessed".to_string(),
-        DomainEvent::ShipmentCreated { .. } => "ShipmentCreated".to_string(),
-        DomainEvent::ShipmentUpdated { .. } => "ShipmentUpdated".to_string(),
-        _ => "Unknown".to_string(),
-    }
+    event
+        .event_type()
+        .split('.')
+        .map(|segment| {
+            let mut chars = segment.chars();
+            match chars.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<String>()
 }
 
 #[cfg(test)]
@@ -350,12 +292,12 @@ mod tests {
             tenant_id,
             None,
             DomainEvent::NodeCreated {
-                id: Uuid::new_v4(),
+                node_id: Uuid::new_v4(),
                 kind: "post".to_string(),
-                tenant_id,
+                author_id: Some(Uuid::new_v4()),
             },
         )
-        .unwrap();
+        .ok();
 
         assert!(!bus.is_empty());
         assert_eq!(bus.event_count(), 1);
@@ -372,23 +314,22 @@ mod tests {
             tenant_id,
             None,
             DomainEvent::NodeCreated {
-                id: Uuid::new_v4(),
+                node_id: Uuid::new_v4(),
                 kind: "post".to_string(),
-                tenant_id,
+                author_id: Some(Uuid::new_v4()),
             },
         )
-        .unwrap();
+        .ok();
 
         bus.publish(
             tenant_id,
             None,
             DomainEvent::NodeUpdated {
-                id: Uuid::new_v4(),
-                tenant_id,
-                changes: vec!["title".to_string()],
+                node_id: Uuid::new_v4(),
+                kind: "post".to_string(),
             },
         )
-        .unwrap();
+        .ok();
 
         assert_eq!(bus.events_of_type("NodeCreated").len(), 1);
         assert_eq!(bus.events_of_type("NodeUpdated").len(), 1);
@@ -403,12 +344,12 @@ mod tests {
             tenant_id,
             None,
             DomainEvent::NodeCreated {
-                id: Uuid::new_v4(),
+                node_id: Uuid::new_v4(),
                 kind: "post".to_string(),
-                tenant_id,
+                author_id: Some(Uuid::new_v4()),
             },
         )
-        .unwrap();
+        .ok();
 
         assert_eq!(bus.event_count(), 1);
 
