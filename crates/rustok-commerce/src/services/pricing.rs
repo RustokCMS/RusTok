@@ -7,6 +7,7 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
+use rustok_core::events::ValidateEvent;
 use rustok_core::{generate_id, DomainEvent};
 use rustok_outbox::TransactionalEventBus;
 

@@ -491,7 +491,7 @@ impl CatalogService {
         product_active.status = Set(entities::product::ProductStatus::Active);
         product_active.published_at = Set(Some(Utc::now().into()));
         product_active.updated_at = Set(Utc::now().into());
-        let updated = product_active.update(&txn).await?;
+        product_active.update(&txn).await?;
 
         self.event_bus
             .publish_in_tx(

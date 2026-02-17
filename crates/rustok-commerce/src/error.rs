@@ -1,4 +1,4 @@
-use rustok_core::error::{ErrorKind, RichError};
+use rustok_core::error::{Error as CoreError, ErrorKind, RichError};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -43,6 +43,9 @@ pub enum CommerceError {
 
     #[error("Rich error: {0}")]
     Rich(#[from] RichError),
+
+    #[error("Core error: {0}")]
+    Core(#[from] CoreError),
 }
 
 pub type CommerceResult<T> = Result<T, CommerceError>;
@@ -121,6 +124,7 @@ impl From<CommerceError> for RichError {
                     .with_error_code("CANNOT_DELETE_PUBLISHED")
             }
             CommerceError::Rich(rich) => rich,
+            CommerceError::Core(core) => core.into(),
         }
     }
 }
