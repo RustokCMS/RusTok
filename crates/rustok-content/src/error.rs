@@ -28,7 +28,7 @@ pub enum ContentError {
     Validation(String),
 
     #[error("Rich error: {0}")]
-    Rich(#[from] RichError),
+    Rich(Box<RichError>),
 }
 
 pub type ContentResult<T> = Result<T, ContentError>;
@@ -65,8 +65,14 @@ impl From<ContentError> for RichError {
             ContentError::Validation(msg) => {
                 RichError::new(ErrorKind::Validation, msg).with_user_message("Invalid input data")
             }
-            ContentError::Rich(rich) => rich,
+            ContentError::Rich(rich) => *rich,
         }
+    }
+}
+
+impl From<RichError> for ContentError {
+    fn from(err: RichError) -> Self {
+        ContentError::Rich(Box::new(err))
     }
 }
 
