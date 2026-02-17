@@ -1,6 +1,6 @@
 use leptos::prelude::*;
-use leptos_auth::context::AuthProvider;
 use leptos_auth::components::ProtectedRoute;
+use leptos_auth::context::AuthProvider;
 use leptos_router::components::{ParentRoute, Route, Router, Routes};
 use leptos_router::path;
 

@@ -3,7 +3,9 @@ mod registry;
 
 use std::cell::Cell;
 
-pub use registry::{components_for_slot, register_component, AdminComponentRegistration, AdminSlot};
+pub use registry::{
+    components_for_slot, register_component, AdminComponentRegistration, AdminSlot,
+};
 
 thread_local! {
     static INIT: Cell<bool> = Cell::new(false);

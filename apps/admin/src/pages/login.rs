@@ -29,7 +29,10 @@ pub fn Login() -> impl IntoView {
         let navigate = navigate.clone();
 
         spawn_local(async move {
-            match auth.sign_in(email_value, password_value, tenant_value).await {
+            match auth
+                .sign_in(email_value, password_value, tenant_value)
+                .await
+            {
                 Ok(()) => {
                     set_error.set(None);
                     navigate("/dashboard", Default::default());

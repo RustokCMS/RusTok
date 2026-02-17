@@ -43,10 +43,7 @@ impl AuthMutation {
         let expires_at = now + Duration::seconds(config.refresh_expiration as i64);
 
         let session = sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            token_hash,
-            expires_at,
+            tenant.id, user.id, token_hash, expires_at,
             None, // IP address (not available in GraphQL context)
             None, // User agent (not available in GraphQL context)
         )
@@ -63,8 +60,9 @@ impl AuthMutation {
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
         let user_role = user.role.clone();
-        let access_token = encode_access_token(&config, user.id, tenant.id, user_role.clone(), session.id)
-            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+        let access_token =
+            encode_access_token(&config, user.id, tenant.id, user_role.clone(), session.id)
+                .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
         Ok(AuthPayload {
             access_token,
@@ -99,17 +97,17 @@ impl AuthMutation {
 
         let password_hash = hash_password(&input.password)
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
-        
+
         let mut user_model = users::ActiveModel::new(tenant.id, &input.email, &password_hash);
         user_model.name = Set(input.name);
-        
+
         let user = user_model
             .insert(&app_ctx.db)
             .await
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
         let user_role = user.role.clone();
-        
+
         // Assign role permissions
         AuthService::assign_role_permissions(&app_ctx.db, &user.id, &tenant.id, user_role.clone())
             .await
@@ -120,20 +118,15 @@ impl AuthMutation {
         let token_hash = hash_refresh_token(&refresh_token);
         let expires_at = now + Duration::seconds(config.refresh_expiration as i64);
 
-        let session = sessions::ActiveModel::new(
-            tenant.id,
-            user.id,
-            token_hash,
-            expires_at,
-            None,
-            None,
-        )
-        .insert(&app_ctx.db)
-        .await
-        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+        let session =
+            sessions::ActiveModel::new(tenant.id, user.id, token_hash, expires_at, None, None)
+                .insert(&app_ctx.db)
+                .await
+                .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
-        let access_token = encode_access_token(&config, user.id, tenant.id, user_role.clone(), session.id)
-            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+        let access_token =
+            encode_access_token(&config, user.id, tenant.id, user_role.clone(), session.id)
+                .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
         Ok(AuthPayload {
             access_token,
@@ -154,7 +147,7 @@ impl AuthMutation {
     async fn sign_out(&self, ctx: &Context<'_>) -> Result<SignOutPayload> {
         let app_ctx = ctx.data::<AppContext>()?;
         let auth = ctx.data_opt::<crate::context::AuthContext>();
-        
+
         if let Some(auth) = auth {
             // Delete session from database
             sessions::Entity::delete_by_id(auth.session_id)
@@ -195,8 +188,9 @@ impl AuthMutation {
             .ok_or_else(|| FieldError::new("User not found"))?;
 
         let user_role = user.role.clone();
-        let access_token = encode_access_token(&config, user.id, tenant.id, user_role.clone(), session.id)
-            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+        let access_token =
+            encode_access_token(&config, user.id, tenant.id, user_role.clone(), session.id)
+                .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
         // Optionally generate new refresh token
         let new_refresh_token = generate_refresh_token();
@@ -208,7 +202,7 @@ impl AuthMutation {
         session_active.token_hash = Set(new_token_hash);
         session_active.expires_at = Set(new_expires_at);
         session_active.last_used_at = Set(Some(now));
-        
+
         session_active
             .update(&app_ctx.db)
             .await

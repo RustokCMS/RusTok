@@ -10,9 +10,7 @@ pub mod telemetry;
 
 /// Create and return all initializers
 pub async fn create(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
-    let initializers: Vec<Box<dyn Initializer>> = vec![
-        Box::new(telemetry::TelemetryInitializer),
-    ];
+    let initializers: Vec<Box<dyn Initializer>> = vec![Box::new(telemetry::TelemetryInitializer)];
 
     Ok(initializers)
 }

@@ -1,5 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use sea_orm::{ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect, QueryOrder};
+use sea_orm::{
+    ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+};
 use std::collections::HashSet;
 
 use crate::context::{AuthContext, TenantContext};
@@ -222,7 +224,8 @@ impl RootQuery {
             .filter(UsersColumn::TenantId.eq(tenant.id))
             .count(&app_ctx.db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))? as i64
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            as i64
             / 3; // Rough estimate: ~1/3 of users create posts
 
         // TODO: Implement order counting when orders module is ready

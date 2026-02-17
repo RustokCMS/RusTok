@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_auth, use_token, use_tenant};
+use leptos_auth::hooks::{use_auth, use_tenant, use_token};
 use serde::{Deserialize, Serialize};
 
 use crate::api::{request, ApiError};
