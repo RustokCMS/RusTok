@@ -84,7 +84,7 @@ pub trait SourceProvider: Send + Sync {
 
   /// Resolves the given import specifier to a file path given the file
   /// which the import originated from.
-  fn resolve(&self, specifier: &str, originating_file: &Path) -> Result<PathBuf, Error<BundleErrorKind>>;
+  fn resolve(&self, specifier: &str, originating_file: &Path) -> Result<PathBuf, Error<BundleErrorKind<'_>>>;
 }
 
 /// Provides an implementation of [SourceProvider](SourceProvider)
@@ -116,7 +116,7 @@ impl SourceProvider for FileProvider {
     Ok(unsafe { &*ptr })
   }
 
-  fn resolve(&self, specifier: &str, originating_file: &Path) -> Result<PathBuf, Error<BundleErrorKind>> {
+  fn resolve(&self, specifier: &str, originating_file: &Path) -> Result<PathBuf, Error<BundleErrorKind<'_>>> {
     // Assume the specifier is a releative file path and join it with current path.
     Ok(originating_file.with_file_name(specifier))
   }
@@ -423,7 +423,7 @@ impl<'a, 'o, 's, P: SourceProvider> Bundler<'a, 'o, 's, P> {
 
       for dep_index in 0..stylesheets[source_index as usize].dependencies.len() {
         let dep_source_index = stylesheets[source_index as usize].dependencies[dep_index];
-        let mut resolved = &mut stylesheets[dep_source_index as usize];
+        let resolved = &mut stylesheets[dep_source_index as usize];
 
         // In browsers, every instance of an @import is evaluated, so we preserve the last.
         resolved.parent_dep_index = dep_index as u32;
@@ -535,7 +535,7 @@ mod tests {
       Ok(self.map.get(file).unwrap())
     }
 
-    fn resolve(&self, specifier: &str, originating_file: &Path) -> Result<PathBuf, Error<BundleErrorKind>> {
+    fn resolve(&self, specifier: &str, originating_file: &Path) -> Result<PathBuf, Error<BundleErrorKind<'_>>> {
       Ok(originating_file.with_file_name(specifier))
     }
   }

@@ -92,7 +92,7 @@ impl<'a, 'o, 'b, 'i> TopLevelRuleParser<'a, 'o, 'i> {
     }
   }
 
-  fn nested<'x: 'b>(&'x mut self) -> NestedRuleParser<'_, 'o, 'i> {
+  fn nested<'x: 'b>(&'x mut self) -> NestedRuleParser<'x, 'o, 'i> {
     NestedRuleParser {
       default_namespace: &mut self.default_namespace,
       namespace_prefixes: &mut self.namespace_prefixes,

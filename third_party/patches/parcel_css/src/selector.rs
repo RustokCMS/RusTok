@@ -55,7 +55,7 @@ impl<'a> SelectorString<'a> {
 pub struct SelectorIdent<'i>(pub CowArcStr<'i>);
 
 impl<'a> std::convert::From<CowRcStr<'a>> for SelectorIdent<'a> {
-  fn from(s: CowRcStr<'a>) -> SelectorIdent {
+  fn from(s: CowRcStr<'a>) -> SelectorIdent<'a> {
     SelectorIdent(s.into())
   }
 }

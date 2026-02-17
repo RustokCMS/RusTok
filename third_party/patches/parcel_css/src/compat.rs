@@ -2302,7 +2302,6 @@ impl Feature {
       if self.is_compatible(browsers) {
         return true;
       }
-      browsers.samsung = None;
     }
 
     false
