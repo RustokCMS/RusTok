@@ -1,19 +1,17 @@
 use leptos::prelude::*;
+use leptos_auth::context::AuthProvider;
+use leptos_auth::components::ProtectedRoute;
 use leptos_router::components::{ParentRoute, Route, Router, Routes};
 use leptos_router::path;
 
-use crate::components::protected_route::ProtectedRoute;
 use crate::pages::{
     dashboard::Dashboard, login::Login, not_found::NotFound, profile::Profile, register::Register,
     reset::ResetPassword, security::Security, user_details::UserDetails, users::Users,
 };
-use crate::providers::auth::provide_auth_context;
-use crate::providers::auth_new::AuthProvider;
 use crate::providers::locale::provide_locale_context;
 
 #[component]
 pub fn App() -> impl IntoView {
-    provide_auth_context();
     provide_locale_context();
 
     view! {

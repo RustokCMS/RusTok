@@ -4,8 +4,8 @@ use leptos_router::params::Params;
 use serde::{Deserialize, Serialize};
 
 use crate::api::{request_with_persisted, ApiError};
-use crate::components::ui::{Button, Input, LanguageToggle};
-use crate::providers::auth::use_auth;
+use crate::components::ui::{Button, LanguageToggle};
+use leptos_auth::hooks::{use_token, use_tenant};
 use crate::providers::locale::translate;
 
 #[derive(Params, PartialEq)]
@@ -38,21 +38,18 @@ struct UserVariables {
 
 #[component]
 pub fn UserDetails() -> impl IntoView {
-    let auth = use_auth();
+    let token = use_token();
+    let tenant = use_tenant();
     let navigate = use_navigate();
     let params = use_params::<UserParams>();
-    let (tenant_slug, set_tenant_slug) = signal(String::new());
 
     let user_resource = Resource::new(
         move || {
-            (
-                params.with(|params| params.as_ref().ok().and_then(|params| params.id.clone())),
-                tenant_slug.get(),
-            )
+            params.with(|params| params.as_ref().ok().and_then(|params| params.id.clone()))
         },
         move |_| {
-            let token = auth.token.get().unwrap_or_default();
-            let tenant = tenant_slug.get().trim().to_string();
+            let token_value = token.get();
+            let tenant_value = tenant.get();
             let user_id = params.with(|params| {
                 params
                     .as_ref()
@@ -66,8 +63,8 @@ pub fn UserDetails() -> impl IntoView {
                     "query User($id: UUID!) { user(id: $id) { id email name role status createdAt tenantName } }",
                     UserVariables { id: user_id },
                     "85f7f7ba212ab47e951fcf7dbb30bb918e66b88710574a576b0088877653f3b7",
-                    if token.is_empty() { None } else { Some(token) },
-                    if tenant.is_empty() { None } else { Some(tenant) },
+                    token_value,
+                    tenant_value,
                 )
                 .await
             }
@@ -102,23 +99,6 @@ pub fn UserDetails() -> impl IntoView {
                     </Button>
                 </div>
             </header>
-
-            <div class="mb-6 rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-                <h4 class="mb-4 text-lg font-semibold">
-                    {move || translate("users.access.title")}
-                </h4>
-                <div class="grid gap-4 md:grid-cols-3">
-                    <Input
-                        value=tenant_slug
-                        set_value=set_tenant_slug
-                        placeholder="demo"
-                        label=move || translate("users.access.tenant")
-                    />
-                </div>
-                <p class="mt-3 text-sm text-slate-500">
-                    {move || translate("users.access.hint")}
-                </p>
-            </div>
 
             <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
                 <h4 class="mb-4 text-lg font-semibold">
