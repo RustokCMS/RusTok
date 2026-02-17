@@ -50,7 +50,7 @@ async-graphql = { version = "7.2.1", features = ["uuid", "chrono"] }
 base64 = "0.22"
 
 # IDs
-uuid = { version = "1.10", features = ["v4", "serde"] }
+uuid = { version = "1.21", features = ["v4", "serde"] }
 ulid = "1.1"
 
 # Serialization
@@ -74,9 +74,9 @@ chrono = { version = "0.4", features = ["serde"] }
 unicode-normalization = "0.1"
 
 # Leptos
-leptos = "0.8.11"
+leptos = "0.8.16"
 leptos_axum = "0.8.11"
-leptos_router = "0.8.11"
+leptos_router = "0.8.12"
 leptos-auth = { path = "crates/leptos-auth" }
 leptos-graphql = { path = "crates/leptos-graphql" }
 leptos-ui = { path = "crates/leptos-ui" }
