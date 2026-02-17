@@ -51,7 +51,7 @@ pub fn truncate(input: &str, max_len: usize) -> String {
 
 /// Parse a duration string (e.g., "1h30m", "2d", "30s")
 pub fn parse_duration(input: &str) -> Option<Duration> {
-    let mut chars = input.chars().peekable();
+    let chars = input.chars().peekable();
     let mut total_seconds: u64 = 0;
     let mut current_num: u64 = 0;
 
