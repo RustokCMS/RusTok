@@ -32,6 +32,28 @@ leptos-commerce-admin/         # Admin UI
 leptos-commerce-storefront/    # Storefront UI
 ```
 
+## ✅ Самописные Leptos библиотеки (использовать в разработке)
+
+Эти библиотеки уже есть в репозитории и должны использоваться агентами при параллельной разработке UI.
+
+**Core crates**
+- [leptos-auth](../../crates/leptos-auth/README.md)
+- [leptos-forms](../../crates/leptos-forms/README.md)
+- [leptos-graphql](../../crates/leptos-graphql/README.md)
+- [leptos-hook-form](../../crates/leptos-hook-form/README.md)
+- [leptos-shadcn-pagination](../../crates/leptos-shadcn-pagination/README.md)
+- [leptos-table](../../crates/leptos-table/README.md)
+- [leptos-ui](../../crates/leptos-ui/README.md)
+- [leptos-zod](../../crates/leptos-zod/README.md)
+- [leptos-zustand](../../crates/leptos-zustand/README.md)
+
+**UI packages (module UI integration)**
+- `packages/leptos-auth`
+- `packages/leptos-graphql`
+- `packages/leptos-hook-form`
+- `packages/leptos-zod`
+- `packages/leptos-zustand`
+
 ## 📖 По сценарию использования
 
 ### "Я хочу создать новый модуль с UI"

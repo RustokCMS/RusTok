@@ -17,6 +17,27 @@ This directory contains comprehensive documentation for the Phase 1 implementati
 3. **Form System:** [../../crates/leptos-forms/README.md](../../crates/leptos-forms/README.md)
 4. **GraphQL Hooks:** [../../crates/leptos-graphql/README.md](../../crates/leptos-graphql/README.md)
 
+### Custom Leptos Libraries (use these for parallel development)
+These are the in-repo Leptos libraries that agents should prefer when building UI features.
+
+**Core crates**
+- [leptos-auth](../../crates/leptos-auth/README.md)
+- [leptos-forms](../../crates/leptos-forms/README.md)
+- [leptos-graphql](../../crates/leptos-graphql/README.md)
+- [leptos-hook-form](../../crates/leptos-hook-form/README.md)
+- [leptos-shadcn-pagination](../../crates/leptos-shadcn-pagination/README.md)
+- [leptos-table](../../crates/leptos-table/README.md)
+- [leptos-ui](../../crates/leptos-ui/README.md)
+- [leptos-zod](../../crates/leptos-zod/README.md)
+- [leptos-zustand](../../crates/leptos-zustand/README.md)
+
+**UI packages (module UI integration)**
+- `packages/leptos-auth`
+- `packages/leptos-graphql`
+- `packages/leptos-hook-form`
+- `packages/leptos-zod`
+- `packages/leptos-zustand`
+
 ---
 
 ## 📚 Documentation Index
