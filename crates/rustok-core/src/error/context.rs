@@ -202,6 +202,7 @@ impl std::error::Error for RichError {
 }
 
 /// Extension trait for adding context to results
+#[allow(clippy::result_large_err)]
 pub trait ErrorContext<T> {
     /// Add context message to error
     fn context(self, message: impl Into<String>) -> Result<T, RichError>;

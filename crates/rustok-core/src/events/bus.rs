@@ -100,11 +100,11 @@ impl EventBus {
         let span = tracing::Span::current();
 
         if let Some(actor_id) = actor_id {
-            span.record("actor_id", &tracing::field::display(actor_id));
+            span.record("actor_id", tracing::field::display(actor_id));
         }
 
         let envelope = EventEnvelope::new(tenant_id, actor_id, event);
-        span.record("event.id", &tracing::field::display(envelope.id));
+        span.record("event.id", tracing::field::display(envelope.id));
 
         self.publish_envelope(envelope)
     }

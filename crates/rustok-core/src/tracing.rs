@@ -71,11 +71,11 @@ pub fn create_span(span_name: &str, attrs: SpanAttributes) -> Span {
     );
 
     if let Some(tenant_id) = attrs.tenant_id {
-        span.record("tenant_id", &tracing::field::display(tenant_id));
+        span.record("tenant_id", tracing::field::display(tenant_id));
     }
 
     if let Some(user_id) = attrs.user_id {
-        span.record("user_id", &tracing::field::display(user_id));
+        span.record("user_id", tracing::field::display(user_id));
     }
 
     span
@@ -94,7 +94,7 @@ pub fn create_span(span_name: &str, attrs: SpanAttributes) -> Span {
 /// ```
 pub fn record_error<E: std::fmt::Display>(error: E, error_type: &str) {
     let span = Span::current();
-    span.record("error", &tracing::field::display(&error));
+    span.record("error", tracing::field::display(&error));
     span.record("error_type", error_type);
     span.record("error_occurred", true);
 }
@@ -173,7 +173,7 @@ macro_rules! traced {
             $(
                 __span.record(
                     stringify!($field),
-                    &tracing::field::display(&$field)
+                    tracing::field::display(&$field)
                 );
             )*
             let __guard = __span.enter();

@@ -5,8 +5,9 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
 /// Supported locales
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Locale {
+    #[default]
     En,
     Ru,
     Es,
@@ -16,7 +17,7 @@ pub enum Locale {
 }
 
 impl Locale {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().split('-').next()? {
             "en" => Some(Locale::En),
             "ru" => Some(Locale::Ru),
@@ -37,12 +38,6 @@ impl Locale {
             Locale::Fr => "fr",
             Locale::Zh => "zh",
         }
-    }
-}
-
-impl Default for Locale {
-    fn default() -> Self {
-        Locale::En
     }
 }
 
@@ -336,7 +331,7 @@ pub fn extract_locale_from_header(accept_language: Option<&str>) -> Locale {
                 .split(',')
                 .next()
                 .and_then(|lang| lang.split(';').next())
-                .and_then(|lang| Locale::from_str(lang.trim()))
+                .and_then(|lang| Locale::parse(lang.trim()))
         })
         .unwrap_or_default()
 }
@@ -347,11 +342,11 @@ mod tests {
 
     #[test]
     fn test_locale_from_str() {
-        assert_eq!(Locale::from_str("en"), Some(Locale::En));
-        assert_eq!(Locale::from_str("en-US"), Some(Locale::En));
-        assert_eq!(Locale::from_str("ru"), Some(Locale::Ru));
-        assert_eq!(Locale::from_str("ru-RU"), Some(Locale::Ru));
-        assert_eq!(Locale::from_str("invalid"), None);
+        assert_eq!(Locale::parse("en"), Some(Locale::En));
+        assert_eq!(Locale::parse("en-US"), Some(Locale::En));
+        assert_eq!(Locale::parse("ru"), Some(Locale::Ru));
+        assert_eq!(Locale::parse("ru-RU"), Some(Locale::Ru));
+        assert_eq!(Locale::parse("invalid"), None);
     }
 
     #[test]

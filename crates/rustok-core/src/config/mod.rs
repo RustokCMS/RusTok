@@ -468,7 +468,7 @@ impl ConfigValue {
 
     /// Get the value as a string
     pub fn as_string(self) -> Result<String, ConfigError> {
-        self.value.ok_or_else(|| ConfigError::MissingKey(self.key))
+        self.value.ok_or(ConfigError::MissingKey(self.key))
     }
 
     /// Get the value as an integer

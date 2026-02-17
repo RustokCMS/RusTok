@@ -29,8 +29,7 @@ use std::time::Duration;
 pub fn slugify(input: &str) -> String {
     input
         .to_lowercase()
-        .replace(' ', "-")
-        .replace('_', "-")
+        .replace([' ', '_'], "-")
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '-')
         .collect::<String>()
@@ -56,7 +55,7 @@ pub fn parse_duration(input: &str) -> Option<Duration> {
     let mut total_seconds: u64 = 0;
     let mut current_num: u64 = 0;
 
-    while let Some(ch) = chars.next() {
+    for ch in chars {
         if ch.is_ascii_digit() {
             current_num = current_num * 10 + ch.to_digit(10)? as u64;
         } else {

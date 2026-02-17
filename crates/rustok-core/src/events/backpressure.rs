@@ -149,6 +149,12 @@ impl std::fmt::Debug for BackpressureController {
     }
 }
 
+impl Default for BackpressureController {
+    fn default() -> Self {
+        Self::new(BackpressureConfig::default())
+    }
+}
+
 impl BackpressureController {
     /// Creates a new backpressure controller with the given configuration
     pub fn new(config: BackpressureConfig) -> Self {
@@ -160,11 +166,6 @@ impl BackpressureController {
             warning_count: Arc::new(AtomicU64::new(0)),
             critical_count: Arc::new(AtomicU64::new(0)),
         }
-    }
-
-    /// Creates a controller with default configuration
-    pub fn default() -> Self {
-        Self::new(BackpressureConfig::default())
     }
 
     /// Attempts to acquire permission to enqueue an event

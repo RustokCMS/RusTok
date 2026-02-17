@@ -135,10 +135,7 @@ impl ErrorResponse {
     /// Add field error
     pub fn with_field_error(mut self, field: impl Into<String>, error: impl Into<String>) -> Self {
         let fields = self.fields.get_or_insert_with(HashMap::new);
-        fields
-            .entry(field.into())
-            .or_insert_with(Vec::new)
-            .push(error.into());
+        fields.entry(field.into()).or_default().push(error.into());
         self
     }
 
@@ -212,7 +209,7 @@ impl ValidationErrorBuilder {
     pub fn field(mut self, field: impl Into<String>, error: impl Into<String>) -> Self {
         self.errors
             .entry(field.into())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(error.into());
         self
     }

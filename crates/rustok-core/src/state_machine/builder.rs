@@ -25,11 +25,13 @@ impl<M, S> Default for StateMachineBuilder<M, S> {
     }
 }
 
+type TransitionGuardFn<From> = Box<dyn Fn(&From) -> bool>;
+
 /// Transition builder with guards
 pub struct TransitionBuilder<From, To> {
     _from: PhantomData<From>,
     _to: PhantomData<To>,
-    guards: Vec<Box<dyn Fn(&From) -> bool>>,
+    guards: Vec<TransitionGuardFn<From>>,
 }
 
 impl<From, To> TransitionBuilder<From, To> {

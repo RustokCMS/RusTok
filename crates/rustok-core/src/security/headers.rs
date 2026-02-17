@@ -75,22 +75,19 @@ pub struct SecurityHeaders {
 impl SecurityHeaders {
     /// Create security headers from configuration
     pub fn from_config(config: &SecurityHeadersConfig) -> Self {
-        let mut headers = vec![];
-
-        // Content-Security-Policy
-        headers.push(("Content-Security-Policy".to_string(), config.csp.clone()));
-
-        // X-Frame-Options
-        headers.push((
-            "X-Frame-Options".to_string(),
-            config.frame_options.to_header_value(),
-        ));
-
-        // X-Content-Type-Options
-        headers.push(("X-Content-Type-Options".to_string(), "nosniff".to_string()));
-
-        // X-XSS-Protection (legacy but still useful)
-        headers.push(("X-XSS-Protection".to_string(), "1; mode=block".to_string()));
+        let mut headers = vec![
+            // Content-Security-Policy
+            ("Content-Security-Policy".to_string(), config.csp.clone()),
+            // X-Frame-Options
+            (
+                "X-Frame-Options".to_string(),
+                config.frame_options.to_header_value(),
+            ),
+            // X-Content-Type-Options
+            ("X-Content-Type-Options".to_string(), "nosniff".to_string()),
+            // X-XSS-Protection (legacy but still useful)
+            ("X-XSS-Protection".to_string(), "1; mode=block".to_string()),
+        ];
 
         // Strict-Transport-Security
         let hsts_value = if config.hsts_include_subdomains {

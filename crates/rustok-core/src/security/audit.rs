@@ -226,7 +226,7 @@ impl AuditLogger {
         }
 
         // Send to channel (non-blocking)
-        if let Err(_) = self.sender.try_send(event.clone()) {
+        if self.sender.try_send(event.clone()).is_err() {
             // Channel full, log directly
             self.write_to_log(&event);
         }
