@@ -1,5 +1,5 @@
-use leptos::*;
 use crate::types::BadgeVariant;
+use leptos::*;
 
 #[component]
 pub fn Badge(
@@ -10,7 +10,10 @@ pub fn Badge(
     let base_classes = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium";
     let variant_classes = variant.classes();
     let additional_classes = class.unwrap_or("");
-    let full_class = format!("{} {} {}", base_classes, variant_classes, additional_classes);
+    let full_class = format!(
+        "{} {} {}",
+        base_classes, variant_classes, additional_classes
+    );
 
     view! {
         <span class=full_class>

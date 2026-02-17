@@ -148,7 +148,11 @@ impl AuditEvent {
 
     /// Create authentication event
     pub fn authentication(user_id: Uuid, success: bool, ip: IpAddr) -> Self {
-        let severity = if success { Severity::Info } else { Severity::Warning };
+        let severity = if success {
+            Severity::Info
+        } else {
+            Severity::Warning
+        };
         Self::new(AuditEventType::Authentication)
             .with_user(user_id)
             .with_ip(ip)
@@ -170,7 +174,10 @@ impl AuditEvent {
             .with_ip(ip)
             .with_success(false)
             .with_severity(Severity::Warning)
-            .with_description(format!("Access denied to {} for action {}", resource, action))
+            .with_description(format!(
+                "Access denied to {} for action {}",
+                resource, action
+            ))
     }
 
     /// Create rate limit event
@@ -228,18 +235,22 @@ impl AuditLogger {
 
     /// Log authentication event
     pub async fn log_auth(&self, user_id: Uuid, success: bool, ip: IpAddr) {
-        self.log(AuditEvent::authentication(user_id, success, ip)).await;
+        self.log(AuditEvent::authentication(user_id, success, ip))
+            .await;
     }
 
     /// Log authorization failure
     pub async fn log_authz_denied(&self, user_id: Uuid, resource: &str, action: &str, ip: IpAddr) {
-        self.log(AuditEvent::authorization_denied(user_id, resource, action, ip))
-            .await;
+        self.log(AuditEvent::authorization_denied(
+            user_id, resource, action, ip,
+        ))
+        .await;
     }
 
     /// Log rate limit exceeded
     pub async fn log_rate_limit(&self, ip: IpAddr, identifier: &str) {
-        self.log(AuditEvent::rate_limit_exceeded(ip, identifier)).await;
+        self.log(AuditEvent::rate_limit_exceeded(ip, identifier))
+            .await;
     }
 
     /// Log validation failure
@@ -249,7 +260,8 @@ impl AuditLogger {
 
     /// Log suspicious activity
     pub async fn log_suspicious(&self, ip: IpAddr, description: &str) {
-        self.log(AuditEvent::suspicious_activity(ip, description)).await;
+        self.log(AuditEvent::suspicious_activity(ip, description))
+            .await;
     }
 
     fn write_to_log(&self, event: &AuditEvent) {
@@ -370,8 +382,7 @@ mod tests {
     async fn test_audit_logger() {
         let (logger, mut receiver) = AuditLogger::new(true);
 
-        let event = AuditEvent::new(AuditEventType::SystemError)
-            .with_description("Test error");
+        let event = AuditEvent::new(AuditEventType::SystemError).with_description("Test error");
 
         logger.log(event.clone()).await;
 

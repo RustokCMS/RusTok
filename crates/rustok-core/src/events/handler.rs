@@ -121,11 +121,7 @@ impl EventDispatcher {
                             tokio::spawn(
                                 async move {
                                     Self::dispatch_to_handlers(
-                                        envelope,
-                                        handlers,
-                                        config,
-                                        semaphore,
-                                        bp,
+                                        envelope, handlers, config, semaphore, bp,
                                     )
                                     .await;
                                 }
@@ -213,7 +209,7 @@ impl EventDispatcher {
 
             tokio::spawn(async move {
                 let _permit = permit;
-                
+
                 struct CompletionGuard {
                     count: Arc<AtomicUsize>,
                     limit: usize,

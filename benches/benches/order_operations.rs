@@ -1,8 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use rust_decimal::Decimal;
 use rustok_commerce::state_machine::{
     Cancelled, Confirmed, Delivered, Order, Paid, Pending, Shipped,
 };
-use rust_decimal::Decimal;
 use uuid::Uuid;
 
 /// Benchmark order state machine workflows

@@ -53,10 +53,7 @@ impl UserRepository {
             .map_err(map_db_error)
     }
 
-    pub async fn update_last_login(
-        &self,
-        id: uuid::Uuid,
-    ) -> Result<(), AuthError> {
+    pub async fn update_last_login(&self, id: uuid::Uuid) -> Result<(), AuthError> {
         let result = Entity::update_many()
             .filter(Column::Id.eq(id))
             .col_expr(

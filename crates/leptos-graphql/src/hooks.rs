@@ -138,7 +138,7 @@ impl<T> MutationResult<T> {
 /// };
 ///
 /// view! {
-///     <button 
+///     <button
 ///         on:click=on_submit
 ///         disabled=create_user.loading.get()
 ///     >

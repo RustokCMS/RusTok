@@ -497,11 +497,21 @@ fn format_labels(labels: &HashMap<String, String>) -> String {
 }
 
 fn format_counter(counter: &Counter) -> String {
-    format!("{}{} {}\n", counter.name, format_labels(&counter.labels), counter.get())
+    format!(
+        "{}{} {}\n",
+        counter.name,
+        format_labels(&counter.labels),
+        counter.get()
+    )
 }
 
 fn format_gauge(gauge: &Gauge) -> String {
-    format!("{}{} {}\n", gauge.name, format_labels(&gauge.labels), gauge.get())
+    format!(
+        "{}{} {}\n",
+        gauge.name,
+        format_labels(&gauge.labels),
+        gauge.get()
+    )
 }
 
 fn format_histogram(histogram: &Histogram) -> String {
@@ -595,12 +605,13 @@ mod tests {
 
     #[test]
     fn test_counter_with_labels() {
-        let counter = Counter::with_labels(
-            "api_requests",
-            [("endpoint", "/users"), ("method", "GET")],
-        );
+        let counter =
+            Counter::with_labels("api_requests", [("endpoint", "/users"), ("method", "GET")]);
 
         assert_eq!(counter.name(), "api_requests");
-        assert_eq!(counter.labels().get("endpoint"), Some(&"/users".to_string()));
+        assert_eq!(
+            counter.labels().get("endpoint"),
+            Some(&"/users".to_string())
+        );
     }
 }

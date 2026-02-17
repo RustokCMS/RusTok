@@ -258,8 +258,8 @@ mod tenant_validation_tests {
 
 #[cfg(test)]
 mod event_validation_tests {
-    use super::super::events::validation::*;
     use super::super::events::types::*;
+    use super::super::events::validation::*;
     use proptest::prelude::*;
     use uuid::Uuid;
 
@@ -376,7 +376,7 @@ mod event_validation_tests {
         #[test]
         fn validate_range_boundary_cases(min in -100i64..100i64) {
             let max = min + 10;
-            
+
             // At lower boundary
             let result_min = validators::validate_range("field", min, min, max);
             prop_assert!(result_min.is_ok());
@@ -479,7 +479,7 @@ mod event_serialization_tests {
 
             // Serialize to JSON
             let json = serde_json::to_string(&original).unwrap();
-            
+
             // Deserialize back
             let deserialized: DomainEvent = serde_json::from_str(&json).unwrap();
 
@@ -501,7 +501,7 @@ mod event_serialization_tests {
 
             // Serialize to JSON
             let json = serde_json::to_string(&original).unwrap();
-            
+
             // Deserialize back
             let deserialized: EventEnvelope = serde_json::from_str(&json).unwrap();
 
@@ -523,7 +523,7 @@ mod event_serialization_tests {
             };
 
             let json = serde_json::to_string(&event).unwrap();
-            
+
             // Should be valid JSON
             let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
             prop_assert!(parsed.is_object());
@@ -542,11 +542,11 @@ mod event_serialization_tests {
             );
 
             let json = serde_json::to_string(&envelope).unwrap();
-            
+
             // Should be valid JSON
             let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
             prop_assert!(parsed.is_object());
-            
+
             // Should have required fields
             prop_assert!(parsed.get("id").is_some());
             prop_assert!(parsed.get("event_type").is_some());
@@ -570,10 +570,10 @@ mod event_serialization_tests {
 
             // Should have the type field
             prop_assert!(parsed.get("type").is_some());
-            
+
             // Should have the data field
             prop_assert!(parsed.get("data").is_some());
-            
+
             // Data should be an object
             let data = parsed.get("data").unwrap();
             prop_assert!(data.is_object());

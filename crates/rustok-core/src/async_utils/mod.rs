@@ -69,12 +69,7 @@ where
 }
 
 /// Process items in batches with rate limiting
-pub async fn batch<T, R, F, Fut>(
-    items: Vec<T>,
-    batch_size: usize,
-    delay: Duration,
-    f: F,
-) -> Vec<R>
+pub async fn batch<T, R, F, Fut>(items: Vec<T>, batch_size: usize, delay: Duration, f: F) -> Vec<R>
 where
     F: Fn(Vec<T>) -> Fut,
     Fut: Future<Output = Vec<R>>,
@@ -158,8 +153,8 @@ impl BackoffConfig {
             return Duration::ZERO;
         }
 
-        let base_delay = self.initial_delay.as_millis() as f64
-            * self.multiplier.powi(attempt as i32 - 1);
+        let base_delay =
+            self.initial_delay.as_millis() as f64 * self.multiplier.powi(attempt as i32 - 1);
 
         let jitter_amount = base_delay * self.jitter * (rand::random::<f64>() * 2.0 - 1.0);
         let delay_ms = (base_delay + jitter_amount).min(self.max_delay.as_millis() as f64) as u64;
@@ -169,10 +164,7 @@ impl BackoffConfig {
 }
 
 /// Retry a future with exponential backoff
-pub async fn retry<F, Fut, T, E>(
-    f: F,
-    config: BackoffConfig,
-) -> Result<T, RetryError<E>>
+pub async fn retry<F, Fut, T, E>(f: F, config: BackoffConfig) -> Result<T, RetryError<E>>
 where
     F: Fn() -> Fut,
     Fut: Future<Output = Result<T, E>>,
@@ -189,7 +181,11 @@ where
             Ok(result) => return Ok(result),
             Err(e) => {
                 last_error = Some(e);
-                tracing::warn!(attempt = attempt, max_retries = config.max_retries, "Retry failed");
+                tracing::warn!(
+                    attempt = attempt,
+                    max_retries = config.max_retries,
+                    "Retry failed"
+                );
             }
         }
     }
@@ -251,7 +247,11 @@ pub struct TimeoutError {
 
 impl std::fmt::Display for TimeoutError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Operation timed out after {:?}: {}", self.duration, self.message)
+        write!(
+            f,
+            "Operation timed out after {:?}: {}",
+            self.duration, self.message
+        )
     }
 }
 

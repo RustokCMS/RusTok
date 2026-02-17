@@ -1,10 +1,7 @@
 use leptos::*;
 
 #[component]
-pub fn Card(
-    #[prop(optional)] class: Option<&'static str>,
-    children: Children,
-) -> impl IntoView {
+pub fn Card(#[prop(optional)] class: Option<&'static str>, children: Children) -> impl IntoView {
     let base_classes = "bg-white rounded-lg border border-gray-200 shadow-sm";
     let additional_classes = class.unwrap_or("");
     let full_class = format!("{} {}", base_classes, additional_classes);

@@ -34,7 +34,10 @@ pub enum ConfigSource {
     /// Load from a file (format detected by extension)
     File(String),
     /// Load from a string (format specified)
-    String { content: String, format: ConfigFormat },
+    String {
+        content: String,
+        format: ConfigFormat,
+    },
     /// In-memory configuration
     Memory(HashMap<String, String>),
 }
@@ -169,9 +172,17 @@ pub enum ConfigError {
     /// Missing required key
     MissingKey(String),
     /// Invalid value for key
-    InvalidValue { key: String, value: String, reason: String },
+    InvalidValue {
+        key: String,
+        value: String,
+        reason: String,
+    },
     /// Failed to parse file
-    ParseError { source: String, format: ConfigFormat, message: String },
+    ParseError {
+        source: String,
+        format: ConfigFormat,
+        message: String,
+    },
     /// Failed to read file
     ReadError { path: String, message: String },
     /// Environment variable error
@@ -185,12 +196,22 @@ pub enum ConfigError {
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConfigError::MissingKey(key) => write!(f, "Missing required configuration key: {}", key),
+            ConfigError::MissingKey(key) => {
+                write!(f, "Missing required configuration key: {}", key)
+            }
             ConfigError::InvalidValue { key, value, reason } => {
                 write!(f, "Invalid value '{}' for key '{}': {}", value, key, reason)
             }
-            ConfigError::ParseError { source, format, message } => {
-                write!(f, "Failed to parse {} config from '{}': {}", format, source, message)
+            ConfigError::ParseError {
+                source,
+                format,
+                message,
+            } => {
+                write!(
+                    f,
+                    "Failed to parse {} config from '{}': {}",
+                    format, source, message
+                )
             }
             ConfigError::ReadError { path, message } => {
                 write!(f, "Failed to read config file '{}': {}", path, message)
@@ -224,21 +245,23 @@ fn load_from_env(prefix: Option<&str>) -> Result<HashMap<String, String>, Config
 
 /// Load configuration from a file
 fn load_from_file(path: &str) -> Result<HashMap<String, String>, ConfigError> {
-    let format = ConfigFormat::from_extension(path).ok_or_else(|| ConfigError::Other(
-        format!("Cannot detect config format from path: {}", path)
-    ))?;
+    let format = ConfigFormat::from_extension(path).ok_or_else(|| {
+        ConfigError::Other(format!("Cannot detect config format from path: {}", path))
+    })?;
 
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| ConfigError::ReadError {
-            path: path.to_string(),
-            message: e.to_string(),
-        })?;
+    let content = std::fs::read_to_string(path).map_err(|e| ConfigError::ReadError {
+        path: path.to_string(),
+        message: e.to_string(),
+    })?;
 
     parse_content(&content, format)
 }
 
 /// Parse configuration content
-fn parse_content(content: &str, format: ConfigFormat) -> Result<HashMap<String, String>, ConfigError> {
+fn parse_content(
+    content: &str,
+    format: ConfigFormat,
+) -> Result<HashMap<String, String>, ConfigError> {
     match format {
         ConfigFormat::Json => parse_json(content),
         ConfigFormat::Yaml => parse_yaml(content),
@@ -248,8 +271,8 @@ fn parse_content(content: &str, format: ConfigFormat) -> Result<HashMap<String, 
 
 /// Parse JSON content
 fn parse_json(content: &str) -> Result<HashMap<String, String>, ConfigError> {
-    let value: serde_json::Value = serde_json::from_str(content)
-        .map_err(|e| ConfigError::ParseError {
+    let value: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| ConfigError::ParseError {
             source: "JSON".to_string(),
             format: ConfigFormat::Json,
             message: e.to_string(),
@@ -260,8 +283,8 @@ fn parse_json(content: &str) -> Result<HashMap<String, String>, ConfigError> {
 
 /// Parse YAML content
 fn parse_yaml(content: &str) -> Result<HashMap<String, String>, ConfigError> {
-    let value: serde_yaml::Value = serde_yaml::from_str(content)
-        .map_err(|e| ConfigError::ParseError {
+    let value: serde_yaml::Value =
+        serde_yaml::from_str(content).map_err(|e| ConfigError::ParseError {
             source: "YAML".to_string(),
             format: ConfigFormat::Yaml,
             message: e.to_string(),
@@ -272,18 +295,20 @@ fn parse_yaml(content: &str) -> Result<HashMap<String, String>, ConfigError> {
 
 /// Parse TOML content
 fn parse_toml(content: &str) -> Result<HashMap<String, String>, ConfigError> {
-    let value: toml::Value = content.parse()
-        .map_err(|e| ConfigError::ParseError {
-            source: "TOML".to_string(),
-            format: ConfigFormat::Toml,
-            message: e.to_string(),
-        })?;
+    let value: toml::Value = content.parse().map_err(|e| ConfigError::ParseError {
+        source: "TOML".to_string(),
+        format: ConfigFormat::Toml,
+        message: e.to_string(),
+    })?;
 
     flatten_toml(&value, "")
 }
 
 /// Flatten JSON value into dot-notation keys
-fn flatten_json(value: &serde_json::Value, prefix: &str) -> Result<HashMap<String, String>, ConfigError> {
+fn flatten_json(
+    value: &serde_json::Value,
+    prefix: &str,
+) -> Result<HashMap<String, String>, ConfigError> {
     let mut result = HashMap::new();
 
     match value {
@@ -327,7 +352,10 @@ fn flatten_json(value: &serde_json::Value, prefix: &str) -> Result<HashMap<Strin
 }
 
 /// Flatten YAML value into dot-notation keys
-fn flatten_yaml(value: &serde_yaml::Value, prefix: &str) -> Result<HashMap<String, String>, ConfigError> {
+fn flatten_yaml(
+    value: &serde_yaml::Value,
+    prefix: &str,
+) -> Result<HashMap<String, String>, ConfigError> {
     let mut result = HashMap::new();
 
     match value {
@@ -444,12 +472,11 @@ impl ConfigValue {
     /// Get the value as an integer
     pub fn as_i64(self) -> Result<i64, ConfigError> {
         let s = self.as_string()?;
-        s.parse::<i64>()
-            .map_err(|e| ConfigError::InvalidValue {
-                key: self.key.clone(),
-                value: s,
-                reason: e.to_string(),
-            })
+        s.parse::<i64>().map_err(|e| ConfigError::InvalidValue {
+            key: self.key.clone(),
+            value: s,
+            reason: e.to_string(),
+        })
     }
 
     /// Get the value as a boolean
@@ -545,24 +572,30 @@ pub struct DatabaseConfig {
 
 impl Config for DatabaseConfig {
     fn from_map(map: HashMap<String, String>) -> Result<Self, ConfigError> {
-        let url = ConfigValue::new("database.url", map.get("database.url").cloned())
-            .as_string()?;
+        let url = ConfigValue::new("database.url", map.get("database.url").cloned()).as_string()?;
 
-        let pool_size = ConfigValue::new("database.pool_size", map.get("database.pool_size").cloned())
-            .as_string()
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(10);
+        let pool_size =
+            ConfigValue::new("database.pool_size", map.get("database.pool_size").cloned())
+                .as_string()
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(10);
 
-        let timeout_seconds = ConfigValue::new("database.timeout_seconds", map.get("database.timeout_seconds").cloned())
-            .as_string()
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(30);
+        let timeout_seconds = ConfigValue::new(
+            "database.timeout_seconds",
+            map.get("database.timeout_seconds").cloned(),
+        )
+        .as_string()
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30);
 
-        let enable_logging = ConfigValue::new("database.enable_logging", map.get("database.enable_logging").cloned())
-            .as_bool()
-            .unwrap_or(false);
+        let enable_logging = ConfigValue::new(
+            "database.enable_logging",
+            map.get("database.enable_logging").cloned(),
+        )
+        .as_bool()
+        .unwrap_or(false);
 
         let config = Self {
             url: Secret::new(url),
@@ -578,12 +611,12 @@ impl Config for DatabaseConfig {
     fn validate(&self) -> Result<(), ConfigError> {
         if self.url.expose().is_empty() {
             return Err(ConfigError::ValidationError(
-                "Database URL cannot be empty".to_string()
+                "Database URL cannot be empty".to_string(),
             ));
         }
         if self.pool_size == 0 {
             return Err(ConfigError::ValidationError(
-                "Database pool size must be greater than 0".to_string()
+                "Database pool size must be greater than 0".to_string(),
             ));
         }
         Ok(())
@@ -602,8 +635,8 @@ pub struct ServerConfig {
 
 impl Config for ServerConfig {
     fn from_map(map: HashMap<String, String>) -> Result<Self, ConfigError> {
-        let host = ConfigValue::new("server.host", map.get("server.host").cloned())
-            .or_default("0.0.0.0");
+        let host =
+            ConfigValue::new("server.host", map.get("server.host").cloned()).or_default("0.0.0.0");
 
         let port = ConfigValue::new("server.port", map.get("server.port").cloned())
             .as_string()
@@ -617,15 +650,19 @@ impl Config for ServerConfig {
             .and_then(|s| s.parse().ok())
             .unwrap_or(4);
 
-        let request_timeout = ConfigValue::new("server.request_timeout", map.get("server.request_timeout").cloned())
-            .as_string()
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(30);
+        let request_timeout = ConfigValue::new(
+            "server.request_timeout",
+            map.get("server.request_timeout").cloned(),
+        )
+        .as_string()
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30);
 
-        let keep_alive = ConfigValue::new("server.keep_alive", map.get("server.keep_alive").cloned())
-            .as_bool()
-            .unwrap_or(true);
+        let keep_alive =
+            ConfigValue::new("server.keep_alive", map.get("server.keep_alive").cloned())
+                .as_bool()
+                .unwrap_or(true);
 
         let config = Self {
             host,
@@ -642,7 +679,7 @@ impl Config for ServerConfig {
     fn validate(&self) -> Result<(), ConfigError> {
         if self.port == 0 {
             return Err(ConfigError::ValidationError(
-                "Server port cannot be 0".to_string()
+                "Server port cannot be 0".to_string(),
             ));
         }
         Ok(())
@@ -664,10 +701,22 @@ mod tests {
 
     #[test]
     fn test_config_format_from_extension() {
-        assert_eq!(ConfigFormat::from_extension("config.yaml"), Some(ConfigFormat::Yaml));
-        assert_eq!(ConfigFormat::from_extension("config.yml"), Some(ConfigFormat::Yaml));
-        assert_eq!(ConfigFormat::from_extension("config.json"), Some(ConfigFormat::Json));
-        assert_eq!(ConfigFormat::from_extension("config.toml"), Some(ConfigFormat::Toml));
+        assert_eq!(
+            ConfigFormat::from_extension("config.yaml"),
+            Some(ConfigFormat::Yaml)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("config.yml"),
+            Some(ConfigFormat::Yaml)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("config.json"),
+            Some(ConfigFormat::Json)
+        );
+        assert_eq!(
+            ConfigFormat::from_extension("config.toml"),
+            Some(ConfigFormat::Toml)
+        );
         assert_eq!(ConfigFormat::from_extension("config.txt"), None);
     }
 
@@ -676,7 +725,10 @@ mod tests {
         let json = r#"{"database": {"url": "postgres://localhost", "port": 5432}}"#;
         let result = parse_json(json).unwrap();
 
-        assert_eq!(result.get("database.url"), Some(&"postgres://localhost".to_string()));
+        assert_eq!(
+            result.get("database.url"),
+            Some(&"postgres://localhost".to_string())
+        );
         assert_eq!(result.get("database.port"), Some(&"5432".to_string()));
     }
 
@@ -710,7 +762,10 @@ mod tests {
     #[test]
     fn test_database_config() {
         let mut map = HashMap::new();
-        map.insert("database.url".to_string(), "postgres://localhost/db".to_string());
+        map.insert(
+            "database.url".to_string(),
+            "postgres://localhost/db".to_string(),
+        );
         map.insert("database.pool_size".to_string(), "20".to_string());
 
         let config = DatabaseConfig::from_map(map).unwrap();

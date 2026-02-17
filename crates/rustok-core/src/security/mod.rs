@@ -19,7 +19,7 @@ pub mod validation;
 
 pub use audit::{AuditEvent, AuditLogger, SecurityAudit};
 pub use headers::{SecurityHeaders, SecurityHeadersConfig};
-pub use rate_limit::{RateLimitConfig, RateLimiter, RateLimitResult};
+pub use rate_limit::{RateLimitConfig, RateLimitResult, RateLimiter};
 pub use validation::{InputValidator, SsrfProtection, ValidationResult};
 
 use serde::{Deserialize, Serialize};

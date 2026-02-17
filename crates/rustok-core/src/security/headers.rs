@@ -78,10 +78,7 @@ impl SecurityHeaders {
         let mut headers = vec![];
 
         // Content-Security-Policy
-        headers.push((
-            "Content-Security-Policy".to_string(),
-            config.csp.clone(),
-        ));
+        headers.push(("Content-Security-Policy".to_string(), config.csp.clone()));
 
         // X-Frame-Options
         headers.push((
@@ -90,16 +87,10 @@ impl SecurityHeaders {
         ));
 
         // X-Content-Type-Options
-        headers.push((
-            "X-Content-Type-Options".to_string(),
-            "nosniff".to_string(),
-        ));
+        headers.push(("X-Content-Type-Options".to_string(), "nosniff".to_string()));
 
         // X-XSS-Protection (legacy but still useful)
-        headers.push((
-            "X-XSS-Protection".to_string(),
-            "1; mode=block".to_string(),
-        ));
+        headers.push(("X-XSS-Protection".to_string(), "1; mode=block".to_string()));
 
         // Strict-Transport-Security
         let hsts_value = if config.hsts_include_subdomains {

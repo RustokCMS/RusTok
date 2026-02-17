@@ -8,7 +8,10 @@ use std::path::Path;
 
 /// Seed the database with initial data
 pub async fn seed(ctx: &AppContext, path: &Path) -> Result<()> {
-    let seed_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("default");
+    let seed_name = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("default");
 
     tracing::info!(seed = %seed_name, "Running database seed...");
 

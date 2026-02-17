@@ -5,9 +5,7 @@ use leptos_router::hooks::use_navigate;
 use crate::hooks::{use_is_authenticated, use_is_loading};
 
 #[component]
-pub fn ProtectedRoute(
-    #[prop(optional)] redirect_path: Option<String>,
-) -> impl IntoView {
+pub fn ProtectedRoute(#[prop(optional)] redirect_path: Option<String>) -> impl IntoView {
     let is_authenticated = use_is_authenticated();
     let is_loading = use_is_loading();
     let redirect_to = redirect_path.unwrap_or_else(|| "/login".to_string());
@@ -34,9 +32,7 @@ pub fn ProtectedRoute(
 }
 
 #[component]
-pub fn GuestRoute(
-    #[prop(optional)] redirect_path: Option<String>,
-) -> impl IntoView {
+pub fn GuestRoute(#[prop(optional)] redirect_path: Option<String>) -> impl IntoView {
     let is_authenticated = use_is_authenticated();
     let is_loading = use_is_loading();
     let redirect_to = redirect_path.unwrap_or_else(|| "/dashboard".to_string());
@@ -63,9 +59,7 @@ pub fn GuestRoute(
 }
 
 #[component]
-pub fn RequireAuth(
-    children: Children,
-) -> impl IntoView {
+pub fn RequireAuth(children: Children) -> impl IntoView {
     let is_authenticated = use_is_authenticated();
 
     view! {

@@ -8,9 +8,9 @@
 //! - Audit logging
 
 use rustok_core::security::{
-    run_security_audit, AuditEvent, AuditEventType, FrameOptions, InputValidator,
-    RateLimitConfig, RateLimiter, SecurityConfig, SecurityFinding, SecurityHeaders,
-    SecurityHeadersConfig, Severity, SsrfProtection, ValidationResult,
+    run_security_audit, AuditEvent, AuditEventType, FrameOptions, InputValidator, RateLimitConfig,
+    RateLimiter, SecurityConfig, SecurityFinding, SecurityHeaders, SecurityHeadersConfig, Severity,
+    SsrfProtection, ValidationResult,
 };
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
@@ -21,7 +21,11 @@ async fn test_security_audit_passes_with_default_config() {
     let result = run_security_audit(&config).await;
 
     // Default config should have minor issues but score well
-    assert!(result.score >= 60, "Security score too low: {}", result.score);
+    assert!(
+        result.score >= 60,
+        "Security score too low: {}",
+        result.score
+    );
 }
 
 #[tokio::test]
@@ -146,10 +150,16 @@ async fn test_rate_limiter_per_ip_isolation() {
     }
 
     // ip1 should be blocked
-    assert!(matches!(limiter.check_ip(ip1).await, ValidationResult::Blocked { .. }));
+    assert!(matches!(
+        limiter.check_ip(ip1).await,
+        ValidationResult::Blocked { .. }
+    ));
 
     // ip2 should still be allowed
-    assert!(matches!(limiter.check_ip(ip2).await, ValidationResult::Allowed));
+    assert!(matches!(
+        limiter.check_ip(ip2).await,
+        ValidationResult::Allowed
+    ));
 }
 
 #[test]
@@ -342,8 +352,7 @@ fn test_ssrf_protection_allows_safe_urls() {
 
 #[test]
 fn test_ssrf_protection_blocks_non_allowlisted() {
-    let ssrf = SsrfProtection::new()
-        .allow_host("api.example.com");
+    let ssrf = SsrfProtection::new().allow_host("api.example.com");
 
     let blocked_urls = vec![
         "http://evil.com/steal",
@@ -418,7 +427,10 @@ fn test_security_score_calculation() {
         description: "Test".to_string(),
         remediation: "Fix".to_string(),
     }];
-    assert_eq!(rustok_core::security::calculate_security_score(&critical), 75);
+    assert_eq!(
+        rustok_core::security::calculate_security_score(&critical),
+        75
+    );
 
     // High finding = -15
     let high = vec![SecurityFinding {
@@ -444,5 +456,8 @@ fn test_security_score_calculation() {
             remediation: "Fix".to_string(),
         },
     ];
-    assert_eq!(rustok_core::security::calculate_security_score(&combined), 60);
+    assert_eq!(
+        rustok_core::security::calculate_security_score(&combined),
+        60
+    );
 }

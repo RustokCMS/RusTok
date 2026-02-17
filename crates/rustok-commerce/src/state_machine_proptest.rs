@@ -28,8 +28,7 @@ mod tests {
 
     /// Generate valid currency codes
     fn currency_strategy() -> impl Strategy<Value = String> {
-        prop::sample::select(vec!["USD", "EUR", "GBP", "JPY", "CAD", "AUD"])
-            .prop_map(String::from)
+        prop::sample::select(vec!["USD", "EUR", "GBP", "JPY", "CAD", "AUD"]).prop_map(String::from)
     }
 
     /// Generate valid payment methods
@@ -45,8 +44,12 @@ mod tests {
 
     /// Generate valid tracking numbers
     fn tracking_number_strategy() -> impl Strategy<Value = String> {
-        prop::sample::select(vec!["TRACK123", "1Z999AA10123456784", "9400111899223456789012"])
-            .prop_map(String::from)
+        prop::sample::select(vec![
+            "TRACK123",
+            "1Z999AA10123456784",
+            "9400111899223456789012",
+        ])
+        .prop_map(String::from)
     }
 
     /// Generate carriers
@@ -69,7 +72,13 @@ mod tests {
 
     /// Generate pending orders
     fn pending_order_strategy() -> impl Strategy<Value = Order<Pending>> {
-        (uuid_strategy(), uuid_strategy(), uuid_strategy(), amount_strategy(), currency_strategy())
+        (
+            uuid_strategy(),
+            uuid_strategy(),
+            uuid_strategy(),
+            amount_strategy(),
+            currency_strategy(),
+        )
             .prop_map(|(id, tenant_id, customer_id, amount, currency)| {
                 Order::new_pending(id, tenant_id, customer_id, amount, currency)
             })

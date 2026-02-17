@@ -1,5 +1,5 @@
-use leptos::*;
 use crate::types::{ButtonVariant, Size};
+use leptos::*;
 
 #[component]
 pub fn Button(
@@ -19,11 +19,11 @@ pub fn Button(
     };
 
     let base_classes = "inline-flex items-center justify-center font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
-    
+
     let variant_classes = variant.classes();
-    
+
     let additional_classes = class.unwrap_or("");
-    
+
     let full_class = format!(
         "{} {} {} {}",
         base_classes, size_classes, variant_classes, additional_classes

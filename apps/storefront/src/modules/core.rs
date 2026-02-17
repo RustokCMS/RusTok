@@ -19,7 +19,7 @@ fn module_spotlight() -> View {
                     <div>
                         <h3 class="text-2xl font-bold">"Composable storefront modules"</h3>
                         <p class="mt-2 text-sm opacity-70">
-                            "Ship curated sections from optional packages without touching core." 
+                            "Ship curated sections from optional packages without touching core."
                         </p>
                     </div>
                     <div class="flex flex-wrap gap-2 text-xs">

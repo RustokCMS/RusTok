@@ -121,17 +121,20 @@ impl ErrorCode {
     pub fn http_status(&self) -> u16 {
         match self {
             // 401 Unauthorized
-            Self::InvalidCredentials | Self::TokenExpired | Self::TokenInvalid | Self::MfaRequired => 401,
-            
+            Self::InvalidCredentials
+            | Self::TokenExpired
+            | Self::TokenInvalid
+            | Self::MfaRequired => 401,
+
             // 403 Forbidden
             Self::InsufficientPermissions | Self::AccountLocked | Self::OperationNotAllowed => 403,
-            
+
             // 404 Not Found
             Self::NotFound | Self::Gone => 404,
-            
+
             // 409 Conflict
             Self::AlreadyExists | Self::Conflict => 409,
-            
+
             // 400 Bad Request
             Self::InvalidInput
             | Self::MissingField
@@ -139,23 +142,22 @@ impl ErrorCode {
             | Self::OutOfRange
             | Self::Duplicate
             | Self::InvalidReference => 400,
-            
+
             // 422 Unprocessable Entity (business logic errors)
             Self::InsufficientFunds
             | Self::InsufficientInventory
             | Self::OrderAlreadyProcessed
             | Self::PaymentFailed
             | Self::QuotaExceeded => 422,
-            
+
             // 429 Too Many Requests
             Self::RateLimited => 429,
-            
+
             // 500 Internal Server Error
-            Self::DatabaseError
-            | Self::CacheError
-            | Self::InternalError
-            | Self::NotImplemented => 500,
-            
+            Self::DatabaseError | Self::CacheError | Self::InternalError | Self::NotImplemented => {
+                500
+            }
+
             // 503 Service Unavailable
             Self::ExternalServiceError
             | Self::ExternalTimeout
@@ -258,19 +260,19 @@ impl fmt::Display for ErrorCategory {
 pub struct DomainError {
     /// Error code
     pub code: ErrorCode,
-    
+
     /// Human-readable error message
     pub message: String,
-    
+
     /// Additional structured context
     pub context: HashMap<String, String>,
-    
+
     /// Trace ID for request correlation
     pub trace_id: Option<Uuid>,
-    
+
     /// Timestamp when the error occurred
     pub timestamp: DateTime<Utc>,
-    
+
     /// Source error (if any)
     pub source: Option<Box<dyn std::error::Error + Send + Sync>>,
 }
@@ -347,10 +349,7 @@ impl DomainError {
     }
 
     /// Set source error
-    pub fn with_source(
-        mut self,
-        source: impl std::error::Error + Send + Sync + 'static,
-    ) -> Self {
+    pub fn with_source(mut self, source: impl std::error::Error + Send + Sync + 'static) -> Self {
         self.source = Some(Box::new(source));
         self
     }
@@ -400,7 +399,9 @@ pub trait IntoTypedResult<T, E> {
     fn into_typed_with_code(self, code: ErrorCode, message: impl Into<String>) -> TypedResult<T>;
 }
 
-impl<T, E: std::error::Error + Send + Sync + 'static> IntoTypedResult<T, E> for std::result::Result<T, E> {
+impl<T, E: std::error::Error + Send + Sync + 'static> IntoTypedResult<T, E>
+    for std::result::Result<T, E>
+{
     fn into_typed<F>(self, f: F) -> TypedResult<T>
     where
         F: FnOnce(E) -> DomainError,
@@ -420,17 +421,17 @@ macro_rules! domain_err {
     ($code:expr, $msg:expr) => {
         Err($crate::typed_error::DomainError::new($code, $msg))
     };
-    
+
     // With format string
     ($code:expr, $fmt:expr, $($arg:tt)*) => {
         Err($crate::typed_error::DomainError::new($code, format!($fmt, $($arg)*)))
     };
-    
+
     // Not found helper
     (not_found: $resource:expr, $id:expr) => {
         Err($crate::typed_error::DomainError::not_found($resource, $id))
     };
-    
+
     // Validation helper
     (validation: $field:expr, $reason:expr) => {
         Err($crate::typed_error::DomainError::validation($field, $reason))
@@ -442,24 +443,24 @@ macro_rules! domain_err {
 pub struct ErrorResponseBody {
     /// Error code
     pub code: String,
-    
+
     /// Human-readable message
     pub message: String,
-    
+
     /// Error category
     pub category: String,
-    
+
     /// Whether the operation can be retried
     pub retryable: bool,
-    
+
     /// Additional context
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub context: HashMap<String, String>,
-    
+
     /// Trace ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace_id: Option<String>,
-    
+
     /// Timestamp
     pub timestamp: String,
 }
@@ -511,21 +512,21 @@ mod tests {
 
     #[test]
     fn test_domain_error_with_fields() {
-        let error = DomainError::validation("email", "invalid format")
-            .with_field("value", "test@invalid");
-        
+        let error =
+            DomainError::validation("email", "invalid format").with_field("value", "test@invalid");
+
         assert_eq!(error.code, ErrorCode::InvalidInput);
         assert_eq!(error.context.get("field"), Some(&"email".to_string()));
-        assert_eq!(error.context.get("value"), Some(&"test@invalid".to_string()));
+        assert_eq!(
+            error.context.get("value"),
+            Some(&"test@invalid".to_string())
+        );
     }
 
     #[test]
     fn test_error_response_body() {
-        let error = DomainError::business(
-            ErrorCode::InsufficientInventory,
-            "Not enough stock",
-        );
-        
+        let error = DomainError::business(ErrorCode::InsufficientInventory, "Not enough stock");
+
         let response: ErrorResponseBody = (&error).into();
         assert_eq!(response.category, "business");
         assert!(!response.retryable);

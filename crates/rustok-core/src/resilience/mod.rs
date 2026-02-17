@@ -9,6 +9,8 @@ pub mod circuit_breaker;
 pub mod retry;
 pub mod timeout;
 
-pub use circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState};
+pub use circuit_breaker::{
+    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState,
+};
 pub use retry::{RetryPolicy, RetryStrategy};
 pub use timeout::with_timeout;

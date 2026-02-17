@@ -62,7 +62,7 @@ static XSS_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
         Regex::new(r"(?i)<script[^>]*>.*?</script>").unwrap(),
         Regex::new(r"(?i)javascript:").unwrap(),
-        Regex::new(r"(?i)on\w+\s*=\s*[\"']?[^\"']*[\"']?").unwrap(),
+        Regex::new(r#"(?i)on\w+\s*=\s*["']?[^"']*["']?"#).unwrap(),
         Regex::new(r"(?i)<\s*iframe").unwrap(),
         Regex::new(r"(?i)<\s*object").unwrap(),
         Regex::new(r"(?i)<\s*embed").unwrap(),
@@ -230,8 +230,9 @@ impl InputValidator {
     /// Validate UUID
     pub fn validate_uuid(&self, uuid: &str) -> ValidationResult {
         let uuid_regex = Regex::new(
-            r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-        ).unwrap();
+            r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+        )
+        .unwrap();
 
         if uuid_regex.is_match(uuid) {
             ValidationResult::Valid

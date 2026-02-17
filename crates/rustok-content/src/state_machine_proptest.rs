@@ -44,11 +44,15 @@ mod tests {
 
     /// Generate complete draft nodes
     fn draft_node_strategy() -> impl Strategy<Value = ContentNode<Draft>> {
-        (uuid_strategy(), uuid_strategy(), uuid_strategy(), content_kind_strategy()).prop_map(
-            |(id, tenant_id, author_id, kind)| {
-                ContentNode::new_draft(id, tenant_id, Some(author_id), kind)
-            },
+        (
+            uuid_strategy(),
+            uuid_strategy(),
+            uuid_strategy(),
+            content_kind_strategy(),
         )
+            .prop_map(|(id, tenant_id, author_id, kind)| {
+                ContentNode::new_draft(id, tenant_id, Some(author_id), kind)
+            })
     }
 
     // ============================================================================

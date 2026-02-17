@@ -1,9 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use rustok_content::state_machine::{Archived, ContentNode, Draft, Published};
+use rust_decimal::Decimal;
 use rustok_commerce::state_machine::{
     Cancelled, Confirmed, Delivered, Order, Paid, Pending, Shipped,
 };
-use rust_decimal::Decimal;
+use rustok_content::state_machine::{Archived, ContentNode, Draft, Published};
 use uuid::Uuid;
 
 fn bench_content_state_transitions(c: &mut Criterion) {
@@ -103,10 +103,7 @@ fn bench_order_state_transitions(c: &mut Criterion) {
                 "USD".to_string(),
             );
             let confirmed = pending.confirm().unwrap();
-            black_box(confirmed.pay(
-                "pay_123".to_string(),
-                "credit_card".to_string(),
-            ))
+            black_box(confirmed.pay("pay_123".to_string(), "credit_card".to_string()))
         })
     });
 

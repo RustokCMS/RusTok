@@ -203,13 +203,14 @@ impl HealthRegistry {
 
         for check in &self.checks {
             let check_start = Instant::now();
-            
+
             let result = match tokio::time::timeout(check.timeout(), check.check()).await {
                 Ok(result) => result.with_latency(check_start.elapsed()),
                 Err(_) => HealthResult::unhealthy(
                     check.name(),
-                    format!("Health check timed out after {:?}", check.timeout())
-                ).with_latency(check_start.elapsed()),
+                    format!("Health check timed out after {:?}", check.timeout()),
+                )
+                .with_latency(check_start.elapsed()),
             };
 
             checks.push(result);
@@ -217,11 +218,17 @@ impl HealthRegistry {
 
         // Determine overall status
         let status = if checks.iter().any(|c| {
-            matches!(c.status, HealthStatus::Unhealthy) &&
-            self.checks.iter().any(|hc| hc.name() == c.name && hc.critical())
+            matches!(c.status, HealthStatus::Unhealthy)
+                && self
+                    .checks
+                    .iter()
+                    .any(|hc| hc.name() == c.name && hc.critical())
         }) {
             HealthStatus::Unhealthy
-        } else if checks.iter().any(|c| matches!(c.status, HealthStatus::Degraded)) {
+        } else if checks
+            .iter()
+            .any(|c| matches!(c.status, HealthStatus::Degraded))
+        {
             HealthStatus::Degraded
         } else {
             HealthStatus::Healthy
@@ -255,8 +262,9 @@ impl HealthRegistry {
                     Ok(result) => result.with_latency(start.elapsed()),
                     Err(_) => HealthResult::unhealthy(
                         check.name(),
-                        format!("Health check timed out after {:?}", check.timeout())
-                    ).with_latency(start.elapsed()),
+                        format!("Health check timed out after {:?}", check.timeout()),
+                    )
+                    .with_latency(start.elapsed()),
                 };
 
                 // Update cache
@@ -295,7 +303,8 @@ pub mod checks {
     /// Database connectivity check
     pub struct DatabaseHealthCheck {
         name: String,
-        check_fn: Box<dyn Fn() -> futures::future::BoxFuture<'static, Result<(), String>> + Send + Sync>,
+        check_fn:
+            Box<dyn Fn() -> futures::future::BoxFuture<'static, Result<(), String>> + Send + Sync>,
     }
 
     impl DatabaseHealthCheck {
@@ -451,7 +460,7 @@ mod tests {
     #[tokio::test]
     async fn test_non_critical_check() {
         struct NonCriticalCheck;
-        
+
         #[async_trait]
         impl HealthCheck for NonCriticalCheck {
             fn name(&self) -> &str {

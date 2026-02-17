@@ -22,9 +22,7 @@ fn registry() -> &'static RwLock<Vec<StorefrontComponentRegistration>> {
 }
 
 pub fn register_component(component: StorefrontComponentRegistration) {
-    let mut components = registry()
-        .write()
-        .expect("storefront module registry lock");
+    let mut components = registry().write().expect("storefront module registry lock");
     components.push(component);
 }
 

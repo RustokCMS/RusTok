@@ -75,15 +75,12 @@ impl ServerHandler for RusToKMcpServer {
                 )]))
             }
             "module_exists" => {
-                let args = request.arguments.ok_or_else(|| {
-                    rmcp::ErrorData::invalid_params("Missing arguments", None)
-                })?;
+                let args = request
+                    .arguments
+                    .ok_or_else(|| rmcp::ErrorData::invalid_params("Missing arguments", None))?;
                 let req: ModuleLookupRequest =
                     serde_json::from_value(serde_json::Value::Object(args)).map_err(|e| {
-                        rmcp::ErrorData::invalid_params(
-                            format!("Invalid arguments: {}", e),
-                            None,
-                        )
+                        rmcp::ErrorData::invalid_params(format!("Invalid arguments: {}", e), None)
                     })?;
                 let result = self.module_exists_internal(&req.slug).await;
                 let content = serde_json::to_string(&result).map_err(|e| {
@@ -168,8 +165,10 @@ impl ServerHandler for RusToKMcpServer {
 /// Serve the MCP server over stdio
 pub async fn serve_stdio(config: McpServerConfig) -> Result<()> {
     let server = RusToKMcpServer::new(config.registry);
-    
+
     // Serve over stdio transport using rmcp's stdio transport
     // The server runs until stdin is closed or an error occurs
-    stdio::serve(server).await.map_err(|e| anyhow::anyhow!("MCP server error: {}", e))
+    stdio::serve(server)
+        .await
+        .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))
 }

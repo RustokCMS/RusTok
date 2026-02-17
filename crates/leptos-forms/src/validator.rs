@@ -20,33 +20,33 @@ impl Validator {
     pub fn new() -> Self {
         Self { rules: vec![] }
     }
-    
+
     pub fn required(mut self) -> Self {
         self.rules.push(ValidationRule::Required);
         self
     }
-    
+
     pub fn email(mut self) -> Self {
         self.rules.push(ValidationRule::Email);
         self
     }
-    
+
     pub fn min_length(mut self, len: usize) -> Self {
         self.rules.push(ValidationRule::MinLength(len));
         self
     }
-    
+
     pub fn max_length(mut self, len: usize) -> Self {
         self.rules.push(ValidationRule::MaxLength(len));
         self
     }
-    
+
     pub fn pattern(mut self, pattern: &str) -> Result<Self, regex::Error> {
         let regex = Regex::new(pattern)?;
         self.rules.push(ValidationRule::Pattern(Arc::new(regex)));
         Ok(self)
     }
-    
+
     pub fn custom<F>(mut self, validator: F) -> Self
     where
         F: Fn(&str) -> Result<(), String> + Send + Sync + 'static,
@@ -54,7 +54,7 @@ impl Validator {
         self.rules.push(ValidationRule::Custom(Arc::new(validator)));
         self
     }
-    
+
     pub fn validate(&self, value: &str) -> Result<(), String> {
         for rule in &self.rules {
             match rule {
@@ -64,9 +64,8 @@ impl Validator {
                     }
                 }
                 ValidationRule::Email => {
-                    let email_regex = Regex::new(
-                        r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-                    ).unwrap();
+                    let email_regex =
+                        Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
                     if !email_regex.is_match(value) {
                         return Err("Invalid email address".to_string());
                     }
