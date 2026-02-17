@@ -215,26 +215,58 @@ println!("Total Requests: {}", stats.total_requests);
 println!("State Transitions: {}", stats.state_transitions);
 ```
 
-### Prometheus Metrics (Example)
+### Prometheus Metrics Export
+
+The circuit breaker provides built-in Prometheus-compatible metrics export:
 
 ```rust
-use prometheus::{register_gauge, register_counter};
-
-let state_gauge = register_gauge!(
-    "circuit_breaker_state",
-    "Circuit breaker state (0=closed, 1=open, 2=half_open)"
-)?;
-
-let rejected_counter = register_counter!(
-    "circuit_breaker_rejected_total",
-    "Total rejected requests"
-)?;
-
-// Update metrics
-let stats = breaker.stats().await;
-state_gauge.set(stats.state as i64);
-rejected_counter.inc_by(stats.total_rejected);
+// Export metrics in Prometheus exposition format
+let metrics = breaker.export_prometheus_metrics("redis_cache").await;
+println!("{}", metrics);
 ```
+
+This outputs:
+```text
+# HELP circuit_breaker_state Current state of the circuit breaker (0=closed, 1=open, 2=half_open)
+# TYPE circuit_breaker_state gauge
+circuit_breaker_state{name="redis_cache"} 0
+# HELP circuit_breaker_requests_total Total number of requests
+# TYPE circuit_breaker_requests_total counter
+circuit_breaker_requests_total{name="redis_cache"} 150
+# HELP circuit_breaker_successes_total Total number of successful requests
+# TYPE circuit_breaker_successes_total counter
+circuit_breaker_successes_total{name="redis_cache"} 145
+# HELP circuit_breaker_failures_total Total number of failed requests
+# TYPE circuit_breaker_failures_total counter
+circuit_breaker_failures_total{name="redis_cache"} 5
+# HELP circuit_breaker_rejected_total Total number of rejected requests (circuit open)
+# TYPE circuit_breaker_rejected_total counter
+circuit_breaker_rejected_total{name="redis_cache"} 0
+# HELP circuit_breaker_state_transitions_total Total number of state transitions
+# TYPE circuit_breaker_state_transitions_total counter
+circuit_breaker_state_transitions_total{name="redis_cache"} 2
+# HELP circuit_breaker_success_rate Current success rate (0.0 - 1.0)
+# TYPE circuit_breaker_success_rate gauge
+circuit_breaker_success_rate{name="redis_cache"} 0.9667
+# HELP circuit_breaker_rejection_rate Current rejection rate (0.0 - 1.0)
+# TYPE circuit_breaker_rejection_rate gauge
+circuit_breaker_rejection_rate{name="redis_cache"} 0.0
+```
+
+#### Available Metrics
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `circuit_breaker_state` | gauge | Current state (0=closed, 1=open, 2=half_open) |
+| `circuit_breaker_requests_total` | counter | Total number of requests |
+| `circuit_breaker_successes_total` | counter | Total number of successful requests |
+| `circuit_breaker_failures_total` | counter | Total number of failed requests |
+| `circuit_breaker_rejected_total` | counter | Total rejected requests (circuit open) |
+| `circuit_breaker_state_transitions_total` | counter | Total state transitions |
+| `circuit_breaker_success_rate` | gauge | Current success rate (0.0 - 1.0) |
+| `circuit_breaker_rejection_rate` | gauge | Current rejection rate (0.0 - 1.0) |
+
+All metrics include a `name` label for identification.
 
 ## Manual Control
 
