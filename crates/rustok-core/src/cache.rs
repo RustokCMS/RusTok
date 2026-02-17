@@ -1,3 +1,4 @@
+#[cfg(feature = "redis-cache")]
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -5,6 +6,7 @@ use async_trait::async_trait;
 use moka::future::Cache;
 
 use crate::context::CacheBackend;
+#[cfg(feature = "redis-cache")]
 use crate::resilience::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
 use crate::Result;
 
