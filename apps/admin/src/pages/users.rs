@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use leptos_auth::hooks::{use_token, use_tenant};
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
+use leptos_use::use_debounce_fn;
 use serde::{Deserialize, Serialize};
 
 use crate::api::{request_with_persisted, ApiError};
@@ -89,9 +90,28 @@ pub fn Users() -> impl IntoView {
     let (page, set_page) = signal(initial_page);
     let (limit, _set_limit) = signal(12i64);
 
-    let (search_query, set_search_query) = signal(initial_search);
+    let (search_query, set_search_query) = signal(initial_search.clone());
     let (role_filter, set_role_filter) = signal(initial_role);
     let (status_filter, set_status_filter) = signal(initial_status);
+
+    // Debounced version of search_query — 300ms delay
+    let (debounced_search, set_debounced_search) = signal(initial_search);
+    let debounce_search = use_debounce_fn(
+        move || set_debounced_search.set(search_query.get_untracked()),
+        300.0,
+    );
+    Effect::new(move |_| {
+        let _ = search_query.get(); // track changes
+        debounce_search();
+    });
+
+    // Reset page to 1 when filters change
+    Effect::new(move |_| {
+        let _ = debounced_search.get();
+        let _ = role_filter.get();
+        let _ = status_filter.get();
+        set_page.set(1);
+    });
 
     Effect::new(move |_| {
         let s = search_query.get();
@@ -123,12 +143,21 @@ pub fn Users() -> impl IntoView {
     });
 
     let graphql_resource = Resource::new(
-        move || (refresh_counter.get(), page.get(), limit.get()),
-        move |_| {
+        move || {
+            (
+                refresh_counter.get(),
+                page.get(),
+                limit.get(),
+                debounced_search.get(),
+                role_filter.get(),
+                status_filter.get(),
+            )
+        },
+        move |(_, page_val, limit_val, search_val, role_val, status_val)| {
             let token_value = token.get();
             let tenant_value = tenant.get();
-            let after = if page.get() > 1 {
-                Some(cursor_for_page(page.get(), limit.get()))
+            let after = if page_val > 1 {
+                Some(cursor_for_page(page_val, limit_val))
             } else {
                 None
             };
@@ -137,14 +166,14 @@ pub fn Users() -> impl IntoView {
                     "query Users($pagination: PaginationInput, $filter: UsersFilter, $search: String) { users(pagination: $pagination, filter: $filter, search: $search) { edges { cursor node { id email name role status createdAt tenantName } } pageInfo { totalCount hasNextPage endCursor } } }",
                     UsersVariables {
                         pagination: PaginationInput {
-                            first: limit.get(),
+                            first: limit_val,
                             after,
                         },
                         filter: Some(UsersFilterInput {
-                            role: if role_filter.get().is_empty() { None } else { Some(role_filter.get().to_uppercase()) },
-                            status: if status_filter.get().is_empty() { None } else { Some(status_filter.get().to_uppercase()) },
+                            role: if role_val.is_empty() { None } else { Some(role_val.to_uppercase()) },
+                            status: if status_val.is_empty() { None } else { Some(status_val.to_uppercase()) },
                         }),
-                        search: if search_query.get().is_empty() { None } else { Some(search_query.get()) },
+                        search: if search_val.is_empty() { None } else { Some(search_val) },
                     },
                     "ff1e132e28d2e1c804d8d5ade5966307e17685b9f4b39262d70ecaa4d49abb66",
                     token_value,
@@ -248,29 +277,8 @@ pub fn Users() -> impl IntoView {
                                         </thead>
                                         <tbody>
                                             {{
-                                                let query = search_query.get().to_lowercase();
-                                                let role = role_filter.get().to_lowercase();
-                                                let status = status_filter.get().to_lowercase();
-
                                                 edges
                                                     .iter()
-                                                    .filter(|edge| {
-                                                        let user = &edge.node;
-                                                        let name = user.name.clone().unwrap_or_default().to_lowercase();
-                                                        let email = user.email.to_lowercase();
-                                                        let role_value = user.role.to_lowercase();
-                                                        let status_value = user.status.to_lowercase();
-
-                                                        let matches_query = query.is_empty()
-                                                            || email.contains(&query)
-                                                            || name.contains(&query);
-                                                        let matches_role = role.is_empty()
-                                                            || role_value.contains(&role);
-                                                        let matches_status = status.is_empty()
-                                                            || status_value.contains(&status);
-
-                                                        matches_query && matches_role && matches_status
-                                                    })
                                                     .map(|edge| {
                                                         let GraphqlUser {
                                                             id,

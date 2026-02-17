@@ -9,6 +9,7 @@ description.workspace = true
 leptos = { workspace = true }
 leptos_router = { workspace = true }
 leptos-graphql = { path = "../leptos-graphql" }
+leptos-use = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 gloo-storage = { workspace = true }
@@ -17,3 +18,4 @@ thiserror = { workspace = true }
 # WASM-specific dependencies (only for window.location)
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Location"] }
+js-sys = { version = "0.3" }

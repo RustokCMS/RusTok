@@ -23,6 +23,8 @@ pub struct AuthUser {
 pub struct AuthSession {
     pub token: String,
     pub tenant: String,
+    pub refresh_token: String,
+    pub expires_at: i64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, thiserror::Error)]

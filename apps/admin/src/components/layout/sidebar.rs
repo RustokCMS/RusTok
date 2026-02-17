@@ -23,20 +23,33 @@ pub fn Sidebar() -> impl IntoView {
 
             // Navigation
             <nav class="flex-1 px-3 py-4 overflow-y-auto">
-                <NavGroupLabel label="Overview" />
+                <NavGroupLabel label=move || translate("app.nav.group.overview") />
                 <NavLink href="/dashboard" icon="grid">
                     {move || translate("app.nav.dashboard")}
                 </NavLink>
 
-                <div class="pt-3">
-                    <NavGroupLabel label="Management" />
-                    <NavLink href="/users" icon="users">
-                        {move || translate("app.nav.users")}
-                    </NavLink>
-                </div>
+                // Management section — only visible to admins
+                {move || {
+                    let role = current_user.get()
+                        .map(|u| u.role.to_uppercase())
+                        .unwrap_or_default();
+                    let is_admin = role == "ADMIN" || role == "SUPER_ADMIN";
+                    if is_admin {
+                        view! {
+                            <div class="pt-3">
+                                <NavGroupLabel label=move || translate("app.nav.group.management") />
+                                <NavLink href="/users" icon="users">
+                                    {move || translate("app.nav.users")}
+                                </NavLink>
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <div /> }.into_any()
+                    }
+                }}
 
                 <div class="pt-3">
-                    <NavGroupLabel label="Account" />
+                    <NavGroupLabel label=move || translate("app.nav.group.account") />
                     <NavLink href="/profile" icon="user">
                         {move || translate("app.nav.profile")}
                     </NavLink>
@@ -75,7 +88,7 @@ pub fn Sidebar() -> impl IntoView {
 }
 
 #[component]
-fn NavGroupLabel(label: &'static str) -> impl IntoView {
+fn NavGroupLabel(label: impl Fn() -> String + 'static) -> impl IntoView {
     view! {
         <div class="px-3 pb-1 text-xs font-semibold text-slate-500 uppercase tracking-wider">
             {label}

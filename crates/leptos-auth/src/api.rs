@@ -139,13 +139,11 @@ struct AuthPayload {
     #[serde(rename = "accessToken")]
     access_token: String,
     #[serde(rename = "refreshToken")]
-    #[allow(dead_code)]
     refresh_token: String,
     #[serde(rename = "tokenType")]
     #[allow(dead_code)]
     token_type: String,
     #[serde(rename = "expiresIn")]
-    #[allow(dead_code)]
     expires_in: i32,
     user: AuthUserGraphQL,
 }
@@ -195,6 +193,20 @@ fn get_graphql_url() -> String {
     format!("{}/api/graphql", get_api_url())
 }
 
+fn now_unix_secs() -> i64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        (js_sys::Date::now() / 1000.0) as i64
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+    }
+}
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -242,6 +254,8 @@ pub async fn sign_in(
 
     let session = AuthSession {
         token: payload.access_token,
+        refresh_token: payload.refresh_token,
+        expires_at: now_unix_secs() + payload.expires_in as i64,
         tenant,
     };
 
@@ -286,6 +300,8 @@ pub async fn sign_up(
 
     let session = AuthSession {
         token: payload.access_token,
+        refresh_token: payload.refresh_token,
+        expires_at: now_unix_secs() + payload.expires_in as i64,
         tenant,
     };
 
@@ -309,7 +325,7 @@ pub async fn sign_out(token: String, tenant: String) -> Result<(), AuthError> {
 pub async fn refresh_token(
     refresh_tok: String,
     tenant: String,
-) -> Result<AuthSession, AuthError> {
+) -> Result<(AuthSession, AuthUser), AuthError> {
     let url = get_graphql_url();
 
     let variables = json!({
@@ -326,12 +342,21 @@ pub async fn refresh_token(
 
     let payload = response.refresh_token;
 
+    let user = AuthUser {
+        id: payload.user.id,
+        email: payload.user.email,
+        name: payload.user.name,
+        role: payload.user.role,
+    };
+
     let session = AuthSession {
         token: payload.access_token,
+        refresh_token: payload.refresh_token,
+        expires_at: now_unix_secs() + payload.expires_in as i64,
         tenant,
     };
 
-    Ok(session)
+    Ok((session, user))
 }
 
 /// Request password reset
