@@ -1,27 +1,3 @@
-# API Architecture: boundaries between GraphQL and REST
+# API Architecture (moved)
 
-Этот документ фиксирует границы использования API-стилей, чтобы команды не смешивали ответственность между UI-слоем, интеграциями и служебными потоками.
-
-## Policy
-
-- **GraphQL endpoint** используется **только** фронтами и админками (UI-клиентами).
-- **REST endpoint** используется для:
-  - внешних интеграций;
-  - webhook-коллбеков;
-  - служебных сценариев;
-  - сценариев совместимости с существующими и сторонними клиентами.
-
-## Use-case → API style matrix
-
-Матрица ниже обязательна как decision table для новых команд: если use-case попадает в строку, выбираем соответствующий API style и не смешиваем границы.
-
-| Use-case | API style | Почему |
-|---|---|---|
-| UI queries/mutations (storefront, admin) | **GraphQL** | UI нужны гибкие выборки, композиция полей и единый контракт для экранов. |
-| External callbacks (webhook receive/ack) | **REST** | Для callback-потоков важны простые HTTP-контракты, статусы и идемпотентность. |
-| Partner ingestion (интеграция с партнёрами) | **REST** | Внешним системам проще интегрироваться через стабильные REST endpoint'ы и версии. |
-| Batch jobs / service automation | **REST** | Служебные и фоновые задачи требуют предсказуемых endpoint'ов, удобных для скриптов и scheduler'ов. |
-
-## Boundary rule
-
-Если сценарий относится к интеграциям, webhook-потокам, служебной автоматизации или совместимости, по умолчанию выбирается **REST**. GraphQL не используется как универсальный интеграционный слой для внешних и служебных клиентов.
+This policy now lives in [`docs/architecture/routing.md`](./architecture/routing.md).
