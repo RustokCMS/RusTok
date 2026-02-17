@@ -3,7 +3,7 @@
 //! Provides builder patterns for creating test data with sensible defaults.
 
 use chrono::{DateTime, Utc};
-use rustok_core::{PermissionScope, SecurityContext, UserRole};
+use rustok_core::{SecurityContext, UserRole};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -160,7 +160,7 @@ pub struct TestUser {
 impl TestUser {
     /// Creates a security context for this user.
     pub fn security_context(&self) -> SecurityContext {
-        SecurityContext::new(self.role, Some(self.id))
+        SecurityContext::new(self.role.clone(), Some(self.id))
     }
 }
 
@@ -390,6 +390,18 @@ impl NodeFixture {
         self
     }
 
+    /// Sets the title on the first translation (or creates one when missing).
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        let title = title.into();
+        if self.translations.is_empty() {
+            self.translations
+                .push(NodeTranslationFixture::new().with_title(title));
+        } else {
+            self.translations[0] = self.translations[0].clone().with_title(title);
+        }
+        self
+    }
+
     /// Adds a translation.
     pub fn with_translation(mut self, translation: NodeTranslationFixture) -> Self {
         self.translations.push(translation);
@@ -435,6 +447,7 @@ pub struct TestNode {
 }
 
 /// Fixture builder for node translations.
+#[derive(Debug, Clone)]
 pub struct NodeTranslationFixture {
     locale: String,
     title: String,
