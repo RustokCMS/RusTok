@@ -8,12 +8,15 @@
 /// - Span creation и management
 /// - Resource attributes (service info)
 /// - Batch span processor
-use opentelemetry::{global, KeyValue};
+use once_cell::sync::OnceCell;
+use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
-    trace::{self, BatchConfig, RandomIdGenerator, Sampler},
+    trace::{BatchConfigBuilder, RandomIdGenerator, Sampler, SdkTracerProvider},
     Resource,
 };
+
+static TRACER_PROVIDER: OnceCell<SdkTracerProvider> = OnceCell::new();
 
 /// OpenTelemetry configuration
 #[derive(Debug, Clone)]
@@ -96,39 +99,9 @@ pub async fn init_tracing(config: OtelConfig) -> Result<(), OtelError> {
         return Ok(());
     }
 
-    // Create resource with service information
-    let resource = Resource::new(vec![
-        KeyValue::new("service.name", config.service_name.clone()),
-        KeyValue::new("service.version", config.service_version.clone()),
-        KeyValue::new("deployment.environment", config.environment.clone()),
-    ]);
-
-    // Configure batch span processor
-    let batch_config = BatchConfig::default()
-        .with_max_queue_size(2048)
-        .with_max_export_batch_size(512)
-        .with_scheduled_delay(std::time::Duration::from_secs(5));
-
-    // Create OTLP exporter
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
-        .with_endpoint(&config.otlp_endpoint);
-
-    // install_batch already sets the global tracer provider in opentelemetry-otlp 0.14
-    let _tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(exporter)
-        .with_trace_config(
-            trace::config()
-                .with_sampler(Sampler::TraceIdRatioBased(config.sampling_rate))
-                .with_id_generator(RandomIdGenerator::default())
-                .with_max_events_per_span(64)
-                .with_max_attributes_per_span(32)
-                .with_resource(resource),
-        )
-        .with_batch_config(batch_config)
-        .install_batch(opentelemetry_sdk::runtime::Tokio)
-        .map_err(|e| OtelError::InitFailed(e.to_string()))?;
+    let provider = build_tracer_provider(&config)?;
+    let _ = TRACER_PROVIDER.set(provider.clone());
+    global::set_tracer_provider(provider);
 
     tracing::info!(
         service_name = %config.service_name,
@@ -162,55 +135,17 @@ pub async fn init_tracing(config: OtelConfig) -> Result<(), OtelError> {
 /// ```
 pub async fn init_otel_layer(
     config: OtelConfig,
-) -> Result<
-    tracing_opentelemetry::OpenTelemetryLayer<
-        tracing_subscriber::Registry,
-        opentelemetry_sdk::trace::Tracer,
-    >,
-    OtelError,
-> {
+) -> Result<opentelemetry_sdk::trace::SdkTracer, OtelError> {
     if !config.enabled {
         return Err(OtelError::Disabled);
     }
 
-    // Create resource
-    let resource = Resource::new(vec![
-        KeyValue::new("service.name", config.service_name.clone()),
-        KeyValue::new("service.version", config.service_version.clone()),
-        KeyValue::new("deployment.environment", config.environment.clone()),
-    ]);
+    let provider = build_tracer_provider(&config)?;
+    let tracer = provider.tracer(config.service_name.clone());
+    let _ = TRACER_PROVIDER.set(provider.clone());
+    global::set_tracer_provider(provider);
 
-    // Configure batch span processor
-    let batch_config = BatchConfig::default()
-        .with_max_queue_size(2048)
-        .with_max_export_batch_size(512)
-        .with_scheduled_delay(std::time::Duration::from_secs(5));
-
-    // Create OTLP exporter
-    let exporter = opentelemetry_otlp::new_exporter()
-        .tonic()
-        .with_endpoint(&config.otlp_endpoint);
-
-    // Build tracer
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(exporter)
-        .with_trace_config(
-            trace::config()
-                .with_sampler(Sampler::TraceIdRatioBased(config.sampling_rate))
-                .with_id_generator(RandomIdGenerator::default())
-                .with_max_events_per_span(64)
-                .with_max_attributes_per_span(32)
-                .with_resource(resource),
-        )
-        .with_batch_config(batch_config)
-        .install_batch(opentelemetry_sdk::runtime::Tokio)
-        .map_err(|e| OtelError::InitFailed(e.to_string()))?;
-
-    // Create tracing layer
-    let layer = tracing_opentelemetry::layer().with_tracer(tracer);
-
-    Ok(layer)
+    Ok(tracer)
 }
 
 /// Shutdown OpenTelemetry gracefully
@@ -218,7 +153,44 @@ pub async fn init_otel_layer(
 /// Flushes all pending spans before shutdown.
 pub async fn shutdown() {
     tracing::info!("Shutting down OpenTelemetry");
-    global::shutdown_tracer_provider();
+    if let Some(provider) = TRACER_PROVIDER.get() {
+        let _ = provider.shutdown();
+    }
+}
+
+fn build_tracer_provider(config: &OtelConfig) -> Result<SdkTracerProvider, OtelError> {
+    let resource = Resource::builder_empty()
+        .with_attributes(vec![
+            KeyValue::new("service.name", config.service_name.clone()),
+            KeyValue::new("service.version", config.service_version.clone()),
+            KeyValue::new("deployment.environment", config.environment.clone()),
+        ])
+        .build();
+
+    let batch_config = BatchConfigBuilder::default()
+        .with_max_queue_size(2048)
+        .with_max_export_batch_size(512)
+        .with_scheduled_delay(std::time::Duration::from_secs(5))
+        .build();
+
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(config.otlp_endpoint.clone())
+        .build()
+        .map_err(|e| OtelError::InitFailed(e.to_string()))?;
+
+    let processor = opentelemetry_sdk::trace::BatchSpanProcessor::builder(exporter)
+        .with_batch_config(batch_config)
+        .build();
+
+    Ok(SdkTracerProvider::builder()
+        .with_span_processor(processor)
+        .with_sampler(Sampler::TraceIdRatioBased(config.sampling_rate))
+        .with_id_generator(RandomIdGenerator::default())
+        .with_max_events_per_span(64)
+        .with_max_attributes_per_span(32)
+        .with_resource(resource)
+        .build())
 }
 
 /// OpenTelemetry errors

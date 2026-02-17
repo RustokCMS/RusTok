@@ -174,7 +174,8 @@ pub fn init(config: TelemetryConfig) -> Result<TelemetryHandles, TelemetryError>
             })
         });
 
-        if let Some(otel_layer) = otel_layer {
+        if let Some(otel_tracer) = otel_layer {
+            let otel_layer = tracing_opentelemetry::layer().with_tracer(otel_tracer);
             let subscriber = subscriber.with(otel_layer);
             tracing::subscriber::set_global_default(subscriber)
                 .map_err(|_| TelemetryError::SubscriberAlreadySet)?;

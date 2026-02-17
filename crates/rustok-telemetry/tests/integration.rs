@@ -9,6 +9,7 @@ fn test_telemetry_init() -> TestResult<()> {
         service_name: "rustok-test".to_string(),
         log_format: LogFormat::Json,
         metrics: false,
+        otel: None,
     };
 
     let _handles = rustok_telemetry::init(config)?;
