@@ -30,23 +30,21 @@
 |----------|-------------|
 | [MODULE_MATRIX.md](docs/modules/MODULE_MATRIX.md) | Полная карта модулей, зависимости, типы |
 | [DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) | Все таблицы БД с колонками и связями |
-| [I18N_ARCHITECTURE.md](docs/I18N_ARCHITECTURE.md) | **NEW** Comprehensive i18n/multi-language guide |
-| [ARCHITECTURE_GUIDE.md](docs/ARCHITECTURE_GUIDE.md) | Архитектурные принципы и решения |
+| [I18N_ARCHITECTURE.md](docs/I18N_ARCHITECTURE.md) | Comprehensive i18n/multi-language guide |
+| [architecture.md](docs/architecture.md) | Каноничный обзор архитектуры |
 | [ROADMAP.md](docs/ROADMAP.md) | Фазы разработки и стратегия |
 | [IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) | Статус реализации vs документация |
-| [MANIFEST_ADDENDUM.md](docs/MANIFEST_ADDENDUM.md) | Дополнения к манифесту (секции 26-33) |
+| [DOCS_MAP.md](docs/DOCS_MAP.md) | Реестр документации |
 | [modules/flex.md](docs/modules/flex.md) | Спецификация Flex модуля (новый концепт) |
 | [modules/module-manifest.md](docs/modules/module-manifest.md) | Манифест модулей и rebuild (WordPress/NodeBB-style) |
-| [modules/MODULE_UI_PACKAGES_INSTALLATION.md](docs/modules/MODULE_UI_PACKAGES_INSTALLATION.md) | **NEW** Полное руководство по установке модулей с UI пакетами для админки и фронтенда |
+| [modules/MODULE_UI_PACKAGES_INSTALLATION.md](docs/modules/MODULE_UI_PACKAGES_INSTALLATION.md) | Полное руководство по установке модулей с UI пакетами для админки и фронтенда |
 | [templates/module_contract.md](docs/templates/module_contract.md) | Шаблон контракта модуля |
 | [CODE_AUDIT_VERIFICATION.md](CODE_AUDIT_VERIFICATION.md) | Результаты проверки реализации и согласование чеклистов |
 | [TESTING_PROGRESS.md](TESTING_PROGRESS.md) | Testing coverage progress and test suites |
 | [rbac-enforcement.md](docs/rbac-enforcement.md) | RBAC permission system documentation |
-| [BACKEND_FIXES_2026-02-11.md](docs/BACKEND_FIXES_2026-02-11.md) | **NEW** Backend compilation fixes and TransactionalEventBus migration |
+| [BACKEND_FIXES_2026-02-11.md](docs/BACKEND_FIXES_2026-02-11.md) | Backend compilation fixes and TransactionalEventBus migration |
 | [transactional_event_publishing.md](docs/transactional_event_publishing.md) | Transactional event publishing guide with module migration status |
-| [ARCHITECTURE_REVIEW_2026-02-12.md](docs/ARCHITECTURE_REVIEW_2026-02-12.md) | **NEW** Complete architecture review with security & reliability analysis |
-| [EVENTBUS_CONSISTENCY_AUDIT.md](docs/EVENTBUS_CONSISTENCY_AUDIT.md) | **NEW** EventBus consistency audit report (100% pass) |
-| [SPRINT_1_COMPLETION.md](docs/SPRINT_1_COMPLETION.md) | **NEW** Sprint 1 completion report with metrics and impact |
+| [SPRINT_1_COMPLETION.md](docs/SPRINT_1_COMPLETION.md) | Sprint 1 completion report with metrics and impact |
 | [IMPLEMENTATION_PROGRESS.md](docs/IMPLEMENTATION_PROGRESS.md) | Sprint progress tracking with detailed task breakdown |
 
 ### 🧭 Governance Update (2026-02-13)
@@ -1411,6 +1409,241 @@ We keep a lightweight decision log in the manifest to acknowledge complexity and
 - **Owner/Date:** Accountability and timeline.
 
 This log exists to keep the project realistic and aligned as the system grows.
+
+---
+
+## 26. HYBRID CONTENT STRATEGY
+
+### 26.1 Principle
+
+RusToK использует **гибридный подход** к контенту:
+
+| Слой | Описание | Примеры |
+|------|----------|---------|
+| **Core Logic (Rust)** | Критические данные в строгих структурах | Products, Orders, Users |
+| **Marketing Logic (Flex)** | Маркетинговый контент через конструктор | Лендинги, формы, баннеры |
+| **Integration** | Flex индексируется в общий Index module | Единый поиск |
+
+### 26.2 Decision
+
+- **Основной упор:** стандартные схемы и модули (нормализованные таблицы)
+- **Flex:** подключается только для edge-cases
+- **Не плодим зависимости:** стандартные модули не зависят от Flex
+
+---
+
+## 27. FLEX MODULE PRINCIPLE
+
+> **Новый модуль, появившийся из архитектурного обсуждения**
+
+### 27.1 Definition
+
+**Flex (Generic Content Builder)** — опциональный вспомогательный модуль-конструктор данных для ситуаций, когда стандартных модулей недостаточно.
+
+### 27.2 Hard Rules
+
+| # | Rule | Status |
+|---|------|--------|
+| 1 | Flex is **OPTIONAL** | ✅ Approved |
+| 2 | Standard modules NEVER depend on Flex | ✅ Approved |
+| 3 | Flex depends only on rustok-core | ✅ Approved |
+| 4 | **Removal-safe:** платформа работает без Flex | ✅ Approved |
+| 5 | Integration via events/index, not JOIN | ✅ Approved |
+
+### 27.3 Guardrails
+
+| Constraint | Value | Status |
+|------------|-------|--------|
+| Max fields per schema | 50 | ⬜ TODO |
+| Max nesting depth | 2 | ⬜ TODO |
+| Max relation depth | 1 | ⬜ TODO |
+| Mandatory pagination | Yes | ⬜ TODO |
+| Strict validation on write | Yes | ⬜ TODO |
+
+### 27.4 Decision Tree
+
+```
+Нужны кастомные данные?
+    ↓
+Закрывается стандартным модулем?
+    → Да → Используй стандартный модуль
+    → Нет → Оправдано создание нового модуля?
+        → Да → Создай доменный модуль
+        → Нет → Используй Flex
+```
+
+---
+
+## 28. MODULE CONTRACTS FIRST
+
+### 28.1 Decision
+
+Перед реализацией бизнес-логики модулей — определить контракты для **всех** планируемых модулей.
+
+### 28.2 Contract Contents
+
+Для каждого модуля определить:
+
+| Артефакт | Описание |
+|----------|----------|
+| Tables/Migrations | SQL-схемы с `tenant_id` |
+| Events | Emit/consume + payload contracts |
+| Index schemas | Read model таблицы |
+| Permissions | RBAC permissions list |
+| API stubs | GraphQL-стабы для UI + REST-стабы для integrations/service flows |
+| Integration tests | Cross-module scenarios |
+
+### 28.3 Implementation
+
+- ⬜ TODO: Создать `docs/modules/<module>.md` для каждого модуля
+- ⬜ TODO: Использовать шаблон `docs/templates/module_contract.md`
+
+---
+
+## 29. REFERENCE SYSTEMS POLICY
+
+### 29.1 Decision
+
+Внешние системы (VirtoCommerce, phpFox, etc.) используются как **design/architecture references**, не как code dependencies.
+
+### 29.2 Rules
+
+| # | Rule |
+|---|------|
+| 1 | Copy **WHAT** (entities, fields, scenarios), not **HOW** (code) |
+| 2 | `references/` directory in `.gitignore` |
+| 3 | Only derived docs (module-map, events, db-notes) go to git |
+| 4 | No committing proprietary sources |
+| 5 | Rust 1:1 port impossible and not needed |
+
+### 29.3 Reference Sources
+
+| System | Use For |
+|--------|---------|
+| VirtoCommerce | Commerce module decomposition |
+| phpFox | Social graph, activity feed |
+| Medusa/Discourse | Feature parity, module design |
+
+---
+
+## 30. CONTENT ↔ COMMERCE STRATEGY
+
+### 30.1 Decision
+
+Commerce **владеет** своими данными (SEO, rich description). Indexer собирает композитную картину.
+
+### 30.2 Rejected Approach
+
+```
+❌ Product.node_id → Content.nodes
+```
+
+Причина: создаёт скрытую связь между bounded contexts.
+
+### 30.3 Approved Approach
+
+```
+✅ Commerce: owns SEO fields + rich description (JSONB)
+✅ Index: builds composite read model from events
+```
+
+---
+
+## 31. MIGRATIONS CONVENTION
+
+### 31.1 Naming Format
+
+```
+mYYYYMMDD_<module>_<nnn>_<description>.rs
+```
+
+### 31.2 Examples
+
+```
+m20250201_content_001_create_nodes.rs
+m20250201_content_002_create_bodies.rs
+m20250201_commerce_001_create_products.rs
+m20250201_commerce_002_create_variants.rs
+```
+
+### 31.3 Rules
+
+| # | Rule | Status |
+|---|------|--------|
+| 1 | Module prefix prevents collisions | ⬜ TODO |
+| 2 | One migration = one goal | ⬜ TODO |
+| 3 | Coordinate via module prefix | ⬜ TODO |
+
+---
+
+## 32. DEVELOPMENT STRATEGY
+
+### 32.1 Philosophy
+
+> "Или идеально, или говно"
+
+Архитектурные контракты должны быть корректными на уровне компилятора.
+
+### 32.2 Three Phases
+
+| Phase | Name | Goal |
+|-------|------|------|
+| 1 | **The Forge** | Core + Admin stability |
+| 2 | **House Blueprint** | Module contracts & skeletons |
+| 3 | **Construction** | Business logic by priority |
+
+### 32.3 Key Principle
+
+**Stabilize before scale:** пока ядро и админка не стабильны — не добавляем новые фичи, только минимальные реализации.
+
+---
+
+## 33. ADMIN AS ARCHITECTURE TESTER
+
+### 33.1 Principle
+
+Админка — не UI-проект, а **архитектурный тестер**.
+
+### 33.2 MVP Focus
+
+| Priority | Description |
+|----------|-------------|
+| High | API/contracts working correctly |
+| Low | UI polish (later) |
+
+### 33.3 Checklist
+
+Админка должна уметь:
+
+- ⬜ Tenant CRUD
+- ⬜ Enable/disable модули
+- ⬜ Module config editing
+- ⬜ CRUD базовых сущностей
+- ⬜ View events/index status
+- ⬜ RBAC management
+
+---
+
+## Implementation Status
+
+| Section | Status |
+|---------|--------|
+| 26. Hybrid Content Strategy | ✅ Documented |
+| 27. Flex Module Principle | ⬜ TODO: Implement |
+| 28. Module Contracts First | ⬜ TODO: Create docs |
+| 29. Reference Systems Policy | ⬜ TODO: Create references/ |
+| 30. Content ↔ Commerce | ⬜ TODO: Verify implementation |
+| 31. Migrations Convention | ⬜ TODO: Apply to existing |
+| 32. Development Strategy | ✅ Active |
+| 33. Admin as Tester | ⬜ TODO: MVP checklist |
+
+---
+
+## См. также
+
+- [ROADMAP.md](./ROADMAP.md)
+- [architecture.md](./architecture.md)
+- [modules/flex.md](./modules/flex.md)
 
 END OF MANIFEST v4.1
 

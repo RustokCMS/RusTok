@@ -1,13 +1,14 @@
 use leptos::prelude::*;
+use leptos::task::spawn_local;
+use leptos_auth::hooks::{use_auth, use_current_user};
 
 use crate::components::ui::{Button, LanguageToggle, PageHeader, StatsCard};
-use crate::modules::{components_for_slot, AdminSlot};
-use crate::providers::auth::use_auth;
 use crate::providers::locale::translate;
 
 #[component]
 pub fn Dashboard() -> impl IntoView {
     let auth = use_auth();
+    let current_user = use_current_user();
 
     let stats = move || {
         vec![
@@ -80,12 +81,13 @@ pub fn Dashboard() -> impl IntoView {
     };
 
     let logout = move |_| {
-        auth.set_token.set(None);
-        auth.set_user.set(None);
+        let auth = auth.clone();
+        spawn_local(async move {
+            let _ = auth.sign_out().await;
+        });
     };
 
-    let title = auth
-        .user
+    let title = current_user
         .get()
         .and_then(|user| user.name)
         .unwrap_or_else(|| "Dashboard".to_string());

@@ -30,6 +30,8 @@
   "app.dashboard.stats.tenantsHint": "+3 за неделю",
   "app.nav.dashboard": "Дашборд",
   "app.nav.users": "Пользователи",
+  "app.nav.profile": "Профиль",
+  "app.nav.security": "Безопасность",
   "auth.badge": "Admin Foundation",
   "auth.demoLink": "Перейти в демонстрационный дашборд →",
   "auth.emailLabel": "Email",

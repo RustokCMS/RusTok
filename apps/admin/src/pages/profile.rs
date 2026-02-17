@@ -1,35 +1,68 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_auth::hooks::{use_current_user, use_token, use_tenant};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{rest_post, ApiError};
+use crate::api::{request, ApiError};
 use crate::components::ui::{Button, Input, LanguageToggle};
-use crate::providers::auth::use_auth;
 use crate::providers::locale::translate;
 
+// GraphQL mutation for updating profile
+const UPDATE_PROFILE_MUTATION: &str = r#"
+mutation UpdateProfile($input: UpdateProfileInput!) {
+    updateProfile(input: $input) {
+        id
+        email
+        name
+        role
+    }
+}
+"#;
+
 #[derive(Serialize)]
-struct UpdateProfileParams {
+struct UpdateProfileInput {
+    input: ProfileData,
+}
+
+#[derive(Serialize)]
+struct ProfileData {
     name: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct UserResponse {
+struct UpdateProfileResponse {
+    #[serde(rename = "updateProfile")]
+    update_profile: ProfileUser,
+}
+
+#[derive(Deserialize)]
+struct ProfileUser {
+    #[allow(dead_code)]
+    id: String,
+    #[allow(dead_code)]
+    email: String,
     name: Option<String>,
+    #[allow(dead_code)]
+    role: String,
 }
 
 #[component]
 pub fn Profile() -> impl IntoView {
-    let auth = use_auth();
+    let current_user = use_current_user();
+    let token = use_token();
+    let tenant = use_tenant();
 
-    let initial_name = auth
-        .user
+    let initial_name = current_user
         .get()
         .and_then(|user| user.name)
         .unwrap_or_default();
-    let initial_email = auth.user.get().map(|user| user.email).unwrap_or_default();
+    let initial_email = current_user
+        .get()
+        .map(|user| user.email)
+        .unwrap_or_default();
 
     let (name, set_name) = signal(initial_name);
-    let (email, set_email) = signal(initial_email);
+    let (email, _set_email) = signal(initial_email);
     let (avatar, set_avatar) = signal(String::new());
     let (timezone, set_timezone) = signal(String::from("Europe/Moscow"));
     let (preferred_locale, set_preferred_locale) = signal(String::from("ru"));
@@ -37,37 +70,36 @@ pub fn Profile() -> impl IntoView {
     let (error, set_error) = signal(Option::<String>::None);
 
     let on_save = move |_| {
-        let token = auth.token.get();
-        let tenant_slug = auth.tenant_slug.get();
-        if token.is_none() {
+        let token_value = token.get();
+        let tenant_value = tenant.get();
+        if token_value.is_none() {
             set_error.set(Some(translate("errors.auth.unauthorized").to_string()));
             set_status.set(None);
             return;
         }
 
         let name_value = name.get().trim().to_string();
-        let set_status = set_status;
-        let set_error = set_error;
-        let set_name = set_name;
 
         spawn_local(async move {
-            let result = rest_post::<UpdateProfileParams, UserResponse>(
-                "/api/auth/profile",
-                &UpdateProfileParams {
-                    name: if name_value.is_empty() {
-                        None
-                    } else {
-                        Some(name_value)
+            let result = request::<UpdateProfileInput, UpdateProfileResponse>(
+                UPDATE_PROFILE_MUTATION,
+                UpdateProfileInput {
+                    input: ProfileData {
+                        name: if name_value.is_empty() {
+                            None
+                        } else {
+                            Some(name_value)
+                        },
                     },
                 },
-                token,
-                tenant_slug,
+                token_value,
+                tenant_value,
             )
             .await;
 
             match result {
-                Ok(user) => {
-                    if let Some(new_name) = user.name {
+                Ok(response) => {
+                    if let Some(new_name) = response.update_profile.name {
                         set_name.set(new_name);
                     }
                     set_error.set(None);
@@ -121,12 +153,14 @@ pub fn Profile() -> impl IntoView {
                         placeholder="Alex Morgan"
                         label=move || translate("profile.nameLabel")
                     />
-                    <Input
-                        value=email
-                        set_value=set_email
-                        placeholder="admin@rustok.io"
-                        label=move || translate("profile.emailLabel")
-                    />
+                    <div class="flex flex-col gap-2">
+                        <label class="text-sm text-slate-600">
+                            {move || translate("profile.emailLabel")}
+                        </label>
+                        <p class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                            {move || email.get()}
+                        </p>
+                    </div>
                     <Input
                         value=avatar
                         set_value=set_avatar
@@ -165,7 +199,9 @@ pub fn Profile() -> impl IntoView {
                         </p>
                     </div>
                     <Show when=move || error.get().is_some()>
-                        <div class="alert">{move || error.get().unwrap_or_default()}</div>
+                        <div class="rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
+                            {move || error.get().unwrap_or_default()}
+                        </div>
                     </Show>
                     <Show when=move || status.get().is_some()>
                         <div class="rounded-xl bg-emerald-100 px-4 py-2 text-sm text-emerald-700">

@@ -1,5 +1,5 @@
-use leptos::*;
-use std::rc::Rc;
+use leptos::prelude::*;
+use leptos::task::spawn_local;
 
 use crate::api;
 use crate::storage;
@@ -15,10 +15,10 @@ pub struct AuthContext {
 
 impl AuthContext {
     pub fn new() -> Self {
-        let user = create_rw_signal(storage::load_user().ok());
-        let session = create_rw_signal(storage::load_session().ok());
-        let is_loading = create_rw_signal(false);
-        let error = create_rw_signal(None);
+        let user = RwSignal::new(storage::load_user().ok());
+        let session = RwSignal::new(storage::load_session().ok());
+        let is_loading = RwSignal::new(false);
+        let error = RwSignal::new(None);
 
         Self {
             user,
@@ -41,8 +41,8 @@ impl AuthContext {
 
         match result {
             Ok((user, session)) => {
-                storage::save_user(&user)?;
-                storage::save_session(&session)?;
+                let _ = storage::save_user(&user);
+                let _ = storage::save_session(&session);
                 self.user.set(Some(user));
                 self.session.set(Some(session));
                 self.is_loading.set(false);
@@ -50,7 +50,7 @@ impl AuthContext {
             }
             Err(e) => {
                 self.is_loading.set(false);
-                self.error.set(Some(format!("{:?}", e)));
+                self.error.set(Some(format!("{}", e)));
                 Err(e)
             }
         }
@@ -70,8 +70,8 @@ impl AuthContext {
 
         match result {
             Ok((user, session)) => {
-                storage::save_user(&user)?;
-                storage::save_session(&session)?;
+                let _ = storage::save_user(&user);
+                let _ = storage::save_session(&session);
                 self.user.set(Some(user));
                 self.session.set(Some(session));
                 self.is_loading.set(false);
@@ -79,7 +79,7 @@ impl AuthContext {
             }
             Err(e) => {
                 self.is_loading.set(false);
-                self.error.set(Some(format!("{:?}", e)));
+                self.error.set(Some(format!("{}", e)));
                 Err(e)
             }
         }
@@ -89,7 +89,7 @@ impl AuthContext {
         self.is_loading.set(true);
 
         if let Some(session) = self.session.get() {
-            let _ = api::sign_out(&session.token).await;
+            let _ = api::sign_out(session.token.clone(), session.tenant.clone()).await;
         }
 
         storage::clear_session();
@@ -102,10 +102,9 @@ impl AuthContext {
 
     pub async fn refresh_session(&self) -> Result<(), AuthError> {
         if let Some(session) = self.session.get() {
-            let new_token = api::refresh_token(&session.token, &session.tenant).await?;
-            let mut new_session = session.clone();
-            new_session.token = new_token;
-            storage::save_session(&new_session)?;
+            let new_session =
+                api::refresh_token(session.token.clone(), session.tenant.clone()).await?;
+            let _ = storage::save_session(&new_session);
             self.session.set(Some(new_session));
             Ok(())
         } else {
@@ -115,9 +114,12 @@ impl AuthContext {
 
     pub async fn fetch_current_user(&self) -> Result<(), AuthError> {
         if let Some(session) = self.session.get() {
-            let user = api::get_current_user(&session.token, &session.tenant).await?;
-            storage::save_user(&user)?;
-            self.user.set(Some(user));
+            let user =
+                api::fetch_current_user(session.token.clone(), session.tenant.clone()).await?;
+            if let Some(ref u) = user {
+                let _ = storage::save_user(u);
+            }
+            self.user.set(user);
             Ok(())
         } else {
             Err(AuthError::Unauthorized)
@@ -146,10 +148,10 @@ impl Default for AuthContext {
 #[component]
 pub fn AuthProvider(children: Children) -> impl IntoView {
     let auth_context = AuthContext::new();
-    
+
     provide_context(auth_context.clone());
 
-    create_effect(move |_| {
+    Effect::new(move |_| {
         if auth_context.session.get().is_some() {
             spawn_local(async move {
                 let _ = auth_context.fetch_current_user().await;
@@ -157,7 +159,5 @@ pub fn AuthProvider(children: Children) -> impl IntoView {
         }
     });
 
-    view! {
-        {children()}
-    }
+    children()
 }

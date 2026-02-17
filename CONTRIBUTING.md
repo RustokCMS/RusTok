@@ -140,6 +140,7 @@ Update documentation when:
 - Changing APIs
 - Modifying configuration
 - Updating dependencies
+- Changing architecture, events, modules, tenancy, routing, or UI contracts (also update `docs/DOCS_MAP.md`)
 
 ## Project Structure
 
@@ -237,6 +238,7 @@ cd docs && mdbook build
 - [ ] Code follows project style guidelines
 - [ ] Tests added/updated for new features
 - [ ] Documentation updated
+- [ ] DOCS_MAP.md updated when docs triggers were touched
 - [ ] CHANGELOG.md updated
 - [ ] All CI checks pass
 - [ ] No breaking changes (or properly documented)

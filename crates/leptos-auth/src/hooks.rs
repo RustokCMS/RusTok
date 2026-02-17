@@ -1,4 +1,4 @@
-use leptos::*;
+use leptos::prelude::*;
 
 use crate::context::AuthContext;
 use crate::{AuthSession, AuthUser};

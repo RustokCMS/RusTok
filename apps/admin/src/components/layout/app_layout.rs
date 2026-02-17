@@ -8,20 +8,12 @@ use super::sidebar::Sidebar;
 #[component]
 pub fn AppLayout() -> impl IntoView {
     view! {
-        <div class="flex h-screen bg-gray-50">
-            // Sidebar
+        <div class="flex h-screen bg-slate-50 overflow-hidden">
             <Sidebar />
-
-            // Main Content Area
-            <div class="flex-1 flex flex-col overflow-hidden">
-                // Header
+            <div class="flex flex-1 flex-col overflow-hidden">
                 <Header />
-
-                // Page Content
-                <main class="flex-1 overflow-y-auto p-6">
-                    <div class="max-w-7xl mx-auto">
-                        <Outlet />
-                    </div>
+                <main class="flex-1 overflow-y-auto">
+                    <Outlet />
                 </main>
             </div>
         </div>

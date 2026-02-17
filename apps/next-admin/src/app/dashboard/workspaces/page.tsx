@@ -1,35 +1,31 @@
-'use client';
-
 import PageContainer from '@/components/layout/page-container';
-import { OrganizationList } from '@clerk/nextjs';
-import { dark } from '@clerk/themes';
-import { useTheme } from 'next-themes';
-import { workspacesInfoContent } from '@/config/infoconfig';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from '@/components/ui/card';
 
 export default function WorkspacesPage() {
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
-
   return (
     <PageContainer
       pageTitle='Workspaces'
-      pageDescription='Manage your workspaces and switch between them'
-      infoContent={workspacesInfoContent}
+      pageDescription='Manage your workspace settings'
     >
-      <OrganizationList
-        appearance={{
-          baseTheme: isDark ? dark : undefined,
-          elements: {
-            organizationListBox: 'space-y-2',
-            organizationPreview: 'rounded-lg border p-4 hover:bg-accent',
-            organizationPreviewMainIdentifier: 'text-lg font-semibold',
-            organizationPreviewSecondaryIdentifier:
-              'text-sm text-muted-foreground'
-          }
-        }}
-        afterSelectOrganizationUrl='/dashboard/workspaces/team'
-        afterCreateOrganizationUrl='/dashboard/workspaces/team'
-      />
+      <Card>
+        <CardHeader>
+          <CardTitle>Workspace Management</CardTitle>
+          <CardDescription>
+            Your current workspace and settings
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className='text-muted-foreground text-sm'>
+            Multi-workspace management is configured by your administrator.
+          </p>
+        </CardContent>
+      </Card>
     </PageContainer>
   );
 }

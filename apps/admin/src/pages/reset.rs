@@ -1,151 +1,38 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use serde::{Deserialize, Serialize};
+use leptos_auth::hooks::use_tenant;
 
-use crate::api::{rest_post, ApiError};
 use crate::components::ui::{Button, Input, LanguageToggle};
 use crate::providers::locale::translate;
 
-#[derive(Serialize)]
-struct ResetRequestParams {
-    email: String,
-}
-
-#[derive(Deserialize)]
-struct ResetRequestResponse {
-    reset_token: Option<String>,
-}
-
-#[derive(Serialize)]
-struct ResetConfirmParams {
-    token: String,
-    password: String,
-}
-
-#[derive(Deserialize)]
-struct GenericStatus {}
-
 #[component]
 pub fn ResetPassword() -> impl IntoView {
-    let auth = crate::providers::auth::use_auth();
+    let tenant_signal = use_tenant();
 
-    let initial_tenant = auth.tenant_slug.get().unwrap_or_default();
+    let initial_tenant = tenant_signal.get().unwrap_or_default();
     let (tenant, set_tenant) = signal(initial_tenant);
     let (email, set_email) = signal(String::new());
-    let (token, set_token) = signal(String::new());
-    let (new_password, set_new_password) = signal(String::new());
     let (error, set_error) = signal(Option::<String>::None);
     let (status, set_status) = signal(Option::<String>::None);
-    let (token_expired, set_token_expired) = signal(false);
 
     let on_request = move |_| {
         if tenant.get().is_empty() || email.get().is_empty() {
             set_error.set(Some(translate("reset.errorRequired").to_string()));
             set_status.set(None);
-            set_token_expired.set(false);
             return;
         }
 
         let tenant_value = tenant.get().trim().to_string();
         let email_value = email.get().trim().to_string();
-        let set_error = set_error;
-        let set_status = set_status;
-        let set_token = set_token;
 
         spawn_local(async move {
-            let result = rest_post::<ResetRequestParams, ResetRequestResponse>(
-                "/api/auth/reset/request",
-                &ResetRequestParams { email: email_value },
-                None,
-                Some(tenant_value.clone()),
-            )
-            .await;
-
-            match result {
-                Ok(response) => {
+            match leptos_auth::api::forgot_password(email_value, tenant_value).await {
+                Ok(message) => {
                     set_error.set(None);
-                    if let Some(reset_token) = response.reset_token {
-                        set_token.set(reset_token);
-                    }
-                    set_status.set(Some(translate("reset.requestSent").to_string()));
-                    set_token_expired.set(false);
+                    set_status.set(Some(message));
                 }
-                Err(err) => {
-                    let message = match err {
-                        ApiError::Unauthorized => translate("errors.auth.unauthorized").to_string(),
-                        ApiError::Http(_) => {
-                            set_token_expired.set(false);
-                            translate("errors.http").to_string()
-                        }
-                        ApiError::Network => {
-                            set_token_expired.set(false);
-                            translate("errors.network").to_string()
-                        }
-                        ApiError::Graphql(_) => {
-                            set_token_expired.set(false);
-                            translate("errors.unknown").to_string()
-                        }
-                    };
-                    set_error.set(Some(message));
-                    set_status.set(None);
-                    set_token_expired.set(false);
-                }
-            }
-        });
-    };
-
-    let on_reset = move |_| {
-        if token.get().is_empty() || new_password.get().is_empty() {
-            set_error.set(Some(translate("reset.tokenRequired").to_string()));
-            set_status.set(None);
-            set_token_expired.set(false);
-            return;
-        }
-
-        let tenant_value = tenant.get().trim().to_string();
-        let token_value = token.get();
-        let password_value = new_password.get();
-        let set_error = set_error;
-        let set_status = set_status;
-
-        spawn_local(async move {
-            let result = rest_post::<ResetConfirmParams, GenericStatus>(
-                "/api/auth/reset/confirm",
-                &ResetConfirmParams {
-                    token: token_value,
-                    password: password_value,
-                },
-                None,
-                Some(tenant_value.clone()),
-            )
-            .await;
-
-            match result {
-                Ok(_) => {
-                    set_error.set(None);
-                    set_status.set(Some(translate("reset.updated").to_string()));
-                    set_token_expired.set(false);
-                }
-                Err(err) => {
-                    let message = match err {
-                        ApiError::Unauthorized => {
-                            set_token_expired.set(true);
-                            translate("reset.tokenExpired").to_string()
-                        }
-                        ApiError::Http(_) => {
-                            set_token_expired.set(false);
-                            translate("errors.http").to_string()
-                        }
-                        ApiError::Network => {
-                            set_token_expired.set(false);
-                            translate("errors.network").to_string()
-                        }
-                        ApiError::Graphql(_) => {
-                            set_token_expired.set(false);
-                            translate("errors.unknown").to_string()
-                        }
-                    };
-                    set_error.set(Some(message));
+                Err(e) => {
+                    set_error.set(Some(format!("{}", e)));
                     set_status.set(None);
                 }
             }
@@ -193,45 +80,9 @@ pub fn ResetPassword() -> impl IntoView {
                             {move || status.get().unwrap_or_default()}
                         </div>
                     </Show>
-                    <Show when=move || token_expired.get()>
-                        <div class="alert warning">{move || translate("reset.requestNewLink")}</div>
-                    </Show>
                     <Input value=tenant set_value=set_tenant placeholder="demo" label=move || translate("reset.tenantLabel") />
                     <Input value=email set_value=set_email placeholder="admin@rustok.io" label=move || translate("reset.emailLabel") />
                     <Button on_click=on_request class="w-full">{move || translate("reset.requestSubmit")}</Button>
-                </div>
-
-                <div class="flex flex-col gap-5 rounded-3xl bg-white p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
-                    <div>
-                        <h3 class="text-lg font-semibold">
-                            {move || translate("reset.tokenTitle")}
-                        </h3>
-                        <p class="text-slate-500">
-                            {move || translate("reset.tokenSubtitle")}
-                        </p>
-                    </div>
-                    <Input
-                        value=token
-                        set_value=set_token
-                        placeholder="RESET-2024-0001"
-                        label=move || translate("reset.tokenLabel")
-                    />
-                    <Input
-                        value=new_password
-                        set_value=set_new_password
-                        placeholder="••••••••"
-                        type_="password"
-                        label=move || translate("reset.newPasswordLabel")
-                    />
-                    <p class="text-sm text-slate-500">
-                        {move || translate("reset.tokenHint")}
-                    </p>
-                    <Button
-                        on_click=on_reset
-                        class="w-full border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
-                    >
-                        {move || translate("reset.tokenSubmit")}
-                    </Button>
                     <div class="flex justify-between gap-3 text-sm">
                         <a class="text-blue-600 hover:underline" href="/login">
                             {move || translate("reset.loginLink")}

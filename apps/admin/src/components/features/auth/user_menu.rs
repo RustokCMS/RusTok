@@ -1,31 +1,24 @@
 // User Menu Dropdown Component
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_router::hooks::use_navigate;
 use leptos_router::components::A;
 
-use crate::providers::auth::use_auth;
+use leptos_auth::hooks::{use_auth, use_current_user};
 
 #[component]
 pub fn UserMenu() -> impl IntoView {
     let auth = use_auth();
-    let navigate = use_navigate();
+    let current_user = use_current_user();
 
     let (open, set_open) = signal(false);
 
     let handle_logout = move |_| {
+        let auth = auth.clone();
         spawn_local(async move {
-            // Clear auth state
-            auth.set_token.set(None);
-            auth.set_user.set(None);
-            auth.set_tenant_slug.set(None);
-
-            // Navigate to login
-            navigate("/login", Default::default());
+            let _ = auth.sign_out().await;
         });
     };
 
-    // Close dropdown when clicking outside (simplified version)
     let toggle_menu = move |_| {
         set_open.update(|v| *v = !*v);
     };
@@ -40,7 +33,7 @@ pub fn UserMenu() -> impl IntoView {
                 <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                     <span class="text-white text-sm font-semibold">
                         {move || {
-                            auth.user
+                            current_user
                                 .get()
                                 .and_then(|u| u.name.clone())
                                 .and_then(|n| n.chars().next())
@@ -52,7 +45,7 @@ pub fn UserMenu() -> impl IntoView {
                 <div class="text-left hidden md:block">
                     <p class="text-sm font-medium text-gray-900">
                         {move || {
-                            auth.user
+                            current_user
                                 .get()
                                 .and_then(|u| u.name.clone())
                                 .unwrap_or_else(|| "User".to_string())
@@ -60,7 +53,7 @@ pub fn UserMenu() -> impl IntoView {
                     </p>
                     <p class="text-xs text-gray-500">
                         {move || {
-                            auth.user
+                            current_user
                                 .get()
                                 .map(|u| u.role.clone())
                                 .unwrap_or_else(|| "user".to_string())
@@ -79,7 +72,7 @@ pub fn UserMenu() -> impl IntoView {
                     <div class="px-4 py-3 border-b border-gray-200">
                         <p class="text-sm font-medium text-gray-900">
                             {move || {
-                                auth.user
+                                current_user
                                     .get()
                                     .and_then(|u| u.name.clone())
                                     .unwrap_or_else(|| "User".to_string())
@@ -87,7 +80,7 @@ pub fn UserMenu() -> impl IntoView {
                         </p>
                         <p class="text-xs text-gray-500 truncate">
                             {move || {
-                                auth.user
+                                current_user
                                     .get()
                                     .map(|u| u.email.clone())
                                     .unwrap_or_else(|| "user@example.com".to_string())
@@ -99,9 +92,6 @@ pub fn UserMenu() -> impl IntoView {
                     <div class="py-1">
                         <DropdownLink href="/profile" icon="👤">
                             "Profile"
-                        </DropdownLink>
-                        <DropdownLink href="/settings" icon="⚙️">
-                            "Settings"
                         </DropdownLink>
                         <DropdownLink href="/security" icon="🔒">
                             "Security"

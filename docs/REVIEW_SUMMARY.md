@@ -1,5 +1,8 @@
 # Architecture Review Summary
 
+> **Status:** Archived. Историческая сводка.
+> Актуальный обзор архитектуры: [`docs/architecture.md`](architecture.md).
+>
 > Краткое резюме архитектурного обзора от 2026-02-12
 
 ---

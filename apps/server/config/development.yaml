@@ -6,7 +6,7 @@ logger:
 
 server:
   binding: 0.0.0.0
-  port: 3000
+  port: 5150
 
 database:
   uri: postgres://rustok:rustok@localhost:5432/rustok_dev

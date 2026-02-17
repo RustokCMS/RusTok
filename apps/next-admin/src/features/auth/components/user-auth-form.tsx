@@ -1,81 +1,90 @@
 'use client';
 import { Button } from '@/components/ui/button';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage
-} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useSearchParams } from 'next/navigation';
-import { useTransition } from 'react';
-import { useForm } from 'react-hook-form';
+import { Label } from '@/components/ui/label';
+import { signIn } from 'next-auth/react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
 import { toast } from 'sonner';
-import * as z from 'zod';
-import GithubSignInButton from './github-auth-button';
-import { FormInput } from '@/components/forms/form-input';
-
-const formSchema = z.object({
-  email: z.string().email({ message: 'Enter a valid email address' })
-});
-
-type UserFormValue = z.infer<typeof formSchema>;
 
 export default function UserAuthForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl');
-  const [loading, startTransition] = useTransition();
-  const defaultValues = {
-    email: 'demo@gmail.com'
-  };
-  const form = useForm<UserFormValue>({
-    resolver: zodResolver(formSchema),
-    defaultValues
-  });
+  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard/overview';
 
-  const onSubmit = async (data: UserFormValue) => {
-    startTransition(() => {
-      console.log('continue with email clicked');
-      toast.success('Signed In Successfully!');
-    });
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [tenantSlug, setTenantSlug] = useState('demo');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password || !tenantSlug) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await signIn('credentials', {
+        email: email.trim(),
+        password,
+        tenantSlug: tenantSlug.trim(),
+        redirect: false
+      });
+
+      if (result?.error) {
+        toast.error('Invalid credentials. Check your email, password and workspace.');
+      } else {
+        toast.success('Signed in successfully');
+        router.push(callbackUrl);
+        router.refresh();
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <>
-      <Form
-        form={form}
-        onSubmit={form.handleSubmit(onSubmit)}
-        className='w-full space-y-2'
-      >
-        <FormInput
-          control={form.control}
-          name='email'
-          label='Email'
-          placeholder='Enter your email...'
-          disabled={loading}
+    <form onSubmit={onSubmit} className='w-full space-y-4'>
+      <div className='space-y-2'>
+        <Label htmlFor='tenant'>Workspace</Label>
+        <Input
+          id='tenant'
+          placeholder='demo'
+          value={tenantSlug}
+          onChange={(e) => setTenantSlug(e.target.value)}
+          disabled={isLoading}
+          required
         />
-        <Button
-          disabled={loading}
-          className='mt-2 ml-auto w-full'
-          type='submit'
-        >
-          Continue With Email
-        </Button>
-      </Form>
-      <div className='relative'>
-        <div className='absolute inset-0 flex items-center'>
-          <span className='w-full border-t' />
-        </div>
-        <div className='relative flex justify-center text-xs uppercase'>
-          <span className='bg-background text-muted-foreground px-2'>
-            Or continue with
-          </span>
-        </div>
       </div>
-      <GithubSignInButton />
-    </>
+      <div className='space-y-2'>
+        <Label htmlFor='email'>Email</Label>
+        <Input
+          id='email'
+          type='email'
+          placeholder='admin@rustok.io'
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={isLoading}
+          required
+        />
+      </div>
+      <div className='space-y-2'>
+        <Label htmlFor='password'>Password</Label>
+        <Input
+          id='password'
+          type='password'
+          placeholder='••••••••'
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={isLoading}
+          required
+        />
+      </div>
+      <Button type='submit' className='w-full' disabled={isLoading}>
+        {isLoading ? 'Signing in...' : 'Sign In'}
+      </Button>
+    </form>
   );
 }

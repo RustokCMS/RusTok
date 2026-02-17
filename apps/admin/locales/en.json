@@ -30,6 +30,8 @@
   "app.dashboard.stats.tenantsHint": "+3 in a week",
   "app.nav.dashboard": "Dashboard",
   "app.nav.users": "Users",
+  "app.nav.profile": "Profile",
+  "app.nav.security": "Security",
   "auth.badge": "Admin Foundation",
   "auth.demoLink": "Open demo dashboard →",
   "auth.emailLabel": "Email",

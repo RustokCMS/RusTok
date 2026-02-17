@@ -1,107 +1,43 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_auth::hooks::use_auth;
 use leptos_router::hooks::use_navigate;
-use serde::{Deserialize, Serialize};
 
-use crate::api::{rest_post, ApiError};
 use crate::components::ui::{Button, Input, LanguageToggle};
-use crate::providers::auth::{use_auth, User};
 use crate::providers::locale::translate;
-
-#[derive(Serialize)]
-struct LoginParams {
-    email: String,
-    password: String,
-}
-
-#[derive(Deserialize)]
-struct AuthResponse {
-    #[serde(rename = "access_token")]
-    access_token: String,
-    user: AuthUser,
-}
-
-#[derive(Deserialize)]
-struct AuthUser {
-    id: String,
-    email: String,
-    name: Option<String>,
-    role: String,
-}
 
 #[component]
 pub fn Login() -> impl IntoView {
     let auth = use_auth();
     let navigate = use_navigate();
 
-    let (tenant, set_tenant) = signal(String::new());
+    let (tenant, set_tenant) = signal(String::from("demo"));
     let (email, set_email) = signal(String::new());
     let (password, set_password) = signal(String::new());
     let (error, set_error) = signal(Option::<String>::None);
-    let (is_loading, set_is_loading) = signal(false);
-
-    let navigate_effect = navigate.clone();
-    Effect::new(move |_| {
-        if auth.token.get().is_some() {
-            navigate_effect("/dashboard", Default::default());
-        }
-    });
 
     let on_submit = move |_| {
         if tenant.get().is_empty() || email.get().is_empty() || password.get().is_empty() {
-            set_error.set(Some(translate("auth.errorRequired").to_string()));
+            set_error.set(Some(translate("login.errorRequired").to_string()));
             return;
         }
 
         let tenant_value = tenant.get().trim().to_string();
         let email_value = email.get().trim().to_string();
         let password_value = password.get();
-        let set_token = auth.set_token;
-        let set_user = auth.set_user;
-        let set_tenant_slug = auth.set_tenant_slug;
+        let auth = auth.clone();
         let navigate = navigate.clone();
 
-        set_error.set(None);
-        set_is_loading.set(true);
-
         spawn_local(async move {
-            let result = rest_post::<LoginParams, AuthResponse>(
-                "/api/auth/login",
-                &LoginParams {
-                    email: email_value,
-                    password: password_value,
-                },
-                None,
-                Some(tenant_value.clone()),
-            )
-            .await;
-
-            match result {
-                Ok(response) => {
-                    set_token.set(Some(response.access_token));
-                    set_tenant_slug.set(Some(tenant_value));
-                    set_user.set(Some(User {
-                        id: response.user.id,
-                        email: response.user.email,
-                        name: response.user.name,
-                        role: response.user.role,
-                    }));
+            match auth.sign_in(email_value, password_value, tenant_value).await {
+                Ok(()) => {
+                    set_error.set(None);
                     navigate("/dashboard", Default::default());
                 }
-                Err(err) => {
-                    let message = match err {
-                        ApiError::Unauthorized => {
-                            translate("errors.auth.invalid_credentials").to_string()
-                        }
-                        ApiError::Http(_) => translate("errors.http").to_string(),
-                        ApiError::Network => translate("errors.network").to_string(),
-                        ApiError::Graphql(_) => translate("errors.unknown").to_string(),
-                    };
-                    set_error.set(Some(message));
+                Err(e) => {
+                    set_error.set(Some(format!("{}", e)));
                 }
             }
-
-            set_is_loading.set(false);
         });
     };
 
@@ -109,18 +45,16 @@ pub fn Login() -> impl IntoView {
         <section class="grid min-h-screen grid-cols-1 lg:grid-cols-[1.2fr_1fr]">
             <aside class="flex flex-col justify-center gap-6 bg-[radial-gradient(circle_at_top_left,#1e3a8a,#0f172a)] p-12 text-white lg:p-16">
                 <span class="inline-flex w-fit items-center rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/80">
-                    {move || translate("auth.badge")}
+                    {move || translate("login.badge")}
                 </span>
-                <h1 class="text-4xl font-semibold">{move || translate("auth.heroTitle")}</h1>
-                <p class="text-lg text-white/80">
-                    {move || translate("auth.heroSubtitle")}
-                </p>
-                <div>
+                <h1 class="text-4xl font-semibold">{move || translate("login.heroTitle")}</h1>
+                <p class="text-lg text-white/80">{move || translate("login.heroSubtitle")}</p>
+                <div class="grid gap-2">
                     <p class="text-sm font-semibold">
-                        {move || translate("auth.heroListTitle")}
+                        {move || translate("login.heroListTitle")}
                     </p>
                     <p class="text-sm text-white/75">
-                        {move || translate("auth.heroListSubtitle")}
+                        {move || translate("login.heroListSubtitle")}
                     </p>
                 </div>
             </aside>
@@ -128,14 +62,14 @@ pub fn Login() -> impl IntoView {
                 <div class="flex flex-col gap-5 rounded-3xl bg-white p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
                     <div>
                         <h2 class="text-2xl font-semibold">
-                            {move || translate("auth.title")}
+                            {move || translate("login.title")}
                         </h2>
                         <p class="text-slate-500">
-                            {move || translate("auth.subtitle")}
+                            {move || translate("login.subtitle")}
                         </p>
                     </div>
                     <div class="flex items-center justify-between gap-3 text-sm text-slate-600">
-                        <span>{move || translate("auth.languageLabel")}</span>
+                        <span>{move || translate("login.languageLabel")}</span>
                         <LanguageToggle />
                     </div>
                     <Show when=move || error.get().is_some()>
@@ -147,40 +81,33 @@ pub fn Login() -> impl IntoView {
                         value=tenant
                         set_value=set_tenant
                         placeholder="demo"
-                        label=move || translate("auth.tenantLabel")
+                        label=move || translate("login.tenantLabel")
                     />
                     <Input
                         value=email
                         set_value=set_email
                         placeholder="admin@rustok.io"
-                        label=move || translate("auth.emailLabel")
+                        label=move || translate("login.emailLabel")
                     />
                     <Input
                         value=password
                         set_value=set_password
                         placeholder="••••••••"
                         type_="password"
-                        label=move || translate("auth.passwordLabel")
+                        label=move || translate("login.passwordLabel")
                     />
-                    <Button
-                        on_click=on_submit
-                        class="w-full"
-                        disabled=Signal::derive(move || is_loading.get())
-                    >
-                        {move || translate("auth.submit")}
+                    <Button on_click=on_submit class="w-full">
+                        {move || translate("login.submit")}
                     </Button>
                     <div class="flex justify-between gap-3 text-sm">
                         <a class="text-blue-600 hover:underline" href="/register">
-                            {move || translate("auth.registerLink")}
+                            {move || translate("login.registerLink")}
                         </a>
                         <a class="text-blue-600 hover:underline" href="/reset">
-                            {move || translate("auth.resetLink")}
+                            {move || translate("login.resetLink")}
                         </a>
                     </div>
                 </div>
-                <p class="text-sm text-slate-500">
-                    {move || translate("auth.footer")}
-                </p>
             </div>
         </section>
     }

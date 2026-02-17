@@ -2,7 +2,7 @@
 // Использует leptos-graphql как transport layer
 
 use leptos_graphql::{execute, GraphqlRequest};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::{AuthError, AuthSession, AuthUser};
@@ -113,6 +113,7 @@ struct SignUpResponse {
 #[derive(Debug, Deserialize)]
 struct SignOutResponse {
     #[serde(rename = "signOut")]
+    #[allow(dead_code)]
     sign_out: SignOutPayload,
 }
 
@@ -138,10 +139,13 @@ struct AuthPayload {
     #[serde(rename = "accessToken")]
     access_token: String,
     #[serde(rename = "refreshToken")]
+    #[allow(dead_code)]
     refresh_token: String,
     #[serde(rename = "tokenType")]
+    #[allow(dead_code)]
     token_type: String,
     #[serde(rename = "expiresIn")]
+    #[allow(dead_code)]
     expires_in: i32,
     user: AuthUserGraphQL,
 }
@@ -152,16 +156,19 @@ struct AuthUserGraphQL {
     email: String,
     name: Option<String>,
     role: String,
+    #[allow(dead_code)]
     status: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct SignOutPayload {
+    #[allow(dead_code)]
     success: bool,
 }
 
 #[derive(Debug, Deserialize)]
 struct ForgotPasswordPayload {
+    #[allow(dead_code)]
     success: bool,
     message: String,
 }
@@ -199,7 +206,7 @@ pub async fn sign_in(
     tenant: String,
 ) -> Result<(AuthUser, AuthSession), AuthError> {
     let url = get_graphql_url();
-    
+
     let variables = json!({
         "input": {
             "email": email,
@@ -207,17 +214,25 @@ pub async fn sign_in(
         }
     });
 
-    let request = GraphqlRequest {
-        query: SIGN_IN_MUTATION.to_string(),
-        variables,
-    };
+    let request = GraphqlRequest::new(SIGN_IN_MUTATION, Some(variables));
 
-    let response: SignInResponse = execute(&url, request, None, Some(&tenant))
+    let response: SignInResponse = execute(&url, request, None, Some(tenant.clone()))
         .await
-        .map_err(|_| AuthError::Network)?;
+        .map_err(|e| match e {
+            leptos_graphql::GraphqlHttpError::Unauthorized => AuthError::InvalidCredentials,
+            leptos_graphql::GraphqlHttpError::Graphql(msg) => {
+                if msg.contains("Invalid") || msg.contains("credentials") {
+                    AuthError::InvalidCredentials
+                } else {
+                    AuthError::Http(400)
+                }
+            }
+            leptos_graphql::GraphqlHttpError::Http(_) => AuthError::Http(500),
+            leptos_graphql::GraphqlHttpError::Network => AuthError::Network,
+        })?;
 
     let payload = response.sign_in;
-    
+
     let user = AuthUser {
         id: payload.user.id,
         email: payload.user.email,
@@ -241,7 +256,7 @@ pub async fn sign_up(
     tenant: String,
 ) -> Result<(AuthUser, AuthSession), AuthError> {
     let url = get_graphql_url();
-    
+
     let variables = json!({
         "input": {
             "email": email,
@@ -250,17 +265,18 @@ pub async fn sign_up(
         }
     });
 
-    let request = GraphqlRequest {
-        query: SIGN_UP_MUTATION.to_string(),
-        variables,
-    };
+    let request = GraphqlRequest::new(SIGN_UP_MUTATION, Some(variables));
 
-    let response: SignUpResponse = execute(&url, request, None, Some(&tenant))
+    let response: SignUpResponse = execute(&url, request, None, Some(tenant.clone()))
         .await
-        .map_err(|_| AuthError::Network)?;
+        .map_err(|e| match e {
+            leptos_graphql::GraphqlHttpError::Unauthorized => AuthError::Unauthorized,
+            leptos_graphql::GraphqlHttpError::Network => AuthError::Network,
+            _ => AuthError::Http(500),
+        })?;
 
     let payload = response.sign_up;
-    
+
     let user = AuthUser {
         id: payload.user.id,
         email: payload.user.email,
@@ -280,12 +296,9 @@ pub async fn sign_up(
 pub async fn sign_out(token: String, tenant: String) -> Result<(), AuthError> {
     let url = get_graphql_url();
 
-    let request = GraphqlRequest {
-        query: SIGN_OUT_MUTATION.to_string(),
-        variables: serde_json::Value::Null,
-    };
+    let request = GraphqlRequest::new(SIGN_OUT_MUTATION, None::<serde_json::Value>);
 
-    let _response: SignOutResponse = execute(&url, request, Some(&token), Some(&tenant))
+    let _response: SignOutResponse = execute(&url, request, Some(token), Some(tenant))
         .await
         .map_err(|_| AuthError::Network)?;
 
@@ -293,21 +306,21 @@ pub async fn sign_out(token: String, tenant: String) -> Result<(), AuthError> {
 }
 
 /// Refresh access token using refresh token
-pub async fn refresh_token(refresh_token: String, tenant: String) -> Result<AuthSession, AuthError> {
+pub async fn refresh_token(
+    refresh_tok: String,
+    tenant: String,
+) -> Result<AuthSession, AuthError> {
     let url = get_graphql_url();
-    
+
     let variables = json!({
         "input": {
-            "refreshToken": refresh_token,
+            "refreshToken": refresh_tok,
         }
     });
 
-    let request = GraphqlRequest {
-        query: REFRESH_TOKEN_MUTATION.to_string(),
-        variables,
-    };
+    let request = GraphqlRequest::new(REFRESH_TOKEN_MUTATION, Some(variables));
 
-    let response: RefreshTokenResponse = execute(&url, request, None, Some(&tenant))
+    let response: RefreshTokenResponse = execute(&url, request, None, Some(tenant.clone()))
         .await
         .map_err(|_| AuthError::Network)?;
 
@@ -324,19 +337,16 @@ pub async fn refresh_token(refresh_token: String, tenant: String) -> Result<Auth
 /// Request password reset
 pub async fn forgot_password(email: String, tenant: String) -> Result<String, AuthError> {
     let url = get_graphql_url();
-    
+
     let variables = json!({
         "input": {
             "email": email,
         }
     });
 
-    let request = GraphqlRequest {
-        query: FORGOT_PASSWORD_MUTATION.to_string(),
-        variables,
-    };
+    let request = GraphqlRequest::new(FORGOT_PASSWORD_MUTATION, Some(variables));
 
-    let response: ForgotPasswordResponse = execute(&url, request, None, Some(&tenant))
+    let response: ForgotPasswordResponse = execute(&url, request, None, Some(tenant))
         .await
         .map_err(|_| AuthError::Network)?;
 
@@ -344,17 +354,20 @@ pub async fn forgot_password(email: String, tenant: String) -> Result<String, Au
 }
 
 /// Get current user
-pub async fn fetch_current_user(token: String, tenant: String) -> Result<Option<AuthUser>, AuthError> {
+pub async fn fetch_current_user(
+    token: String,
+    tenant: String,
+) -> Result<Option<AuthUser>, AuthError> {
     let url = get_graphql_url();
 
-    let request = GraphqlRequest {
-        query: CURRENT_USER_QUERY.to_string(),
-        variables: serde_json::Value::Null,
-    };
+    let request = GraphqlRequest::new(CURRENT_USER_QUERY, None::<serde_json::Value>);
 
-    let response: CurrentUserResponse = execute(&url, request, Some(&token), Some(&tenant))
+    let response: CurrentUserResponse = execute(&url, request, Some(token), Some(tenant))
         .await
-        .map_err(|_| AuthError::Network)?;
+        .map_err(|e| match e {
+            leptos_graphql::GraphqlHttpError::Unauthorized => AuthError::Unauthorized,
+            _ => AuthError::Network,
+        })?;
 
     Ok(response.me.map(|user| AuthUser {
         id: user.id,
