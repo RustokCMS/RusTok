@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use leptos::prelude::View;
+use leptos::prelude::AnyView;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AdminSlot {
@@ -12,7 +12,7 @@ pub struct AdminComponentRegistration {
     pub id: &'static str,
     pub slot: AdminSlot,
     pub order: usize,
-    pub render: fn() -> View,
+    pub render: fn() -> AnyView,
 }
 
 thread_local! {

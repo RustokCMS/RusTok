@@ -1,6 +1,5 @@
-use crate::error::FormError;
 use crate::validator::Validator;
-use leptos::*;
+use leptos::prelude::*;
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -15,11 +14,11 @@ pub struct FormContext {
 impl FormContext {
     pub fn new() -> Self {
         Self {
-            fields: create_rw_signal(HashMap::new()),
-            validators: create_rw_signal(HashMap::new()),
-            field_errors: create_rw_signal(HashMap::new()),
-            form_error: create_rw_signal(None),
-            is_submitting: create_rw_signal(false),
+            fields: RwSignal::new(HashMap::new()),
+            validators: RwSignal::new(HashMap::new()),
+            field_errors: RwSignal::new(HashMap::new()),
+            form_error: RwSignal::new(None),
+            is_submitting: RwSignal::new(false),
         }
     }
 

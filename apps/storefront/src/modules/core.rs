@@ -11,7 +11,7 @@ pub fn register_components() {
     });
 }
 
-fn module_spotlight() -> View {
+fn module_spotlight() -> AnyView {
     view! {
         <section class="container-app">
             <div class="rounded-3xl bg-base-100 p-6 shadow">
@@ -31,4 +31,5 @@ fn module_spotlight() -> View {
             </div>
         </section>
     }
+    .into_any()
 }

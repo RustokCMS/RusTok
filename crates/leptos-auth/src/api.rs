@@ -258,7 +258,7 @@ pub async fn sign_in(
         role: payload.user.role,
     };
 
-    let now = now_unix_ts();
+    let now = now_unix_secs();
     let session = AuthSession {
         token: payload.access_token,
         refresh_token: payload.refresh_token,
@@ -305,7 +305,7 @@ pub async fn sign_up(
         role: payload.user.role,
     };
 
-    let now = now_unix_ts();
+    let now = now_unix_secs();
     let session = AuthSession {
         token: payload.access_token,
         refresh_token: payload.refresh_token,

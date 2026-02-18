@@ -1,6 +1,6 @@
 use std::sync::{OnceLock, RwLock};
 
-use leptos::prelude::View;
+use leptos::prelude::AnyView;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StorefrontSlot {
@@ -12,7 +12,7 @@ pub struct StorefrontComponentRegistration {
     pub id: &'static str,
     pub slot: StorefrontSlot,
     pub order: usize,
-    pub render: fn() -> View,
+    pub render: fn() -> AnyView,
 }
 
 static REGISTRY: OnceLock<RwLock<Vec<StorefrontComponentRegistration>>> = OnceLock::new();

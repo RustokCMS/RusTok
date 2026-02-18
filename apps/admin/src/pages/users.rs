@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
+use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
 use serde::{Deserialize, Serialize};
 
@@ -193,10 +194,22 @@ pub fn Users() -> impl IntoView {
                             after,
                         },
                         filter: Some(UsersFilterInput {
-                            role: if role_val.is_empty() { None } else { Some(role_val.to_uppercase()) },
-                            status: if status_val.is_empty() { None } else { Some(status_val.to_uppercase()) },
+                            role: if role_val.is_empty() {
+                                None
+                            } else {
+                                Some(role_val.to_uppercase())
+                            },
+                            status: if status_val.is_empty() {
+                                None
+                            } else {
+                                Some(status_val.to_uppercase())
+                            },
                         }),
-                        search: if search_val.is_empty() { None } else { Some(search_val) },
+                        search: if search_val.is_empty() {
+                            None
+                        } else {
+                            Some(search_val)
+                        },
                     },
                     USERS_QUERY_HASH,
                     token_value,
@@ -315,7 +328,7 @@ pub fn Users() -> impl IntoView {
                                                                 </td>
                                                                 <td class="border-b border-slate-200 py-2">{role}</td>
                                                                 <td class="border-b border-slate-200 py-2">
-                                                                    <Badge variant=if status.eq_ignore_ascii_case("active") { BadgeVariant::Success } else { BadgeVariant::Secondary }>{status}</Badge>
+                                                                    <Badge variant=if status.eq_ignore_ascii_case("active") { BadgeVariant::Success } else { BadgeVariant::Default }>{status}</Badge>
                                                                 </td>
                                                                 <td class="border-b border-slate-200 py-2">{created_at}</td>
                                                             </tr>

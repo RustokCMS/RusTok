@@ -1,6 +1,6 @@
 use crate::form::FormContext;
 use leptos::ev;
-use leptos::*;
+use leptos::prelude::*;
 
 #[component]
 pub fn Field(
@@ -12,20 +12,35 @@ pub fn Field(
     #[prop(optional)] class: Option<&'static str>,
 ) -> impl IntoView {
     // Register field on mount
-    create_effect(move |_| {
-        form.register(name);
-    });
+    {
+        let form = form.clone();
+        Effect::new(move |_| {
+            form.register(name);
+        });
+    }
 
-    let value = create_memo(move |_| form.get_value(name));
-    let error = create_memo(move |_| form.get_field_error(name));
-
-    let on_input = move |ev: ev::Event| {
-        let value = event_target_value(&ev);
-        form.set_value(name, value);
+    let value = {
+        let form = form.clone();
+        Memo::new(move |_| form.get_value(name))
+    };
+    let error = {
+        let form = form.clone();
+        Memo::new(move |_| form.get_field_error(name))
     };
 
-    let on_blur = move |_| {
-        let _ = form.validate_field(name);
+    let on_input = {
+        let form = form.clone();
+        move |ev: ev::Event| {
+            let value = event_target_value(&ev);
+            form.set_value(name, value);
+        }
+    };
+
+    let on_blur = {
+        let form = form.clone();
+        move |_| {
+            let _ = form.validate_field(name);
+        }
     };
 
     let input_classes = if error.get().is_some() {

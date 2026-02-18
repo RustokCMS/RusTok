@@ -4,9 +4,9 @@ use leptos_router::hooks::{use_navigate, use_params};
 use leptos_router::params::Params;
 use serde::{Deserialize, Serialize};
 
+use crate::api::queries::{USER_DETAILS_QUERY, USER_DETAILS_QUERY_HASH};
 use crate::api::{request, request_with_persisted, ApiError};
 use crate::components::ui::{Button, Input, LanguageToggle};
-use leptos_auth::hooks::{use_token, use_tenant};
 use crate::providers::locale::translate;
 use leptos_auth::hooks::{use_tenant, use_token};
 
@@ -138,8 +138,9 @@ pub fn UserDetails() -> impl IntoView {
     let is_deleting = RwSignal::new(false);
     let delete_error = RwSignal::new(Option::<String>::None);
 
+    let navigate_back = navigate.clone();
     let go_back = move |_| {
-        navigate("/users", Default::default());
+        navigate_back("/users", Default::default());
     };
 
     let cancel_edit = move |_| {
@@ -153,7 +154,10 @@ pub fn UserDetails() -> impl IntoView {
         let params = params;
         move |_| {
             let user_id = params.with(|p| {
-                p.as_ref().ok().and_then(|p| p.id.clone()).unwrap_or_default()
+                p.as_ref()
+                    .ok()
+                    .and_then(|p| p.id.clone())
+                    .unwrap_or_default()
             });
             let name_val = edit_name.get();
             let role_val = edit_role.get();
@@ -168,7 +172,11 @@ pub fn UserDetails() -> impl IntoView {
                 let vars = UpdateUserVariables {
                     id: user_id,
                     input: UpdateUserInput {
-                        name: if name_val.is_empty() { None } else { Some(name_val) },
+                        name: if name_val.is_empty() {
+                            None
+                        } else {
+                            Some(name_val)
+                        },
                         role: role_val,
                         status: status_val,
                     },
@@ -202,7 +210,10 @@ pub fn UserDetails() -> impl IntoView {
         let navigate = navigate.clone();
         move |_| {
             let user_id = params.with(|p| {
-                p.as_ref().ok().and_then(|p| p.id.clone()).unwrap_or_default()
+                p.as_ref()
+                    .ok()
+                    .and_then(|p| p.id.clone())
+                    .unwrap_or_default()
             });
             let token_val = token.get();
             let tenant_val = tenant.get();
@@ -210,6 +221,7 @@ pub fn UserDetails() -> impl IntoView {
             is_deleting.set(true);
             delete_error.set(None);
 
+            let navigate_to_users = navigate.clone();
             spawn_local(async move {
                 let vars = DeleteUserVariables { id: user_id };
                 match request::<DeleteUserVariables, DeleteUserResponse>(
@@ -221,7 +233,7 @@ pub fn UserDetails() -> impl IntoView {
                 .await
                 {
                     Ok(_) => {
-                        navigate("/users", Default::default());
+                        navigate_to_users("/users", Default::default());
                     }
                     Err(e) => {
                         is_deleting.set(false);
@@ -282,7 +294,7 @@ pub fn UserDetails() -> impl IntoView {
                     <Show when=move || is_editing.get()>
                         <Button
                             on_click=save_user.clone()
-                            disabled=is_saving
+                            disabled=is_saving.into()
                         >
                             {move || if is_saving.get() {
                                 translate("users.detail.saving").to_string()
@@ -325,7 +337,7 @@ pub fn UserDetails() -> impl IntoView {
                         <div class="flex gap-3">
                             <Button
                                 on_click=confirm_delete.clone()
-                                disabled=is_deleting
+                                disabled=is_deleting.into()
                                 class="flex-1 bg-red-600 hover:bg-red-700"
                             >
                                 {move || if is_deleting.get() {
@@ -337,7 +349,7 @@ pub fn UserDetails() -> impl IntoView {
                             <Button
                                 on_click=move |_| show_delete_confirm.set(false)
                                 class="flex-1 border border-slate-200 bg-transparent text-slate-600 hover:bg-slate-50"
-                                disabled=is_deleting
+                                disabled=is_deleting.into()
                             >
                                 {move || translate("users.detail.cancel")}
                             </Button>
@@ -398,7 +410,7 @@ pub fn UserDetails() -> impl IntoView {
                                                 <div class="mt-1">
                                                     <Input
                                                         value=Signal::derive(move || edit_name.get())
-                                                        set_value=move |v| edit_name.set(v)
+                                                        set_value=edit_name.write_only()
                                                         placeholder="Full name"
                                                         label=move || String::new()
                                                     />

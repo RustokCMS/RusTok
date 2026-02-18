@@ -7,7 +7,7 @@ use crate::components::features::auth::user_menu::UserMenu;
 use crate::components::ui::LanguageToggle;
 use crate::providers::locale::translate;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct Breadcrumb {
     label_key: &'static str,
     href: Option<&'static str>,
@@ -17,10 +17,10 @@ struct Breadcrumb {
 pub fn Header() -> impl IntoView {
     let location = use_location();
 
-    let breadcrumbs = create_memo(move |_| resolve_breadcrumbs(&location.pathname.get()));
-    let title_key = create_memo(move |_| resolve_title_key(&location.pathname.get()));
+    let breadcrumbs = Memo::new(move |_| resolve_breadcrumbs(&location.pathname.get()));
+    let title_key = Memo::new(move |_| resolve_title_key(&location.pathname.get()));
 
-    create_effect(move |_| {
+    Effect::new(move |_| {
         let title = format!("RusTok Admin — {}", translate(title_key.get()));
         set_document_title(&title);
     });
@@ -41,9 +41,9 @@ pub fn Header() -> impl IntoView {
                             let label_key = crumb.label_key;
                             let is_last = index == last_index;
                             let content = if let Some(href) = crumb.href {
-                                view! { <A href=href class="hover:text-slate-700">{move || translate(label_key)}</A> }
+                                view! { <A href=href attr:class="hover:text-slate-700">{move || translate(label_key)}</A> }.into_any()
                             } else {
-                                view! { <span class="text-slate-700">{move || translate(label_key)}</span> }
+                                view! { <span class="text-slate-700">{move || translate(label_key)}</span> }.into_any()
                             };
                             view! {
                                 <div class="flex items-center gap-2">
@@ -113,12 +113,12 @@ fn resolve_title_key(pathname: &str) -> &'static str {
     }
 }
 
-fn set_document_title(title: &str) {
+fn set_document_title(_title: &str) {
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(window) = web_sys::window() {
             if let Some(document) = window.document() {
-                document.set_title(title);
+                document.set_title(_title);
             }
         }
     }

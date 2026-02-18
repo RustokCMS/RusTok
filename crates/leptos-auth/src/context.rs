@@ -161,18 +161,6 @@ impl AuthContext {
         self.user.get().is_some() && self.session.get().is_some() && !self.is_token_expired()
     }
 
-    pub fn is_token_expired(&self) -> bool {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|duration| duration.as_secs() as i64)
-            .unwrap_or_default();
-
-        self.session
-            .get()
-            .map(|session| now >= session.expires_at - 60)
-            .unwrap_or(true)
-    }
-
     pub fn get_token(&self) -> Option<String> {
         self.session.get().map(|s| s.token)
     }
@@ -209,20 +197,23 @@ pub fn AuthProvider(children: Children) -> impl IntoView {
     // - less than 5 minutes remaining → refresh token
     // - already expired → sign out
     let auth_for_interval = auth_context.clone();
-    use_interval_fn(move || {
-        let auth = auth_for_interval.clone();
-        spawn_local(async move {
-            if auth.session.get().is_none() {
-                return;
-            }
-            let secs = auth.secs_until_expiry();
-            if secs <= 0 {
-                let _ = auth.sign_out().await;
-            } else if secs < 300 {
-                let _ = auth.refresh_session().await;
-            }
-        });
-    }, 60_000);
+    use_interval_fn(
+        move || {
+            let auth = auth_for_interval.clone();
+            spawn_local(async move {
+                if auth.session.get().is_none() {
+                    return;
+                }
+                let secs = auth.secs_until_expiry();
+                if secs <= 0 {
+                    let _ = auth.sign_out().await;
+                } else if secs < 300 {
+                    let _ = auth.refresh_session().await;
+                }
+            });
+        },
+        60_000,
+    );
 
     children()
 }

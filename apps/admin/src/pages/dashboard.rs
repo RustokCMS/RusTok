@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_auth, use_current_user, use_tenant, use_token};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::api::queries::DASHBOARD_STATS_QUERY;
@@ -10,13 +10,13 @@ use crate::components::ui::{Button, LanguageToggle, PageHeader, StatsCard};
 use crate::modules::{components_for_slot, AdminSlot};
 use crate::providers::locale::translate;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct DashboardStatsResponse {
     #[serde(rename = "dashboardStats")]
     dashboard_stats: Option<DashboardStats>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct DashboardStats {
     #[serde(rename = "totalTenants")]
     total_tenants: i64,

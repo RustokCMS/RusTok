@@ -11,7 +11,7 @@ pub fn register_components() {
     });
 }
 
-fn module_status_card() -> View {
+fn module_status_card() -> AnyView {
     view! {
         <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
             <h4 class="text-lg font-semibold text-slate-900">"Modules ready"</h4>
@@ -31,4 +31,5 @@ fn module_status_card() -> View {
             </div>
         </div>
     }
+    .into_any()
 }

@@ -1,3 +1,4 @@
+#![allow(mismatched_lifetime_syntaxes)]
 #![deny(missing_debug_implementations)]
 #![deny(missing_copy_implementations)]
 #![deny(missing_docs)]
