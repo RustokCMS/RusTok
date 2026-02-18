@@ -28,7 +28,7 @@ For more details see `docs/mcp.md`.
 This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
 
 ## Взаимодействие
-- apps/mcp
+- встроенный binary target `rustok-mcp-server`
 - crates/rustok-core (registry/services)
 - доменные модули через service layer
 
@@ -40,7 +40,7 @@ This is an alpha version and requires clarification. Be careful, there may be er
 - **Роль в системе:** Адаптер MCP-инструментов поверх Rust SDK (`rmcp`) для RusToK сервисов.
 - **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
 - **Взаимодействует с:**
-  - apps/mcp
+  - встроенный binary target `rustok-mcp-server`
   - crates/rustok-core (registry/services)
   - доменные модули через service layer
 - **Точки входа:**

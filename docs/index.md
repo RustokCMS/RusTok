@@ -30,7 +30,6 @@ graph TD
     A --> AADMIN[apps/admin/docs/*]
     A --> ANEXTADMIN[apps/next-admin/docs/*]
     A --> ANEXTSF[apps/next-frontend/docs/*]
-    A --> AMCP[apps/mcp/docs/*]
 
     C --> CDOMAIN[crates/rustok-*/docs/*]
     C --> CUI[crates/leptos-*/docs/*]
@@ -108,7 +107,6 @@ graph TD
 - [Next.js Admin themes](../apps/next-admin/docs/themes.md)
 - [Leptos Storefront README](../apps/storefront/README.md)
 - [Next.js Storefront docs](../apps/next-frontend/docs/README.md)
-- [MCP app docs](../apps/mcp/docs/README.md)
 
 ### Module and crate docs
 
@@ -123,6 +121,7 @@ graph TD
 - [Tenant module docs](../crates/rustok-tenant/docs/README.md)
 - [RBAC module docs](../crates/rustok-rbac/docs/README.md)
 - [Telemetry docs](../crates/rustok-telemetry/docs/README.md)
+- [MCP module docs](../crates/rustok-mcp/docs/README.md)
 
 ### Custom frontend libraries docs
 
@@ -144,9 +143,6 @@ graph TD
 - `apps/admin`
   - [README](../apps/admin/README.md)
   - [docs/README](../apps/admin/docs/README.md)
-- `apps/mcp`
-  - [README](../apps/mcp/README.md)
-  - [docs/README](../apps/mcp/docs/README.md)
 - `apps/next-admin`
   - [README](../apps/next-admin/README.md)
   - [docs/clerk_setup.md](../apps/next-admin/docs/clerk_setup.md)

@@ -12,7 +12,6 @@ graph TD
         SF[apps/storefront - Leptos Storefront]
         NEXT_ADMIN[apps/next-admin - Next.js Admin]
         NEXT_SF[apps/next-frontend - Next.js Storefront]
-        MCP[apps/mcp - MCP Server]
     end
 
     subgraph Domain Modules
@@ -68,7 +67,6 @@ graph TD
 | `apps/storefront` | **Storefront** | Customer-facing web interface built with Leptos. |
 | `apps/next-admin` | **Next Admin** | Modern React-based admin interface (Next.js). |
 | `apps/next-frontend` | **Next Storefront** | Modern React-based storefront (Next.js). |
-| `apps/mcp` | **MCP Server** | Model Context Protocol server for AI integration. |
 
 ### Core & Infrastructure (`crates/`)
 
@@ -81,6 +79,7 @@ graph TD
 | `crates/rustok-tenant` | **Tenant** | Multi-tenancy isolation and management logic. |
 | `crates/rustok-rbac` | **RBAC** | Role-based access control engine. |
 | `crates/rustok-test-utils` | **Test Utils** | Shared testing helpers and mocks. |
+| `crates/rustok-mcp` | **MCP** | MCP adapter crate with embedded stdio server binary. |
 
 ### Domain Modules (`crates/`)
 

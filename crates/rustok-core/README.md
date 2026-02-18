@@ -27,7 +27,7 @@ This is an alpha version and requires clarification. Be careful, there may be er
 ## Взаимодействие
 - все crates/rustok-*
 - apps/server
-- apps/mcp
+- crates/rustok-mcp
 
 ## Документация
 - Локальная документация: `./docs/`
@@ -39,7 +39,7 @@ This is an alpha version and requires clarification. Be careful, there may be er
 - **Взаимодействует с:**
   - все crates/rustok-*
   - apps/server
-  - apps/mcp
+  - crates/rustok-mcp
 - **Точки входа:**
   - `crates/rustok-core/src/lib.rs`
 - **Локальная документация:** `./docs/`

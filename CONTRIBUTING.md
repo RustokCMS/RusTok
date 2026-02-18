@@ -150,7 +150,7 @@ Update documentation when:
 - **apps/admin**: Leptos CSR admin panel
 - **apps/storefront**: Leptos SSR storefront
 - **apps/next-frontend**: Next.js storefront
-- **apps/mcp**: MCP adapter server
+- **crates/rustok-mcp**: MCP adapter crate (includes stdio server binary `rustok-mcp-server`)
 
 ### Crates (Modules)
 

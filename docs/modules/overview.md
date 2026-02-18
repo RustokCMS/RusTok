@@ -88,7 +88,7 @@ RusToK — модульный монолит: модули компилирую�
 - `apps/server` (`rustok-server`) — API-сервер, поднимает `ModuleRegistry`.
 - `apps/admin` (`rustok-admin`) — админ-панель.
 - `apps/storefront` (`rustok-storefront`) — storefront на Leptos.
-- `apps/mcp` (`rustok-mcp-server`) — MCP stdio сервер на базе `rustok-mcp`.
+- `crates/rustok-mcp` (bin `rustok-mcp-server`) — MCP stdio сервер и адаптер в одном crate.
 
 ## 7. Связанные документы
 

@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use rmcp::ServiceExt;
 use rmcp::{
     model::{CallToolRequestParams, CallToolResult, Implementation, ListToolsResult, ServerInfo},
     service::{RequestContext, RoleServer},
-    transport::io::stdio,
+    transport::stdio,
     ServerHandler,
 };
 use rustok_core::registry::ModuleRegistry;
@@ -168,7 +169,14 @@ pub async fn serve_stdio(config: McpServerConfig) -> Result<()> {
 
     // Serve over stdio transport using rmcp's stdio transport
     // The server runs until stdin is closed or an error occurs
-    stdio::serve(server)
+    let service = server
+        .serve(stdio())
         .await
+        .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))?;
+
+    service
+        .waiting()
+        .await
+        .map(|_| ())
         .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))
 }

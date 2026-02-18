@@ -5,7 +5,7 @@
 
 ## Взаимодействие
 - crates/rustok-core
-- apps/server/apps/mcp
+- apps/server/crates/rustok-mcp
 - внешние observability backends
 
 ## Документация
@@ -17,7 +17,7 @@
 - **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
 - **Взаимодействует с:**
   - crates/rustok-core
-  - apps/server/apps/mcp
+  - apps/server/crates/rustok-mcp
   - внешние observability backends
 - **Точки входа:**
   - `crates/rustok-telemetry/src/lib.rs`
