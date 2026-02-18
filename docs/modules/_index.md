@@ -2,7 +2,7 @@
 
 This section captures per-module documentation. Each module should have its own folder based on the template in `_template/`.
 
-## Recommended modules
+## Recommended module folders
 
 - `core` — platform foundations (`rustok-core`)
 - `content` — CMS entities and content workflows
@@ -15,9 +15,9 @@ This section captures per-module documentation. Each module should have its own 
 
 ## Existing references
 
-- [Module map](./modules.md)
-- [Module registry](./module-registry.md)
-- [Module manifest](./module-manifest.md)
-- [Module matrix](./MODULE_MATRIX.md)
+- [Module overview](./overview.md)
+- [Module & application registry](./registry.md)
+- [Module manifest](./manifest.md)
+- [Flex spec](./flex.md)
 
 When creating a new module folder, copy the `_template` structure and link it here.

@@ -2,18 +2,21 @@
 
 RusToK is composed of domain modules under `crates/` and application wiring under `apps/`.
 
-## Module registry
+## Module registry and manifests
 
 - [`modules.toml`](../../modules.toml)
-- [`docs/modules/modules.md`](../modules/modules.md)
-- [`docs/modules/MODULE_MATRIX.md`](../modules/MODULE_MATRIX.md)
+- [Module overview](../modules/overview.md)
+- [Module & application registry](../modules/registry.md)
+- [Module manifest](../modules/manifest.md)
 
 ## Composition
 
 - `apps/server` wires module routes, GraphQL schema, and background workers.
-- `apps/admin` and `apps/storefront` consume module APIs and shared UI packages.
+- `apps/admin` and `apps/storefront` are Leptos frontends.
+- `apps/next-admin` and `apps/next-frontend` are Next.js frontends.
 
 ## Additional references
 
-- [Module manifest](../modules/module-manifest.md)
-- [Module registry](../modules/module-registry.md)
+- [Architecture overview](./overview.md)
+- [Routing policy](./routing.md)
+- [Events and outbox](./events.md)
