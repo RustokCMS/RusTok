@@ -38,6 +38,11 @@ pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
     pub published_at: Option<DateTimeWithTimeZone>,
+    /// Soft delete timestamp - None means not deleted
+    pub deleted_at: Option<DateTimeWithTimeZone>,
+    /// Optimistic locking version
+    #[sea_orm(default = 1)]
+    pub version: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

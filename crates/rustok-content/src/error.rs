@@ -21,6 +21,12 @@ pub enum ContentError {
     #[error("Translation not found for node {node_id} and locale {locale}")]
     TranslationNotFound { node_id: Uuid, locale: String },
 
+    #[error("Slug already exists: {slug} for locale {locale}")]
+    DuplicateSlug { slug: String, locale: String },
+
+    #[error("Concurrent modification: expected version {expected}, found {actual}")]
+    ConcurrentModification { expected: i32, actual: i32 },
+
     #[error("Forbidden: {0}")]
     Forbidden(String),
 
@@ -60,6 +66,25 @@ impl From<ContentError> for RichError {
             .with_field("node_id", node_id.to_string())
             .with_field("locale", locale)
             .with_error_code("TRANSLATION_NOT_FOUND"),
+            ContentError::DuplicateSlug { slug, locale } => RichError::new(
+                ErrorKind::Conflict,
+                format!("Slug '{}' already exists for locale '{}'", slug, locale),
+            )
+            .with_user_message("This URL slug is already in use. Please choose a different one.")
+            .with_field("slug", slug)
+            .with_field("locale", locale)
+            .with_error_code("DUPLICATE_SLUG"),
+            ContentError::ConcurrentModification { expected, actual } => RichError::new(
+                ErrorKind::Conflict,
+                format!(
+                    "Concurrent modification detected: expected version {}, found {}",
+                    expected, actual
+                ),
+            )
+            .with_user_message("This content was modified by another user. Please refresh and try again.")
+            .with_field("expected_version", expected.to_string())
+            .with_field("actual_version", actual.to_string())
+            .with_error_code("CONCURRENT_MODIFICATION"),
             ContentError::Forbidden(msg) => RichError::new(ErrorKind::Forbidden, msg)
                 .with_user_message("You do not have permission to perform this action"),
             ContentError::Validation(msg) => {
@@ -99,6 +124,19 @@ impl ContentError {
     /// Create a forbidden error
     pub fn forbidden(message: impl Into<String>) -> Self {
         ContentError::Forbidden(message.into())
+    }
+
+    /// Create a duplicate slug error
+    pub fn duplicate_slug(slug: impl Into<String>, locale: impl Into<String>) -> Self {
+        ContentError::DuplicateSlug {
+            slug: slug.into(),
+            locale: locale.into(),
+        }
+    }
+
+    /// Create a concurrent modification error
+    pub fn concurrent_modification(expected: i32, actual: i32) -> Self {
+        ContentError::ConcurrentModification { expected, actual }
     }
 }
 

@@ -74,8 +74,8 @@ pub struct UpdateNodeInput {
     pub metadata: Option<Value>,
     pub translations: Option<Vec<NodeTranslationInput>>,
     pub bodies: Option<Vec<BodyInput>>,
-    #[schema(value_type = String, format = DateTime)]
-    pub published_at: Option<Option<DateTimeWithTimeZone>>,
+    /// Expected version for optimistic locking
+    pub expected_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, utoipa::IntoParams)]
@@ -84,11 +84,15 @@ pub struct ListNodesFilter {
     pub status: Option<ContentStatus>,
     pub parent_id: Option<Uuid>,
     pub author_id: Option<Uuid>,
+    pub category_id: Option<Uuid>,
     pub locale: Option<String>,
     #[serde(default = "default_page")]
     pub page: u64,
     #[serde(default = "default_per_page")]
     pub per_page: u64,
+    /// Include soft-deleted nodes
+    #[serde(default)]
+    pub include_deleted: bool,
 }
 
 fn default_page() -> u64 {
@@ -115,6 +119,8 @@ pub struct NodeResponse {
     pub created_at: String,
     pub updated_at: String,
     pub published_at: Option<String>,
+    pub deleted_at: Option<String>,
+    pub version: i32,
     pub translations: Vec<NodeTranslationResponse>,
     pub bodies: Vec<BodyResponse>,
 }

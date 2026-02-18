@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, Set, TransactionTrait,
+    PaginatorTrait, QueryFilter, Set, TransactionTrait, QuerySelect,
 };
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
@@ -35,6 +35,76 @@ impl NodeService {
         }
     }
 
+    /// Enforce permission scope and return whether access is allowed
+    fn enforce_scope(
+        &self,
+        scope: PermissionScope,
+        resource_author_id: Option<Uuid>,
+        current_user_id: Option<Uuid>,
+    ) -> ContentResult<()> {
+        match scope {
+            PermissionScope::All => Ok(()),
+            PermissionScope::Own => {
+                if resource_author_id == current_user_id {
+                    Ok(())
+                } else {
+                    Err(ContentError::Forbidden(
+                        "Permission denied: Not the author".into(),
+                    ))
+                }
+            }
+            PermissionScope::None => Err(ContentError::Forbidden("Permission denied".into())),
+        }
+    }
+
+    /// Check if slug is unique within tenant and locale
+    async fn ensure_slug_unique<C>(
+        &self,
+        db: &C,
+        tenant_id: Uuid,
+        locale: &str,
+        slug: &str,
+        exclude_node_id: Option<Uuid>,
+    ) -> ContentResult<()>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        let mut query = node_translation::Entity::find()
+            .inner_join(node::Entity)
+            .filter(node::Column::TenantId.eq(tenant_id))
+            .filter(node_translation::Column::Locale.eq(locale))
+            .filter(node_translation::Column::Slug.eq(slug))
+            .filter(node::Column::DeletedAt.is_null());
+
+        if let Some(exclude_id) = exclude_node_id {
+            query = query.filter(node::Column::Id.ne(exclude_id));
+        }
+
+        let existing = query.one(db).await?;
+
+        if existing.is_some() {
+            return Err(ContentError::Validation(format!(
+                "Slug '{}' already exists for locale '{}'",
+                slug, locale
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Check optimistic locking version
+    fn check_version(&self, expected: Option<i32>, actual: i32) -> ContentResult<()> {
+        if let Some(expected) = expected {
+            if expected != actual {
+                return Err(ContentError::Validation(format!(
+                    "Concurrent modification detected: expected version {}, found {}",
+                    expected, actual
+                )));
+            }
+        }
+        Ok(())
+    }
+
     #[instrument(skip(self, security, input), fields(tenant_id = %tenant_id, kind = %input.kind, user_id = ?security.user_id))]
     pub async fn create_node(
         &self,
@@ -54,7 +124,6 @@ impl NodeService {
             }
             PermissionScope::Own => {
                 debug!("User has Own scope, setting author_id to user_id");
-                // Force user_id as author_id
                 input.author_id = security.user_id;
             }
             PermissionScope::None => {
@@ -69,6 +138,7 @@ impl NodeService {
             .status
             .unwrap_or(crate::entities::node::ContentStatus::Draft);
         let metadata = input.metadata;
+
         if input.translations.is_empty() {
             error!("Node creation failed: no translations provided");
             return Err(ContentError::Validation(
@@ -82,6 +152,14 @@ impl NodeService {
             "Starting transaction"
         );
         let txn = self.db.begin().await?;
+
+        // Check slug uniqueness for all translations
+        for translation in &input.translations {
+            if let Some(ref slug) = translation.slug {
+                self.ensure_slug_unique(&txn, tenant_id, &translation.locale, slug, None)
+                    .await?;
+            }
+        }
 
         let node_model = node::ActiveModel {
             id: Set(node_id),
@@ -102,13 +180,22 @@ impl NodeService {
             } else {
                 Set(None)
             },
+            deleted_at: Set(None),
+            version: Set(1),
         }
         .insert(&txn)
         .await?;
 
         for translation in input.translations {
             let slug = resolve_slug(translation.slug, translation.title.as_ref())?;
-            let translation_model = node_translation::ActiveModel {
+
+            // Check uniqueness of resolved slug
+            if let Some(ref s) = slug {
+                self.ensure_slug_unique(&txn, tenant_id, &translation.locale, s, None)
+                    .await?;
+            }
+
+            node_translation::ActiveModel {
                 id: Set(rustok_core::generate_id()),
                 node_id: Set(node_id),
                 locale: Set(translation.locale.clone()),
@@ -120,8 +207,6 @@ impl NodeService {
             }
             .insert(&txn)
             .await?;
-
-            let _ = translation_model;
         }
 
         for body_input in input.bodies {
@@ -158,27 +243,26 @@ impl NodeService {
         info!("Updating node");
         let node_model = self.find_node(node_id).await?;
 
+        // Check if node is soft-deleted
+        if node_model.deleted_at.is_some() {
+            return Err(ContentError::Validation(
+                "Cannot update deleted node".to_string(),
+            ));
+        }
+
+        // Optimistic locking check
+        self.check_version(update.expected_version, node_model.version)?;
+
         // Scope Enforcement
         let resource = Self::kind_to_resource(&node_model.kind);
         let scope = security.get_scope(resource, Action::Update);
+        self.enforce_scope(scope, node_model.author_id, security.user_id)?;
 
-        match scope {
-            PermissionScope::All => {}
-            PermissionScope::Own => {
-                if node_model.author_id != security.user_id {
-                    return Err(ContentError::Forbidden(
-                        "Permission denied: Not the author".into(),
-                    ));
-                }
-                if update.author_id.is_some() {
-                    return Err(ContentError::Forbidden(
-                        "Permission denied: cannot change author".into(),
-                    ));
-                }
-            }
-            PermissionScope::None => {
-                return Err(ContentError::Forbidden("Permission denied".into()));
-            }
+        // Additional check for author_id change with Own scope
+        if matches!(scope, PermissionScope::Own) && update.author_id.is_some() {
+            return Err(ContentError::Forbidden(
+                "Permission denied: cannot change author".into(),
+            ));
         }
 
         let mut active: node::ActiveModel = node_model.clone().into();
@@ -194,7 +278,17 @@ impl NodeService {
             active.category_id = Set(category_id);
         }
         if let Some(status) = update.status.clone() {
-            active.status = Set(status);
+            active.status = Set(status.clone());
+            // Auto-manage published_at based on status
+            match status {
+                crate::entities::node::ContentStatus::Published if node_model.published_at.is_none() => {
+                    active.published_at = Set(Some(now));
+                }
+                crate::entities::node::ContentStatus::Draft => {
+                    active.published_at = Set(None);
+                }
+                _ => {}
+            }
         }
         if let Some(position) = update.position {
             active.position = Set(position);
@@ -208,17 +302,21 @@ impl NodeService {
         if let Some(metadata) = update.metadata {
             active.metadata = Set(metadata);
         }
-        if let Some(published_at) = update.published_at {
-            active.published_at = Set(published_at);
-        }
 
         active.updated_at = Set(now);
+        active.version = Set(node_model.version + 1); // Increment version
 
         let txn = self.db.begin().await?;
 
-        let updated = active.update(&txn).await?;
-
         if let Some(translations) = update.translations {
+            // Check slug uniqueness for new translations
+            for translation in &translations {
+                if let Some(ref slug) = translation.slug {
+                    self.ensure_slug_unique(&txn, node_model.tenant_id, &translation.locale, slug, Some(node_id))
+                        .await?;
+                }
+            }
+
             node_translation::Entity::delete_many()
                 .filter(node_translation::Column::NodeId.eq(node_id))
                 .exec(&txn)
@@ -226,6 +324,13 @@ impl NodeService {
 
             for translation in translations {
                 let slug = resolve_slug(translation.slug, translation.title.as_ref())?;
+
+                // Check uniqueness of resolved slug
+                if let Some(ref s) = slug {
+                    self.ensure_slug_unique(&txn, node_model.tenant_id, &translation.locale, s, Some(node_id))
+                        .await?;
+                }
+
                 node_translation::ActiveModel {
                     id: Set(rustok_core::generate_id()),
                     node_id: Set(node_id),
@@ -252,6 +357,8 @@ impl NodeService {
             }
         }
 
+        let updated = active.update(&txn).await?;
+
         self.event_bus
             .publish_in_tx(
                 &txn,
@@ -263,6 +370,70 @@ impl NodeService {
                 },
             )
             .await?;
+
+        txn.commit().await?;
+
+        let translations = node_translation::Entity::find()
+            .filter(node_translation::Column::NodeId.eq(node_id))
+            .all(&self.db)
+            .await?;
+        let bodies = body::Entity::find()
+            .filter(body::Column::NodeId.eq(node_id))
+            .all(&self.db)
+            .await?;
+
+        Ok(Self::to_response(updated, translations, bodies))
+    }
+
+    /// Common method for status transitions (publish/unpublish/archive)
+    #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
+    async fn transition_status(
+        &self,
+        node_id: Uuid,
+        security: SecurityContext,
+        new_status: node::ContentStatus,
+        events: Vec<DomainEvent>,
+    ) -> ContentResult<NodeResponse> {
+        let node_model = self.find_node(node_id).await?;
+
+        // Check if node is soft-deleted
+        if node_model.deleted_at.is_some() {
+            return Err(ContentError::Validation(
+                "Cannot change status of deleted node".to_string(),
+            ));
+        }
+
+        // Scope Enforcement
+        let resource = Self::kind_to_resource(&node_model.kind);
+        let scope = security.get_scope(resource, Action::Update);
+        self.enforce_scope(scope, node_model.author_id, security.user_id)?;
+
+        let now = Utc::now().into();
+        let mut active: node::ActiveModel = node_model.clone().into();
+
+        active.status = Set(new_status.clone());
+        active.updated_at = Set(now);
+        active.version = Set(node_model.version + 1);
+
+        // Manage published_at based on status
+        match new_status {
+            node::ContentStatus::Published => {
+                active.published_at = Set(Some(now));
+            }
+            node::ContentStatus::Draft | node::ContentStatus::Archived => {
+                active.published_at = Set(None);
+            }
+        }
+
+        let txn = self.db.begin().await?;
+
+        let updated = active.update(&txn).await?;
+
+        for event in events {
+            self.event_bus
+                .publish_in_tx(&txn, updated.tenant_id, security.user_id, event)
+                .await?;
+        }
 
         txn.commit().await?;
 
@@ -285,75 +456,23 @@ impl NodeService {
         security: SecurityContext,
     ) -> ContentResult<NodeResponse> {
         info!("Publishing node");
-        let now = Utc::now().into();
 
-        // Perform the update and event publication in a single transaction
-        let node_model = self.find_node(node_id).await?;
-
-        // Scope Enforcement
-        let resource = Self::kind_to_resource(&node_model.kind);
-        let scope = security.get_scope(resource, Action::Update);
-
-        match scope {
-            PermissionScope::All => {}
-            PermissionScope::Own => {
-                if node_model.author_id != security.user_id {
-                    return Err(ContentError::Forbidden(
-                        "Permission denied: Not the author".into(),
-                    ));
-                }
-            }
-            PermissionScope::None => {
-                return Err(ContentError::Forbidden("Permission denied".into()));
-            }
-        }
-
-        let mut active: node::ActiveModel = node_model.clone().into();
-
-        active.status = Set(crate::entities::node::ContentStatus::Published);
-        active.published_at = Set(Some(now));
-        active.updated_at = Set(now);
-
-        let txn = self.db.begin().await?;
-
-        let updated = active.update(&txn).await?;
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                updated.tenant_id,
-                security.user_id,
+        self.transition_status(
+            node_id,
+            security,
+            node::ContentStatus::Published,
+            vec![
                 DomainEvent::NodeUpdated {
-                    node_id: updated.id,
-                    kind: updated.kind.clone(),
+                    node_id,
+                    kind: "post".to_string(), // Will be resolved from node
                 },
-            )
-            .await?;
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                updated.tenant_id,
-                security.user_id,
                 DomainEvent::NodePublished {
-                    node_id: updated.id,
-                    kind: updated.kind.clone(),
+                    node_id,
+                    kind: "post".to_string(),
                 },
-            )
-            .await?;
-
-        txn.commit().await?;
-
-        let translations = node_translation::Entity::find()
-            .filter(node_translation::Column::NodeId.eq(node_id))
-            .all(&self.db)
-            .await?;
-        let bodies = body::Entity::find()
-            .filter(body::Column::NodeId.eq(node_id))
-            .all(&self.db)
-            .await?;
-
-        Ok(Self::to_response(updated, translations, bodies))
+            ],
+        )
+        .await
     }
 
     #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
@@ -363,103 +482,64 @@ impl NodeService {
         security: SecurityContext,
     ) -> ContentResult<NodeResponse> {
         info!("Unpublishing node");
-        let now = Utc::now().into();
 
-        // Perform update and event publication in a single transaction
-        let node_model = self.find_node(node_id).await?;
-
-        // Scope Enforcement
-        let resource = Self::kind_to_resource(&node_model.kind);
-        let scope = security.get_scope(resource, Action::Update);
-
-        match scope {
-            PermissionScope::All => {}
-            PermissionScope::Own => {
-                if node_model.author_id != security.user_id {
-                    return Err(ContentError::Forbidden(
-                        "Permission denied: Not the author".into(),
-                    ));
-                }
-            }
-            PermissionScope::None => {
-                return Err(ContentError::Forbidden("Permission denied".into()));
-            }
-        }
-
-        let mut active: node::ActiveModel = node_model.clone().into();
-
-        active.status = Set(crate::entities::node::ContentStatus::Draft);
-        active.published_at = Set(None);
-        active.updated_at = Set(now);
-
-        let txn = self.db.begin().await?;
-
-        let updated = active.update(&txn).await?;
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                updated.tenant_id,
-                security.user_id,
+        self.transition_status(
+            node_id,
+            security,
+            node::ContentStatus::Draft,
+            vec![
                 DomainEvent::NodeUpdated {
-                    node_id: updated.id,
-                    kind: updated.kind.clone(),
+                    node_id,
+                    kind: "post".to_string(),
                 },
-            )
-            .await?;
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                updated.tenant_id,
-                security.user_id,
                 DomainEvent::NodeUnpublished {
-                    node_id: updated.id,
-                    kind: updated.kind.clone(),
+                    node_id,
+                    kind: "post".to_string(),
                 },
-            )
-            .await?;
-
-        txn.commit().await?;
-
-        let translations = node_translation::Entity::find()
-            .filter(node_translation::Column::NodeId.eq(node_id))
-            .all(&self.db)
-            .await?;
-        let bodies = body::Entity::find()
-            .filter(body::Column::NodeId.eq(node_id))
-            .all(&self.db)
-            .await?;
-
-        Ok(Self::to_response(updated, translations, bodies))
+            ],
+        )
+        .await
     }
 
     #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
+    pub async fn archive_node(
+        &self,
+        node_id: Uuid,
+        security: SecurityContext,
+    ) -> ContentResult<NodeResponse> {
+        info!("Archiving node");
+
+        self.transition_status(
+            node_id,
+            security,
+            node::ContentStatus::Archived,
+            vec![DomainEvent::NodeUpdated {
+                node_id,
+                kind: "post".to_string(),
+            }],
+        )
+        .await
+    }
+
+    /// Soft delete a node (can be restored)
+    #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
     pub async fn delete_node(&self, node_id: Uuid, security: SecurityContext) -> ContentResult<()> {
-        info!("Deleting node");
+        info!("Soft-deleting node");
         let node_model = self.find_node(node_id).await?;
 
         // Scope Enforcement
         let resource = Self::kind_to_resource(&node_model.kind);
         let scope = security.get_scope(resource, Action::Delete);
+        self.enforce_scope(scope, node_model.author_id, security.user_id)?;
 
-        match scope {
-            PermissionScope::All => {}
-            PermissionScope::Own => {
-                if node_model.author_id != security.user_id {
-                    return Err(ContentError::Forbidden(
-                        "Permission denied: Not the author".into(),
-                    ));
-                }
-            }
-            PermissionScope::None => {
-                return Err(ContentError::Forbidden("Permission denied".into()));
-            }
-        }
-
+        let now = Utc::now().into();
         let txn = self.db.begin().await?;
 
-        node::Entity::delete_by_id(node_id).exec(&txn).await?;
+        let mut active: node::ActiveModel = node_model.clone().into();
+        active.deleted_at = Set(Some(now));
+        active.updated_at = Set(now);
+        active.version = Set(node_model.version + 1);
+        active.update(&txn).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -475,10 +555,114 @@ impl NodeService {
 
         txn.commit().await?;
 
+        info!(node_id = %node_id, "Node soft-deleted successfully");
+        Ok(())
+    }
+
+    /// Restore a soft-deleted node
+    #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
+    pub async fn restore_node(
+        &self,
+        node_id: Uuid,
+        security: SecurityContext,
+    ) -> ContentResult<NodeResponse> {
+        info!("Restoring node");
+        let node_model = self.find_node_with_deleted(node_id).await?;
+
+        if node_model.deleted_at.is_none() {
+            return Err(ContentError::Validation(
+                "Node is not deleted".to_string(),
+            ));
+        }
+
+        // Scope Enforcement
+        let resource = Self::kind_to_resource(&node_model.kind);
+        let scope = security.get_scope(resource, Action::Update);
+        self.enforce_scope(scope, node_model.author_id, security.user_id)?;
+
+        let now = Utc::now().into();
+        let txn = self.db.begin().await?;
+
+        let mut active: node::ActiveModel = node_model.clone().into();
+        active.deleted_at = Set(None);
+        active.updated_at = Set(now);
+        active.version = Set(node_model.version + 1);
+        let updated = active.update(&txn).await?;
+
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                updated.tenant_id,
+                security.user_id,
+                DomainEvent::NodeUpdated {
+                    node_id: updated.id,
+                    kind: updated.kind.clone(),
+                },
+            )
+            .await?;
+
+        txn.commit().await?;
+
+        let translations = node_translation::Entity::find()
+            .filter(node_translation::Column::NodeId.eq(node_id))
+            .all(&self.db)
+            .await?;
+        let bodies = body::Entity::find()
+            .filter(body::Column::NodeId.eq(node_id))
+            .all(&self.db)
+            .await?;
+
+        info!(node_id = %node_id, "Node restored successfully");
+        Ok(Self::to_response(updated, translations, bodies))
+    }
+
+    /// Hard delete - permanently removes node (admin only)
+    #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
+    pub async fn hard_delete_node(
+        &self,
+        node_id: Uuid,
+        security: SecurityContext,
+    ) -> ContentResult<()> {
+        info!("Hard-deleting node");
+        let node_model = self.find_node_with_deleted(node_id).await?;
+
+        // Only admins can hard delete
+        let resource = Self::kind_to_resource(&node_model.kind);
+        let scope = security.get_scope(resource, Action::Delete);
+        if !matches!(scope, PermissionScope::All) {
+            return Err(ContentError::Forbidden(
+                "Hard delete requires admin privileges".into(),
+            ));
+        }
+
+        let txn = self.db.begin().await?;
+
+        // Delete related records first
+        body::Entity::delete_many()
+            .filter(body::Column::NodeId.eq(node_id))
+            .exec(&txn)
+            .await?;
+        node_translation::Entity::delete_many()
+            .filter(node_translation::Column::NodeId.eq(node_id))
+            .exec(&txn)
+            .await?;
+        node::Entity::delete_by_id(node_id).exec(&txn).await?;
+
+        txn.commit().await?;
+
+        info!(node_id = %node_id, "Node hard-deleted permanently");
         Ok(())
     }
 
     pub async fn find_node(&self, node_id: Uuid) -> ContentResult<node::Model> {
+        node::Entity::find_by_id(node_id)
+            .filter(node::Column::DeletedAt.is_null())
+            .one(&self.db)
+            .await?
+            .ok_or(ContentError::NodeNotFound(node_id))
+    }
+
+    async fn find_node_with_deleted(&self, node_id: Uuid) -> ContentResult<node::Model> {
         node::Entity::find_by_id(node_id)
             .one(&self.db)
             .await?
@@ -512,6 +696,7 @@ impl NodeService {
             .inner_join(node_translation::Entity)
             .filter(node::Column::TenantId.eq(tenant_id))
             .filter(node::Column::Kind.eq(kind))
+            .filter(node::Column::DeletedAt.is_null())
             .filter(node_translation::Column::Locale.eq(locale))
             .filter(node_translation::Column::Slug.eq(slug))
             .one(&self.db)
@@ -536,7 +721,6 @@ impl NodeService {
             "Listing nodes"
         );
         // Scope Enforcement for List
-        // We assume 'kind' is provided or we use a generic Resource::Posts if not.
         let resource = filter
             .kind
             .as_deref()
@@ -547,7 +731,6 @@ impl NodeService {
         match scope {
             PermissionScope::All => {}
             PermissionScope::Own => {
-                // Force user_id filter
                 filter.author_id = security.user_id;
             }
             PermissionScope::None => {
@@ -556,7 +739,13 @@ impl NodeService {
         }
 
         let locale = filter.locale.clone().unwrap_or_else(|| "en".to_string());
-        let mut query = node::Entity::find().filter(node::Column::TenantId.eq(tenant_id));
+        let mut query = node::Entity::find()
+            .filter(node::Column::TenantId.eq(tenant_id));
+
+        // Filter out soft-deleted nodes unless explicitly requested
+        if !filter.include_deleted {
+            query = query.filter(node::Column::DeletedAt.is_null());
+        }
 
         if let Some(kind) = filter.kind {
             query = query.filter(node::Column::Kind.eq(kind));
@@ -569,6 +758,9 @@ impl NodeService {
         }
         if let Some(author_id) = filter.author_id {
             query = query.filter(node::Column::AuthorId.eq(author_id));
+        }
+        if let Some(category_id) = filter.category_id {
+            query = query.filter(node::Column::CategoryId.eq(category_id));
         }
 
         let paginator = query.clone().paginate(&self.db, filter.per_page);
@@ -685,6 +877,8 @@ impl NodeService {
             created_at: node.created_at.to_rfc3339(),
             updated_at: node.updated_at.to_rfc3339(),
             published_at: node.published_at.map(|date| date.to_rfc3339()),
+            deleted_at: node.deleted_at.map(|date| date.to_rfc3339()),
+            version: node.version,
             translations: translations
                 .into_iter()
                 .map(|translation| NodeTranslationResponse {

@@ -118,8 +118,8 @@ async fn test_get_nonexistent_node() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        ContentError::NotFound(_) => {}
-        _ => panic!("Expected NotFound error"),
+        ContentError::NodeNotFound(_) => {}
+        _ => panic!("Expected NodeNotFound error"),
     }
 }
 
@@ -391,11 +391,10 @@ async fn test_list_nodes_empty() {
         kind: None,
         status: None,
         locale: None,
-        category_id: None,
         parent_id: None,
         author_id: None,
-        page: Some(1),
-        per_page: Some(10),
+        page: 1,
+        per_page: 10,
     };
 
     let result = service.list_nodes(tenant_id, security, filter).await;
@@ -425,11 +424,10 @@ async fn test_list_nodes_with_filter() {
         kind: Some("post".to_string()),
         status: None,
         locale: None,
-        category_id: None,
         parent_id: None,
         author_id: None,
-        page: Some(1),
-        per_page: Some(10),
+        page: 1,
+        per_page: 10,
     };
 
     let result = service.list_nodes(tenant_id, security, filter).await;
@@ -459,11 +457,10 @@ async fn test_list_nodes_pagination() {
         kind: None,
         status: None,
         locale: None,
-        category_id: None,
         parent_id: None,
         author_id: None,
-        page: Some(1),
-        per_page: Some(3),
+        page: 1,
+        per_page: 3,
     };
 
     let result1 = service
@@ -478,11 +475,10 @@ async fn test_list_nodes_pagination() {
         kind: None,
         status: None,
         locale: None,
-        category_id: None,
         parent_id: None,
         author_id: None,
-        page: Some(2),
-        per_page: Some(3),
+        page: 2,
+        per_page: 3,
     };
 
     let result2 = service.list_nodes(tenant_id, security, filter_page2).await;
@@ -653,8 +649,8 @@ async fn test_update_nonexistent_node() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        ContentError::NotFound(_) => {}
-        _ => panic!("Expected NotFound error"),
+        ContentError::NodeNotFound(_) => {}
+        _ => panic!("Expected NodeNotFound error"),
     }
 }
 
@@ -751,11 +747,10 @@ async fn test_filter_by_status() {
         kind: None,
         status: Some(ContentStatus::Published),
         locale: None,
-        category_id: None,
         parent_id: None,
         author_id: None,
-        page: Some(1),
-        per_page: Some(10),
+        page: 1,
+        per_page: 10,
     };
 
     let result = service.list_nodes(tenant_id, security, filter).await;
