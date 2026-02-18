@@ -2,6 +2,6 @@
 
 В этой папке хранится документация модуля `crates/rustok-mcp`.
 
-## Содержимое
+## Содержание
 
-- [План реализации MCP-модуля](./implementation-plan.md)
+- [Implementation plan](./implementation-plan.md)

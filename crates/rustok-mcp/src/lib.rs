@@ -8,5 +8,6 @@ pub mod tools;
 
 pub use server::{serve_stdio, McpServerConfig, RusToKMcpServer};
 pub use tools::{
-    McpState, ModuleInfo, ModuleListResponse, ModuleLookupRequest, ModuleLookupResponse,
+    McpState, ModuleDetailsResponse, ModuleInfo, ModuleListResponse, ModuleLookupRequest,
+    ModuleLookupResponse,
 };

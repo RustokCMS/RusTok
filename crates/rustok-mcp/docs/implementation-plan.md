@@ -25,6 +25,8 @@ to transport/protocol details.
 - [x] Integrated official Rust MCP SDK (`rmcp`).
 - [x] Introduced dual-mode packaging (library + binary).
 - [x] Initial docs and integration points with module registry.
+- [x] Module discovery tools (`list_modules`, `module_exists`, `module_details`).
+- [x] Tests for module discovery tools.
 
 ### Phase 1 — Contract hardening (in progress)
 

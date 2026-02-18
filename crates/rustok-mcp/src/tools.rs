@@ -1,3 +1,4 @@
+use rustok_core::module::RusToKModule;
 use rustok_core::registry::ModuleRegistry;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -46,23 +47,36 @@ pub struct ModuleLookupResponse {
     pub exists: bool,
 }
 
+/// Response containing module details, if found
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ModuleDetailsResponse {
+    /// The slug that was queried
+    pub slug: String,
+    /// Module details when present
+    pub module: Option<ModuleInfo>,
+}
+
+fn to_module_info(module: &dyn RusToKModule) -> ModuleInfo {
+    ModuleInfo {
+        slug: module.slug().to_string(),
+        name: module.name().to_string(),
+        description: module.description().to_string(),
+        version: module.version().to_string(),
+        dependencies: module
+            .dependencies()
+            .iter()
+            .map(|dep| dep.to_string())
+            .collect(),
+    }
+}
+
 /// List all registered modules
 pub async fn list_modules(state: &McpState) -> ModuleListResponse {
     let modules = state
         .registry
         .list()
         .into_iter()
-        .map(|module| ModuleInfo {
-            slug: module.slug().to_string(),
-            name: module.name().to_string(),
-            description: module.description().to_string(),
-            version: module.version().to_string(),
-            dependencies: module
-                .dependencies()
-                .iter()
-                .map(|dep| dep.to_string())
-                .collect(),
-        })
+        .map(to_module_info)
         .collect();
 
     ModuleListResponse { modules }
@@ -75,5 +89,21 @@ pub async fn module_exists(state: &McpState, request: ModuleLookupRequest) -> Mo
     ModuleLookupResponse {
         slug: request.slug,
         exists,
+    }
+}
+
+/// Fetch module details by slug
+pub async fn module_details(
+    state: &McpState,
+    request: ModuleLookupRequest,
+) -> ModuleDetailsResponse {
+    let module = state
+        .registry
+        .get(&request.slug)
+        .map(to_module_info);
+
+    ModuleDetailsResponse {
+        slug: request.slug,
+        module,
     }
 }

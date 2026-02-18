@@ -3,7 +3,9 @@ use sea_orm_migration::MigrationTrait;
 
 use rustok_core::module::{MigrationSource, RusToKModule};
 use rustok_core::registry::ModuleRegistry;
-use rustok_mcp::tools::{list_modules, module_exists, McpState, ModuleLookupRequest};
+use rustok_mcp::tools::{
+    list_modules, module_details, module_exists, McpState, ModuleLookupRequest,
+};
 
 struct DemoModule;
 
@@ -66,4 +68,43 @@ async fn module_exists_checks_registry() {
 
     assert!(response.exists);
     assert_eq!(response.slug, "demo");
+}
+
+#[tokio::test]
+async fn module_details_returns_module_data() {
+    let registry = ModuleRegistry::new().register(DemoModule);
+    let state = Box::leak(Box::new(McpState { registry }));
+
+    let response = module_details(
+        state,
+        ModuleLookupRequest {
+            slug: "demo".to_string(),
+        },
+    )
+    .await;
+
+    let module = response.module.expect("module details");
+    assert_eq!(response.slug, "demo");
+    assert_eq!(module.slug, "demo");
+    assert_eq!(module.name, "Demo");
+    assert_eq!(module.description, "Demo module");
+    assert_eq!(module.version, "0.1.0");
+    assert_eq!(module.dependencies, vec!["core"]);
+}
+
+#[tokio::test]
+async fn module_details_returns_none_for_unknown_slug() {
+    let registry = ModuleRegistry::new().register(DemoModule);
+    let state = Box::leak(Box::new(McpState { registry }));
+
+    let response = module_details(
+        state,
+        ModuleLookupRequest {
+            slug: "missing".to_string(),
+        },
+    )
+    .await;
+
+    assert!(response.module.is_none());
+    assert_eq!(response.slug, "missing");
 }

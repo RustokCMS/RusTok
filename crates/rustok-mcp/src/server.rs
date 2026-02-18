@@ -11,8 +11,8 @@ use rmcp::{
 use rustok_core::registry::ModuleRegistry;
 
 use crate::tools::{
-    list_modules, module_exists, McpState, ModuleListResponse, ModuleLookupRequest,
-    ModuleLookupResponse,
+    list_modules, module_details, module_exists, McpState, ModuleDetailsResponse,
+    ModuleListResponse, ModuleLookupRequest, ModuleLookupResponse,
 };
 
 /// Configuration for the MCP server
@@ -47,6 +47,17 @@ impl RusToKMcpServer {
     /// Check if a module exists by slug
     async fn module_exists_internal(&self, slug: &str) -> ModuleLookupResponse {
         module_exists(
+            &self.state,
+            ModuleLookupRequest {
+                slug: slug.to_string(),
+            },
+        )
+        .await
+    }
+
+    /// Fetch module details by slug
+    async fn module_details_internal(&self, slug: &str) -> ModuleDetailsResponse {
+        module_details(
             &self.state,
             ModuleLookupRequest {
                 slug: slug.to_string(),
@@ -94,6 +105,25 @@ impl ServerHandler for RusToKMcpServer {
                     content,
                 )]))
             }
+            "module_details" => {
+                let args = request
+                    .arguments
+                    .ok_or_else(|| rmcp::ErrorData::invalid_params("Missing arguments", None))?;
+                let req: ModuleLookupRequest =
+                    serde_json::from_value(serde_json::Value::Object(args)).map_err(|e| {
+                        rmcp::ErrorData::invalid_params(format!("Invalid arguments: {}", e), None)
+                    })?;
+                let result = self.module_details_internal(&req.slug).await;
+                let content = serde_json::to_string(&result).map_err(|e| {
+                    rmcp::ErrorData::internal_error(
+                        format!("Failed to serialize response: {}", e),
+                        None,
+                    )
+                })?;
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    content,
+                )]))
+            }
             _ => Err(rmcp::ErrorData::new(
                 rmcp::model::ErrorCode::METHOD_NOT_FOUND,
                 format!("Unknown tool: {}", request.name),
@@ -131,6 +161,11 @@ impl ServerHandler for RusToKMcpServer {
             Tool::new(
                 "module_exists",
                 "Check if a module exists by its slug",
+                module_exists_schema.clone(),
+            ),
+            Tool::new(
+                "module_details",
+                "Fetch module metadata by slug",
                 module_exists_schema,
             ),
         ];
