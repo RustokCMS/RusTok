@@ -2,10 +2,11 @@ use async_graphql::{Context, FieldError, Object, Result};
 use chrono::{Duration, Utc};
 use loco_rs::prelude::AppContext;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+use tracing::info;
 
 use crate::auth::{
-    encode_access_token, generate_refresh_token, hash_password, hash_refresh_token,
-    verify_password, AuthConfig,
+    decode_password_reset_token, encode_access_token, encode_password_reset_token,
+    generate_refresh_token, hash_password, hash_refresh_token, verify_password, AuthConfig,
 };
 use crate::context::TenantContext;
 use crate::graphql::errors::GraphQLError;
@@ -13,6 +14,8 @@ use crate::models::{sessions, users};
 use crate::services::auth::AuthService;
 
 use super::types::*;
+
+const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
 #[derive(Default)]
 pub struct AuthMutation;
@@ -233,6 +236,8 @@ impl AuthMutation {
     ) -> Result<ForgotPasswordPayload> {
         let app_ctx = ctx.data::<AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let config = AuthConfig::from_ctx(app_ctx)
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
         // Check if user exists
         let user = users::Entity::find_by_email(&app_ctx.db, tenant.id, &input.email)
@@ -247,8 +252,21 @@ impl AuthMutation {
             });
         }
 
-        // TODO: Generate reset token and send email
-        // For now, just return success
+        let reset_token = encode_password_reset_token(
+            &config,
+            tenant.id,
+            &input.email,
+            DEFAULT_RESET_TOKEN_TTL_SECS,
+        )
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        // TODO: replace with actual transactional email provider integration.
+        info!(
+            tenant_id = %tenant.id,
+            email = %input.email,
+            reset_token = %reset_token,
+            "Password reset token generated"
+        );
 
         Ok(ForgotPasswordPayload {
             success: true,
@@ -260,13 +278,44 @@ impl AuthMutation {
     async fn reset_password(
         &self,
         ctx: &Context<'_>,
-        _input: ResetPasswordInput,
+        input: ResetPasswordInput,
     ) -> Result<ResetPasswordPayload> {
-        let _app_ctx = ctx.data::<AppContext>()?;
+        let app_ctx = ctx.data::<AppContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let config = AuthConfig::from_ctx(app_ctx)
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
-        // TODO: Verify reset token and update password
-        // For now, just return error
+        let claims = decode_password_reset_token(&config, &input.token)
+            .map_err(|_| FieldError::new("Invalid reset token"))?;
 
-        Err(FieldError::new("Password reset not yet implemented"))
+        if claims.tenant_id != tenant.id {
+            return Err(FieldError::new("Invalid reset token"));
+        }
+
+        let user = users::Entity::find_by_email(&app_ctx.db, tenant.id, &claims.sub)
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
+            .ok_or_else(|| FieldError::new("Invalid reset token"))?;
+
+        let new_password_hash = hash_password(&input.new_password)
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        let user_id = user.id;
+        let mut user_active: users::ActiveModel = user.into();
+        user_active.password_hash = Set(new_password_hash);
+        user_active
+            .update(&app_ctx.db)
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        // Revoke active sessions after password reset.
+        sessions::Entity::delete_many()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user_id))
+            .exec(&app_ctx.db)
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        Ok(ResetPasswordPayload { success: true })
     }
 }

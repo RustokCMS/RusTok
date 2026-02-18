@@ -255,7 +255,7 @@ api::reset_password(reset_token, new_password, tenant).await?;
 
 ### Mutations для аутентификации
 
-**Требуется реализовать на backend (`apps/server/src/graphql/mutations.rs`):**
+**Реализовано в backend (`apps/server/src/graphql/auth/mutation.rs` + auth types):**
 
 ```graphql
 type Mutation {
@@ -264,8 +264,8 @@ type Mutation {
   signUp(email: String!, password: String!, name: String): SignUpPayload!
   signOut: Boolean!
   refreshToken: RefreshTokenPayload!
-  forgotPassword(email: String!): Boolean!
-  resetPassword(token: String!, newPassword: String!): Boolean!
+  forgotPassword(email: String!): ForgotPasswordPayload!
+  resetPassword(token: String!, newPassword: String!): ResetPasswordPayload!
   
   # User management (existing)
   createUser(input: CreateUserInput!): User!
@@ -299,6 +299,15 @@ type SignUpPayload {
 
 type RefreshTokenPayload {
   token: String!
+}
+
+type ForgotPasswordPayload {
+  success: Boolean!
+  message: String!
+}
+
+type ResetPasswordPayload {
+  success: Boolean!
 }
 
 type User {
