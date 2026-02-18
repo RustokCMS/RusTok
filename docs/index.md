@@ -134,6 +134,62 @@ graph TD
 - [leptos-zod docs](../crates/leptos-zod/docs/README.md)
 - [leptos-zustand docs](../crates/leptos-zustand/docs/README.md)
 
+
+## Full distributed documentation inventory (repo-wide)
+
+Ниже — быстрый реестр по **всем приложениям и crate’ам**, чтобы можно было пройтись по коду и не пропустить локальные документы.
+
+### Apps (`apps/*`)
+
+- `apps/admin`
+  - [README](../apps/admin/README.md)
+  - [docs/README](../apps/admin/docs/README.md)
+- `apps/mcp`
+  - [README](../apps/mcp/README.md)
+  - [docs/README](../apps/mcp/docs/README.md)
+- `apps/next-admin`
+  - [README](../apps/next-admin/README.md)
+  - [docs/clerk_setup.md](../apps/next-admin/docs/clerk_setup.md)
+  - [docs/nav-rbac.md](../apps/next-admin/docs/nav-rbac.md)
+  - [docs/themes.md](../apps/next-admin/docs/themes.md)
+- `apps/next-frontend`
+  - [README](../apps/next-frontend/README.md)
+  - [docs/README](../apps/next-frontend/docs/README.md)
+- `apps/server`
+  - [README](../apps/server/README.md)
+  - [docs/README](../apps/server/docs/README.md)
+- `apps/storefront`
+  - [README](../apps/storefront/README.md)
+
+### Crates (`crates/*`)
+
+- `alloy-scripting`: [README](../crates/alloy-scripting/README.md), [docs/README](../crates/alloy-scripting/docs/README.md)
+- `leptos-auth`: [README](../crates/leptos-auth/README.md), [docs/README](../crates/leptos-auth/docs/README.md)
+- `leptos-forms`: [README](../crates/leptos-forms/README.md)
+- `leptos-graphql`: [README](../crates/leptos-graphql/README.md), [docs/README](../crates/leptos-graphql/docs/README.md)
+- `leptos-hook-form`: [README](../crates/leptos-hook-form/README.md), [docs/README](../crates/leptos-hook-form/docs/README.md)
+- `leptos-shadcn-pagination`: [README](../crates/leptos-shadcn-pagination/README.md), [docs/README](../crates/leptos-shadcn-pagination/docs/README.md)
+- `leptos-table`: [README](../crates/leptos-table/README.md), [docs/README](../crates/leptos-table/docs/README.md)
+- `leptos-ui`: [README](../crates/leptos-ui/README.md)
+- `leptos-zod`: [README](../crates/leptos-zod/README.md), [docs/README](../crates/leptos-zod/docs/README.md)
+- `leptos-zustand`: [README](../crates/leptos-zustand/README.md), [docs/README](../crates/leptos-zustand/docs/README.md)
+- `rustok-blog`: [README](../crates/rustok-blog/README.md), [docs/README](../crates/rustok-blog/docs/README.md)
+- `rustok-commerce`: [README](../crates/rustok-commerce/README.md), [docs/README](../crates/rustok-commerce/docs/README.md)
+- `rustok-content`: [README](../crates/rustok-content/README.md), [docs/README](../crates/rustok-content/docs/README.md)
+- `rustok-core`: [README](../crates/rustok-core/README.md), [docs/README](../crates/rustok-core/docs/README.md)
+- `rustok-forum`: [README](../crates/rustok-forum/README.md), [docs/README](../crates/rustok-forum/docs/README.md)
+- `rustok-iggy`: [README](../crates/rustok-iggy/README.md), [docs/README](../crates/rustok-iggy/docs/README.md)
+- `rustok-iggy-connector`: [README](../crates/rustok-iggy-connector/README.md), [docs/README](../crates/rustok-iggy-connector/docs/README.md)
+- `rustok-index`: [README](../crates/rustok-index/README.md), [docs/README](../crates/rustok-index/docs/README.md)
+- `rustok-mcp`: [README](../crates/rustok-mcp/README.md), [docs/README](../crates/rustok-mcp/docs/README.md)
+- `rustok-outbox`: [README](../crates/rustok-outbox/README.md), [docs/README](../crates/rustok-outbox/docs/README.md)
+- `rustok-pages`: [README](../crates/rustok-pages/README.md), [docs/README](../crates/rustok-pages/docs/README.md)
+- `rustok-rbac`: [README](../crates/rustok-rbac/README.md), [docs/README](../crates/rustok-rbac/docs/README.md)
+- `rustok-telemetry`: [README](../crates/rustok-telemetry/README.md), [docs/README](../crates/rustok-telemetry/docs/README.md)
+- `rustok-tenant`: [README](../crates/rustok-tenant/README.md), [docs/README](../crates/rustok-tenant/docs/README.md)
+- `rustok-test-utils`: [README](../crates/rustok-test-utils/README.md)
+- `utoipa-swagger-ui-vendored`: [README](../crates/utoipa-swagger-ui-vendored/README.md), [docs/README](../crates/utoipa-swagger-ui-vendored/docs/README.md)
+
 ## Maintenance checklist
 
 When changing architecture/API/events/modules/tenancy/routing/UI contracts/observability:
