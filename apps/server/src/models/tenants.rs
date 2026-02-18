@@ -55,4 +55,19 @@ impl Entity {
             .all(db)
             .await
     }
+
+    pub async fn find_or_create(
+        db: &DatabaseConnection,
+        name: &str,
+        slug: &str,
+        domain: Option<&str>,
+    ) -> Result<Model, DbErr> {
+        if let Some(existing) = Self::find_by_slug(db, slug).await? {
+            return Ok(existing);
+        }
+
+        let mut tenant = ActiveModel::new(name, slug);
+        tenant.domain = sea_orm::ActiveValue::Set(domain.map(|value| value.to_string()));
+        tenant.insert(db).await
+    }
 }

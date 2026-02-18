@@ -39,15 +39,9 @@ pub async fn seed(ctx: &AppContext, path: &Path) -> Result<()> {
 async fn seed_development(ctx: &AppContext) -> Result<()> {
     tracing::info!("Seeding development data...");
 
-    let demo_tenant = match tenants::Entity::find_by_slug(&ctx.db, "demo").await? {
-        Some(existing) => existing,
-        None => {
-            let mut tenant =
-                crate::models::_entities::tenants::ActiveModel::new("Demo Tenant", "demo");
-            tenant.domain = Set(Some("demo.localhost".to_string()));
-            tenant.insert(&ctx.db).await?
-        }
-    };
+    let demo_tenant =
+        tenants::Entity::find_or_create(&ctx.db, "Demo Tenant", "demo", Some("demo.localhost"))
+            .await?;
 
     seed_user(
         ctx,
