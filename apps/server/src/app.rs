@@ -23,25 +23,6 @@ use crate::tasks;
 use loco_rs::prelude::Queue;
 use migration::Migrator;
 use std::sync::Arc;
-use tokio::task::JoinHandle;
-
-struct OutboxRelayWorkerHandle {
-    handle: std::sync::Mutex<Option<JoinHandle<()>>>,
-}
-
-impl OutboxRelayWorkerHandle {
-    fn new(handle: JoinHandle<()>) -> Self {
-        Self {
-            handle: std::sync::Mutex::new(Some(handle)),
-        }
-    }
-
-    fn shutdown(&self) {
-        if let Some(handle) = self.handle.lock().unwrap().take() {
-            handle.abort();
-        }
-    }
-}
 
 pub struct App;
 
@@ -104,7 +85,7 @@ impl Hooks for App {
             )))
     }
 
-    async fn truncate(ctx: &AppContext) -> Result<()> {
+    async fn truncate(_ctx: &AppContext) -> Result<()> {
         tracing::info!("Truncating database...");
 
         // Truncate all tables in dependency order
@@ -126,15 +107,9 @@ impl Hooks for App {
     }
 
     async fn connect_workers(ctx: &AppContext, _queue: &Queue) -> Result<()> {
-        if ctx.shared_store.contains::<OutboxRelayWorkerHandle>() {
-            return Ok(());
-        }
-
         let event_runtime = build_event_runtime(ctx).await?;
         if let Some(relay_config) = event_runtime.relay_config {
-            let handle = spawn_outbox_relay_worker(relay_config);
-            ctx.shared_store
-                .insert(OutboxRelayWorkerHandle::new(handle));
+            let _handle = spawn_outbox_relay_worker(relay_config);
         }
 
         Ok(())

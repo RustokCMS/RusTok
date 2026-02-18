@@ -99,7 +99,7 @@ impl SimplifiedTenantCache {
     ///
     /// This method automatically handles stampede protection via moka's `try_get_with`.
     /// Multiple concurrent requests for the same tenant will be coalesced into a single DB query.
-    pub async fn get_or_load(
+    async fn get_or_load(
         &self,
         identifier: &ResolvedTenantIdentifier,
     ) -> Result<TenantContext, StatusCode> {
@@ -161,7 +161,7 @@ impl SimplifiedTenantCache {
             Some(tenant) => {
                 tracing::info!(
                     tenant_id = %tenant.id,
-                    tenant_identifier = %tenant.identifier,
+                    tenant_slug = %tenant.slug,
                     identifier_kind = ?identifier.kind,
                     "Tenant loaded and cached"
                 );
@@ -193,7 +193,7 @@ impl SimplifiedTenantCache {
     }
 
     /// Invalidate cached tenant
-    pub async fn invalidate(&self, identifier: &ResolvedTenantIdentifier) {
+    async fn invalidate(&self, identifier: &ResolvedTenantIdentifier) {
         let cache_key = self.build_cache_key(identifier);
         self.cache.invalidate(&cache_key).await;
 

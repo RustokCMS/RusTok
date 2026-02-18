@@ -2,14 +2,14 @@
 //!
 //! Releases are immutable deployment artifacts that can be rolled back to.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Release status
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(None)")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
 pub enum ReleaseStatus {
     #[sea_orm(string_value = "pending")]
     Pending,
@@ -110,7 +110,7 @@ impl Model {
             admin_artifact_url: None,
             storefront_artifact_url: None,
             manifest_hash,
-            modules: serde_json::to_value(modules).unwrap().into(),
+            modules: serde_json::to_value(modules).unwrap(),
             previous_release_id: None,
             deployed_at: None,
             rolled_back_at: None,

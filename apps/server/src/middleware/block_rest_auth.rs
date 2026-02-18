@@ -30,7 +30,7 @@ pub async fn block_rest_auth_for_admin(
     let path = req.uri().path();
 
     // Check if path is a blocked REST auth endpoint
-    if !BLOCKED_AUTH_PATHS.iter().any(|&p| path == p) {
+    if !BLOCKED_AUTH_PATHS.contains(&path) {
         // Not a REST auth endpoint, allow
         return Ok(next.run(req).await);
     }

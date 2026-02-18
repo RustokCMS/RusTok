@@ -10,7 +10,7 @@ use rustok_pages::{CreatePageInput, PageResponse, PageService};
 
 use crate::context::TenantContext;
 use crate::extractors::auth::CurrentUser;
-use crate::services::event_bus::event_bus_from_context;
+use crate::services::event_bus::transactional_event_bus_from_context;
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct GetPageParams {
@@ -39,7 +39,7 @@ pub async fn get_page(
     let slug = params.slug.unwrap_or_else(|| "home".to_string());
     let locale = params.locale.unwrap_or_else(|| "en".to_string());
 
-    let service = PageService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let page = service
         .get_by_slug(tenant.id, user.security_context(), &locale, &slug)
         .await
@@ -69,7 +69,7 @@ pub async fn create_page(
     user: CurrentUser,
     Json(input): Json<CreatePageInput>,
 ) -> Result<Json<PageResponse>> {
-    let service = PageService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let page = service
         .create(tenant.id, user.security_context(), input)
         .await

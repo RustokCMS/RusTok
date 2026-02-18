@@ -3,7 +3,6 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use rustok_content::NodeService;
-use rustok_core::EventBus;
 use rustok_outbox::TransactionalEventBus;
 
 use super::types::*;

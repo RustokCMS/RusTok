@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 /// Build status
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(None)")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
 pub enum BuildStatus {
     #[sea_orm(string_value = "queued")]
     Queued,
@@ -25,7 +25,7 @@ pub enum BuildStatus {
 
 /// Build stage
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(None)")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
 pub enum BuildStage {
     #[sea_orm(string_value = "pending")]
     Pending,
@@ -43,7 +43,7 @@ pub enum BuildStage {
 
 /// Deployment profile
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "String(None)")]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
 pub enum DeploymentProfile {
     #[sea_orm(string_value = "monolith")]
     Monolith,

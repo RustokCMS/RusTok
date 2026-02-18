@@ -10,7 +10,7 @@ use uuid::Uuid;
 use rustok_commerce::InventoryService;
 
 use crate::common::{ApiErrorResponse, ApiResponse, RequestContext};
-use crate::services::event_bus::event_bus_from_context;
+use crate::services::event_bus::transactional_event_bus_from_context;
 use loco_rs::app::AppContext;
 
 /// Get variant inventory info
@@ -87,7 +87,7 @@ pub(super) async fn adjust_inventory(
 ) -> Result<Json<ApiResponse<InventoryResponse>>, ApiErrorResponse> {
     let user_id = request.require_user()?;
 
-    let service = InventoryService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = InventoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .adjust_inventory(
             request.tenant_id,
@@ -138,7 +138,7 @@ pub(super) async fn set_inventory(
 ) -> Result<Json<ApiResponse<InventoryResponse>>, ApiErrorResponse> {
     let user_id = request.require_user()?;
 
-    let service = InventoryService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = InventoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .set_inventory(request.tenant_id, user_id, variant_id, input.quantity)
         .await
@@ -168,7 +168,7 @@ pub(super) async fn check_availability(
     request: RequestContext,
     Json(input): Json<CheckAvailabilityInput>,
 ) -> Result<Json<ApiResponse<Vec<AvailabilityResult>>>, ApiErrorResponse> {
-    let service = InventoryService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let service = InventoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let mut results = Vec::new();
 
     for item in input.items {

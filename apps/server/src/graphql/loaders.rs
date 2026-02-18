@@ -118,13 +118,13 @@ impl Loader<Uuid> for NodeTranslationLoader {
             for translation in translations {
                 result
                     .entry(translation.node_id)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(translation);
             }
 
             // Ensure all keys have entries (even if empty)
             for key in keys {
-                result.entry(key).or_insert_with(Vec::new);
+                result.entry(key).or_default();
             }
 
             Ok(result)
@@ -166,15 +166,12 @@ impl Loader<Uuid> for NodeBodyLoader {
             let mut result: HashMap<Uuid, Vec<body::Model>> = HashMap::new();
 
             for body in bodies {
-                result
-                    .entry(body.node_id)
-                    .or_insert_with(Vec::new)
-                    .push(body);
+                result.entry(body.node_id).or_default().push(body);
             }
 
             // Ensure all keys have entries (even if empty)
             for key in keys {
-                result.entry(key).or_insert_with(Vec::new);
+                result.entry(key).or_default();
             }
 
             Ok(result)

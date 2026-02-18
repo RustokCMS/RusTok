@@ -1,7 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use chrono::{Duration, Utc};
 use loco_rs::prelude::AppContext;
-use sea_orm::{ActiveModelTrait, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
 use crate::auth::{
     encode_access_token, generate_refresh_token, hash_password, hash_refresh_token,
@@ -149,8 +149,10 @@ impl AuthMutation {
         let auth = ctx.data_opt::<crate::context::AuthContext>();
 
         if let Some(auth) = auth {
-            // Delete session from database
-            sessions::Entity::delete_by_id(auth.session_id)
+            // Invalidate all sessions for current user in tenant.
+            sessions::Entity::delete_many()
+                .filter(sessions::Column::TenantId.eq(auth.tenant_id))
+                .filter(sessions::Column::UserId.eq(auth.user_id))
                 .exec(&app_ctx.db)
                 .await
                 .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
@@ -200,8 +202,8 @@ impl AuthMutation {
 
         let mut session_active: sessions::ActiveModel = session.into();
         session_active.token_hash = Set(new_token_hash);
-        session_active.expires_at = Set(new_expires_at);
-        session_active.last_used_at = Set(Some(now));
+        session_active.expires_at = Set(new_expires_at.into());
+        session_active.last_used_at = Set(Some(now.into()));
 
         session_active
             .update(&app_ctx.db)
@@ -258,9 +260,9 @@ impl AuthMutation {
     async fn reset_password(
         &self,
         ctx: &Context<'_>,
-        input: ResetPasswordInput,
+        _input: ResetPasswordInput,
     ) -> Result<ResetPasswordPayload> {
-        let app_ctx = ctx.data::<AppContext>()?;
+        let _app_ctx = ctx.data::<AppContext>()?;
 
         // TODO: Verify reset token and update password
         // For now, just return error

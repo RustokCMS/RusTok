@@ -4,6 +4,7 @@
 /// - Protects against database outages
 /// - Fail-fast when DB is down (0.1ms instead of 30s timeout)
 /// - Automatic recovery detection
+///
 /// Example usage:
 /// ```rust
 /// // Initialize with circuit breaker
@@ -29,11 +30,9 @@ use moka::future::Cache;
 use rustok_core::resilience::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState,
 };
-use rustok_core::tenant_validation::TenantIdentifierValidator;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
-use uuid::Uuid;
 
 use crate::common::settings::RustokSettings;
 use crate::context::{TenantContext, TenantContextExtension};
@@ -190,7 +189,7 @@ impl TenantCacheV3 {
             Some(tenant) => {
                 tracing::info!(
                     tenant_id = %tenant.id,
-                    tenant_identifier = %tenant.identifier,
+                    tenant_slug = %tenant.slug,
                     "Tenant loaded successfully"
                 );
                 CachedTenant::Found(TenantContext::from_model(&tenant))
@@ -312,7 +311,7 @@ pub async fn tenant_cache_v3_stats(
     ctx: &AppContext,
 ) -> Option<(
     TenantCacheV3Stats,
-    rustok_core::resilience::CircuitBreakerStats,
+    rustok_core::resilience::circuit_breaker::CircuitBreakerStats,
 )> {
     let cache = tenant_cache_v3(ctx)?;
     let cache_stats = cache.cache_stats();

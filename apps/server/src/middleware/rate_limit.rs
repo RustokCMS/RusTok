@@ -3,6 +3,7 @@
 /// Implements a sliding window rate limiter to protect endpoints from abuse.
 /// Supports per-IP and per-user rate limiting with configurable limits.
 use axum::{
+    body::Body,
     extract::{Request, State},
     http::{HeaderMap, StatusCode},
     middleware::Next,
@@ -293,7 +294,7 @@ pub async fn rate_limit_middleware(
         }
         Err(status) => {
             // Return 429 Too Many Requests
-            let mut response = Response::new("Rate limit exceeded".into());
+            let mut response = Response::new(Body::from("Rate limit exceeded"));
             *response.status_mut() = status;
 
             let headers = response.headers_mut();
