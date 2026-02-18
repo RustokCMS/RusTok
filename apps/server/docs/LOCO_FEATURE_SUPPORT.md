@@ -1,378 +1,184 @@
-# RusToK Server — Loco.rs Feature Support Analysis
+# RusToK Server — Loco.rs Feature Support & Anti-Duplication Matrix
 
-**Date:** 2026-02-13  
-**Loco.rs Version:** Latest compatible with Rust 1.80+  
-**Status:** Core features implemented, some advanced features pending
-
----
-
-## ✅ Implemented Loco.rs Features
-
-### 1. Application Lifecycle Hooks (`app.rs`)
-
-| Feature | Status | Implementation |
-|---------|--------|----------------|
-| `app_name()` | ✅ | Returns CARGO_PKG_NAME |
-| `app_version()` | ✅ | Returns version + build SHA |
-| `boot()` | ✅ | Creates app with Migrator |
-| `routes()` | ✅ | All controllers registered |
-| `after_routes()` | ✅ | Event runtime, tenant cache, registry, Alloy scripting |
-| `truncate()` | ✅ | Stub implementation |
-| `register_tasks()` | ✅ | Cleanup task registered |
-| `initializers()` | ✅ | Telemetry initializer registered |
-| `connect_workers()` | ✅ | Outbox relay worker spawned |
-| `seed()` | ✅ | Seeds module with dev/test/minimal data |
-| `shutdown()` | ✅ | Graceful shutdown with worker cleanup |
-
-### 2. Configuration System
-
-| Feature | Status | File |
-|---------|--------|------|
-| Environment-based config | ✅ | `development.yaml`, `test.yaml` |
-| Logger configuration | ✅ | Level, format, backtrace |
-| Server configuration | ✅ | Binding, port |
-| Database configuration | ✅ | URI, connections, migration |
-| Auth configuration | ✅ | JWT secret, expiration |
-| Custom settings | ✅ | `settings.rustok.*` section |
-
-### 3. Controllers & Routing
-
-| Feature | Status | Implementation |
-|---------|--------|----------------|
-| REST controllers | ✅ | Health, Auth, Metrics, Swagger, Pages |
-| GraphQL controller | ✅ | `/graphql` endpoint |
-| Module controllers | ✅ | Commerce, Content, Blog, Forum |
-| Middleware integration | ✅ | Tenant resolution, rate limiting |
-
-### 4. Models & ORM
-
-| Feature | Status | Implementation |
-|---------|--------|----------------|
-| Sea-ORM integration | ✅ | Full integration |
-| Migrations | ✅ | `migration/` crate |
-| Entities | ✅ | Users, Tenants, Sessions, etc. |
-
-### 5. Authentication
-
-| Feature | Status | Implementation |
-|---------|--------|----------------|
-| JWT auth | ✅ | `config.auth.jwt` |
-| Argon2 password hashing | ✅ | Auth service |
-| Session management | ✅ | Sessions model |
-| RBAC | ✅ | `rustok-rbac` crate |
-
-### 6. Middleware
-
-| Feature | Status | Implementation |
-|---------|--------|----------------|
-| Custom middleware | ✅ | Tenant resolution |
-| Rate limiting | ✅ | Custom implementation |
-| Cache layers | ✅ | Tenant cache v2/v3 with moka |
-| Axum middleware | ✅ | `after_routes` layering |
-
-### 7. Background Processing
-
-| Feature | Status | Implementation |
-|---------|--------|----------------|
-| Outbox relay worker | ✅ | Event transport factory |
-| Graceful shutdown | ✅ | Worker handle cleanup |
-| Custom background tasks | ⚠️ | Outbox only, no general worker queue |
-
-### 8. Event System
-
-| Feature | Status | Implementation |
-|---------|--------|----------------|
-| Event bus | ✅ | `EventBus` with backpressure |
-| Transactional events | ✅ | `TransactionalEventBus` |
-| Event validation | ✅ | 50+ domain events validated |
-| Multiple transports | ✅ | Memory, Iggy |
-
-### 9. Testing
-
-| Feature | Status | Implementation |
-|---------|--------|----------------|
-| Unit tests | ✅ | Across all modules |
-| Integration tests | ✅ | `tests/integration/` |
-| Test config | ✅ | `test.yaml` |
-| Loco testing features | ✅ | `testing` feature enabled |
+**Date:** 2026-02-18  
+**Loco.rs Version:** `0.16` (workspace dependency)  
+**Purpose:** сохранить полный обзор реализованного server-функционала (включая auth и доменные API), при этом явно зафиксировать границы: где используем Loco, где сознательно используем самопис.
 
 ---
 
-## ❌ Missing Loco.rs Features
+## 1) Полная матрица: Loco capability vs реализация RusToK
 
-### 1. Workers (Background Jobs)
-
-**Priority:** Medium  
-**Use Case:** Background processing for emails, exports, imports
-
-**What's Missing:**
-- Worker trait implementations
-- Job queue (Redis/SQLite backed)
-- Job scheduling
-- Worker monitoring
-
-**Loco.rs Way:**
-```rust
-// In app.rs
-fn register_workers(queue: &Queue) -> Result<()> {
-    queue.register(DownloadWorker)?;
-    queue.register(EmailWorker)?;
-    Ok(())
-}
-
-// Worker implementation
-#[derive(Debug, Deserialize, Serialize)]
-pub struct DownloadWorkerArgs {
-    pub url: String,
-}
-
-pub struct DownloadWorker;
-#[async_trait]
-impl Worker for DownloadWorker {
-    type Args = DownloadWorkerArgs;
-    
-    async fn perform(&self, args: DownloadWorkerArgs) -> Result<()> {
-        // Background work
-        Ok(())
-    }
-}
-```
-
-**Current RusToK Alternative:**
-- Outbox relay worker for events
-- Custom task spawning for specific needs
-
-### 2. Mailers (Email)
-
-**Priority:** Low-Medium  
-**Use Case:** Transactional emails, notifications
-
-**What's Missing:**
-- Mailer trait implementations
-- Email template system
-- SMTP integration
-- Multi-provider support (SendGrid, AWS SES, etc.)
-
-**Loco.rs Way:**
-```rust
-// In app.rs
-async fn after_context(ctx: &AppContext) -> Result<AppContext> {
-    ctx.add_mailer(Box::new(SmtpMailer::new()))?;
-    Ok(ctx)
-}
-
-// Mailer implementation
-pub struct WelcomeMailer;
-impl Mailer for WelcomeMailer {
-    fn subject(&self) -> String { "Welcome!".to_string() }
-    fn body(&self) -> String { /* template */ }
-}
-```
-
-**Current RusToK Alternative:**
-- No email system implemented
-- Would need custom implementation
-
-### 3. Storage (File Uploads)
-
-**Priority:** Low  
-**Use Case:** File uploads, asset storage
-
-**What's Missing:**
-- Storage abstraction
-- Local disk storage
-- S3-compatible storage
-- File upload handlers
-
-**Loco.rs Way:**
-```rust
-// Configuration
-storage:
-  type: s3
-  bucket: my-bucket
-  region: us-east-1
-
-// Usage
-let storage = ctx.storage;
-storage.upload(path, bytes).await?;
-```
-
-**Current RusToK Alternative:**
-- Would need custom implementation
-- No file upload features currently
-
-### 4. Task System ✅ IMPLEMENTED
-
-**Priority:** Low  
-**Use Case:** One-off background tasks, CLI tasks
-
-**Implementation:** `apps/server/src/tasks/`
-
-**Available Tasks:**
-
-| Task | Description | Usage |
-|------|-------------|-------|
-| `cleanup` | Remove old sessions and cache | `cargo loco task --name cleanup --args "sessions"` |
-
-**Targets:**
-- `sessions` - Clean expired sessions
-- `cache` - Clear temporary cache
-- (empty) - Full cleanup
-
-**Loco.rs Pattern:**
-```rust
-// In app.rs
-fn register_tasks(tasks: &mut Tasks) {
-    tasks::register(tasks)?;
-}
-
-// Task implementation
-#[async_trait]
-impl Task for CleanupTask {
-    fn task_name(&self) -> String { "cleanup".to_string() }
-    async fn run(&self, ctx: &AppContext, args: &str) -> Result<()> {
-        // Task logic
-        Ok(())
-    }
-}
-```
-
-**Current RusToK Status:**
-- ✅ `register_tasks` implemented
-- ✅ Cleanup task available
-- ✅ CLI task runner enabled
-
-### 5. Initializers ✅ IMPLEMENTED
-
-**Priority:** Low  
-**Use Case:** Third-party service initialization
-
-**Implementation:** `apps/server/src/initializers/`
-
-**Available Initializers:**
-
-| Initializer | Purpose |
-|-------------|---------|
-| `TelemetryInitializer` | OpenTelemetry and tracing setup |
-
-**Loco.rs Pattern:**
-```rust
-async fn initializers(ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
-    initializers::create(ctx).await
-}
-
-// Implementation
-pub struct TelemetryInitializer;
-#[async_trait]
-impl Initializer for TelemetryInitializer {
-    fn name(&self) -> String { "telemetry".to_string() }
-    async fn before_run(&self, ctx: &AppContext) -> Result<()> {
-        // Setup logic
-        Ok(())
-    }
-}
-```
-
-**Current RusToK Status:**
-- ✅ `initializers()` implemented
-- ✅ Telemetry initializer registered
-- ✅ Proper separation of concerns
+| Capability area | Loco support | Реализовано сейчас | Source of truth (целевое) | Риск дублей | Решение |
+|---|---|---|---|---|---|
+| Application hooks (`Hooks`) | ✅ | `boot`, `routes`, `after_routes`, `truncate`, `register_tasks`, `initializers`, `connect_workers`, `seed` | **Loco hooks** | Низкий | Оставить на Loco |
+| Конфигурация приложения | ✅ | `development.yaml`/`test.yaml`, `auth.jwt`, custom `settings.rustok.*` | **Loco config + typed project settings** | Низкий | Оставить как есть |
+| REST/GraphQL роутинг | ✅ | `AppRoutes` + Axum layers, GraphQL endpoint | **Loco + project controllers** | Низкий | Оставить как есть |
+| ORM/migrations/entities | ✅ (SeaORM stack) | migration crate + entities + модели | **Loco/SeaORM stack** | Низкий | Оставить как есть |
+| Auth framework primitives | ✅ (patterns/hooks) | JWT, refresh sessions, password reset tokens, RBAC domain wiring | **Project domain logic atop Loco runtime** | Средний | Не дублировать infra-слой Loco, но доменную auth-логику оставить своей |
+| Tasks (`cargo loco task`) | ✅ | `CleanupTask` зарегистрирован | **Loco Tasks** | Низкий | Оставить на Loco |
+| Initializers | ✅ | `TelemetryInitializer` через Loco API | **Loco Initializers** | Низкий | Оставить на Loco |
+| Mailer subsystem | ✅ | Сейчас кастомный SMTP service (`lettre`) + GraphQL forgot_password | **Loco Mailer** | **Высокий** | Мигрировать почтовый flow на Loco Mailer API |
+| Workers/queue subsystem | ✅ | Сейчас собственный event-driven outbox relay worker | **RusToK custom (осознанно)** | Средний | Очереди/воркеры оставить самописными (не дублировать Loco queue runtime) |
+| Storage abstraction (uploads/assets) | ✅ | Единый Loco storage для всех модулей пока не внедрён | **Loco Storage** | **Высокий** | Ввести общий storage adapter/policy через Loco для всех модулей |
+| Кэширование tenancy | N/A (project concern) | custom tenant cache + negative cache + invalidation + metrics | **RusToK custom** | Низкий | Оставить самопис (platform-specific) |
+| Event bus / outbox transport | N/A (project architecture) | memory/outbox/iggy transport + relay worker | **RusToK custom** | Низкий | Оставить самопис |
 
 ---
 
-## 🔧 Recommendations
+## 2) Что реализовано в сервере (полный функциональный срез)
 
-### Short Term (Low Effort, High Value)
+### 2.1 Core Loco lifecycle & app bootstrap
 
-1. **Add Basic Task Support**
-   - Implement a few common tasks (cleanup, cache warmup)
-   - Enable `cargo loco task` CLI
+Реализовано в `impl Hooks for App`:
+- `app_name`, `app_version`;
+- `boot` на `create_app::<Self, Migrator>`;
+- `routes` с регистрацией health/metrics/auth/graphql и domain controllers;
+- `after_routes` с tenant middleware + runtime extensions;
+- `truncate` (не stub, а реальная очистка таблиц в dependency order);
+- `register_tasks`;
+- `initializers`;
+- `connect_workers`;
+- `seed`.
 
-2. **Document Current Architecture**
-   - Explain why Outbox pattern is used instead of general workers
-   - Document event-driven approach
+### 2.2 Configuration system
 
-### Medium Term (Medium Effort)
+- Environment yaml-конфиги (`development.yaml`, `test.yaml`).
+- Loco `auth.jwt` конфигурация.
+- Typed settings-расширение через `settings.rustok.*` (`tenant`, `search`, `features`, `rate_limit`, `events`, `email`).
 
-1. **Worker Queue System**
-   - Implement for background processing needs
-   - Start with Redis-backed queue
-   - Use for: exports, imports, bulk operations
+### 2.3 Controllers & API surface
 
-2. **Email System**
-   - SMTP mailer for transactional emails
-   - Template system integration
+- REST controllers: health, metrics, auth, swagger, pages.
+- Domain controllers: commerce, content, blog, forum.
+- GraphQL endpoint + domain GraphQL modules (`auth`, `commerce`, `content`, `blog`, `forum`, loaders, persisted queries).
 
-### Long Term (Higher Effort)
+### 2.4 Models / ORM / persistence
 
-1. **Storage Abstraction**
-   - When file uploads become a requirement
-   - S3-compatible storage for cloud deployments
+- SeaORM integration активна.
+- Migration crate подключён.
+- Основные сущности и модели используются в auth/tenancy/domain flows.
 
-2. **Full Initializer System**
-   - Move third-party init from `after_routes` to initializers
-   - Better separation of concerns
+### 2.5 Authentication & authorization (важно: не удалено)
 
----
+Реализовано и используется:
+- JWT access token + refresh token flow.
+- Session management в БД (`sessions`).
+- Password hashing (`argon2`) и verify.
+- Password reset flow (forgot/reset mutations, reset token encoding/decoding, revoke sessions after reset).
+- RBAC permissions/roles assignment через `AuthService` + `rustok-rbac`/domain entities.
 
-## 📊 Feature Coverage Summary
+### 2.6 Middleware / tenancy / rate-limit context
 
-| Category | Implemented | Missing | Coverage |
-|----------|-------------|---------|----------|
-| Core App | 10/11 | 1 | 91% |
-| Configuration | 6/6 | 0 | 100% |
-| Controllers | 5/5 | 0 | 100% |
-| Models/ORM | 3/3 | 0 | 100% |
-| Auth | 4/4 | 0 | 100% |
-| Middleware | 4/4 | 0 | 100% |
-| Background | 2/3 | 1 | 67% |
-| Events | 4/4 | 0 | 100% |
-| Testing | 4/4 | 0 | 100% |
-| **Workers** | 0/4 | 4 | 0% |
-| **Mailers** | 0/3 | 3 | 0% |
-| **Storage** | 0/3 | 3 | 0% |
-| **Tasks** | 2/2 | 0 | 100% ✅ |
-| **Initializers** | 1/1 | 0 | 100% ✅ |
-| **TOTAL** | **45/57** | **12** | **79%** |
+- Tenant resolution middleware (header/domain modes).
+- Validation tenant identifiers.
+- Cache + negative cache для tenant resolution.
+- Middleware layering через `after_routes`.
+- Rate-limit настройки есть в `settings`; реальное поведение завязано на серверные middleware/services.
 
----
+### 2.7 Background processing / events
 
-## 💡 Design Decisions
+- Outbox relay worker запускается из `connect_workers`.
+- Event runtime создаётся из конфигурации транспорта (`memory` / `outbox` / `iggy`).
+- Event-driven подход остаётся приоритетным для очередей и интеграций.
 
-### Why Some Features Are Not Implemented
+### 2.8 Tasks & Initializers
 
-1. **Workers**: RusToK uses event-driven architecture with Outbox pattern instead of traditional job queues. This provides:
-   - Better reliability (events are transactional)
-   - Better observability
-   - CQRS-lite compatibility
+- `cleanup` task зарегистрирован, поддерживает `sessions`, `cache`, full cleanup.
+- `TelemetryInitializer` подключён через Loco initializer API.
 
-2. **Mailers**: Not a core requirement for headless CMS. When needed:
-   - Can use external services via webhooks
-   - Can be added as module-specific feature
+### 2.9 Testing support
 
-3. **Storage**: Headless platforms typically don't handle file storage directly:
-   - Assets served via CDN
-   - Uploads handled by dedicated services
-   - Can be added when needed
-
-### Architecture Philosophy
-
-RusToK prioritizes:
-- ✅ Event-driven over job queues
-- ✅ External services over built-in features
-- ✅ Headless API over monolithic features
-- ✅ Module-specific over framework-wide
+- Loco testing feature включён в server dev-dependencies.
+- Набор unit/integration тестов в серверном модуле присутствует (см. `apps/server/tests` и inline tests в модулях).
 
 ---
 
-## 🔗 Related Documentation
+## 3) Что в Loco есть, но у нас должно/решено быть иначе
 
-- [Loco.rs Docs Index](./loco/README.md)
-- [Library Stack](./library-stack.md)
-- [Server README](../README.md)
-- [app.rs Implementation](../src/app.rs)
+### 3.1 Mailer (должен быть через Loco)
+
+**Сейчас:** password reset email отправляется кастомным `EmailService` (`lettre`).  
+**Целевое решение:** использовать Loco Mailer как основной integration contract, сохранив проектные provider-настройки и observability.
+
+### 3.2 Workers/Queue (осознанно самопис)
+
+**Сейчас:** outbox relay worker + event-driven pipeline.  
+**Решение:** не дублировать это параллельной Loco queue-runtime реализацией; оставить собственную очередь/воркеры ради расширяемости и архитектурной консистентности.
+
+### 3.3 Storage abstraction (должно быть едино через Loco)
+
+**Сейчас:** единого Loco storage abstraction для всех модулей нет.  
+**Целевое решение:** ввести общий Loco storage слой (policy + adapters), чтобы модульные upload/storage use-cases не расползались на ad-hoc реализации.
 
 ---
 
-*Last Updated: 2026-02-13*  
-*Update: Added Tasks and Initializers support*
+## 4) Кэширование: текущее состояние (детально)
+
+### 4.1 Tenant cache (основной путь)
+
+`middleware/tenant.rs` реализует:
+- versioned cache keys,
+- positive cache + negative cache,
+- anti-stampede request coalescing (`in_flight` + `Notify`),
+- Redis pub/sub invalidation channel (`tenant.cache.invalidate`) при включённом `redis-cache`,
+- метрики (`hits/misses/negative/coalesced`).
+
+### 4.2 Cache backends (shared infra)
+
+`rustok-core` предоставляет:
+- `InMemoryCacheBackend` (Moka),
+- `RedisCacheBackend` (feature-gated), включая circuit breaker.
+
+В сервере используется общий CacheBackend-контракт с выбором backend по feature/runtime.
+
+### 4.3 Cache observability
+
+`/metrics` отдаёт tenant cache метрики `rustok_tenant_cache_*` (hits, misses, entries, negative indicators).
+
+### 4.4 Tenant cache v3
+
+`tenant_cache_v3.rs` присутствует как альтернативная реализация с circuit breaker + Moka моделью, но основной production path сейчас проходит через инфраструктуру `tenant.rs`.
+
+---
+
+## 5) Практические anti-duplication правила
+
+1. Перед добавлением infra-функционала проверять, есть ли его зрелая реализация в Loco.
+2. Для осознанных отклонений фиксировать rationale (как для queue/workers) в этом документе.
+3. Не держать параллельные production-реализации одного слоя (Mailer/Storage/Queue) без миграционного плана.
+4. Любое изменение в кэше должно сопровождаться требованиями к invalidation + метрикам.
+5. Для новых модулей: использовать зафиксированный source of truth из матрицы раздела 1.
+
+---
+
+## 6) Быстрый roadmap по замечаниям ревью
+
+1. **Mailer migration:** перевести password reset delivery на Loco Mailer API.
+2. **Storage unification:** внедрить Loco storage abstraction как обязательный слой для модульных upload/use-cases.
+3. **Queue consistency:** задокументировать (ADR/архдок) окончательное правило «queue/workers только самопис» и не дублировать Loco job queue.
+4. **Caching clarity:** при следующих изменениях tenancy cache — обновлять этот документ и `apps/server/docs/README.md` одновременно.
+
+---
+
+## 7) Sources
+
+- `apps/server/src/app.rs`
+- `apps/server/src/controllers/mod.rs`
+- `apps/server/src/controllers/metrics.rs`
+- `apps/server/src/graphql/mod.rs`
+- `apps/server/src/graphql/auth/mutation.rs`
+- `apps/server/src/services/email.rs`
+- `apps/server/src/services/event_transport_factory.rs`
+- `apps/server/src/tasks/mod.rs`
+- `apps/server/src/tasks/cleanup.rs`
+- `apps/server/src/initializers/mod.rs`
+- `apps/server/src/initializers/telemetry.rs`
+- `apps/server/src/middleware/tenant.rs`
+- `apps/server/src/middleware/tenant_cache_v3.rs`
+- `apps/server/src/common/settings.rs`
+- `apps/server/config/development.yaml`
+- `apps/server/config/test.yaml`
+- `crates/rustok-core/src/cache.rs`
+- `crates/rustok-core/src/context.rs`
+- `apps/server/Cargo.toml`
+- `Cargo.toml`
