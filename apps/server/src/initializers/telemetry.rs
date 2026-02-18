@@ -3,7 +3,10 @@
 //! Initializes OpenTelemetry and tracing infrastructure.
 
 use async_trait::async_trait;
-use loco_rs::{app::AppContext, initializer::Initializer, Result};
+use loco_rs::{
+    app::{AppContext, Initializer},
+    Result,
+};
 
 /// Initializes telemetry systems
 pub struct TelemetryInitializer;

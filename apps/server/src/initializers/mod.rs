@@ -3,7 +3,10 @@
 //! Third-party service initialization and setup.
 //! Run during application startup before routes are mounted.
 
-use loco_rs::{app::AppContext, initializer::Initializer, Result};
+use loco_rs::{
+    app::{AppContext, Initializer},
+    Result,
+};
 use std::vec::Vec;
 
 pub mod telemetry;

@@ -215,7 +215,8 @@ impl RootQuery {
             .filter(UsersColumn::TenantId.eq(tenant.id))
             .count(&app_ctx.db)
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            as i64;
 
         // Count total posts (nodes with kind="post")
         // Note: Using sys_events as a proxy since we don't have direct node access

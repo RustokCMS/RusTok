@@ -3,14 +3,12 @@
 //! Background tasks for maintenance and operations.
 //! Run with: `cargo loco task --name <task_name>`
 
-use loco_rs::{task::Tasks, Result};
+use loco_rs::task::Tasks;
 
 mod cleanup;
 
 /// Register all available tasks
-pub fn register(tasks: &mut Tasks) -> Result<()> {
+pub fn register(tasks: &mut Tasks) {
     // Maintenance tasks
-    tasks.register(cleanup::CleanupTask)?;
-
-    Ok(())
+    tasks.register(cleanup::CleanupTask);
 }

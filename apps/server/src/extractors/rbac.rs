@@ -1,7 +1,4 @@
-use axum::{
-    extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
-};
+use axum::http::StatusCode;
 use rustok_core::{Permission, Rbac};
 
 use crate::extractors::auth::CurrentUser;
@@ -24,33 +21,6 @@ use crate::extractors::auth::CurrentUser;
 ///     // ...
 /// }
 /// ```
-pub struct RequirePermission<const P: Permission>(pub CurrentUser);
-
-impl<S, const P: Permission> FromRequestParts<S> for RequirePermission<P>
-where
-    S: Send + Sync,
-    loco_rs::prelude::AppContext: axum::extract::FromRef<S>,
-{
-    type Rejection = (StatusCode, String);
-
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
-        // First, authenticate the user
-        let user = CurrentUser::from_request_parts(parts, state)
-            .await
-            .map_err(|(code, msg)| (code, msg.to_string()))?;
-
-        // Check permission
-        if !Rbac::has_permission(&user.user.role, &P) {
-            return Err((
-                StatusCode::FORBIDDEN,
-                format!("Insufficient permissions. Required: {}", P),
-            ));
-        }
-
-        Ok(RequirePermission(user))
-    }
-}
-
 /// Helper macro to create permission-checking extractors
 ///
 /// Since Rust doesn't support const generics for complex types yet,
@@ -223,29 +193,22 @@ pub fn check_all_permissions(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{
-        body::Body,
-        extract::State,
-        http::{Request, StatusCode},
-        routing::get,
-        Json, Router,
-    };
-    use loco_rs::prelude::AppContext;
+    use axum::http::StatusCode;
     use rustok_core::{Permission, UserRole};
-    use tower::ServiceExt;
 
     fn create_test_user(role: UserRole) -> CurrentUser {
         use crate::models::users;
-        use uuid::Uuid;
-
         let user = users::Model {
             id: rustok_core::generate_id(),
             tenant_id: rustok_core::generate_id(),
             email: "test@example.com".to_string(),
             password_hash: "hash".to_string(),
             role,
-            is_active: true,
-            email_verified: true,
+            name: None,
+            status: rustok_core::UserStatus::Active,
+            email_verified_at: None,
+            last_login_at: None,
+            metadata: serde_json::json!({}),
             created_at: chrono::Utc::now().into(),
             updated_at: chrono::Utc::now().into(),
         };

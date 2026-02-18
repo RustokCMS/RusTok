@@ -4,23 +4,28 @@
 //! Run with: `cargo loco task --name cleanup --args "sessions"`
 
 use async_trait::async_trait;
-use loco_rs::{app::AppContext, task::Task, Result};
+use loco_rs::{
+    app::AppContext,
+    task::{Task, TaskInfo, Vars},
+    Result,
+};
 
 /// Cleanup task for maintenance operations
 pub struct CleanupTask;
 
 #[async_trait]
 impl Task for CleanupTask {
-    fn task_name(&self) -> String {
-        "cleanup".to_string()
+    fn task(&self) -> TaskInfo {
+        TaskInfo {
+            name: "cleanup".to_string(),
+            detail: "Remove old sessions and temporary data".to_string(),
+        }
     }
 
-    fn task_description(&self) -> String {
-        "Remove old sessions and temporary data".to_string()
-    }
+    async fn run(&self, _ctx: &AppContext, vars: &Vars) -> Result<()> {
+        let target = vars.cli.get("target").map_or("", String::as_str);
 
-    async fn run(&self, ctx: &AppContext, args: &str) -> Result<()> {
-        match args {
+        match target {
             "sessions" => {
                 tracing::info!("Cleaning up expired sessions...");
                 // TODO: Implement session cleanup
@@ -44,7 +49,7 @@ impl Task for CleanupTask {
                 tracing::info!("Full cleanup complete");
             }
             _ => {
-                tracing::warn!("Unknown cleanup target: {}", args);
+                tracing::warn!("Unknown cleanup target: {}", target);
                 tracing::info!("Available targets: sessions, cache, or empty for full");
             }
         }

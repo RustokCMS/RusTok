@@ -3,7 +3,7 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
 use uuid::Uuid;
 
 use rustok_commerce::CatalogService;
-use rustok_core::{EventBus, TransactionalEventBus};
+use rustok_outbox::TransactionalEventBus;
 
 use super::types::*;
 

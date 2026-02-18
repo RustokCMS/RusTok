@@ -30,7 +30,7 @@ pub async fn block_rest_auth_for_admin(
     let path = req.uri().path();
 
     // Check if path is a blocked REST auth endpoint
-    if !BLOCKED_AUTH_PATHS.iter().any(|&p| path == p) {
+    if !BLOCKED_AUTH_PATHS.contains(&path) {
         // Not a REST auth endpoint, allow
         return Ok(next.run(req).await);
     }
@@ -69,10 +69,6 @@ pub async fn block_rest_auth_for_admin(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{
-        body::Body,
-        http::{header, Request},
-    };
 
     #[test]
     fn test_blocked_paths() {

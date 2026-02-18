@@ -5,9 +5,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::models::_entities::tenants;
-use rustok_content::{
-    entities::node, entities::node_body, entities::node_translation, entities::prelude::*,
-};
+use rustok_content::entities::{self, body, node, node_translation};
 
 /// Loader for Tenant names
 #[derive(Clone)]
@@ -73,7 +71,7 @@ impl Loader<Uuid> for NodeLoader {
         let keys = keys.to_vec();
 
         async move {
-            let nodes = Node::find()
+            let nodes = entities::Node::find()
                 .filter(node::Column::Id.is_in(keys))
                 .all(&db)
                 .await
@@ -109,7 +107,7 @@ impl Loader<Uuid> for NodeTranslationLoader {
         let keys = keys.to_vec();
 
         async move {
-            let translations = NodeTranslation::find()
+            let translations = entities::NodeTranslation::find()
                 .filter(node_translation::Column::NodeId.is_in(keys.clone()))
                 .all(&db)
                 .await
@@ -120,13 +118,13 @@ impl Loader<Uuid> for NodeTranslationLoader {
             for translation in translations {
                 result
                     .entry(translation.node_id)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(translation);
             }
 
             // Ensure all keys have entries (even if empty)
             for key in keys {
-                result.entry(key).or_insert_with(Vec::new);
+                result.entry(key).or_default();
             }
 
             Ok(result)
@@ -147,7 +145,7 @@ impl NodeBodyLoader {
 }
 
 impl Loader<Uuid> for NodeBodyLoader {
-    type Value = Vec<node_body::Model>;
+    type Value = Vec<body::Model>;
     type Error = async_graphql::Error;
 
     fn load(
@@ -159,24 +157,21 @@ impl Loader<Uuid> for NodeBodyLoader {
         let keys = keys.to_vec();
 
         async move {
-            let bodies = NodeBody::find()
-                .filter(node_body::Column::NodeId.is_in(keys.clone()))
+            let bodies = entities::Body::find()
+                .filter(body::Column::NodeId.is_in(keys.clone()))
                 .all(&db)
                 .await
                 .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
-            let mut result: HashMap<Uuid, Vec<node_body::Model>> = HashMap::new();
+            let mut result: HashMap<Uuid, Vec<body::Model>> = HashMap::new();
 
             for body in bodies {
-                result
-                    .entry(body.node_id)
-                    .or_insert_with(Vec::new)
-                    .push(body);
+                result.entry(body.node_id).or_default().push(body);
             }
 
             // Ensure all keys have entries (even if empty)
             for key in keys {
-                result.entry(key).or_insert_with(Vec::new);
+                result.entry(key).or_default();
             }
 
             Ok(result)

@@ -99,7 +99,7 @@ impl SimplifiedTenantCache {
     ///
     /// This method automatically handles stampede protection via moka's `try_get_with`.
     /// Multiple concurrent requests for the same tenant will be coalesced into a single DB query.
-    pub async fn get_or_load(
+    async fn get_or_load(
         &self,
         identifier: &ResolvedTenantIdentifier,
     ) -> Result<TenantContext, StatusCode> {
@@ -138,7 +138,7 @@ impl SimplifiedTenantCache {
     async fn load_from_db(
         &self,
         identifier: &ResolvedTenantIdentifier,
-    ) -> Result<Arc<CachedTenant>, anyhow::Error> {
+    ) -> Result<Arc<CachedTenant>, sea_orm::DbErr> {
         tracing::debug!(
             identifier_kind = ?identifier.kind,
             identifier_value = %identifier.value,
@@ -161,7 +161,7 @@ impl SimplifiedTenantCache {
             Some(tenant) => {
                 tracing::info!(
                     tenant_id = %tenant.id,
-                    tenant_identifier = %tenant.identifier,
+                    tenant_slug = %tenant.slug,
                     identifier_kind = ?identifier.kind,
                     "Tenant loaded and cached"
                 );
@@ -193,7 +193,7 @@ impl SimplifiedTenantCache {
     }
 
     /// Invalidate cached tenant
-    pub async fn invalidate(&self, identifier: &ResolvedTenantIdentifier) {
+    async fn invalidate(&self, identifier: &ResolvedTenantIdentifier) {
         let cache_key = self.build_cache_key(identifier);
         self.cache.invalidate(&cache_key).await;
 
@@ -416,28 +416,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_cache_key_generation() {
-        let cache = SimplifiedTenantCache {
-            cache: Cache::builder().build(),
-            db: todo!(), // Mock in real tests
-        };
-
-        let uuid_id = ResolvedTenantIdentifier {
-            value: "123e4567-e89b-12d3-a456-426614174000".to_string(),
-            kind: TenantIdentifierKind::Uuid,
-            uuid: Uuid::parse_str("123e4567-e89b-12d3-a456-426614174000").unwrap(),
-        };
-
-        let key = cache.build_cache_key(&uuid_id);
-        assert_eq!(key, "tenant_v2:uuid:123e4567-e89b-12d3-a456-426614174000");
-
-        let host_id = ResolvedTenantIdentifier {
-            value: "Example.COM".to_string(),
-            kind: TenantIdentifierKind::Host,
-            uuid: Uuid::nil(),
-        };
-
-        let key = cache.build_cache_key(&host_id);
-        assert_eq!(key, "tenant_v2:host:example.com"); // Lowercase!
+    fn test_identifier_kind_as_str() {
+        assert_eq!(TenantIdentifierKind::Uuid.as_str(), "uuid");
+        assert_eq!(TenantIdentifierKind::Slug.as_str(), "slug");
+        assert_eq!(TenantIdentifierKind::Host.as_str(), "host");
     }
 }

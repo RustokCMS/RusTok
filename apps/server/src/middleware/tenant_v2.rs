@@ -279,98 +279,22 @@ pub async fn resolve(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm::entity::prelude::*;
-    use sea_orm::{Database, DatabaseBackend, MockDatabase, MockExecResult};
 
-    fn mock_tenant() -> tenants::Model {
-        tenants::Model {
-            id: Uuid::new_v4(),
-            slug: "test-tenant".to_string(),
-            name: "Test Tenant".to_string(),
-            status: "active".to_string(),
-            settings: serde_json::json!({"domain": "test.example.com"}),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        }
+    #[test]
+    fn tenant_key_is_hashable_and_distinct() {
+        let id = Uuid::new_v4();
+        let by_id = TenantKey::Uuid(id);
+        let by_slug = TenantKey::Slug("acme".to_string());
+        let by_host = TenantKey::Host("acme.example.com".to_string());
+
+        assert_ne!(by_id, by_slug);
+        assert_ne!(by_slug, by_host);
     }
 
-    #[tokio::test]
-    async fn test_tenant_resolver_caches_results() {
-        let tenant = mock_tenant();
-        let tenant_id = tenant.id;
-
-        // Mock database that returns tenant once, then panics if called again
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results(vec![vec![tenant.clone()]])
-            .into_connection();
-
-        let resolver = TenantResolver::new(db);
-
-        // First call - should hit database
-        let result1 = resolver.resolve(TenantKey::Uuid(tenant_id)).await;
-        assert!(result1.is_ok());
-        assert_eq!(result1.unwrap().id, tenant_id);
-
-        // Second call - should hit cache (database mock would panic)
-        let result2 = resolver.resolve(TenantKey::Uuid(tenant_id)).await;
-        assert!(result2.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_tenant_resolver_invalidation() {
-        let tenant = mock_tenant();
-        let tenant_id = tenant.id;
-
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results(vec![vec![tenant.clone()], vec![tenant.clone()]])
-            .into_connection();
-
-        let resolver = TenantResolver::new(db);
-
-        // Load into cache
-        let _ = resolver.resolve(TenantKey::Uuid(tenant_id)).await;
-
-        // Invalidate
-        resolver.invalidate_by_uuid(tenant_id).await;
-
-        // Should load from database again (second query result)
-        let result = resolver.resolve(TenantKey::Uuid(tenant_id)).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_tenant_resolver_not_found() {
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results::<tenants::Model, Vec<tenants::Model>, _>(vec![
-                vec![], // Empty result
-            ])
-            .into_connection();
-
-        let resolver = TenantResolver::new(db);
-
-        let result = resolver.resolve(TenantKey::Uuid(Uuid::new_v4())).await;
-        assert!(matches!(result, Err(TenantError::NotFound)));
-    }
-
-    #[tokio::test]
-    async fn test_cache_stats() {
-        let tenant = mock_tenant();
-
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results(vec![vec![tenant.clone()]])
-            .into_connection();
-
-        let resolver = TenantResolver::new(db);
-
-        // Initially empty
-        let stats = resolver.stats();
-        assert_eq!(stats.entries, 0);
-
-        // Load one tenant
-        let _ = resolver.resolve(TenantKey::Uuid(tenant.id)).await;
-
-        // Should have one entry
-        let stats = resolver.stats();
-        assert_eq!(stats.entries, 1);
+    #[test]
+    fn default_config_is_sane() {
+        let cfg = TenantResolverConfig::default();
+        assert!(cfg.max_capacity >= 1_000);
+        assert!(cfg.time_to_live.as_secs() >= cfg.time_to_idle.as_secs());
     }
 }

@@ -3,7 +3,8 @@ use async_graphql::{
 };
 use sea_orm::DatabaseConnection;
 
-use rustok_core::{EventBus, TransactionalEventBus};
+use rustok_core::EventBus;
+use rustok_outbox::TransactionalEventBus;
 
 use super::alloy::{AlloyMutation, AlloyQuery, AlloyState};
 use super::auth::{AuthMutation, AuthQuery};

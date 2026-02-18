@@ -4,6 +4,7 @@
 /// - Protects against database outages
 /// - Fail-fast when DB is down (0.1ms instead of 30s timeout)
 /// - Automatic recovery detection
+///
 /// Example usage:
 /// ```rust
 /// // Initialize with circuit breaker
@@ -29,11 +30,9 @@ use moka::future::Cache;
 use rustok_core::resilience::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState,
 };
-use rustok_core::tenant_validation::TenantIdentifierValidator;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
-use uuid::Uuid;
 
 use crate::common::settings::RustokSettings;
 use crate::context::{TenantContext, TenantContextExtension};
@@ -143,7 +142,7 @@ impl TenantCacheV3 {
     async fn load_from_db_protected(
         &self,
         identifier: &ResolvedTenantIdentifier,
-    ) -> Result<Arc<CachedTenant>, anyhow::Error> {
+    ) -> Result<Arc<CachedTenant>, String> {
         // Execute database query through circuit breaker
         let result = self
             .circuit_breaker
@@ -152,10 +151,10 @@ impl TenantCacheV3 {
 
         match result {
             Ok(cached) => Ok(cached),
-            Err(CircuitBreakerError::Open) => Err(anyhow::anyhow!(
-                "Circuit breaker is open, database unavailable"
-            )),
-            Err(CircuitBreakerError::Execution(e)) => Err(anyhow::anyhow!("Database error: {}", e)),
+            Err(CircuitBreakerError::Open) => {
+                Err("Circuit breaker is open, database unavailable".to_string())
+            }
+            Err(CircuitBreakerError::Upstream(e)) => Err(format!("Database error: {}", e)),
         }
     }
 
@@ -190,7 +189,7 @@ impl TenantCacheV3 {
             Some(tenant) => {
                 tracing::info!(
                     tenant_id = %tenant.id,
-                    tenant_identifier = %tenant.identifier,
+                    tenant_slug = %tenant.slug,
                     "Tenant loaded successfully"
                 );
                 CachedTenant::Found(TenantContext::from_model(&tenant))
@@ -234,7 +233,9 @@ impl TenantCacheV3 {
     }
 
     /// Get circuit breaker statistics (async)
-    pub async fn circuit_stats(&self) -> rustok_core::resilience::CircuitBreakerStats {
+    pub async fn circuit_stats(
+        &self,
+    ) -> rustok_core::resilience::circuit_breaker::CircuitBreakerStats {
         self.circuit_breaker.stats().await
     }
 
@@ -310,7 +311,7 @@ pub async fn tenant_cache_v3_stats(
     ctx: &AppContext,
 ) -> Option<(
     TenantCacheV3Stats,
-    rustok_core::resilience::CircuitBreakerStats,
+    rustok_core::resilience::circuit_breaker::CircuitBreakerStats,
 )> {
     let cache = tenant_cache_v3(ctx)?;
     let cache_stats = cache.cache_stats();
@@ -320,24 +321,11 @@ pub async fn tenant_cache_v3_stats(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    // Note: Tests require database setup
-    // These are templates for integration tests
+    #[tokio::test]
+    #[ignore]
+    async fn test_circuit_breaker_opens_on_db_failures() {}
 
     #[tokio::test]
     #[ignore]
-    async fn test_circuit_breaker_opens_on_db_failures() {
-        // Setup database and cache
-        // Simulate database failures
-        // Assert circuit opens
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_circuit_breaker_fail_fast() {
-        // Setup cache with open circuit
-        // Measure latency of failed request
-        // Assert latency < 1ms (fail-fast)
-    }
+    async fn test_circuit_breaker_fail_fast() {}
 }

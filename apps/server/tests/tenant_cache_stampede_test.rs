@@ -20,33 +20,29 @@ async fn test_singleflight_pattern_coalesces_concurrent_requests() {
         let key = cache_key.clone();
 
         let handle = tokio::spawn(async move {
-            loop {
-                let notify = {
-                    let mut map = in_flight.lock().await;
+            let notify = {
+                let mut map = in_flight.lock().await;
 
-                    if let Some(existing) = map.get(&key) {
-                        let notify = existing.clone();
-                        drop(map);
-                        notify.notified().await;
-                        return;
-                    }
-
-                    let notify = Arc::new(Notify::new());
-                    map.insert(key.clone(), notify.clone());
-                    notify
-                };
-
-                sleep(Duration::from_millis(50)).await;
-                counter.fetch_add(1, Ordering::SeqCst);
-
-                {
-                    let mut map = in_flight.lock().await;
-                    map.remove(&key);
+                if let Some(existing) = map.get(&key) {
+                    let notify = existing.clone();
+                    drop(map);
+                    notify.notified().await;
+                    return;
                 }
-                notify.notify_waiters();
 
-                return;
+                let notify = Arc::new(Notify::new());
+                map.insert(key.clone(), notify.clone());
+                notify
+            };
+
+            sleep(Duration::from_millis(50)).await;
+            counter.fetch_add(1, Ordering::SeqCst);
+
+            {
+                let mut map = in_flight.lock().await;
+                map.remove(&key);
             }
+            notify.notify_waiters();
         });
 
         handles.push(handle);
@@ -86,40 +82,36 @@ async fn test_singleflight_pattern_handles_racy_arrival() {
         let key = cache_key.clone();
 
         let handle = tokio::spawn(async move {
-            loop {
-                let notify = {
-                    let mut map = in_flight.lock().await;
+            let notify = {
+                let mut map = in_flight.lock().await;
 
-                    if let Some(existing) = map.get(&key) {
-                        let notify = existing.clone();
-                        drop(map);
+                if let Some(existing) = map.get(&key) {
+                    let notify = existing.clone();
+                    drop(map);
 
-                        // Wait for the in-flight request to complete
-                        notify.notified().await;
+                    // Wait for the in-flight request to complete
+                    notify.notified().await;
 
-                        // Check cache (would return result in real implementation)
-                        return;
-                    }
-
-                    // First request - insert notify
-                    let notify = Arc::new(Notify::new());
-                    map.insert(key.clone(), notify.clone());
-                    notify
-                };
-
-                // Simulate DB query (only first request does this)
-                sleep(Duration::from_millis(50)).await;
-                counter.fetch_add(1, Ordering::SeqCst);
-
-                // Remove from in-flight and notify waiters
-                {
-                    let mut map = in_flight.lock().await;
-                    map.remove(&key);
+                    // Check cache (would return result in real implementation)
+                    return;
                 }
-                notify.notify_waiters();
 
-                return;
+                // First request - insert notify
+                let notify = Arc::new(Notify::new());
+                map.insert(key.clone(), notify.clone());
+                notify
+            };
+
+            // Simulate DB query (only first request does this)
+            sleep(Duration::from_millis(50)).await;
+            counter.fetch_add(1, Ordering::SeqCst);
+
+            // Remove from in-flight and notify waiters
+            {
+                let mut map = in_flight.lock().await;
+                map.remove(&key);
             }
+            notify.notify_waiters();
         });
 
         handles.push(handle);

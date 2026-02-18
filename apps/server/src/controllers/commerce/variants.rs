@@ -10,7 +10,7 @@ use rustok_commerce::{entities, PricingService};
 use rustok_core::{generate_id, DomainEvent};
 
 use crate::common::{ApiErrorResponse, ApiResponse, RequestContext};
-use crate::services::event_bus::event_bus_from_context;
+use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};
 use loco_rs::app::AppContext;
 
 /// List product variants
@@ -484,7 +484,7 @@ pub(super) async fn update_prices(
 ) -> Result<Json<ApiResponse<VariantResponse>>, ApiErrorResponse> {
     let user_id = request.require_user()?;
 
-    let pricing = PricingService::new(ctx.db.clone(), event_bus_from_context(&ctx));
+    let pricing = PricingService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     pricing
         .set_prices(request.tenant_id, user_id, id, prices)
         .await
