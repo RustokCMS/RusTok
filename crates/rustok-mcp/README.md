@@ -34,6 +34,7 @@ This is an alpha version and requires clarification. Be careful, there may be er
 
 ## Документация
 - Локальная документация: `./docs/`
+- План реализации MCP-модуля: `./docs/implementation-plan.md`
 - Общая документация платформы: `/docs`
 
 ## Паспорт компонента
