@@ -101,7 +101,8 @@ RUSTOK_REDIS_URL / REDIS_URL задан?
     │            ├── При open circuit → Error::Cache, warn в лог
     │            └── Ключ: prefix + ":" + key
     └── НЕТ → InMemoryCacheBackend (moka)
-                 TTL = global при инициализации
+                 set() использует default_ttl инстанса
+                 set_with_ttl() поддерживает per-entry TTL
                  Capacity = 1000 записей
 ```
 
