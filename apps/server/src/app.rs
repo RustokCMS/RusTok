@@ -56,6 +56,7 @@ impl Hooks for App {
         AppRoutes::with_default_routes()
             .add_route(controllers::health::routes())
             .add_route(controllers::metrics::routes())
+            .add_route(controllers::admin_events::routes())
             .add_route(controllers::auth::routes())
             .add_route(controllers::graphql::routes())
             .add_route(controllers::commerce::routes())

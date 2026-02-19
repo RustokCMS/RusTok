@@ -59,10 +59,42 @@ impl Default for SmtpSettings {
 pub struct EventSettings {
     #[serde(default)]
     pub transport: EventTransportKind,
+    #[serde(default)]
+    pub relay_target: RelayTargetKind,
     #[serde(default = "default_relay_interval_ms")]
     pub relay_interval_ms: u64,
     #[serde(default)]
+    pub relay_retry_policy: RelayRetryPolicy,
+    #[serde(default)]
+    pub dlq: DlqSettings,
+    #[serde(default)]
     pub iggy: IggyConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct RelayRetryPolicy {
+    #[serde(default = "default_relay_max_attempts")]
+    pub max_attempts: i32,
+    #[serde(default = "default_relay_backoff_base_ms")]
+    pub base_backoff_ms: u64,
+    #[serde(default = "default_relay_backoff_max_ms")]
+    pub max_backoff_ms: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct DlqSettings {
+    #[serde(default = "default_dlq_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_dlq_max_attempts")]
+    pub max_attempts: i32,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum RelayTargetKind {
+    #[default]
+    Memory,
+    Iggy,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
@@ -182,6 +214,20 @@ impl RustokSettings {
             parsed.events.transport = parse_event_transport(&raw_transport)?;
         }
 
+        if parsed.events.relay_retry_policy.max_attempts <= 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.relay_retry_policy.max_attempts must be > 0",
+            )));
+        }
+
+        if parsed.events.dlq.max_attempts <= 0 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.dlq.max_attempts must be > 0",
+            )));
+        }
+
         Ok(parsed)
     }
 }
@@ -236,6 +282,26 @@ fn default_relay_interval_ms() -> u64 {
     1_000
 }
 
+fn default_relay_max_attempts() -> i32 {
+    5
+}
+
+fn default_relay_backoff_base_ms() -> u64 {
+    1_000
+}
+
+fn default_relay_backoff_max_ms() -> u64 {
+    60_000
+}
+
+fn default_dlq_enabled() -> bool {
+    true
+}
+
+fn default_dlq_max_attempts() -> i32 {
+    10
+}
+
 fn default_email_from() -> String {
     "no-reply@rustok.local".to_string()
 }
@@ -254,7 +320,7 @@ fn default_smtp_port() -> u16 {
 
 #[cfg(test)]
 mod tests {
-    use super::{EventTransportKind, RustokSettings};
+    use super::{EventTransportKind, RelayTargetKind, RustokSettings};
     use std::sync::{Mutex, OnceLock};
 
     const EVENT_TRANSPORT_ENV: &str = "RUSTOK_EVENT_TRANSPORT";
@@ -325,5 +391,61 @@ mod tests {
         assert!(err
             .to_string()
             .contains("Invalid RUSTOK_EVENT_TRANSPORT='broken'"));
+    }
+
+    #[test]
+    fn reads_relay_defaults_from_config() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+
+        let raw = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "outbox",
+                    "relay_target": "iggy"
+                }
+            }
+        });
+
+        let settings = RustokSettings::from_settings(&Some(raw)).expect("settings parsed");
+        assert_eq!(settings.events.transport, EventTransportKind::Outbox);
+        assert_eq!(settings.events.relay_target, RelayTargetKind::Iggy);
+        assert_eq!(settings.events.relay_retry_policy.max_attempts, 5);
+        assert_eq!(settings.events.relay_retry_policy.base_backoff_ms, 1_000);
+        assert_eq!(settings.events.relay_retry_policy.max_backoff_ms, 60_000);
+        assert!(settings.events.dlq.enabled);
+        assert_eq!(settings.events.dlq.max_attempts, 10);
+    }
+
+    #[test]
+    fn rejects_non_positive_retry_and_dlq_attempts() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+
+        let bad_retry = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_retry_policy": { "max_attempts": 0 }
+                }
+            }
+        });
+
+        let err =
+            RustokSettings::from_settings(&Some(bad_retry)).expect_err("retry validation expected");
+        assert!(err
+            .to_string()
+            .contains("relay_retry_policy.max_attempts must be > 0"));
+
+        let bad_dlq = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "dlq": { "max_attempts": 0 }
+                }
+            }
+        });
+
+        let err =
+            RustokSettings::from_settings(&Some(bad_dlq)).expect_err("dlq validation expected");
+        assert!(err.to_string().contains("dlq.max_attempts must be > 0"));
     }
 }

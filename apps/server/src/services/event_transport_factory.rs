@@ -8,7 +8,7 @@ use rustok_iggy::{IggyConfig, IggyTransport};
 use rustok_outbox::{OutboxRelay, OutboxTransport, RelayConfig};
 use tokio::task::JoinHandle;
 
-use crate::common::settings::{EventTransportKind, RustokSettings};
+use crate::common::settings::{EventTransportKind, RelayTargetKind, RustokSettings};
 
 #[derive(Clone)]
 pub struct EventRuntime {
@@ -33,11 +33,21 @@ pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
         }),
         EventTransportKind::Outbox => {
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db.clone()));
-            let relay_target = Arc::new(MemoryTransport::new());
+            let relay_target = resolve_relay_target(&settings).await;
+            let relay_policy = &settings.events.relay_retry_policy;
+            let max_attempts = if settings.events.dlq.enabled {
+                settings.events.dlq.max_attempts
+            } else {
+                relay_policy.max_attempts
+            };
             let relay_config = RelayRuntimeConfig {
                 interval: Duration::from_millis(settings.events.relay_interval_ms),
-                relay: OutboxRelay::new(ctx.db.clone(), relay_target)
-                    .with_config(RelayConfig::default()),
+                relay: OutboxRelay::new(ctx.db.clone(), relay_target).with_config(RelayConfig {
+                    max_attempts,
+                    backoff_base: Duration::from_millis(relay_policy.base_backoff_ms),
+                    backoff_max: Duration::from_millis(relay_policy.max_backoff_ms),
+                    ..RelayConfig::default()
+                }),
             };
 
             Ok(EventRuntime {
@@ -74,4 +84,20 @@ pub fn spawn_outbox_relay_worker(config: RelayRuntimeConfig) -> JoinHandle<()> {
 
 fn resolve_iggy_config(settings: &RustokSettings) -> IggyConfig {
     settings.events.iggy.clone()
+}
+
+async fn resolve_relay_target(settings: &RustokSettings) -> Arc<dyn EventTransport> {
+    match settings.events.relay_target {
+        RelayTargetKind::Memory => Arc::new(MemoryTransport::new()),
+        RelayTargetKind::Iggy => match IggyTransport::new(resolve_iggy_config(settings)).await {
+            Ok(transport) => Arc::new(transport),
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "Failed to initialize relay_target=iggy, fallback to memory"
+                );
+                Arc::new(MemoryTransport::new())
+            }
+        },
+    }
 }

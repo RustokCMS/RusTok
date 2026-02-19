@@ -46,6 +46,8 @@ graph TD
 - [System Manifest](../RUSTOK_MANIFEST.md) - Core architecture, philosophy, and invariants.
 - [Admin Panel Review](../ADMIN_PANEL_REVIEW.md) - Review notes for the Leptos admin panel.
 - [Agent Rules](../AGENTS.md) - Rules for AI agents.
+- [Architecture Decision: Canonical event contract in `rustok-events`](../DECISIONS/2026-02-19-rustok-events-canonical-contract.md)
+- [Architecture Decision: Core-server and module-bundle routing boundary](../DECISIONS/2026-02-19-core-server-module-bundles-routing.md)
 - [Changelog](../CHANGELOG.md) - Version history and releases.
 - [License](../LICENSE) - MIT License.
 
@@ -64,7 +66,7 @@ graph TD
 - [Transactional Publishing](./architecture/events-transactional.md)
 - [Tenancy](./architecture/tenancy.md)
 - [Principles](./architecture/principles.md)
-- [Improvement Recommendations](./architecture/improvement-recommendations.md) (living document, updated 2026-02-19)
+- [Improvement Recommendations](./architecture/improvement-recommendations.md) (living document, completion pass 2026-02-19)
 
 ### Guides (`docs/guides/`)
 

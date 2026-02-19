@@ -4,6 +4,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use loco_rs::{app::AppContext, controller::Routes, prelude::*, Result};
+use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement};
 
 use crate::middleware::tenant::tenant_cache_stats;
 
@@ -13,6 +15,7 @@ pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
             let mut payload = handle.render();
             payload.push('\n');
             payload.push_str(&render_tenant_cache_metrics(&ctx).await);
+            payload.push_str(&render_outbox_metrics(&ctx).await);
 
             Ok((
                 StatusCode::OK,
@@ -50,5 +53,37 @@ rustok_tenant_cache_negative_inserts {negative_inserts}\n",
         negative_evictions = stats.negative_evictions,
         negative_entries = stats.negative_entries,
         negative_inserts = stats.negative_inserts,
+    )
+}
+
+async fn render_outbox_metrics(ctx: &AppContext) -> String {
+    let backlog_size = SysEventsEntity::find()
+        .filter(SysEventsColumn::Status.eq(SysEventStatus::Pending))
+        .count(&ctx.db)
+        .await
+        .unwrap_or(0);
+
+    let dlq_total = SysEventsEntity::find()
+        .filter(SysEventsColumn::Status.eq(SysEventStatus::Failed))
+        .count(&ctx.db)
+        .await
+        .unwrap_or(0);
+
+    let retries_total = ctx
+        .db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT COALESCE(SUM(retry_count), 0) AS total FROM sys_events".to_string(),
+        ))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|row| row.try_get::<i64>("", "total").ok())
+        .unwrap_or(0);
+
+    format!(
+        "outbox_backlog_size {backlog_size}\n\
+outbox_dlq_total {dlq_total}\n\
+outbox_retries_total {retries_total}\n",
     )
 }
