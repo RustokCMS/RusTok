@@ -12,32 +12,50 @@
 
 ### 1.1 Граница между ядром и опциональными модулями
 
-Платформа делится на два непересекающихся слоя:
+После анализа кода можно выделить **три категории** компонентов:
 
-**Инфраструктурное ядро** — компилируется всегда, не отключается:
+#### Категория A — Compile-time Infrastructure (не `RusToKModule`, не регистрируются)
 
-| Crate | Роль |
-|---|---|
-| `rustok-core` | Контракты, EventBus, RBAC, кэш, Circuit Breaker, метрики |
-| `rustok-outbox` | Transactional outbox (AtLeastOnce delivery) |
-| `rustok-iggy` + `rustok-iggy-connector` | L2 streaming transport |
-| `rustok-telemetry` | OpenTelemetry, tracing, Prometheus |
-| `rustok-tenant` | Multi-tenancy helpers |
-| `rustok-rbac` | RBAC helpers |
-| `rustok-test-utils` | Test infrastructure |
+Это «невидимые» для реестра crate'ы. Они линкуются в бинарник всегда, но не участвуют в lifecycle модулей:
 
-**Домен-модули** — регистрируются в `build_registry()`, управляются через `modules.toml`:
-
-| Crate | Тип | Зависимость |
+| Crate | Роль | Почему не `RusToKModule` |
 |---|---|---|
-| `rustok-content` | Domain (required по манифесту) | `rustok-core` |
-| `rustok-commerce` | Domain (optional) | `rustok-core` |
-| `rustok-index` | Infrastructure-domain | `rustok-core` (не зарегистрирован!) |
-| `rustok-blog` | Wrapper (optional) | `rustok-content` |
-| `rustok-forum` | Wrapper (optional) | `rustok-content` |
-| `rustok-pages` | Domain (optional) | `rustok-core` |
+| `rustok-core` | Контракты, EventBus, RBAC, кэш, Circuit Breaker, метрики | Это само ядро, определяет trait |
+| `rustok-iggy` + `rustok-iggy-connector` | L2 streaming transport (опциональный транспорт) | Технический адаптер, не бизнес-логика |
+| `rustok-telemetry` | OpenTelemetry, tracing, Prometheus | Сквозная зависимость |
+| `rustok-test-utils` | Фикстуры, моки, хелперы для тестов | **Только `dev-dependencies`**, в production binary не входит |
+| `utoipa-swagger-ui-vendored` | Vendored Swagger UI assets | Статический ресурс, не модуль платформы |
+| `alloy-scripting` | Скриптовый движок Rhai | Сейчас инициализируется напрямую в `app.rs` |
+| `tailwind-rs/css/ast` | CSS tooling | Build-time инструментарий |
+| `rustok-mcp` | MCP адаптер с binary target | Отдельный сервер, не часть основного runtime |
 
-**Важное наблюдение:** `rustok-tenant` и `rustok-rbac` реализуют `RusToKModule` trait, но **не зарегистрированы** в `build_registry()`. `rustok-index` тоже реализует `IndexModule`, но также не зарегистрирован. Это создаёт архитектурную неопределённость.
+#### Категория B — Core Platform Modules (регистрируются как `ModuleKind::Core`, нельзя отключить)
+
+Это модули, реализующие `RusToKModule` и **обязательные для работы платформы**:
+
+| Crate | Роль | Текущий статус |
+|---|---|---|
+| `rustok-outbox` | Transactional outbox, AtLeastOnce delivery событий | Используется в runtime, но **не зарегистрирован** |
+| `rustok-index` | CQRS read-model, индексатор для storefront | Реализует `IndexModule`, но **не зарегистрирован** |
+| `rustok-tenant` | Tenant metadata, lifecycle хуки | Реализует `TenantModule`, но **не зарегистрирован** |
+| `rustok-rbac` | RBAC helpers, lifecycle хуки | Реализует `RbacModule`, но **не зарегистрирован** |
+
+#### Категория C — Optional Domain Modules (регистрируются как `ModuleKind::Optional`, per-tenant toggle)
+
+| Crate | Тип | Depends on |
+|---|---|---|
+| `rustok-content` | Domain (фактически required) | `rustok-core` |
+| `rustok-commerce` | Domain | `rustok-core` |
+| `rustok-blog` | Wrapper | `rustok-content` |
+| `rustok-forum` | Wrapper | `rustok-content` |
+| `rustok-pages` | Domain | `rustok-core` |
+
+**Ключевые наблюдения:**
+- `rustok-outbox`, `rustok-index`, `rustok-tenant`, `rustok-rbac` — это Категория B (Core Modules), а не просто инфраструктурные crate'ы, потому что они имеют `impl RusToKModule`, жизненные хуки и должны участвовать в health-checks.
+- `rustok-test-utils` — это **исключительно dev-утилита** (`[dev-dependencies]`). Она **никогда не входит в production binary** и не является частью ни ядра, ни модулей платформы.
+- `utoipa-swagger-ui-vendored` — это **vendored ресурс** (статические файлы Swagger UI). Он не реализует `RusToKModule` и не является платформенным модулем — это библиотечная зависимость сервера для публикации документации.
+
+**`rustok-outbox` заслуживает особого внимания:** он не реализует `RusToKModule`, но является обязательным инфраструктурным компонентом — его `OutboxTransport` и `TransactionalEventBus` используются во всех domain-модулях. Он относится к Категории B как Core-компонент, но через другой механизм (не registry, а инициализация в `build_event_runtime()`).
 
 ---
 
@@ -45,7 +63,14 @@
 
 ### 2.1 🔴 КРИТИЧНО: Устранить размытую границу core / domain-module
 
-**Проблема.** `rustok-tenant` и `rustok-rbac` имеют `impl RusToKModule`, но не регистрируются. Это двусмысленно: либо это инфраструктурные crate'ы (тогда зачем им `RusToKModule`?), либо domain-модули (тогда почему они не в `build_registry()`?).
+**Проблема.** `rustok-tenant`, `rustok-rbac` и `rustok-index` имеют `impl RusToKModule`, но не регистрируются в `build_registry()`. Нет формального способа отличить обязательные модули от опциональных.
+
+> **Что точно является Core (нельзя отключить):** `rustok-index`, `rustok-tenant`, `rustok-rbac`.
+>
+> **Что точно НЕ является частью `ModuleKind` системы:**
+> - `rustok-test-utils` — это `[dev-dependencies]`, в production binary не входит вообще.
+> - `utoipa-swagger-ui-vendored` — vendored статика Swagger UI, не `RusToKModule`.
+> - `rustok-outbox` — не реализует `RusToKModule`; это инфраструктурный компонент, инициализируемый через `build_event_runtime()`, а не через registry.
 
 **Рекомендация.** Ввести формальную классификацию на уровне trait'а:
 
@@ -60,7 +85,7 @@ pub enum ModuleKind {
 
 pub trait RusToKModule: Send + Sync + MigrationSource {
     fn kind(&self) -> ModuleKind {
-        ModuleKind::Optional  // default: опциональный
+        ModuleKind::Optional  // safe default
     }
     // ... остальное без изменений
 }

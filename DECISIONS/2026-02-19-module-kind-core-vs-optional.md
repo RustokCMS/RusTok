@@ -33,9 +33,14 @@ pub trait RusToKModule {
 Модули с `ModuleKind::Core` регистрируются в `ModuleRegistry` в отдельный `core_modules` bucket. `ModuleLifecycleService::toggle_module()` возвращает `ToggleModuleError::CoreModuleCannotBeDisabled` при попытке их отключения.
 
 Следующие модули помечаются как Core:
-- `IndexModule` (`rustok-index`)
-- `TenantModule` (`rustok-tenant`)
-- `RbacModule` (`rustok-rbac`)
+- `IndexModule` (`rustok-index`) — CQRS read-path, критичен для storefront
+- `TenantModule` (`rustok-tenant`) — tenant lifecycle хуки и health
+- `RbacModule` (`rustok-rbac`) — RBAC lifecycle хуки и health
+
+Следующие компоненты **не получают `ModuleKind`** — они не являются `RusToKModule`:
+- `rustok-outbox` — инфраструктурный компонент, инициализируется через `build_event_runtime()`, а не через registry; является Compile-time Infrastructure
+- `rustok-test-utils` — исключительно `[dev-dependencies]`, в production binary не входит
+- `utoipa-swagger-ui-vendored` — vendored статика Swagger UI, не модуль платформы
 
 Следующие модули остаются Optional:
 - `ContentModule`, `CommerceModule`, `BlogModule`, `ForumModule`, `PagesModule`
