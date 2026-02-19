@@ -1,7 +1,7 @@
 /// Rate Limiting Middleware for RusToK
 ///
 /// Implements a sliding window rate limiter to protect endpoints from abuse.
-/// Supports per-IP and per-user rate limiting with configurable limits.
+/// Supports per-IP rate limiting with configurable limits.
 use axum::{
     body::Body,
     extract::{Request, State},
@@ -16,7 +16,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
-use uuid::Uuid;
 
 /// Configuration for rate limiting
 #[derive(Clone, Debug)]
@@ -33,7 +32,7 @@ impl Default for RateLimitConfig {
     fn default() -> Self {
         Self {
             max_requests: 100,
-            window: Duration::from_secs(60), // 100 requests per minute
+            window: Duration::from_secs(60),
             enabled: true,
         }
     }
@@ -57,17 +56,14 @@ impl RateLimitConfig {
     }
 }
 
-/// Tracks request counts for a specific client
 #[derive(Clone, Debug)]
 struct RequestCounter {
     count: usize,
     window_start: Instant,
 }
 
-/// Rate limiter implementation using sliding window algorithm
 #[derive(Clone)]
 pub struct RateLimiter {
-    /// Map of client ID to request counter
     requests: Arc<RwLock<HashMap<String, RequestCounter>>>,
     config: RateLimitConfig,
 }
@@ -80,9 +76,6 @@ impl RateLimiter {
         }
     }
 
-    /// Check if a request should be rate limited
-    ///
-    /// FIXED: Improved locking strategy - use read lock first, write lock only when needed
     pub async fn check_rate_limit(&self, key: &str) -> Result<RateLimitInfo, StatusCode> {
         if !self.config.enabled {
             return Ok(RateLimitInfo::unlimited());
@@ -90,13 +83,10 @@ impl RateLimiter {
 
         let now = Instant::now();
 
-        // First, try to check with read lock (allows concurrent reads)
         {
             let requests = self.requests.read().await;
             if let Some(counter) = requests.get(key) {
-                // Check if window is still valid
                 if now.duration_since(counter.window_start) <= self.config.window {
-                    // Check if limit exceeded
                     if counter.count >= self.config.max_requests {
                         let retry_after = self
                             .config
@@ -118,7 +108,6 @@ impl RateLimiter {
             }
         }
 
-        // Now acquire write lock to increment or create counter
         let mut requests = self.requests.write().await;
         let counter = requests
             .entry(key.to_string())
@@ -127,13 +116,11 @@ impl RateLimiter {
                 window_start: now,
             });
 
-        // Reset window if expired
         if now.duration_since(counter.window_start) > self.config.window {
             counter.count = 0;
             counter.window_start = now;
         }
 
-        // Double-check limit (race condition protection)
         if counter.count >= self.config.max_requests {
             let retry_after = self
                 .config
@@ -154,7 +141,6 @@ impl RateLimiter {
 
         counter.count += 1;
 
-        // FIXED: Correct calculation of reset time
         let reset_at = counter.window_start + self.config.window;
         let reset_secs = reset_at.saturating_duration_since(now).as_secs();
 
@@ -165,7 +151,6 @@ impl RateLimiter {
         })
     }
 
-    /// Clean up old entries (should be called periodically)
     pub async fn cleanup_expired(&self) {
         let mut requests = self.requests.write().await;
         let now = Instant::now();
@@ -179,7 +164,6 @@ impl RateLimiter {
         );
     }
 
-    /// Get current statistics (useful for monitoring)
     pub async fn get_stats(&self) -> RateLimitStats {
         let requests = self.requests.read().await;
         RateLimitStats {
@@ -189,14 +173,12 @@ impl RateLimiter {
     }
 }
 
-/// Statistics about rate limiter
 #[derive(Debug, Clone)]
 pub struct RateLimitStats {
     pub active_clients: usize,
     pub total_entries: usize,
 }
 
-/// Information about current rate limit status
 #[derive(Debug)]
 pub struct RateLimitInfo {
     pub limit: usize,
@@ -214,28 +196,21 @@ impl RateLimitInfo {
     }
 }
 
-/// Extract client identifier from request
+/// Extract client identifier from the request.
+///
+/// Priority:
+/// 1. X-Forwarded-For — first IP in the list (behind a proxy)
+/// 2. X-Real-IP (behind nginx)
+/// 3. "ip:unknown" fallback
+///
+/// Security note: user identity MUST NOT be sourced from client-supplied headers
+/// such as X-User-ID.  Any client can set an arbitrary value, which would allow
+/// them to exhaust another user's rate-limit bucket or bypass their own.
+/// User-scoped rate limiting must be implemented after JWT verification using
+/// the verified claims from a trusted middleware layer.
 fn extract_client_id(headers: &HeaderMap) -> String {
-    // Priority:
-    // 1. User ID from JWT (if authenticated)
-    // 2. X-Forwarded-For (behind proxy)
-    // 3. X-Real-IP (behind nginx)
-    // 4. Remote IP from connection
-
-    // Try to get authenticated user ID from headers
-    // (This would be set by auth middleware)
-    if let Some(user_id) = headers.get("x-user-id") {
-        if let Ok(user_id_str) = user_id.to_str() {
-            if let Ok(uuid) = Uuid::parse_str(user_id_str) {
-                return format!("user:{}", uuid);
-            }
-        }
-    }
-
-    // Try X-Forwarded-For
     if let Some(forwarded) = headers.get("x-forwarded-for") {
         if let Ok(forwarded_str) = forwarded.to_str() {
-            // Take first IP if multiple
             if let Some(first_ip) = forwarded_str.split(',').next() {
                 let ip = first_ip.trim();
                 if IpAddr::from_str(ip).is_ok() {
@@ -245,7 +220,6 @@ fn extract_client_id(headers: &HeaderMap) -> String {
         }
     }
 
-    // Try X-Real-IP
     if let Some(real_ip) = headers.get("x-real-ip") {
         if let Ok(ip_str) = real_ip.to_str() {
             if IpAddr::from_str(ip_str).is_ok() {
@@ -254,7 +228,6 @@ fn extract_client_id(headers: &HeaderMap) -> String {
         }
     }
 
-    // Fallback to unknown (will be rate limited as single client)
     "ip:unknown".to_string()
 }
 
@@ -269,7 +242,6 @@ fn insert_header_if_valid(headers: &mut axum::http::HeaderMap, key: &'static str
     }
 }
 
-/// Axum middleware for rate limiting
 pub async fn rate_limit_middleware(
     State(limiter): State<Arc<RateLimiter>>,
     headers: HeaderMap,
@@ -284,7 +256,6 @@ pub async fn rate_limit_middleware(
         Ok(info) => {
             let mut response = next.run(request).await;
 
-            // Add rate limit headers
             let headers = response.headers_mut();
             insert_header_if_valid(headers, "x-ratelimit-limit", info.limit.to_string());
             insert_header_if_valid(headers, "x-ratelimit-remaining", info.remaining.to_string());
@@ -293,7 +264,6 @@ pub async fn rate_limit_middleware(
             Ok(response)
         }
         Err(status) => {
-            // Return 429 Too Many Requests
             let mut response = Response::new(Body::from("Rate limit exceeded"));
             *response.status_mut() = status;
 
@@ -309,9 +279,8 @@ pub async fn rate_limit_middleware(
     }
 }
 
-/// Background task to periodically clean up expired rate limit entries
 pub async fn cleanup_task(limiter: Arc<RateLimiter>) {
-    let mut interval = tokio::time::interval(Duration::from_secs(300)); // Every 5 minutes
+    let mut interval = tokio::time::interval(Duration::from_secs(300));
 
     loop {
         interval.tick().await;
@@ -342,12 +311,10 @@ mod tests {
         let config = RateLimitConfig::new(3, 60);
         let limiter = RateLimiter::new(config);
 
-        // First 3 should succeed
         for _ in 0..3 {
             assert!(limiter.check_rate_limit("test-client").await.is_ok());
         }
 
-        // 4th should fail
         let result = limiter.check_rate_limit("test-client").await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), StatusCode::TOO_MANY_REQUESTS);
@@ -355,18 +322,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limit_resets_after_window() {
-        let config = RateLimitConfig::new(2, 1); // 2 requests per second
+        let config = RateLimitConfig::new(2, 1);
         let limiter = RateLimiter::new(config);
 
-        // Use up limit
         assert!(limiter.check_rate_limit("test-client").await.is_ok());
         assert!(limiter.check_rate_limit("test-client").await.is_ok());
         assert!(limiter.check_rate_limit("test-client").await.is_err());
 
-        // Wait for window to expire
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        // Should be allowed again
         assert!(limiter.check_rate_limit("test-client").await.is_ok());
     }
 
@@ -375,12 +339,10 @@ mod tests {
         let config = RateLimitConfig::new(2, 60);
         let limiter = RateLimiter::new(config);
 
-        // Client A uses limit
         assert!(limiter.check_rate_limit("client-a").await.is_ok());
         assert!(limiter.check_rate_limit("client-a").await.is_ok());
         assert!(limiter.check_rate_limit("client-a").await.is_err());
 
-        // Client B should still have full limit
         assert!(limiter.check_rate_limit("client-b").await.is_ok());
         assert!(limiter.check_rate_limit("client-b").await.is_ok());
     }
@@ -390,7 +352,6 @@ mod tests {
         let config = RateLimitConfig::disabled();
         let limiter = RateLimiter::new(config);
 
-        // Should allow unlimited requests
         for _ in 0..1000 {
             assert!(limiter.check_rate_limit("test-client").await.is_ok());
         }
@@ -398,10 +359,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_cleanup_expired() {
-        let config = RateLimitConfig::new(10, 1); // 1 second window
+        let config = RateLimitConfig::new(10, 1);
         let limiter = RateLimiter::new(config);
 
-        // Create some entries
         limiter.check_rate_limit("client-1").await.ok();
         limiter.check_rate_limit("client-2").await.ok();
         limiter.check_rate_limit("client-3").await.ok();
@@ -411,10 +371,8 @@ mod tests {
             assert_eq!(requests.len(), 3);
         }
 
-        // Wait for expiration
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        // Cleanup
         limiter.cleanup_expired().await;
 
         {
@@ -432,15 +390,33 @@ mod tests {
 
         let mut tasks = JoinSet::new();
 
-        // Spawn 50 concurrent requests
         for i in 0..50 {
             let limiter = limiter.clone();
             tasks.spawn(async move { limiter.check_rate_limit(&format!("client-{}", i)).await });
         }
 
-        // All should succeed (different clients)
         while let Some(result) = tasks.join_next().await {
             assert!(result.unwrap().is_ok());
         }
+    }
+
+    #[test]
+    fn extract_client_id_does_not_use_x_user_id() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-user-id",
+            "550e8400-e29b-41d4-a716-446655440000".parse().unwrap(),
+        );
+        headers.insert("x-forwarded-for", "1.2.3.4".parse().unwrap());
+
+        let id = extract_client_id(&headers);
+        assert_eq!(id, "ip:1.2.3.4", "must use IP, not x-user-id");
+    }
+
+    #[test]
+    fn extract_client_id_falls_back_to_unknown() {
+        let headers = HeaderMap::new();
+        let id = extract_client_id(&headers);
+        assert_eq!(id, "ip:unknown");
     }
 }

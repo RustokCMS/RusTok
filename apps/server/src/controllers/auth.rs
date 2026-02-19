@@ -51,6 +51,8 @@ pub struct RegisterParams {
 #[derive(Deserialize, ToSchema)]
 pub struct AcceptInviteParams {
     pub token: String,
+    pub password: String,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -379,10 +381,30 @@ async fn accept_invite(
         return Err(Error::Unauthorized("Invalid invite token".into()));
     }
 
+    let email = claims.sub.clone();
+    let role = claims.role.clone();
+
+    if Users::find_by_email(&ctx.db, tenant.id, &email)
+        .await?
+        .is_some()
+    {
+        return Err(Error::BadRequest(
+            "A user with this email already exists".into(),
+        ));
+    }
+
+    let password_hash = hash_password(&params.password)?;
+    let mut user = UserActiveModel::new(tenant.id, &email, &password_hash);
+    user.role = Set(role.clone());
+    user.name = Set(params.name);
+    let user = user.insert(&ctx.db).await?;
+
+    AuthService::assign_role_permissions(&ctx.db, &user.id, &tenant.id, role.clone()).await?;
+
     format::json(InviteAcceptResponse {
         status: "ok",
-        email: claims.sub,
-        role: claims.role,
+        email,
+        role,
     })
 }
 

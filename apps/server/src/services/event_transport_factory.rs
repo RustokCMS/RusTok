@@ -74,10 +74,25 @@ pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
 pub fn spawn_outbox_relay_worker(config: RelayRuntimeConfig) -> JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            if let Err(error) = config.relay.process_pending_once().await {
-                tracing::error!("Outbox relay iteration failed: {error}");
+            let relay = config.relay.clone();
+            let interval = config.interval;
+            let result = tokio::spawn(async move {
+                loop {
+                    if let Err(error) = relay.process_pending_once().await {
+                        tracing::error!("Outbox relay iteration failed: {error}");
+                    }
+                    tokio::time::sleep(interval).await;
+                }
+            })
+            .await;
+
+            if let Err(panic) = result {
+                tracing::error!(
+                    "Outbox relay worker panicked: {:?}. Restarting in 5s.",
+                    panic
+                );
+                tokio::time::sleep(Duration::from_secs(5)).await;
             }
-            tokio::time::sleep(config.interval).await;
         }
     })
 }

@@ -1,10 +1,9 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, Condition, EntityTrait, Expr, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use std::collections::HashSet;
-use uuid::Uuid;
 
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::common::{encode_cursor, PageInfo, PaginationInput};
@@ -31,13 +30,6 @@ fn calculate_percent_change(current: i64, previous: i64) -> f64 {
     } else {
         ((current - previous) as f64 / previous as f64) * 100.0
     }
-}
-
-fn parse_tenant_id(payload: &serde_json::Value) -> Option<Uuid> {
-    payload
-        .get("tenant_id")
-        .and_then(serde_json::Value::as_str)
-        .and_then(|value| Uuid::parse_str(value).ok())
 }
 
 fn parse_order_total(payload: &serde_json::Value) -> Option<i64> {
@@ -296,8 +288,21 @@ impl RootQuery {
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
             as i64;
 
+        let tenant_id_str = tenant.id.to_string();
+
         let order_events = SysEventsEntity::find()
             .filter(SysEventsColumn::EventType.eq("order.placed"))
+            .filter(
+                Condition::any()
+                    .add(Expr::cust_with_values(
+                        "payload->>'tenant_id' = $1",
+                        [tenant_id_str.clone()],
+                    ))
+                    .add(Expr::cust_with_values(
+                        "payload->'event'->>'tenant_id' = $1",
+                        [tenant_id_str],
+                    )),
+            )
             .all(&app_ctx.db)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -310,13 +315,6 @@ impl RootQuery {
         let mut previous_revenue = 0i64;
 
         for event in order_events {
-            let Some(tenant_id) = parse_tenant_id(&event.payload) else {
-                continue;
-            };
-            if tenant_id != tenant.id {
-                continue;
-            }
-
             let order_total = parse_order_total(&event.payload).unwrap_or(0);
             total_orders += 1;
             total_revenue += order_total;
@@ -353,7 +351,6 @@ impl RootQuery {
 
         let limit = limit.clamp(1, 50);
 
-        // Get recent users created
         let recent_users = users::Entity::find()
             .filter(UsersColumn::TenantId.eq(tenant.id))
             .order_by_desc(UsersColumn::CreatedAt)
@@ -362,45 +359,19 @@ impl RootQuery {
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
-        let mut activities = Vec::new();
-
-        for user in &recent_users {
-            activities.push(ActivityItem {
+        let activities = recent_users
+            .into_iter()
+            .map(|user| ActivityItem {
                 id: user.id.to_string(),
                 r#type: "user.created".to_string(),
                 description: format!("New user {} joined", user.email),
                 timestamp: user.created_at.to_rfc3339(),
                 user: Some(ActivityUser {
                     id: user.id.to_string(),
-                    name: user.name.clone(),
+                    name: user.name,
                 }),
-            });
-        }
-
-        // If we have fewer activities than requested, add some system activities
-        if activities.len() < limit as usize {
-            activities.push(ActivityItem {
-                id: format!("system-{}", uuid::Uuid::new_v4()),
-                r#type: "system.started".to_string(),
-                description: "System started successfully".to_string(),
-                timestamp: chrono::Utc::now().to_rfc3339(),
-                user: None,
-            });
-
-            activities.push(ActivityItem {
-                id: format!("system-{}", uuid::Uuid::new_v4()),
-                r#type: "tenant.checked".to_string(),
-                description: format!("Tenant {} checked", tenant.name),
-                timestamp: chrono::Utc::now().to_rfc3339(),
-                user: None,
-            });
-        }
-
-        // Sort by timestamp descending
-        activities.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-
-        // Limit to requested count
-        activities.truncate(limit as usize);
+            })
+            .collect();
 
         Ok(activities)
     }

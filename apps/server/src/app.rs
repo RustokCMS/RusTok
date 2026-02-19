@@ -20,7 +20,9 @@ use crate::initializers;
 use crate::middleware;
 use crate::modules;
 use crate::seeds;
-use crate::services::event_transport_factory::{build_event_runtime, spawn_outbox_relay_worker};
+use crate::services::event_transport_factory::{
+    build_event_runtime, spawn_outbox_relay_worker, EventRuntime,
+};
 use crate::tasks;
 use loco_rs::prelude::Queue;
 use migration::Migrator;
@@ -69,6 +71,7 @@ impl Hooks for App {
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
         let event_runtime = build_event_runtime(ctx).await?;
         ctx.shared_store.insert(event_runtime.transport.clone());
+        ctx.shared_store.insert(Arc::new(event_runtime));
         let registry = modules::build_registry();
         modules::validate_registry_vs_manifest(&registry)?;
         middleware::tenant::init_tenant_cache_infrastructure(ctx).await;
@@ -92,7 +95,6 @@ impl Hooks for App {
     async fn truncate(ctx: &AppContext) -> Result<()> {
         tracing::info!("Truncating database...");
 
-        // Delete in dependency order to satisfy foreign key constraints.
         let releases = crate::models::release::Entity::delete_many()
             .exec(&ctx.db)
             .await?;
@@ -133,9 +135,14 @@ impl Hooks for App {
     }
 
     async fn connect_workers(ctx: &AppContext, _queue: &Queue) -> Result<()> {
-        let event_runtime = build_event_runtime(ctx).await?;
-        if let Some(relay_config) = event_runtime.relay_config {
-            let _handle = spawn_outbox_relay_worker(relay_config);
+        let event_runtime = ctx
+            .shared_store
+            .get::<Arc<EventRuntime>>()
+            .ok_or_else(|| loco_rs::Error::Message("EventRuntime not initialized".to_string()))?;
+
+        if let Some(relay_config) = event_runtime.relay_config.clone() {
+            let handle = spawn_outbox_relay_worker(relay_config);
+            ctx.shared_store.insert(Arc::new(handle));
         }
 
         Ok(())

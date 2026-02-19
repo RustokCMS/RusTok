@@ -1,20 +1,27 @@
 //! Build Service for module installation
 //!
 //! Manages the lifecycle of builds from request to deployment.
-//! This is the core service for the WordPress/NodeBB-style module management.
 
-use crate::models::build::{ActiveModel as BuildActiveModel, BuildStatus, BuildStage, DeploymentProfile, Entity as BuildEntity, Model as Build};
-use crate::models::release::{ActiveModel as ReleaseActiveModel, ReleaseStatus, Entity as ReleaseEntity, Model as Release};
+use crate::models::build::{
+    ActiveModel as BuildActiveModel, BuildStage, BuildStatus, DeploymentProfile,
+    Entity as BuildEntity, Model as Build,
+};
+use crate::models::release::{
+    ActiveModel as ReleaseActiveModel, Entity as ReleaseEntity, Model as Release, ReleaseStatus,
+};
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_core::{events::DomainEvent, EventBus};
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    TransactionTrait,
+};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-/// Build request input
 #[derive(Debug, Clone)]
 pub struct BuildRequest {
     pub manifest_ref: String,
@@ -24,8 +31,7 @@ pub struct BuildRequest {
     pub profile: DeploymentProfile,
 }
 
-/// Module specification
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleSpec {
     pub source: String,
     pub crate_name: String,
@@ -35,21 +41,28 @@ pub struct ModuleSpec {
     pub path: Option<String>,
 }
 
-/// Build event for async processing
 #[derive(Debug, Clone)]
 pub enum BuildEvent {
     BuildRequested {
         build_id: Uuid,
         requested_by: String,
     },
-    BuildStarted { build_id: Uuid },
+    BuildStarted {
+        build_id: Uuid,
+    },
     BuildProgress {
         build_id: Uuid,
         stage: BuildStage,
         progress: i32,
     },
-    BuildCompleted { build_id: Uuid, release_id: String },
-    BuildFailed { build_id: Uuid, error: String },
+    BuildCompleted {
+        build_id: Uuid,
+        release_id: String,
+    },
+    BuildFailed {
+        build_id: Uuid,
+        error: String,
+    },
 }
 
 #[async_trait]
@@ -105,14 +118,12 @@ impl BuildEventPublisher for EventBusBuildEventPublisher {
     }
 }
 
-/// Build service
 pub struct BuildService {
     db: DatabaseConnection,
     event_publisher: Arc<dyn BuildEventPublisher>,
 }
 
 impl BuildService {
-    /// Create new build service
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
             db,
@@ -120,7 +131,6 @@ impl BuildService {
         }
     }
 
-    /// Create new build service with event publisher
     pub fn with_event_publisher(
         db: DatabaseConnection,
         event_publisher: Arc<dyn BuildEventPublisher>,
@@ -128,14 +138,9 @@ impl BuildService {
         Self { db, event_publisher }
     }
 
-    /// Request a new build
-    ///
-    /// Creates a build record and queues it for processing.
     pub async fn request_build(&self, request: BuildRequest) -> anyhow::Result<Build> {
-        // Compute manifest hash
         let manifest_hash = compute_manifest_hash(&request.modules);
-        
-        // Check for existing build with same hash
+
         if let Some(existing) = self.find_build_by_hash(&manifest_hash).await? {
             if existing.status == BuildStatus::Success {
                 info!(
@@ -146,7 +151,6 @@ impl BuildService {
             }
         }
 
-        // Create build record
         let build = Build::new(
             request.manifest_ref,
             manifest_hash,
@@ -188,12 +192,10 @@ impl BuildService {
         Ok(build)
     }
 
-    /// Get build by ID
     pub async fn get_build(&self, build_id: Uuid) -> anyhow::Result<Option<Build>> {
         Ok(BuildEntity::find_by_id(build_id).one(&self.db).await?)
     }
 
-    /// List recent builds
     pub async fn list_builds(&self, limit: u64) -> anyhow::Result<Vec<Build>> {
         let builds = BuildEntity::find()
             .order_by_desc(crate::models::build::Column::CreatedAt)
@@ -203,7 +205,6 @@ impl BuildService {
         Ok(builds)
     }
 
-    /// Find build by manifest hash
     async fn find_build_by_hash(&self, hash: &str) -> anyhow::Result<Option<Build>> {
         Ok(BuildEntity::find()
             .filter(crate::models::build::Column::ManifestHash.eq(hash))
@@ -211,7 +212,7 @@ impl BuildService {
             .await?)
     }
 
-    /// Update build status
+    /// Update build status atomically inside a transaction to prevent TOCTOU races.
     pub async fn update_build_status(
         &self,
         build_id: Uuid,
@@ -219,73 +220,95 @@ impl BuildService {
         stage: Option<BuildStage>,
         progress: Option<i32>,
     ) -> anyhow::Result<()> {
-        let build = self.get_build(build_id).await?;
-        
-        if let Some(mut build) = build {
-            let mut active_model: BuildActiveModel = build.into();
-            active_model.status = Set(status.clone());
-            
-            if let Some(stage) = stage {
-                active_model.stage = Set(stage);
-            }
-            if let Some(progress) = progress {
-                active_model.progress = Set(progress);
-            }
-            
-            active_model.updated_at = Set(Utc::now());
-            
-            if status == BuildStatus::Running && active_model.started_at.is_none() {
-                active_model.started_at = Set(Some(Utc::now()));
-            }
-            
-            if status.is_final() {
-                active_model.finished_at = Set(Some(Utc::now()));
-            }
-            
-            active_model.update(&self.db).await?;
-        }
+        self.db
+            .transaction::<_, (), sea_orm::DbErr>(|txn| {
+                let status = status.clone();
+                let stage = stage.clone();
+                Box::pin(async move {
+                    let build = BuildEntity::find_by_id(build_id).one(txn).await?;
+                    let Some(build) = build else {
+                        return Ok(());
+                    };
 
+                    if build.is_final() {
+                        return Ok(());
+                    }
+
+                    let now = Utc::now();
+                    let started_at_is_none = build.started_at.is_none();
+                    let mut active_model: BuildActiveModel = build.into();
+                    active_model.status = Set(status.clone());
+
+                    if let Some(stage) = stage {
+                        active_model.stage = Set(stage);
+                    }
+                    if let Some(progress) = progress {
+                        active_model.progress = Set(progress);
+                    }
+
+                    active_model.updated_at = Set(now);
+
+                    if status == BuildStatus::Running && started_at_is_none {
+                        active_model.started_at = Set(Some(now));
+                    }
+
+                    if status.is_final() {
+                        active_model.finished_at = Set(Some(now));
+                    }
+
+                    active_model.update(txn).await?;
+                    Ok(())
+                })
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to update build status: {e}"))
+    }
+
+    /// Mark build as failed atomically inside a transaction.
+    pub async fn fail_build(&self, build_id: Uuid, err_msg: String) -> anyhow::Result<()> {
+        self.db
+            .transaction::<_, (), sea_orm::DbErr>(|txn| {
+                let err_msg = err_msg.clone();
+                Box::pin(async move {
+                    let build = BuildEntity::find_by_id(build_id).one(txn).await?;
+                    let Some(build) = build else {
+                        return Ok(());
+                    };
+
+                    if build.is_final() {
+                        return Ok(());
+                    }
+
+                    let now = Utc::now();
+                    let mut active_model: BuildActiveModel = build.into();
+                    active_model.status = Set(BuildStatus::Failed);
+                    active_model.error_message = Set(Some(err_msg));
+                    active_model.finished_at = Set(Some(now));
+                    active_model.updated_at = Set(now);
+                    active_model.update(txn).await?;
+                    Ok(())
+                })
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fail build: {e}"))?;
+
+        error!(build_id = %build_id, "Build failed");
         Ok(())
     }
 
-    /// Mark build as failed
-    pub async fn fail_build(&self, build_id: Uuid, error: String) -> anyhow::Result<()> {
-        let build = self.get_build(build_id).await?;
-        
-        if let Some(build) = build {
-            let mut active_model: BuildActiveModel = build.into();
-            active_model.status = Set(BuildStatus::Failed);
-            active_model.error_message = Set(Some(error));
-            active_model.finished_at = Set(Some(Utc::now()));
-            active_model.updated_at = Set(Utc::now());
-            
-            active_model.update(&self.db).await?;
-            
-            error!(build_id = %build_id, "Build failed");
-        }
-
-        Ok(())
-    }
-
-    /// Create a release for successful build
     pub async fn create_release(
         &self,
         build_id: Uuid,
         environment: String,
         modules: Vec<String>,
     ) -> anyhow::Result<Release> {
-        let build = self.get_build(build_id).await?;
-        
-        let build = build.ok_or_else(|| anyhow::anyhow!("Build not found"))?;
-        
-        let mut release = Release::new(
-            build_id,
-            environment,
-            build.manifest_hash,
-            modules,
-        );
+        let build = self
+            .get_build(build_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Build not found"))?;
 
-        // Link to previous active release for rollback chain
+        let mut release = Release::new(build_id, environment, build.manifest_hash, modules);
+
         if let Some(prev) = self.get_active_release().await? {
             release.previous_release_id = Some(prev.id);
         }
@@ -310,7 +333,6 @@ impl BuildService {
 
         active_model.insert(&self.db).await?;
 
-        // Update build with release ID
         let mut build_model: BuildActiveModel = build.into();
         build_model.release_id = Set(Some(release.id.clone()));
         build_model.update(&self.db).await?;
@@ -320,12 +342,10 @@ impl BuildService {
         Ok(release)
     }
 
-    /// Get release by ID
     pub async fn get_release(&self, release_id: &str) -> anyhow::Result<Option<Release>> {
         Ok(ReleaseEntity::find_by_id(release_id).one(&self.db).await?)
     }
 
-    /// Get active release
     async fn get_active_release(&self) -> anyhow::Result<Option<Release>> {
         Ok(ReleaseEntity::find()
             .filter(crate::models::release::Column::Status.eq(ReleaseStatus::Active))
@@ -333,7 +353,6 @@ impl BuildService {
             .await?)
     }
 
-    /// List releases
     pub async fn list_releases(&self, limit: u64) -> anyhow::Result<Vec<Release>> {
         let releases = ReleaseEntity::find()
             .order_by_desc(crate::models::release::Column::CreatedAt)
@@ -343,27 +362,28 @@ impl BuildService {
         Ok(releases)
     }
 
-    /// Rollback to previous release
     pub async fn rollback(&self, release_id: &str) -> anyhow::Result<Release> {
-        let current = self.get_release(release_id).await?;
-        let current = current.ok_or_else(|| anyhow::anyhow!("Release not found"))?;
+        let current = self
+            .get_release(release_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Release not found"))?;
 
         let previous_id = current
             .previous_release_id
             .clone()
             .ok_or_else(|| anyhow::anyhow!("No previous release to rollback to"))?;
 
-        let previous = self.get_release(&previous_id).await?;
-        let previous = previous.ok_or_else(|| anyhow::anyhow!("Previous release not found"))?;
+        let previous = self
+            .get_release(&previous_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Previous release not found"))?;
 
-        // Mark current as rolled back
         let mut current_model: ReleaseActiveModel = current.into();
         current_model.status = Set(ReleaseStatus::RolledBack);
         current_model.rolled_back_at = Set(Some(Utc::now()));
         current_model.updated_at = Set(Utc::now());
         current_model.update(&self.db).await?;
 
-        // Mark previous as active
         let mut prev_model: ReleaseActiveModel = previous.clone().into();
         prev_model.status = Set(ReleaseStatus::Active);
         prev_model.deployed_at = Set(Some(Utc::now()));
@@ -380,16 +400,16 @@ impl BuildService {
     }
 }
 
-/// Compute hash of module configuration
+/// Compute a full SHA-256 hex digest of the module configuration.
+/// Modules are sorted by key to ensure deterministic output.
 fn compute_manifest_hash(modules: &HashMap<String, ModuleSpec>) -> String {
+    use sha2::{Digest, Sha256};
     use std::collections::BTreeMap;
-    
-    // Sort modules for consistent hashing
+
     let sorted: BTreeMap<_, _> = modules.iter().collect();
     let json = serde_json::to_string(&sorted).unwrap_or_default();
-    
-    use sha2::{Sha256, Digest};
+
     let mut hasher = Sha256::new();
     hasher.update(json.as_bytes());
-    format!("{:x}", hasher.finalize())[..16].to_string()
+    format!("{:x}", hasher.finalize())
 }

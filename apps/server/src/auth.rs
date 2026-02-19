@@ -87,27 +87,27 @@ impl AuthConfig {
             .and_then(|auth| auth.jwt.as_ref())
             .ok_or_else(|| Error::InternalServerError)?;
 
-        let refresh_expiration = ctx
+        let app_settings = ctx
             .config
             .settings
-            .clone()
-            .and_then(|value| serde_json::from_value::<AppSettings>(value).ok())
-            .and_then(|settings| settings.auth.and_then(|auth| auth.refresh_expiration))
+            .as_ref()
+            .and_then(|value| serde_json::from_value::<AppSettings>(value.clone()).ok());
+
+        let auth_settings = app_settings.and_then(|s| s.auth);
+
+        let refresh_expiration = auth_settings
+            .as_ref()
+            .and_then(|a| a.refresh_expiration)
             .unwrap_or(DEFAULT_REFRESH_EXPIRATION_SECS);
 
-        let (issuer, audience) = ctx
-            .config
-            .settings
-            .clone()
-            .and_then(|value| serde_json::from_value::<AppSettings>(value).ok())
-            .and_then(|settings| settings.auth)
-            .map(|auth| {
-                (
-                    auth.issuer.unwrap_or_else(|| "rustok".to_string()),
-                    auth.audience.unwrap_or_else(|| "rustok-admin".to_string()),
-                )
-            })
-            .unwrap_or_else(|| ("rustok".to_string(), "rustok-admin".to_string()));
+        let issuer = auth_settings
+            .as_ref()
+            .and_then(|a| a.issuer.clone())
+            .unwrap_or_else(|| "rustok".to_string());
+
+        let audience = auth_settings
+            .and_then(|a| a.audience)
+            .unwrap_or_else(|| "rustok-admin".to_string());
 
         Ok(Self {
             secret: auth.secret.clone(),

@@ -8,9 +8,9 @@ use rustok_core::{HealthStatus, ModuleRegistry};
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
+use tokio::sync::Mutex;
 
 use crate::common::settings::RustokSettings;
 use crate::middleware::tenant::tenant_cache_stats;
@@ -132,7 +132,7 @@ pub async fn ready(
             "event_transport",
             DependencyCriticality::Critical,
             "dependency",
-            check_event_transport,
+            || check_event_transport(&ctx),
         )
         .await,
     ];
@@ -218,11 +218,14 @@ async fn check_cache_backend(ctx: &AppContext) -> std::result::Result<(), String
     Ok(())
 }
 
-async fn check_event_transport() -> std::result::Result<(), String> {
-    let bus = rustok_core::EventBus::default();
-    let stats = bus.stats();
-    let _ = stats.subscribers();
-    Ok(())
+async fn check_event_transport(ctx: &AppContext) -> std::result::Result<(), String> {
+    use rustok_core::events::EventTransport;
+    use std::sync::Arc;
+
+    ctx.shared_store
+        .get::<Arc<dyn EventTransport>>()
+        .map(|_| ())
+        .ok_or_else(|| "event transport not initialized in shared_store".to_string())
 }
 
 async fn check_search_backend(search: &crate::common::settings::SearchSettings) -> ReadinessCheck {
@@ -263,7 +266,7 @@ where
     Fut: std::future::Future<Output = std::result::Result<(), String>>,
 {
     let started_at = Instant::now();
-    if let Some(open_for_ms) = circuit_open_for(name) {
+    if let Some(open_for_ms) = circuit_open_for(name).await {
         return ReadinessCheck {
             name: name.to_string(),
             kind,
@@ -278,7 +281,7 @@ where
 
     match result {
         Ok(Ok(())) => {
-            on_check_success(name);
+            on_check_success(name).await;
             ReadinessCheck {
                 name: name.to_string(),
                 kind,
@@ -289,7 +292,7 @@ where
             }
         }
         Ok(Err(reason)) => {
-            on_check_failure(name);
+            on_check_failure(name).await;
             ReadinessCheck {
                 name: name.to_string(),
                 kind,
@@ -300,7 +303,7 @@ where
             }
         }
         Err(_) => {
-            on_check_failure(name);
+            on_check_failure(name).await;
             ReadinessCheck {
                 name: name.to_string(),
                 kind,
@@ -320,8 +323,8 @@ fn status_for_failure(criticality: DependencyCriticality) -> ReadinessStatus {
     }
 }
 
-fn circuit_open_for(name: &str) -> Option<u128> {
-    let mut state = CIRCUITS.lock().expect("circuit mutex poisoned");
+async fn circuit_open_for(name: &str) -> Option<u128> {
+    let mut state = CIRCUITS.lock().await;
     let now = Instant::now();
 
     if let Some(circuit) = state.get_mut(name) {
@@ -338,13 +341,13 @@ fn circuit_open_for(name: &str) -> Option<u128> {
     None
 }
 
-fn on_check_success(name: &str) {
-    let mut state = CIRCUITS.lock().expect("circuit mutex poisoned");
+async fn on_check_success(name: &str) {
+    let mut state = CIRCUITS.lock().await;
     state.remove(name);
 }
 
-fn on_check_failure(name: &str) {
-    let mut state = CIRCUITS.lock().expect("circuit mutex poisoned");
+async fn on_check_failure(name: &str) {
+    let mut state = CIRCUITS.lock().await;
     let circuit = state.entry(name.to_string()).or_default();
     circuit.consecutive_failures += 1;
 
