@@ -24,11 +24,11 @@ compatibility with platform-level contracts.
 - [x] Base docs and registry presence are established.
 - [x] Core compile-time integration with the workspace is available.
 
-### Phase 1 — Contract hardening (in progress)
+### Phase 1 — Contract hardening (done)
 
-- [ ] Freeze public API expectations for the current module surface.
-- [ ] Align error/validation conventions with platform guidance.
-- [ ] Expand automated tests around core invariants and boundary behavior.
+- [x] Freeze public API expectations for the current module surface.
+- [x] Align error/validation conventions with platform guidance (RichError system).
+- [x] Expand automated tests around core invariants and boundary behavior.
 
 ### Phase 2 — Domain expansion (planned)
 
