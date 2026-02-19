@@ -70,6 +70,7 @@ graph TD
 - [Routing Policy](./architecture/routing.md)
 - [Events & Outbox](./architecture/events.md)
 - [Transactional Publishing](./architecture/events-transactional.md)
+- [Event Flow Contract](./architecture/event-flow-contract.md)
 - [Tenancy](./architecture/tenancy.md)
 - [Principles](./architecture/principles.md)
 - [Improvement Recommendations](./architecture/improvement-recommendations.md) (living document, completion pass 2026-02-19)
