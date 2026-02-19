@@ -120,6 +120,7 @@ impl From<&IggyConfig> for ConnectorConfig {
             data_dir: config.embedded.data_dir.clone(),
             tcp_port: config.embedded.tcp_port,
             http_port: config.embedded.http_port,
+            persistent: config.embedded.use_binary_fallback,
         };
 
         let remote = RemoteConnectorConfig {
@@ -127,12 +128,16 @@ impl From<&IggyConfig> for ConnectorConfig {
             protocol: config.remote.protocol.clone(),
             username: config.remote.username.clone(),
             password: config.remote.password.clone(),
+            tls_enabled: false,
         };
 
         ConnectorConfig {
             mode,
             embedded,
             remote,
+            stream_name: config.topology.stream_name.clone(),
+            topic_name: "domain".to_string(),
+            partitions: config.topology.domain_partitions,
         }
     }
 }

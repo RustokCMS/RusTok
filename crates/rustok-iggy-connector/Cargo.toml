@@ -9,6 +9,20 @@ description.workspace = true
 async-trait.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+[features]
+default = []
+# Enable Iggy SDK support (for full functionality)
+iggy = ["dep:iggy"]
+
+[dependencies.iggy]
+version = "0.4.4"
+optional = true
 
 [package.metadata.cargo-udeps.ignore]
 normal = ["thiserror"]

@@ -20,6 +20,7 @@ rustok-iggy-connector.workspace = true
 
 [features]
 default = []
+iggy = ["rustok-iggy-connector/iggy"]
 
 [dev-dependencies]
 tokio.workspace = true
