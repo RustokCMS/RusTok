@@ -2,6 +2,18 @@
 
 В этой папке хранится документация модуля `apps/server`.
 
+## Что такое apps/server
+
+`apps/server` — это **голая Loco.rs-платформа**: минимальная хост-оболочка, которая:
+
+1. **Полностью строится на Loco.rs** — `boot`, конфиги (`config/*.yaml`), auth, migrations, workers, tasks, initializers, mailer, storage — всё через Loco.
+2. **Подключает клиентские приложения** — admin UI (Leptos CSR, Next.js), storefront (Leptos SSR, Next.js) и внешние интеграции через GraphQL и REST API.
+3. **Регистрирует доменные модули поверх каркаса** — `rustok-content`, `rustok-commerce`, `rustok-blog`, `rustok-forum`, `rustok-pages` подключаются через `src/modules/mod.rs` и добавляют свои миграции, GraphQL-резолверы, event listeners.
+
+Сервер **не содержит собственной доменной бизнес-логики** — только инфраструктурный каркас + точки монтирования модулей.
+
+> Подробнее о роли и структуре сервера: [`../README.md`](../README.md)
+
 ## Документы
 
 - [`library-stack.md`](./library-stack.md) — основные backend-библиотеки сервера и их роль (framework, HTTP, ORM, GraphQL, runtime, observability).
@@ -27,6 +39,23 @@
 - `initializers` — подключает `TelemetryInitializer`.
 - `seed` — запускает `seed_development` / `seed_test` / `seed_minimal` по имени файла.
 
+### Регистрация модулей
+
+`src/modules/mod.rs` содержит `build_registry()` — единственную точку подключения доменных модулей:
+
+```rust
+pub fn build_registry() -> ModuleRegistry {
+    ModuleRegistry::new()
+        .register(ContentModule)
+        .register(CommerceModule)
+        .register(BlogModule)
+        .register(ForumModule)
+        .register(PagesModule)
+}
+```
+
+`ModuleRegistry` передаётся через Axum `Extension` и доступен всем контроллерам и middleware. Добавление нового модуля = добавить `.register(NewModule)` здесь + подключить его GraphQL-резолверы в `src/graphql/`.
+
 ### Cleanup task
 
 ```bash
@@ -45,4 +74,4 @@ cargo loco task --name cleanup --args "sessions"
 
 ### Build pipeline
 
-`BuildService::request_build` публикует `BuildRequested` через `BuildEventPublisher`. `EventBusBuildEventPublisher` пересылает в `DomainEvent::BuildRequested`, нoop-паблишер логирует skipped dispatch.
+`BuildService::request_build` публикует `BuildRequested` через `BuildEventPublisher`. `EventBusBuildEventPublisher` пересылает в `DomainEvent::BuildRequested`, noop-паблишер логирует skipped dispatch.

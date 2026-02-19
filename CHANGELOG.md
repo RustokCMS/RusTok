@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`apps/server/docs/loco/changes.md`** — added entry for 2026-02-19 changes.
 - **`apps/server/docs/loco/upstream/VERSION`** — refreshed snapshot date to 2026-02-19.
 
+### Docs - 2026-02-19
+
+#### Server identity documentation
+
+- **`apps/server/README.md`** — complete rewrite: clearly documents that `apps/server` is a bare Loco.rs platform shell (not a domain service), how it connects admin/storefront UI clients, and how domain modules are plugged in on top via `build_registry()`. Includes architecture diagram, role table, module registration pattern, client table, and component passport.
+- **`apps/server/docs/README.md`** — added "Что такое apps/server" section at the top explaining the three roles: Loco platform shell, UI client connector, and domain module host. Added module registration section with code example.
+- **`RUSTOK_MANIFEST.md`** — updated section 1.1 "Границы и ответственность": expanded `apps/server` description to explicitly state it is a bare Loco.rs platform shell with no own business logic. Updated "Как читать код" to include `src/modules/mod.rs` as step 2.
+
 ### Added - 2026-02-16
 
 #### Property-Based Tests - Sprint 4 Task 4.2
