@@ -29,6 +29,7 @@ graph TD
         CORE[crates/rustok-core]
         OUTBOX[crates/rustok-outbox]
         IGGY[crates/rustok-iggy]
+        IGGY_CONN[crates/rustok-iggy-connector]
         TELEMETRY[crates/rustok-telemetry]
         TEST_UTILS[crates/rustok-test-utils]
     end
@@ -52,6 +53,7 @@ graph TD
     CONTENT --> CORE
     COMMERCE --> OUTBOX
     OUTBOX --> IGGY
+    IGGY --> IGGY_CONN
     
     Domain Modules -.-> TELEMETRY
 ```
@@ -74,8 +76,8 @@ graph TD
 |------|------|-------------|
 | `crates/rustok-core` | **Core** | Shared traits, base entities, and common utilities. |
 | `crates/rustok-outbox` | **Outbox** | Implementation of the Transactional Outbox pattern. |
-| `crates/rustok-iggy` | **Iggy Runtime** | Message bus integration runtime for Iggy.rs. |
-| `crates/rustok-iggy-connector` | **Iggy Connector** | Connector and wiring layer for Iggy transport. |
+| `crates/rustok-iggy` | **Iggy Transport** | EventTransport implementation with serialization, topology, DLQ, replay. |
+| `crates/rustok-iggy-connector` | **Iggy Connector** | Embedded/Remote mode switching, connection lifecycle, message I/O. |
 | `crates/rustok-mcp` | **MCP Toolkit** | Shared MCP integration primitives used by `apps/mcp`. |
 | `crates/rustok-telemetry` | **Telemetry** | Observability setup (OTLP, Tracing, Metrics). |
 | `crates/rustok-tenant` | **Tenant** | Multi-tenancy isolation and management logic. |

@@ -4,11 +4,15 @@ Event streaming transport for the RusToK platform using [Iggy](https://iggy.rs).
 
 ## Overview
 
-`rustok-iggy` provides L2 streaming transport (streaming + replay) for domain events. It implements the `EventTransport` trait from `rustok-core` and uses `rustok-iggy-connector` for the underlying connection management.
+`rustok-iggy` provides L2 streaming transport (streaming + replay) for domain events. It implements the `EventTransport` trait from `rustok-core` and delegates connection management to `rustok-iggy-connector`.
+
+**Key distinction:**
+- `rustok-iggy-connector` — handles Embedded/Remote mode switching, connection lifecycle, and low-level message I/O
+- `rustok-iggy` — provides EventTransport implementation, serialization, topology management, and higher-level abstractions (DLQ, replay, consumer groups)
 
 ## Features
 
-- **Dual Mode Support**: Embedded (in-process) and Remote (external server) modes
+- **EventTransport Implementation**: Seamless integration with RusToK event system
 - **Automatic Topology**: Streams and topics are created automatically
 - **Tenant Partitioning**: Events are partitioned by tenant ID for ordering guarantees
 - **Multiple Serialization Formats**: JSON (default) and Bincode for high-throughput scenarios
@@ -19,21 +23,28 @@ Event streaming transport for the RusToK platform using [Iggy](https://iggy.rs).
 ## Architecture
 
 ```
-┌─────────────────┐
-│  IggyTransport  │ implements EventTransport
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    │         │
-┌───▼───┐ ┌───▼───┐
-│Embedded│ │Remote │  ← rustok-iggy-connector
-│Connector│ │Connector│
-└───┬───┘ └───┬───┘
-    │         │
-┌───▼───┐ ┌───▼───┐
-│Embedded│ │ Iggy  │
-│ Iggy   │ │Server │
-└───────┘ └───────┘
+┌─────────────────────────────────────────────────────┐
+│                    rustok-iggy                      │
+│  ┌─────────────┐  ┌──────────────┐  ┌───────────┐  │
+│  │IggyTransport│  │TopologyMgr   │  │DlqManager │  │
+│  │(EventTrans- │  │ConsumerGroup │  │ReplayMgr  │  │
+│  │  port)      │  │Serialization │  │Health     │  │
+│  └──────┬──────┘  └──────────────┘  └───────────┘  │
+└─────────┼───────────────────────────────────────────┘
+          │ uses
+          ▼
+┌─────────────────────────────────────────────────────┐
+│               rustok-iggy-connector                 │
+│  ┌────────────────┐  ┌────────────────┐            │
+│  │EmbeddedConnector│  │RemoteConnector │            │
+│  │(in-process)    │  │(external server)│           │
+│  └────────┬───────┘  └───────┬────────┘            │
+└───────────┼──────────────────┼─────────────────────┘
+            │                  │
+     ┌──────▼──────┐    ┌──────▼──────┐
+     │Embedded Iggy│    │Iggy Cluster │
+     │  (server)   │    │  (remote)   │
+     └─────────────┘    └─────────────┘
 ```
 
 ## Usage
@@ -61,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 events:
   transport: iggy
   iggy:
-    mode: embedded  # or "remote"
+    mode: embedded  # or "remote" — handled by rustok-iggy-connector
     serialization: json  # or "bincode"
     topology:
       stream_name: rustok
@@ -85,33 +96,31 @@ events:
       dlq_max_age_days: 365
 ```
 
-### Modes
+### Mode Selection
 
-#### Embedded Mode
+Mode switching is handled by `rustok-iggy-connector`:
 
-Runs Iggy server within the application process:
+- **Embedded Mode**: `rustok-iggy-connector::EmbeddedConnector` runs Iggy server in-process
+- **Remote Mode**: `rustok-iggy-connector::RemoteConnector` connects to external Iggy cluster
 
-- Simplest deployment for single-instance applications
-- Data stored in local directory
-- No external dependencies
-
-#### Remote Mode
-
-Connects to external Iggy cluster:
-
-- High availability with Iggy cluster
-- Supports TLS encryption
-- Horizontal scaling of consumers
+```rust
+// rustok-iggy just passes the mode config to the connector
+let config = IggyConfig {
+    mode: IggyMode::Remote,  // connector handles the actual connection
+    ..Default::default()
+};
+```
 
 ## Components
 
 | Component | Description |
 |-----------|-------------|
 | `IggyTransport` | Main transport implementing `EventTransport` |
-| `TopologyManager` | Manages stream/topic creation |
+| `TopologyManager` | Manages stream/topic creation tracking |
 | `ConsumerGroupManager` | Consumer group coordination |
 | `DlqManager` | Dead letter queue handling |
 | `ReplayManager` | Event replay orchestration |
+| `EventSerializer` | JSON/Bincode serialization |
 
 ## Serialization
 
@@ -152,12 +161,12 @@ match result.status {
 
 ## Dependencies
 
-- `rustok-core`: Core traits and types (EventTransport, EventEnvelope)
-- `rustok-iggy-connector`: Connector abstraction for embedded/remote modes
+- `rustok-core`: Core traits and types (`EventTransport`, `EventEnvelope`)
+- `rustok-iggy-connector`: Connection abstraction (Embedded/Remote mode switching, IggyConnector trait)
 
 ## Feature Flags
 
-- `iggy`: Enable full Iggy SDK support (optional, for production use)
+- `iggy`: Enable full Iggy SDK support in connector (optional, for production use)
 
 ## Status
 
@@ -166,4 +175,5 @@ match result.status {
 ## Documentation
 
 - [Implementation Plan](./docs/implementation-plan.md)
+- [rustok-iggy-connector](../rustok-iggy-connector/README.md) — connector layer documentation
 - [Architecture Overview](../../docs/architecture/events.md)

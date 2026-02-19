@@ -10,8 +10,28 @@ while preserving compatibility with platform-level contracts.
 
 ## Target architecture
 
+```
+┌─────────────────────────────────────────────────────┐
+│                    rustok-iggy                      │
+│  Responsibilities:                                  │
+│  - EventTransport implementation                    │
+│  - Event serialization (JSON/Bincode)              │
+│  - Topology management, consumer groups            │
+│  - DLQ, replay, health checks                      │
+└──────────────────────┬──────────────────────────────┘
+                       │ delegates connection to
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│               rustok-iggy-connector                 │
+│  Responsibilities:                                  │
+│  - Embedded/Remote mode switching                  │
+│  - Connection lifecycle (connect, shutdown)        │
+│  - Message I/O (publish, subscribe)                │
+└─────────────────────────────────────────────────────┘
+```
+
 - `rustok-iggy` implements `EventTransport` trait from `rustok-core`
-- Integrates with `rustok-iggy-connector` for embedded/remote mode abstraction
+- Delegates to `rustok-iggy-connector` for Embedded/Remote mode abstraction
 - Supports both JSON and Bincode serialization formats
 - Provides topology management, consumer groups, DLQ, and replay capabilities
 - Observability via tracing and health checks

@@ -1,15 +1,26 @@
 //! Iggy-based event transport for RusToK platform.
 //!
 //! This crate provides a streaming event transport implementation using [Iggy](https://iggy.rs),
-//! a high-performance message streaming platform. It supports both embedded and remote modes.
+//! a high-performance message streaming platform.
+//!
+//! # Architecture
+//!
+//! This crate implements `EventTransport` trait and handles:
+//! - Event serialization (JSON/Bincode)
+//! - Topology management (streams, topics)
+//! - Consumer group coordination
+//! - Dead letter queue handling
+//! - Event replay orchestration
+//!
+//! Connection management (Embedded vs Remote mode) is delegated to `rustok-iggy-connector`.
 //!
 //! # Features
 //!
-//! - **Embedded Mode**: Run Iggy server within your application
-//! - **Remote Mode**: Connect to external Iggy cluster
+//! - **EventTransport implementation**: Seamless integration with RusToK event system
 //! - **Multiple serialization formats**: JSON (default) and Bincode
 //! - **Automatic topology management**: Streams and topics created automatically
 //! - **Tenant-based partitioning**: Events from the same tenant maintain order
+//! - **Consumer groups, DLQ, replay**: Higher-level streaming primitives
 //!
 //! # Quick Start
 //!
@@ -36,7 +47,7 @@
 //! events:
 //!   transport: iggy
 //!   iggy:
-//!     mode: embedded
+//!     mode: embedded  # handled by rustok-iggy-connector
 //!     serialization: json
 //!     topology:
 //!       stream_name: rustok
