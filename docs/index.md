@@ -44,6 +44,10 @@ graph TD
     R --> RAGENTS[AGENTS.md]
 ```
 
+## AI session start (обязательно)
+
+- [AI Context](./AI_CONTEXT.md) — обязательный стартовый контекст для AI-сессий перед анализом и генерацией кода.
+
 ## Root Documents
 
 - [System Manifest](../RUSTOK_MANIFEST.md) — Философия, принципы и архитектурные инварианты платформы.
@@ -103,6 +107,10 @@ graph TD
 - [Distributed Tracing](./standards/distributed-tracing.md)
 - [OpenTelemetry Integration](./standards/opentelemetry-integration.md)
 - [Instrumentation Examples](./standards/instrumentation-examples.md)
+
+### AI (`docs/ai/`)
+
+- [Session Template](./ai/SESSION_TEMPLATE.md)
 
 ### UI (`docs/UI/`)
 
