@@ -16,6 +16,7 @@ rustok-blog.workspace = true
 rustok-content.workspace = true
 rustok-forum.workspace = true
 rustok-pages.workspace = true
+rustok-index.workspace = true
 rustok-tenant.workspace = true
 rustok-rbac.workspace = true
 rustok-telemetry.workspace = true

@@ -9,7 +9,6 @@ pub mod forum;
 pub mod loaders;
 pub mod mutations;
 pub mod observability;
-pub mod pages;
 pub mod persisted;
 pub mod queries;
 pub mod schema;

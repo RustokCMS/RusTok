@@ -30,6 +30,7 @@ graph TD
         OUTBOX[crates/rustok-outbox]
         IGGY[crates/rustok-iggy]
         IGGY_CONN[crates/rustok-iggy-connector]
+        MCP[crates/rustok-mcp]
         TELEMETRY[crates/rustok-telemetry]
         TEST_UTILS[crates/rustok-test-utils]
     end
@@ -78,12 +79,11 @@ graph TD
 | `crates/rustok-outbox` | **Outbox** | Implementation of the Transactional Outbox pattern. |
 | `crates/rustok-iggy` | **Iggy Transport** | EventTransport implementation with serialization, topology, DLQ, replay. |
 | `crates/rustok-iggy-connector` | **Iggy Connector** | Embedded/Remote mode switching, connection lifecycle, message I/O. |
-| `crates/rustok-mcp` | **MCP Toolkit** | Shared MCP integration primitives used by `apps/mcp`. |
+| `crates/rustok-mcp` | **MCP** | MCP adapter crate with embedded `rustok-mcp-server` binary. Exposes RusToK tools/resources via the MCP protocol using the `rmcp` SDK. |
 | `crates/rustok-telemetry` | **Telemetry** | Observability setup (OTLP, Tracing, Metrics). |
 | `crates/rustok-tenant` | **Tenant** | Multi-tenancy isolation and management logic. |
 | `crates/rustok-rbac` | **RBAC** | Role-based access control engine. |
 | `crates/rustok-test-utils` | **Test Utils** | Shared testing helpers and mocks. |
-| `crates/rustok-mcp` | **MCP** | MCP adapter crate with embedded stdio server binary. |
 
 ### Domain Modules (`crates/`)
 
@@ -111,6 +111,9 @@ graph TD
 | `crates/leptos-zod` | **Leptos Zod** | Zod-like validation helpers for Leptos projects. |
 | `crates/leptos-zustand` | **Leptos Zustand** | Lightweight state management utilities for Leptos. |
 | `crates/utoipa-swagger-ui-vendored` | **Swagger** | Vendored UI for API documentation. |
+| `crates/tailwind-rs` | **Tailwind RS** | Tailwind CSS utility generation core. |
+| `crates/tailwind-css` | **Tailwind CSS** | CSS value and property types for Tailwind. |
+| `crates/tailwind-ast` | **Tailwind AST** | AST and parser for Tailwind class expressions. |
 
 ## Maintenance Rule
 

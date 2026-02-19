@@ -4,7 +4,7 @@ pub mod error;
 pub mod services;
 
 use async_trait::async_trait;
-use rustok_core::module::{HealthStatus, MigrationSource, RusToKModule};
+use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub struct RbacModule;
@@ -31,6 +31,10 @@ impl RusToKModule for RbacModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Core
     }
 
     async fn health(&self) -> HealthStatus {

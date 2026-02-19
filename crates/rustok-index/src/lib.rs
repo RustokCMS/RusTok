@@ -3,7 +3,7 @@
 //! Denormalized indexes for fast reads and full-text search.
 
 use async_trait::async_trait;
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod content;
@@ -33,6 +33,10 @@ impl RusToKModule for IndexModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Core
     }
 }
 

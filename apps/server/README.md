@@ -1,121 +1,53 @@
-# apps/server — RusToK Server
+# server
 
-## Что это такое
+## Назначение
+`apps/server` — модуль/приложение RusToK. Здесь находится его код и корневая документация.
 
-`apps/server` — это **голая Loco.rs-платформа**: минимальный бинарник, который целиком строится на Loco.rs как каркасе и не содержит собственной бизнес-логики.
+## Взаимодействие
+- crates/rustok-core
+- доменные модули crates/rustok-*
+- apps/admin и apps/next-frontend как клиенты API
 
-Сам сервер — это **хост-оболочка**: он настраивает и запускает всё loco-инфраструктурное (boot, конфиги, auth, migrations, workers, mailer, storage, tasks, initializers), подключает клиентские приложения (admin UI, storefront) к единому API и **поверх этого каркаса регистрирует доменные модули** — `rustok-content`, `rustok-commerce`, `rustok-blog`, `rustok-forum`, `rustok-pages`.
+## Документация
+- Локальная документация: `./docs/`
+- Общая документация платформы: `/docs`
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                       apps/server                           │
-│                                                             │
-│   ┌─────────────────────────────────────────────────────┐   │
-│   │              Loco.rs platform shell                 │   │
-│   │  boot · config · auth · migrations · tasks ·       │   │
-│   │  initializers · workers · mailer · storage ·       │   │
-│   │  middleware (tenant, rate-limit) · seeding          │   │
-│   └─────────────────────────────────────────────────────┘   │
-│                            │                                │
-│              регистрирует поверх каркаса                    │
-│                            │                                │
-│   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐  │
-│   │ commerce │ │ content  │ │   blog   │ │ forum/pages  │  │
-│   │  module  │ │  module  │ │  module  │ │   modules    │  │
-│   └──────────┘ └──────────┘ └──────────┘ └──────────────┘  │
-│                                                             │
-│   ┌─────────────────────────────────────────────────────┐   │
-│   │          GraphQL + REST API endpoints               │   │
-│   │   admin/storefront UI clients   ←→   integrations  │   │
-│   └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
+## Конфигурация транспорта событий
 
-## Роль в системе
+Сервер поддерживает выбор транспорта доменных событий через `settings.rustok.events.transport`
+или переменную окружения `RUSTOK_EVENT_TRANSPORT`.
 
-| Что | Где |
-|-----|-----|
-| Loco.rs lifecycle & boot | `src/app.rs` — `impl Hooks for App` |
-| Конфигурация | `config/development.yaml`, `config/test.yaml`, секция `settings.rustok.*` |
-| Миграции БД | `migration/` — SeaORM-миграции всех модулей |
-| REST-контроллеры | `src/controllers/` — health, metrics, auth, swagger, domain REST |
-| GraphQL endpoint | `src/controllers/graphql.rs` + `src/graphql/` — единая схема для admin/storefront |
-| Middleware | `src/middleware/` — tenant resolution + rate-limit |
-| Доменные модули | `src/modules/mod.rs` — `build_registry()` регистрирует все модули |
-| Сервисы | `src/services/` — event transport, auth, email, build pipeline |
-| Задачи | `src/tasks/` — `cleanup` task |
-| Инициализаторы | `src/initializers/` — telemetry |
-| Seeding | `src/seeds/` — demo tenant + users для dev/test |
+- `memory` — in-memory bus для локальной разработки.
+- `outbox` — запись событий в outbox-таблицу с фоновым relay worker.
+- `iggy` — стриминг через Iggy transport.
 
-## Что подключается поверх
+Пример для YAML:
 
-### Доменные модули (`src/modules/mod.rs`)
-
-```rust
-pub fn build_registry() -> ModuleRegistry {
-    ModuleRegistry::new()
-        .register(ContentModule)
-        .register(CommerceModule)
-        .register(BlogModule)
-        .register(ForumModule)
-        .register(PagesModule)
-}
+```yaml
+settings:
+  rustok:
+    events:
+      transport: outbox
+      relay_interval_ms: 1000
 ```
 
-Каждый модуль (`crates/rustok-*`) реализует `RusToKModule` и подключает свои миграции, GraphQL-резолверы и event listeners. Сервер не знает о внутренней логике модулей — только регистрирует их.
+Переменная окружения имеет приоритет над YAML:
 
-### Клиентские приложения
+```bash
+RUSTOK_EVENT_TRANSPORT=iggy
+```
 
-Сервер обслуживает следующие frontend-клиенты через единый API:
-
-| Клиент | Протокол | Назначение |
-|--------|----------|-----------|
-| `apps/admin` (Leptos CSR) | GraphQL | Панель управления — CRUD сущностей, tenant management, RBAC |
-| `apps/next-admin` (Next.js) | GraphQL + REST | Альтернативная admin-панель |
-| `apps/storefront` (Leptos SSR) | GraphQL | Покупательская витрина |
-| `apps/next-frontend` (Next.js) | GraphQL | Альтернативная витрина |
-| Интеграции | REST | Внешние сервисы, webhooks, batch операции |
-
-## Loco.rs — что используем
-
-`apps/server` использует Loco.rs как есть, не заменяя его компоненты:
-
-- **Config** — `config/*.yaml` + `settings.rustok` для проектных настроек
-- **Auth** — JWT access/refresh, Users model, password hashing
-- **Migrations** — SeaORM + Loco Migrator
-- **Tasks** — `cargo loco task`
-- **Initializers** — lifecycle hook перед монтированием роутов
-- **Workers** — `connect_workers` hook (outbox relay worker)
-- **Mailer** — цель: мигрировать на Loco Mailer API (сейчас кастомный `lettre`)
-- **Storage** — цель: единый Loco storage layer
-
-Подробнее о матрице Loco vs самопис: [`docs/LOCO_FEATURE_SUPPORT.md`](./docs/LOCO_FEATURE_SUPPORT.md)
-
-## Транспорт событий
-
-Сервер поддерживает три режима транспорта через `settings.rustok.events.transport` или `RUSTOK_EVENT_TRANSPORT`:
-
-| Транспорт | Описание |
-|-----------|----------|
-| `memory` | In-memory MPSC bus (локальная разработка) |
-| `outbox` | Outbox pattern — запись в БД + фоновый relay worker |
-| `iggy` | Streaming через Iggy (L2) |
-
-При неверном значении сервер завершит старт с ошибкой валидации.
+При неверном значении сервер завершит старт с понятной ошибкой валидации конфигурации.
 
 ## Паспорт компонента
-
-- **Роль:** Главный backend RusToK — API-хост, Loco-каркас, оркестрация модулей
-- **Ответственность:** HTTP-сервер, auth, tenant middleware, event runtime, migrations, seeding, tasks
+- **Роль в системе:** Главный backend RusToK: API, модули, миграции, orchestration runtime.
+- **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
 - **Взаимодействует с:**
-  - `crates/rustok-core` — инфраструктурное ядро (события, кэш, registry)
-  - `crates/rustok-{content,commerce,blog,forum,pages}` — доменные модули
-  - `crates/rustok-{outbox,iggy,telemetry}` — инфра-модули
-  - `apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend` — UI-клиенты
+  - crates/rustok-core
+  - все доменные crates/rustok-*
+  - apps/admin/apps/storefront как клиенты API
 - **Точки входа:**
-  - `src/main.rs` — точка запуска
-  - `src/app.rs` — Loco hooks lifecycle
-  - `src/modules/mod.rs` — регистрация модулей
-  - `src/controllers/` — API endpoints
-- **Локальная документация:** [`./docs/`](./docs/)
-- **Глобальная документация:** [`/docs/`](../../docs/)
+  - `apps/server/src/main.rs`
+  - `apps/server/src/controllers/*`
+- **Локальная документация:** `./docs/`
+- **Глобальная документация платформы:** `/docs/`

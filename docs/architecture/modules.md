@@ -20,3 +20,4 @@ RusToK is composed of domain modules under `crates/` and application wiring unde
 - [Architecture overview](./overview.md)
 - [Routing policy](./routing.md)
 - [Events and outbox](./events.md)
+- [Improvement Recommendations](./improvement-recommendations.md)

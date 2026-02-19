@@ -7,46 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added - 2026-02-19
-
-#### GraphQL completeness: Pages + Forum real resolvers
-
-- **`apps/server/src/graphql/pages/`** — новый модуль GraphQL для Pages:
-  - `PagesQuery`: `page(id)`, `pageBySlug(locale, slug)`, `pages(filter)` — через `PageService`.
-  - `PagesMutation`: `createPage`, `updatePage`, `publishPage`, `unpublishPage`, `deletePage` — через `PageService`.
-  - Типы: `GqlPage`, `GqlPageListItem`, `GqlPageTranslation`, `GqlPageBody`, `GqlPageList` и соответствующие input-объекты.
-  - Зарегистрирован в `schema.rs` как `PagesQuery` и `PagesMutation` в `MergedObject Query/Mutation`.
-- **`apps/server/src/graphql/forum/`** — заменён полый stub на реальные вызовы сервисов:
-  - `ForumQuery`: `forumCategories(tenantId, locale)`, `forumCategory(tenantId, id)`, `forumTopics(tenantId, filter)`, `forumTopic(id, locale)`, `forumReplies(tenantId, topicId, locale)` — через `CategoryService`, `TopicService`, `ReplyService`.
-  - `ForumMutation`: `createForumCategory`, `updateForumCategory`, `deleteForumCategory`, `createForumTopic`, `updateForumTopic`, `deleteForumTopic`, `createForumReply`, `updateForumReply`, `deleteForumReply`.
-  - Полностью расширены типы в `forum/types.rs`: `ForumCategory`, `ForumTopic`, `ForumTopicDetail`, `ForumReply`, `ForumReplyListItem` + все input-типы + `From` конверсии из domain DTOs.
-
-### Fixed - 2026-02-19
-
-#### Server cleanup & Loco correctness
-
-- **Removed dead middleware files** (`apps/server/src/middleware/`):
-  - `tenant_v2.rs`, `tenant_cache_v2.rs`, `tenant_cache_v3.rs`, `block_rest_auth.rs` — never wired into routes, never used in production path. `middleware/mod.rs` cleaned up accordingly.
-- **Fixed double event-runtime construction** (`apps/server/src/app.rs`):
-  - `after_routes` now stores the built `Arc<EventRuntime>` in `shared_store`.
-  - `connect_workers` reads `Arc<EventRuntime>` from `shared_store` (reuses the transport already wired to the event bus) and only falls back to `build_event_runtime` in worker-only boot mode.
-  - Previously `connect_workers` always called `build_event_runtime` again, creating a second transport instance disconnected from the event bus.
-
-#### Documentation
-
-- **`apps/server/docs/README.md`** — rewritten: removed trailing inline-prose bullets, added structured sections for lifecycle hooks, cleanup task, dev seed, email, and build pipeline.
-- **`apps/server/docs/LOCO_FEATURE_SUPPORT.md`** — updated sections 2.7 and 4.4 to reflect actual code state after cleanup.
-- **`apps/server/docs/loco/changes.md`** — added entry for 2026-02-19 changes.
-- **`apps/server/docs/loco/upstream/VERSION`** — refreshed snapshot date to 2026-02-19.
-
-### Docs - 2026-02-19
-
-#### Server identity documentation
-
-- **`apps/server/README.md`** — complete rewrite: clearly documents that `apps/server` is a bare Loco.rs platform shell (not a domain service), how it connects admin/storefront UI clients, and how domain modules are plugged in on top via `build_registry()`. Includes architecture diagram, role table, module registration pattern, client table, and component passport.
-- **`apps/server/docs/README.md`** — added "Что такое apps/server" section at the top explaining the three roles: Loco platform shell, UI client connector, and domain module host. Added module registration section with code example.
-- **`RUSTOK_MANIFEST.md`** — updated section 1.1 "Границы и ответственность": expanded `apps/server` description to explicitly state it is a bare Loco.rs platform shell with no own business logic. Updated "Как читать код" to include `src/modules/mod.rs` as step 2.
-
 ### Added - 2026-02-16
 
 #### Property-Based Tests - Sprint 4 Task 4.2

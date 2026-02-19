@@ -20,9 +20,7 @@ use crate::initializers;
 use crate::middleware;
 use crate::modules;
 use crate::seeds;
-use crate::services::event_transport_factory::{
-    build_event_runtime, spawn_outbox_relay_worker, EventRuntime,
-};
+use crate::services::event_transport_factory::{build_event_runtime, spawn_outbox_relay_worker};
 use crate::tasks;
 use loco_rs::prelude::Queue;
 use migration::Migrator;
@@ -70,7 +68,6 @@ impl Hooks for App {
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
         let event_runtime = build_event_runtime(ctx).await?;
         ctx.shared_store.insert(event_runtime.transport.clone());
-        ctx.shared_store.insert(Arc::new(event_runtime));
         let registry = modules::build_registry();
         middleware::tenant::init_tenant_cache_infrastructure(ctx).await;
         let engine = Arc::new(alloy_scripting::create_default_engine());
@@ -134,13 +131,8 @@ impl Hooks for App {
     }
 
     async fn connect_workers(ctx: &AppContext, _queue: &Queue) -> Result<()> {
-        let relay_config = if let Some(runtime) = ctx.shared_store.get::<Arc<EventRuntime>>() {
-            runtime.relay_config.clone()
-        } else {
-            build_event_runtime(ctx).await?.relay_config
-        };
-
-        if let Some(relay_config) = relay_config {
+        let event_runtime = build_event_runtime(ctx).await?;
+        if let Some(relay_config) = event_runtime.relay_config {
             let _handle = spawn_outbox_relay_worker(relay_config);
         }
 

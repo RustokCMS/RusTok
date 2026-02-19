@@ -10,4 +10,6 @@ All significant architectural choices should be recorded as ADRs.
 
 ## Index
 
-Add new ADRs to this list once created.
+| ADR | Title | Status |
+|-----|-------|--------|
+| [2026-02-19](./2026-02-19-module-kind-core-vs-optional.md) | Разделение модулей на Core и Optional | Accepted & Implemented |
