@@ -150,4 +150,4 @@ Interaction follows a strict hierarchy:
 6. The **Indexer** fetches the updated post, merges it with tags and author info, and saves it to the `index_content` table.
 7. **Storefront** users see the update near-instantly by querying the fast `index_content` table.
 
-This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+> **Статус документа:** Актуальный. При изменениях архитектуры обновляйте этот файл и `docs/index.md`.

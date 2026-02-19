@@ -27,4 +27,4 @@ These guidelines capture what we should take from the shared rules to keep tests
 - Mock **ports** (e.g., `PricingPort`, `InventoryPort`, `TaxPort`) when unit testing services.  
 - Avoid mocking internal persistence layers (e.g., SeaORM models) unless the test explicitly targets that integration boundary.  
 
-This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
+> **Статус документа:** Актуальный. Расширенные примеры — в [`docs/guides/testing-integration.md`](./testing-integration.md) и [`docs/guides/testing-property.md`](./testing-property.md).

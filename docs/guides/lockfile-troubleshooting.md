@@ -34,4 +34,3 @@ If you are in an offline or restricted network environment, perform the lockfile
 regeneration on a machine with registry access and commit the updated
 `Cargo.lock`.
 
-This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

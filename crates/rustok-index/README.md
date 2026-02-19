@@ -26,7 +26,6 @@
 ## Кому нужен
 Поиску, витрине, любым read-heavy запросам.
 
-This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
 
 ## Взаимодействие
 - crates/rustok-core events

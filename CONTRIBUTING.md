@@ -140,7 +140,7 @@ Update documentation when:
 - Changing APIs
 - Modifying configuration
 - Updating dependencies
-- Changing architecture, events, modules, tenancy, routing, or UI contracts (also update `docs/DOCS_MAP.md`)
+- Changing architecture, events, modules, tenancy, routing, or UI contracts (also update [`docs/index.md`](docs/index.md) and [`docs/modules/registry.md`](docs/modules/registry.md))
 
 ## Project Structure
 

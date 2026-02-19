@@ -1,4 +1,4 @@
-## Error Handling Guide
+# Error Handling Guide
 
 ## Overview
 

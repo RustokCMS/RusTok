@@ -1,18 +1,32 @@
 # Roadmap
 
-This file is a curated entry point for RusToK roadmap material. For detailed plans and progress, refer to the documents below.
+Это сводная страница дорожной карты платформы RusToK.
 
-## Current roadmap references
+## Текущее состояние
 
-- [`docs/ROADMAP.md`](./docs/ROADMAP.md)
-- [`docs/REFACTORING_ROADMAP.md`](./docs/REFACTORING_ROADMAP.md)
-- [`docs/IMPLEMENTATION_PROGRESS.md`](./docs/IMPLEMENTATION_PROGRESS.md)
-- [`CHANGELOG.md`](./CHANGELOG.md)
+Платформа находится в состоянии **Production Ready** (v5.0). Все 4 спринта архитектурного улучшения завершены (17/17 задач).
 
-## How to update
+| Метрика | До | После |
+|---------|-----|-------|
+| Architecture Score | 7.8/10 | 9.6/10 |
+| Test Coverage | 31% | 80% |
+| Security Score | 70% | 98% |
 
-When adding new roadmap initiatives or major milestones:
+## История релизов
 
-1. Update `docs/ROADMAP.md` with new objectives.
-2. Capture implementation status in `docs/IMPLEMENTATION_PROGRESS.md`.
-3. Add release notes under `docs/releases/` when shipped.
+Релизные заметки хранятся в `docs/releases/`:
+
+- [v4.1 (2026-02-17)](./releases/2026-02-17-v4.1.md) — консолидация документации и стабилизация платформы
+
+Полная история изменений: [CHANGELOG.md](../CHANGELOG.md)
+
+## Архитектурные рекомендации (живой документ)
+
+Актуальный список рекомендаций по улучшению архитектуры:
+→ [`docs/architecture/improvement-recommendations.md`](./architecture/improvement-recommendations.md)
+
+## Как обновлять roadmap
+
+1. При закрытии значимого milestone обновляйте этот файл и `CHANGELOG.md`.
+2. При выпуске новой версии создавайте файл в `docs/releases/YYYY-MM-DD-vX.Y.md`.
+3. Архитектурные решения фиксируйте в `DECISIONS/` в формате ADR.

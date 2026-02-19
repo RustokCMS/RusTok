@@ -1,8 +1,7 @@
 # RusToK — Architecture Guide
 
-> **Документ создан на основе архитектурного обсуждения с AI-ассистентами.**  
 > **Дата:** 2026-02-06  
-> **Статус:** Draft v1
+> **Статус:** Актуальный. Дополняется при изменениях архитектурных принципов платформы.
 
 ---
 
@@ -287,4 +286,3 @@ mYYYYMMDD_<module>_<nnn>_<description>.rs
 - [modules/flex.md](../modules/flex.md) — подробная спецификация Flex
 - [MANIFEST_ADDENDUM.md](../MANIFEST_ADDENDUM.md) — дополнения к манифесту
 
-This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

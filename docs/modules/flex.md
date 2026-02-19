@@ -394,4 +394,3 @@ impl EventHandler for FlexIndexer {
 - [ARCHITECTURE_GUIDE.md](../ARCHITECTURE_GUIDE.md) — общая архитектура
 - [ROADMAP.md](../ROADMAP.md) — фазы разработки
 
-This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.

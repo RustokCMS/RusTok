@@ -19,18 +19,21 @@ graph TD
     ROOT --> D[docs/*]
     ROOT --> A[apps/* docs]
     ROOT --> C[crates/* docs]
+    ROOT --> P[packages/* docs]
     ROOT --> R[Root docs]
 
     D --> DARCH[docs/architecture/*]
     D --> DGUIDE[docs/guides/*]
     D --> DMOD[docs/modules/*]
     D --> DUI[docs/UI/*]
+    D --> DSTD[docs/standards/*]
 
     A --> ASRV[apps/server/docs/*]
     A --> AADMIN[apps/admin/docs/*]
     A --> ASF[apps/storefront/README.md]
     A --> ANEXTADMIN[apps/next-admin/docs/*]
     A --> ANEXTSF[apps/next-frontend/docs/*]
+    A --> AMCP[apps/mcp → crates/rustok-mcp/docs/*]
 
     C --> CDOMAIN[crates/rustok-*/docs/*]
     C --> CUI[crates/leptos-*/docs/*]
@@ -43,13 +46,12 @@ graph TD
 
 ## Root Documents
 
-- [System Manifest](../RUSTOK_MANIFEST.md) - Core architecture, philosophy, and invariants.
-- [Admin Panel Review](../ADMIN_PANEL_REVIEW.md) - Review notes for the Leptos admin panel.
-- [Agent Rules](../AGENTS.md) - Rules for AI agents.
-- [Architecture Decision: Canonical event contract in `rustok-events`](../DECISIONS/2026-02-19-rustok-events-canonical-contract.md)
-- [Architecture Decision: Core-server and module-bundle routing boundary](../DECISIONS/2026-02-19-core-server-module-bundles-routing.md)
-- [Changelog](../CHANGELOG.md) - Version history and releases.
-- [License](../LICENSE) - MIT License.
+- [System Manifest](../RUSTOK_MANIFEST.md) — Философия, принципы и архитектурные инварианты платформы.
+- [Agent Rules](../AGENTS.md) — Правила для AI-агентов и контрибьюторов.
+- [Contributing](../CONTRIBUTING.md) — Инструкция по участию в разработке.
+- [Changelog](../CHANGELOG.md) — История версий и релизов.
+- [Roadmap](./roadmap.md) — Текущая дорожная карта и история релизов.
+- [License](../LICENSE) — MIT License.
 
 ## Central docs (`docs/`)
 
@@ -91,6 +93,17 @@ graph TD
 - [Manifest](./modules/manifest.md)
 - [Module Docs Index](./modules/_index.md)
 
+### Standards (`docs/standards/`)
+
+- [Coding Standards](./standards/coding.md)
+- [Error Handling](./standards/errors.md)
+- [Security](./standards/security.md)
+- [Logging](./standards/logging.md)
+- [Performance](./standards/performance.md)
+- [Distributed Tracing](./standards/distributed-tracing.md)
+- [OpenTelemetry Integration](./standards/opentelemetry-integration.md)
+- [Instrumentation Examples](./standards/instrumentation-examples.md)
+
 ### UI (`docs/UI/`)
 
 - [UI Overview](./UI/README.md)
@@ -111,6 +124,7 @@ graph TD
 - [Next.js Admin themes](../apps/next-admin/docs/themes.md)
 - [Leptos Storefront README](../apps/storefront/README.md)
 - [Next.js Storefront docs](../apps/next-frontend/docs/README.md)
+- [MCP crate docs](../crates/rustok-mcp/docs/README.md) (`apps/mcp` uses this crate)
 
 ### Module and crate docs
 
@@ -147,6 +161,8 @@ graph TD
 
 ### Custom frontend libraries docs
 
+**Rust/Leptos (in `crates/`)** — internal libraries used by `apps/admin` and `apps/storefront`:
+
 - [leptos-auth docs](../crates/leptos-auth/docs/README.md)
 - [leptos-graphql docs](../crates/leptos-graphql/docs/README.md)
 - [leptos-hook-form docs](../crates/leptos-hook-form/docs/README.md)
@@ -154,6 +170,14 @@ graph TD
 - [leptos-table docs](../crates/leptos-table/docs/README.md)
 - [leptos-zod docs](../crates/leptos-zod/docs/README.md)
 - [leptos-zustand docs](../crates/leptos-zustand/docs/README.md)
+
+**JavaScript/TypeScript (in `packages/`)** — internal packages used by `apps/next-admin` and `apps/next-frontend`:
+
+- [packages/leptos-auth](../packages/leptos-auth/README.md)
+- [packages/leptos-graphql](../packages/leptos-graphql/README.md) — shared GraphQL helpers for all frontends
+- [packages/leptos-hook-form](../packages/leptos-hook-form/README.md)
+- [packages/leptos-zod](../packages/leptos-zod/README.md)
+- [packages/leptos-zustand](../packages/leptos-zustand/README.md)
 
 
 ## Full distributed documentation inventory (repo-wide)
@@ -176,6 +200,8 @@ graph TD
 - `apps/server`
   - [README](../apps/server/README.md)
   - [docs/README](../apps/server/docs/README.md)
+- `apps/mcp`
+  - (uses `crates/rustok-mcp` — see MCP crate docs below)
 - `apps/storefront`
   - [README](../apps/storefront/README.md)
 
@@ -211,6 +237,16 @@ graph TD
 - `rustok-tenant`: [README](../crates/rustok-tenant/README.md), [docs/README](../crates/rustok-tenant/docs/README.md), [docs/implementation-plan](../crates/rustok-tenant/docs/implementation-plan.md)
 - `rustok-test-utils`: [README](../crates/rustok-test-utils/README.md)
 - `utoipa-swagger-ui-vendored`: [README](../crates/utoipa-swagger-ui-vendored/README.md), [docs/README](../crates/utoipa-swagger-ui-vendored/docs/README.md)
+
+### Packages (`packages/*`)
+
+JavaScript/TypeScript internal packages for Next.js applications:
+
+- `leptos-auth`: [README](../packages/leptos-auth/README.md)
+- `leptos-graphql`: [README](../packages/leptos-graphql/README.md)
+- `leptos-hook-form`: [README](../packages/leptos-hook-form/README.md)
+- `leptos-zod`: [README](../packages/leptos-zod/README.md)
+- `leptos-zustand`: [README](../packages/leptos-zustand/README.md)
 
 ## Maintenance checklist
 

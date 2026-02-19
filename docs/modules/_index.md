@@ -1,23 +1,57 @@
 # Module documentation index
 
-This section captures per-module documentation. Each module should have its own folder based on the template in `_template/`.
+Per-module documentation lives inside each crate at `crates/<name>/docs/README.md`.
+This page is the navigation index for all module-level docs.
 
-## Recommended module folders
+## Navigation rule
 
-- `core` — platform foundations (`rustok-core`)
-- `content` — CMS entities and content workflows
-- `pages` — page builder and layout management
-- `blog` — blogging domain
-- `commerce` — products, orders, pricing
-- `forum` — community features
-- `index` — read model projections and search
-- `alloy` — scripting orchestration
+Documentation for each module is kept **inside the module's crate** (`crates/<name>/docs/`),
+not duplicated in `docs/modules/`. Links below point directly to those locations.
 
-## Existing references
+## Core & Infrastructure modules
 
-- [Module overview](./overview.md)
-- [Module & application registry](./registry.md)
-- [Module manifest](./manifest.md)
-- [Flex spec](./flex.md)
+| Module | Docs | Implementation plan |
+|--------|------|-------------------|
+| `rustok-core` | [docs](../../crates/rustok-core/docs/README.md) | [plan](../../crates/rustok-core/docs/implementation-plan.md) |
+| `rustok-outbox` | [docs](../../crates/rustok-outbox/docs/README.md) | [plan](../../crates/rustok-outbox/docs/implementation-plan.md) |
+| `rustok-telemetry` | [docs](../../crates/rustok-telemetry/docs/README.md) | [plan](../../crates/rustok-telemetry/docs/implementation-plan.md) |
+| `rustok-tenant` | [docs](../../crates/rustok-tenant/docs/README.md) | [plan](../../crates/rustok-tenant/docs/implementation-plan.md) |
+| `rustok-rbac` | [docs](../../crates/rustok-rbac/docs/README.md) | [plan](../../crates/rustok-rbac/docs/implementation-plan.md) |
+| `rustok-iggy` | [docs](../../crates/rustok-iggy/docs/README.md) | [plan](../../crates/rustok-iggy/docs/implementation-plan.md) |
+| `rustok-iggy-connector` | [docs](../../crates/rustok-iggy-connector/docs/README.md) | [plan](../../crates/rustok-iggy-connector/docs/implementation-plan.md) |
+| `rustok-mcp` | [docs](../../crates/rustok-mcp/docs/README.md) | [plan](../../crates/rustok-mcp/docs/implementation-plan.md) |
 
-When creating a new module folder, copy the `_template` structure and link it here.
+## Domain modules
+
+| Module | Docs | Implementation plan |
+|--------|------|-------------------|
+| `rustok-content` | [docs](../../crates/rustok-content/docs/README.md) | [plan](../../crates/rustok-content/docs/implementation-plan.md) |
+| `rustok-commerce` | [docs](../../crates/rustok-commerce/docs/README.md) | [plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
+| `rustok-blog` | [docs](../../crates/rustok-blog/docs/README.md) | [plan](../../crates/rustok-blog/docs/implementation-plan.md) |
+| `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |
+| `rustok-pages` | [docs](../../crates/rustok-pages/docs/README.md) | [plan](../../crates/rustok-pages/docs/implementation-plan.md) |
+| `rustok-index` | [docs](../../crates/rustok-index/docs/README.md) | [plan](../../crates/rustok-index/docs/implementation-plan.md) |
+
+## Module template
+
+When creating a new module, copy the `_template` folder and fill in all sections:
+
+```
+docs/modules/_template/
+  _index.md    — entry point with purpose and key flows
+  api.md       — GraphQL/REST contracts
+  commands.md  — write-side commands
+  queries.md   — read-side queries
+  events.md    — published domain events
+  domain.md    — entity model
+  storage.md   — tables and indexes
+  testing.md   — test strategy
+  workflows.md — key business workflows
+```
+
+## Related documents
+
+- [Module overview](./overview.md) — which modules are registered and their kinds
+- [Module & application registry](./registry.md) — full component directory with dependencies
+- [Module manifest](./manifest.md) — modules.toml format and rebuild lifecycle
+- [Flex spec](./flex.md) — Flex module concept

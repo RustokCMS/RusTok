@@ -50,7 +50,6 @@ let config = McpServerConfig::with_enabled_tools(registry, enabled);
 
 For more details see `docs/implementation-plan.md`.
 
-This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
 
 ## Взаимодействие
 - встроенный binary target `rustok-mcp-server`

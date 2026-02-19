@@ -224,4 +224,3 @@ mod_reputation (trust gating)
 
 Слить mod_reputation + mod_moderation → mod_engagement (как у Gemini: “наблюдатель/каратель”)
 И получите 12 crate’ов, сохранив отдельный mod_media_social.
-This is an alpha version and requires clarification. Be careful, there may be errors in the text. So that no one thinks that this is an immutable rule.
