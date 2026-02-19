@@ -308,3 +308,40 @@ docker-compose -f docker-compose.observability.yml down -v
 **Status:** Task 3.1 Complete ✅  
 **Sprint 3 Progress:** 33% (1/3 tasks)  
 **Overall Progress:** 56% (9/16 tasks)
+
+---
+
+## 📈 Outbox Reliability Metrics & Alerts
+
+Для event reliability трека добавьте наблюдение за outbox/DLQ метриками:
+
+- `outbox_backlog_size` (gauge) — размер очереди необработанных событий.
+- `outbox_retries_total` (counter) — количество retry попыток relay.
+- `outbox_dlq_total` (counter) — количество событий, попавших в DLQ.
+
+### Recommended PromQL
+
+```promql
+# Backlog current size
+outbox_backlog_size
+
+# Retry rate (5m)
+rate(outbox_retries_total[5m])
+
+# DLQ growth (15m)
+increase(outbox_dlq_total[15m])
+```
+
+### Alerting policy (baseline)
+
+- **Warning:** `outbox_backlog_size > 500` в течение 10 минут.
+- **Critical:** `outbox_backlog_size > 2000` в течение 15 минут.
+- **Warning:** `rate(outbox_retries_total[5m])` стабильно выше baseline 30 минут.
+- **Critical:** `increase(outbox_dlq_total[15m]) > 0` для production tenant'ов.
+
+### Triage checklist
+
+1. Проверить downstream transport (`iggy`/subscriber availability).
+2. Проверить ошибки сериализации/схемы в relay logs.
+3. Проверить рост DLQ по конкретным `event_type`.
+4. При необходимости запустить контролируемый DLQ replay после устранения root cause.

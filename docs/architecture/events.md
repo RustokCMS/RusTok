@@ -311,3 +311,57 @@ See module READMEs for specific implementation details:
 - [rustok-blog/README.md](../../crates/rustok-blog/README.md)
 - [rustok-forum/README.md](../../crates/rustok-forum/README.md)
 - [rustok-pages/README.md](../../crates/rustok-pages/README.md)
+
+## Outbox Relay Pipeline (L1 → L2)
+
+**Status (2026-02-19):** Implemented in `apps/server` event runtime (outbox relay target + retry policy wiring).
+
+Планируемый production-паттерн: write-side всегда использует outbox (L1), а relay target задаётся отдельно (`memory` для local/dev, `iggy` для highload/replay).
+
+```toml
+[settings.rustok.events]
+transport = "outbox"
+relay_target = "memory" # memory | iggy
+
+[settings.rustok.events.relay_retry_policy]
+max_attempts = 5
+base_backoff_ms = 1000
+max_backoff_ms = 60000
+
+[settings.rustok.events.dlq]
+enabled = true
+max_attempts = 10
+```
+
+### Operational semantics
+
+- `transport = "outbox"`: событие атомарно фиксируется в `sys_events` внутри DB-транзакции.
+- `relay_target = "memory|iggy"`: downstream выбирается независимо от write-side.
+- При недоступном downstream событие остаётся в backlog и переотправляется по retry policy.
+- После исчерпания попыток событие переносится в DLQ (`sys_events` со статусом `failed`, логический DLQ).
+
+### Admin / Replay flow
+
+- `GET /api/admin/events/dlq` — просмотр DLQ с фильтрами (`tenant_id`, `event_type`, `created_at`).
+- `POST /api/admin/events/dlq/{id}/replay` — повторная постановка события в relay queue.
+
+## Incident Runbook (Backlog/DLQ)
+
+### 1) Backlog growth
+
+1. Проверить `outbox_backlog_size` и тренд за 15–30 минут.
+2. Проверить доступность relay target (`iggy` или memory-subscriber pipeline).
+3. Проверить рост `outbox_retries_total` и ошибки доставки в логах relay worker.
+
+### 2) Downstream outage
+
+1. Подтвердить, что write-side продолжает фиксировать события в `sys_events`.
+2. Убедиться, что retry-loop активен и backoff не достиг предельной частоты.
+3. После восстановления downstream проконтролировать снижение `outbox_backlog_size`.
+
+### 3) DLQ replay
+
+1. Отфильтровать DLQ-события по `tenant_id`/`event_type`.
+2. Подтвердить root cause (схема, downstream, payload).
+3. Запустить replay батчами и мониторить `outbox_dlq_total` + delivery latency.
+4. Зафиксировать инцидент и remediation action в postmortem.

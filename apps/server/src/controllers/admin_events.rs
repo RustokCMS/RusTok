@@ -9,6 +9,8 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrde
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::extractors::auth::CurrentUser;
+
 #[derive(Debug, Deserialize)]
 pub struct DlqQuery {
     pub tenant_id: Option<Uuid>,
@@ -42,6 +44,7 @@ pub struct DlqReplayResponse {
 
 pub async fn list_dlq(
     State(ctx): State<AppContext>,
+    _user: CurrentUser,
     Query(query): Query<DlqQuery>,
 ) -> Result<Json<DlqListResponse>> {
     let limit = query.limit.clamp(1, 200);
@@ -71,6 +74,7 @@ pub async fn list_dlq(
                 let payload_tenant = model
                     .payload
                     .get("tenant_id")
+                    .or_else(|| model.payload.get("event").and_then(|e| e.get("tenant_id")))
                     .and_then(|v| v.as_str())
                     .and_then(|raw| Uuid::parse_str(raw).ok());
                 if payload_tenant != Some(tenant_id) {
@@ -97,6 +101,7 @@ pub async fn list_dlq(
 
 pub async fn replay_dlq_event(
     State(ctx): State<AppContext>,
+    _user: CurrentUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<DlqReplayResponse>> {
     let model = entity::Entity::find_by_id(id)

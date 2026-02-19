@@ -5,7 +5,7 @@ use axum::{
 };
 use loco_rs::{app::AppContext, controller::Routes, prelude::*, Result};
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement};
 
 use crate::middleware::tenant::tenant_cache_stats;
 
@@ -69,14 +69,16 @@ async fn render_outbox_metrics(ctx: &AppContext) -> String {
         .await
         .unwrap_or(0);
 
-    let retries_total = SysEventsEntity::find()
-        .all(&ctx.db)
+    let retries_total = ctx
+        .db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT COALESCE(SUM(retry_count), 0) AS total FROM sys_events".to_string(),
+        ))
         .await
-        .map(|rows| {
-            rows.into_iter()
-                .map(|r| i64::from(r.retry_count))
-                .sum::<i64>()
-        })
+        .ok()
+        .flatten()
+        .and_then(|row| row.try_get::<i64>("", "total").ok())
         .unwrap_or(0);
 
     format!(
