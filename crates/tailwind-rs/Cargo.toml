@@ -25,7 +25,7 @@ t = "cargo test"
 p = "cargo publish --allow-dirty"
 
 [dependencies.itertools]
-version = "0.10.5"
+version = "0.14.0"
 
 [dependencies.log]
 version = "0.4.17"

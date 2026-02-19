@@ -3610,15 +3610,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
@@ -7130,7 +7121,7 @@ dependencies = [
  "serde_yaml",
  "thiserror 2.0.18",
  "tokio",
- "toml 1.0.2+spec-1.1.0",
+ "toml 1.0.3+spec-1.1.0",
  "tracing",
  "ulid",
  "url",
@@ -8730,7 +8721,7 @@ checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
 name = "tailwind-ast"
 version = "0.4.1"
 dependencies = [
- "nom 7.1.3",
+ "nom 8.0.0",
 ]
 
 [[package]]
@@ -8738,9 +8729,9 @@ name = "tailwind-css"
 version = "0.12.7"
 dependencies = [
  "css-color",
- "itertools 0.11.0",
+ "itertools 0.14.0",
  "log",
- "nom 7.1.3",
+ "nom 8.0.0",
  "tailwind-ast",
  "tailwind-error",
  "xxhash-rust",
@@ -8761,7 +8752,7 @@ dependencies = [
 name = "tailwind-rs"
 version = "0.2.0"
 dependencies = [
- "itertools 0.10.5",
+ "itertools 0.14.0",
  "log",
  "parcel_css",
  "tailwind-css",
@@ -9137,9 +9128,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "1.0.2+spec-1.1.0"
+version = "1.0.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1dfefef6a142e93f346b64c160934eb13b5594b84ab378133ac6815cb2bd57f"
+checksum = "c7614eaf19ad818347db24addfa201729cf2a9b6fdfd9eb0ab870fcacc606c0c"
 dependencies = [
  "indexmap",
  "serde_core",
@@ -10620,7 +10611,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "serde",
- "toml 1.0.2+spec-1.1.0",
+ "toml 1.0.3+spec-1.1.0",
 ]
 
 [[package]]
