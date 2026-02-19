@@ -24,6 +24,26 @@ pub enum HealthStatus {
     Unhealthy,
 }
 
+/// Classifies a module as part of the platform kernel or as an optional domain module.
+///
+/// # IMPORTANT — DO NOT CHANGE LIGHTLY
+/// Modules with `ModuleKind::Core` are **permanently active** and cannot be disabled
+/// by any tenant or operator. They are essential for platform correctness:
+/// - `index`   — CQRS read-path; storefront reads from index tables
+/// - `tenant`  — tenant resolution middleware; every HTTP request passes through it
+/// - `rbac`    — RBAC enforcement; all CRUD handlers check permissions here
+///
+/// Removing or downgrading any of these to `Optional` will break platform guarantees.
+/// Any such change requires an ADR in `DECISIONS/`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModuleKind {
+    /// Always active. Cannot be disabled per-tenant.
+    /// Registered in the `core_modules` bucket of `ModuleRegistry`.
+    Core,
+    /// Can be enabled or disabled per-tenant via `ModuleLifecycleService`.
+    Optional,
+}
+
 #[async_trait]
 pub trait RusToKModule: Send + Sync + MigrationSource {
     fn slug(&self) -> &'static str;
@@ -33,6 +53,12 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
     fn description(&self) -> &'static str;
 
     fn version(&self) -> &'static str;
+
+    /// Returns `ModuleKind::Core` for platform-critical modules that must never be disabled.
+    /// Defaults to `ModuleKind::Optional` — safe for all domain modules.
+    fn kind(&self) -> ModuleKind {
+        ModuleKind::Optional
+    }
 
     fn dependencies(&self) -> &[&'static str] {
         &[]

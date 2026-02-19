@@ -1,7 +1,7 @@
 # Разделение модулей на Core и Optional
 
 - Date: 2026-02-19
-- Status: Proposed
+- Status: Accepted & Implemented
 
 ## Context
 

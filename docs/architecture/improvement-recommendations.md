@@ -126,9 +126,9 @@ RUSTOK_REDIS_URL / REDIS_URL задан?
 
 ## 2. Рекомендации
 
-### 2.1 🔴 КРИТИЧНО: Устранить размытую границу core / domain-module
+### 2.1 ✅ РЕАЛИЗОВАНО: Устранить размытую границу core / domain-module
 
-**Проблема.** `rustok-tenant`, `rustok-rbac` и `rustok-index` имеют `impl RusToKModule`, но не регистрируются в `build_registry()`. Нет формального способа отличить обязательные модули от опциональных.
+**Проблема.** `rustok-tenant`, `rustok-rbac` и `rustok-index` имеют `impl RusToKModule`, но не регистрировались в `build_registry()`. Не было формального способа отличить обязательные модули от опциональных.
 
 > **Что точно является Core (нельзя отключить):** `rustok-index`, `rustok-tenant`, `rustok-rbac`.
 >
@@ -156,55 +156,29 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
 }
 ```
 
-Для `TenantModule`, `RbacModule`, `IndexModule` переопределить: `fn kind() -> ModuleKind::Core`.
-`ModuleRegistry` должен при регистрации Core-модулей сохранять их в отдельный `core_modules: HashMap`, чтобы `ModuleLifecycleService::toggle_module()` отклонял попытку отключения с ошибкой `ToggleModuleError::CoreModuleCannotBeDisabled`.
+**Решение реализовано:**
+- В `rustok-core/src/module.rs` добавлен `ModuleKind { Core, Optional }` с doc-комментарием-предупреждением.
+- `fn kind(&self) -> ModuleKind` добавлен в трейт `RusToKModule` с default `Optional`.
+- `ModuleRegistry` разделён на два bucket'а: `core_modules` и `optional_modules`.
+- `ModuleLifecycleService::toggle_module()` возвращает `ToggleModuleError::CoreModuleCannotBeDisabled` при попытке отключить core-модуль.
+- `IndexModule`, `TenantModule`, `RbacModule` переопределяют `fn kind() -> ModuleKind::Core`.
+- Все три зарегистрированы в `build_registry()` первыми.
 
 ---
 
-### 2.2 🔴 КРИТИЧНО: Зарегистрировать `rustok-index` в `build_registry()`
+### 2.2 ✅ РЕАЛИЗОВАНО: Зарегистрировать `rustok-index` в `build_registry()`
 
-**Проблема.** `rustok-index` существует, реализует `IndexModule`, но **не зарегистрирован**. CQRS-логика (`Bus → Index → DB_Read`) работает только если `IndexModule` слушает события. Без регистрации read-модели не обновляются.
+**Проблема.** `rustok-index` не был зарегистрирован. CQRS read-path не работал.
 
-**Рекомендация.** Добавить в `apps/server/src/modules/mod.rs`:
-
-```rust
-use rustok_index::IndexModule;
-
-pub fn build_registry() -> ModuleRegistry {
-    ModuleRegistry::new()
-        .register(IndexModule)       // ← infrastructure/core
-        .register(ContentModule)
-        .register(CommerceModule)
-        .register(BlogModule)
-        .register(ForumModule)
-        .register(PagesModule)
-}
-```
-
-`IndexModule` должен иметь `kind() -> ModuleKind::Core` — его нельзя отключать, т.к. он критичен для read-path.
+**Решение:** `IndexModule` добавлен в `apps/server/src/modules/mod.rs` как первый Core-модуль.
 
 ---
 
-### 2.3 🟡 ВАЖНО: Зарегистрировать `TenantModule` и `RbacModule`
+### 2.3 ✅ РЕАЛИЗОВАНО: Зарегистрировать `TenantModule` и `RbacModule`
 
-**Проблема.** `TenantModule` и `RbacModule` реализуют `RusToKModule` с `health()`, но не зарегистрированы. Это означает:
-- Их health-статус не включён в `/health/modules`.
-- Их `on_enable`/`on_disable` хуки никогда не вызываются.
-- Миграции (если появятся) нужно будет добавлять вручную.
+**Проблема.** `TenantModule` и `RbacModule` реализовали `RusToKModule` с `health()`, но не были зарегистрированы — их health-статус отсутствовал в `/health/modules`.
 
-**Рекомендация.** Зарегистрировать как Core-модули (см. п. 2.1):
-
-```rust
-use rustok_tenant::TenantModule;
-use rustok_rbac::RbacModule;
-
-ModuleRegistry::new()
-    .register(TenantModule)   // Core, non-disableable
-    .register(RbacModule)     // Core, non-disableable
-    .register(IndexModule)    // Core
-    .register(ContentModule)
-    // ...
-```
+**Решение:** Оба зарегистрированы в `build_registry()` как Core-модули. Теперь их health виден, хуки вызываются, миграции подхватываются автоматически.
 
 ---
 
@@ -460,10 +434,10 @@ fn routes(ctx: &AppContext) -> AppRoutes {
 
 | # | Рекомендация | Приоритет | Сложность | Блокирует |
 |---|---|---|---|---|
-| 2.2 | Зарегистрировать `rustok-index` | 🔴 Критично | Низкая | CQRS read path |
+| 2.1 | Ввести `ModuleKind::Core` / `Optional` | ✅ Готово | — | — |
+| 2.2 | Зарегистрировать `rustok-index` | ✅ Готово | — | — |
+| 2.3 | Зарегистрировать Tenant/RBAC как Core | ✅ Готово | — | — |
 | 2.5 | Заполнить `dependencies()` для Blog/Forum | 🔴 Критично | Низкая | Data integrity |
-| 2.1 | Ввести `ModuleKind::Core` / `Optional` | 🔴 Критично | Средняя | All guards |
-| 2.3 | Зарегистрировать Tenant/RBAC как Core | 🟡 Важно | Низкая | Health visibility |
 | 2.4 | Синхронизация `modules.toml` ↔ `build_registry()` | 🟡 Важно | Средняя | Ops reliability |
 | 2.6 | `required` / `depends_on` в `modules.toml` | 🟡 Важно | Низкая | Ops tooling |
 | 2.7 | Связать L1 (Outbox) → L2 (Iggy) pipeline | 🟡 Важно | Высокая | Event highload |

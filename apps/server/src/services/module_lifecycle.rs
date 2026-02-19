@@ -17,6 +17,10 @@ pub struct ModuleLifecycleService;
 pub enum ToggleModuleError {
     #[error("Unknown module")]
     UnknownModule,
+    /// Core modules are part of the platform kernel and can never be disabled.
+    /// See `ModuleKind::Core` and `DECISIONS/2026-02-19-module-kind-core-vs-optional.md`.
+    #[error("Module '{0}' is a core platform module and cannot be disabled")]
+    CoreModuleCannotBeDisabled(String),
     #[error("Missing module dependencies: {0}")]
     MissingDependencies(String),
     #[error("Module is required by: {0}")]
@@ -38,6 +42,12 @@ impl ModuleLifecycleService {
         let Some(module_impl) = registry.get(module_slug) else {
             return Err(ToggleModuleError::UnknownModule);
         };
+
+        if registry.is_core(module_slug) {
+            return Err(ToggleModuleError::CoreModuleCannotBeDisabled(
+                module_slug.to_string(),
+            ));
+        }
 
         let enabled_modules = TenantModulesEntity::find_enabled(db, tenant_id).await?;
         let enabled_set: HashSet<String> = enabled_modules.into_iter().collect();
