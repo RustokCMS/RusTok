@@ -2,6 +2,7 @@
 
 - Date: 2026-02-19
 - Status: Living document (updated)
+- Last updated: 2026-02-19
 - Author: Platform Architecture Review
 
 ---
@@ -386,22 +387,22 @@ fn routes(ctx: &AppContext) -> AppRoutes {
 
 ## 3. Приоритизированный план действий
 
-| # | Рекомендация | Приоритет | Статус | Сложность | Блокирует |
-|---|---|---|---|---|---|
-| 2.1 | Ввести `ModuleKind::Core` / `Optional` | ✅ Готово | Done | — | — |
-| 2.2 | Зарегистрировать `rustok-index` | ✅ Готово | Done | — | — |
-| 2.3 | Зарегистрировать Tenant/RBAC как Core | ✅ Готово | Done | — | — |
-| 2.4 | Синхронизация `modules.toml` ↔ `build_registry()` | ✅ Готово | Done | Средняя | Ops reliability |
-| 2.8 | Исправить `set_with_ttl()` в InMemoryCache | ✅ Готово | Done | Низкая | Cache correctness |
-| 2.5 | Заполнить `dependencies()` для Blog/Forum | ✅ Готово | Done | Низкая | Data integrity |
-| 2.6 | `required` / `depends_on` в `modules.toml` | ✅ Готово | Done | Низкая | Ops tooling |
-| 2.7 | Связать L1 (Outbox) → L2 (Iggy) pipeline | 🟡 Важно | Backlog | Высокая | Event highload |
-| 2.12 | Outbox DLQ + backlog metrics | 🟢 Улучшение | Backlog | Средняя | Event reliability |
-| 2.10 | Per-tenant typed module config | 🟢 Улучшение | Backlog | Средняя | Extensibility |
-| 2.11 | `rustok-notifications` модуль | 🟢 Улучшение | Backlog | Высокая | New capability |
-| 2.13 | Alloy как `RusToKModule` | 🟢 Улучшение | Backlog | Низкая | Consistency |
-| 2.9 | Вынести `DomainEvent` из core | 🔵 Стратегически | In Progress (Phase 1) | Высокая | Extensibility |
-| 2.14 | Авторегистрация HTTP routes | 🔵 Стратегически | ADR Needed | Высокая | DX / scalability |
+| # | Рекомендация | Приоритет | Статус | Сложность | Блокирует | Owner | Целевая итерация |
+|---|---|---|---|---|---|---|---|
+| 2.1 | Ввести `ModuleKind::Core` / `Optional` | ✅ Готово | Done | — | — | Platform foundation | Завершено |
+| 2.2 | Зарегистрировать `rustok-index` | ✅ Готово | Done | — | — | Platform foundation | Завершено |
+| 2.3 | Зарегистрировать Tenant/RBAC как Core | ✅ Готово | Done | — | — | Platform foundation | Завершено |
+| 2.4 | Синхронизация `modules.toml` ↔ `build_registry()` | ✅ Готово | Done | Средняя | Ops reliability | Platform foundation | Завершено |
+| 2.8 | Исправить `set_with_ttl()` в InMemoryCache | ✅ Готово | Done | Низкая | Cache correctness | Platform foundation | Завершено |
+| 2.5 | Заполнить `dependencies()` для Blog/Forum | ✅ Готово | Done | Низкая | Data integrity | Domain modules | Завершено |
+| 2.6 | `required` / `depends_on` в `modules.toml` | ✅ Готово | Done | Низкая | Ops tooling | Platform foundation | Завершено |
+| 2.7 | Связать L1 (Outbox) → L2 (Iggy) pipeline | 🟡 Важно | Backlog | Высокая | Event highload | Platform foundation + shared infra | Итерация 2 |
+| 2.12 | Outbox DLQ + backlog metrics | 🟢 Улучшение | Backlog | Средняя | Event reliability | Platform foundation + operational tooling | Итерация 2 |
+| 2.10 | Per-tenant typed module config | 🟢 Улучшение | Backlog | Средняя | Extensibility | Platform foundation + domain modules | Итерация 3 |
+| 2.11 | `rustok-notifications` модуль | 🟢 Улучшение | Backlog | Высокая | New capability | Domain modules | Итерация 3 |
+| 2.13 | Alloy как `RusToKModule` | 🟢 Улучшение | Backlog | Низкая | Consistency | Platform foundation | Итерация 3 |
+| 2.9 | Вынести `DomainEvent` из core | 🔵 Стратегически | In Progress (Phase 1) | Высокая | Extensibility | Platform foundation (ADR) | Итерация 3+ |
+| 2.14 | Авторегистрация HTTP routes | 🔵 Стратегически | ADR Needed | Высокая | DX / scalability | Platform foundation (ADR) | После ADR |
 
 ---
 
