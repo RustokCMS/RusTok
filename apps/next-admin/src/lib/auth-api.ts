@@ -12,46 +12,47 @@ export interface AuthUser {
   name: string | null;
   role: string;
   status: string;
-  tenantSlug: string | null;
-  createdAt: string;
 }
 
 export interface AuthSession {
-  token: string;
+  accessToken: string;
+  refreshToken: string;
   tenantSlug: string | null;
 }
 
 // Mutations
 
 const SIGN_IN_MUTATION = `
-mutation SignIn($email: String!, $password: String!, $tenantSlug: String!) {
-  signIn(email: $email, password: $password, tenantSlug: $tenantSlug) {
-    token
+mutation SignIn($input: SignInInput!) {
+  signIn(input: $input) {
+    accessToken
+    refreshToken
+    tokenType
+    expiresIn
     user {
       id
       email
       name
       role
       status
-      tenantSlug
-      createdAt
     }
   }
 }
 `;
 
 const SIGN_UP_MUTATION = `
-mutation SignUp($email: String!, $password: String!, $name: String, $tenantSlug: String!) {
-  signUp(email: $email, password: $password, name: $name, tenantSlug: $tenantSlug) {
-    token
+mutation SignUp($input: SignUpInput!) {
+  signUp(input: $input) {
+    accessToken
+    refreshToken
+    tokenType
+    expiresIn
     user {
       id
       email
       name
       role
       status
-      tenantSlug
-      createdAt
     }
   }
 }
@@ -73,30 +74,52 @@ query Me {
     name
     role
     status
-    tenantSlug
-    createdAt
+  }
+}
+`;
+
+const REFRESH_TOKEN_MUTATION = `
+mutation RefreshToken($input: RefreshTokenInput!) {
+  refreshToken(input: $input) {
+    accessToken
+    refreshToken
+    tokenType
+    expiresIn
+    user {
+      id
+      email
+      name
+      role
+      status
+    }
   }
 }
 `;
 
 // Responses
 
+interface AuthPayloadResponse {
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  expiresIn: number;
+  user: AuthUser;
+}
+
 interface SignInResponse {
-  signIn: {
-    token: string;
-    user: AuthUser;
-  };
+  signIn: AuthPayloadResponse;
 }
 
 interface SignUpResponse {
-  signUp: {
-    token: string;
-    user: AuthUser;
-  };
+  signUp: AuthPayloadResponse;
 }
 
 interface MeResponse {
-  me: AuthUser;
+  me: AuthUser | null;
+}
+
+interface RefreshTokenResponse {
+  refreshToken: AuthPayloadResponse;
 }
 
 // API functions
@@ -105,12 +128,16 @@ export async function signIn(
   email: string,
   password: string,
   tenantSlug: string
-): Promise<{ token: string; user: AuthUser }> {
+): Promise<{ accessToken: string; refreshToken: string; user: AuthUser }> {
   const data = await graphqlRequest<
-    { email: string; password: string; tenantSlug: string },
+    { input: { email: string; password: string } },
     SignInResponse
-  >(SIGN_IN_MUTATION, { email, password, tenantSlug });
-  return data.signIn;
+  >(SIGN_IN_MUTATION, { input: { email, password } }, undefined, tenantSlug);
+  return {
+    accessToken: data.signIn.accessToken,
+    refreshToken: data.signIn.refreshToken,
+    user: data.signIn.user
+  };
 }
 
 export async function signUp(
@@ -118,12 +145,16 @@ export async function signUp(
   password: string,
   tenantSlug: string,
   name?: string
-): Promise<{ token: string; user: AuthUser }> {
+): Promise<{ accessToken: string; refreshToken: string; user: AuthUser }> {
   const data = await graphqlRequest<
-    { email: string; password: string; tenantSlug: string; name?: string },
+    { input: { email: string; password: string; name?: string } },
     SignUpResponse
-  >(SIGN_UP_MUTATION, { email, password, tenantSlug, name });
-  return data.signUp;
+  >(SIGN_UP_MUTATION, { input: { email, password, name } }, undefined, tenantSlug);
+  return {
+    accessToken: data.signUp.accessToken,
+    refreshToken: data.signUp.refreshToken,
+    user: data.signUp.user
+  };
 }
 
 export async function signOut(token: string, tenantSlug?: string | null): Promise<void> {
@@ -149,4 +180,19 @@ export async function fetchCurrentUser(
   } catch {
     return null;
   }
+}
+
+export async function refreshToken(
+  currentRefreshToken: string,
+  tenantSlug?: string | null
+): Promise<{ accessToken: string; refreshToken: string; user: AuthUser }> {
+  const data = await graphqlRequest<
+    { input: { refreshToken: string } },
+    RefreshTokenResponse
+  >(REFRESH_TOKEN_MUTATION, { input: { refreshToken: currentRefreshToken } }, undefined, tenantSlug);
+  return {
+    accessToken: data.refreshToken.accessToken,
+    refreshToken: data.refreshToken.refreshToken,
+    user: data.refreshToken.user
+  };
 }

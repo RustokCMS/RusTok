@@ -26,8 +26,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             name: result.user.name,
             role: result.user.role,
             status: result.user.status,
-            tenantSlug: result.user.tenantSlug,
-            rustokToken: result.token
+            tenantSlug: credentials.tenantSlug as string,
+            rustokToken: result.accessToken
           };
         } catch {
           return null;

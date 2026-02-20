@@ -58,12 +58,23 @@
 │  ┌───────────────────────────────────────────┐  │
 │  │ GraphQL Schema (async-graphql)            │  │
 │  │ Mutations: signIn, signUp, signOut        │  │
-│  │ Queries: currentUser, users               │  │
+│  │ Queries: me, users, dashboardStats        │  │
+│  └───────────────────────────────────────────┘  │
+└────────────────▲────────────────────────────────┘
+                 │ POST /api/graphql
+┌────────────────┴────────────────────────────────┐
+│      apps/next-admin (Next.js Admin UI)          │
+│  ┌───────────────────────────────────────────┐  │
+│  │ NextAuth (Credentials provider)           │  │
+│  │ lib/graphql.ts — fetch-based GQL client   │  │
+│  │ lib/auth-api.ts — signIn(), me()          │  │
+│  │ middleware.ts — route protection          │  │
 │  └───────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────┘
 ```
 
 **Принцип разделения:**
+
 - `apps/admin` — UI logic, state management (leptos Resources)
 - `leptos-auth` — auth-specific business logic, LocalStorage, context
 - `leptos-graphql` — generic HTTP transport для GraphQL (reusable)
@@ -80,6 +91,7 @@
 **Файл:** `crates/leptos-graphql/src/lib.rs`
 
 **API:**
+
 ```rust
 pub const GRAPHQL_ENDPOINT: &str = "/api/graphql";
 pub const TENANT_HEADER: &str = "X-Tenant-Slug";
@@ -103,6 +115,7 @@ where
 ```
 
 **Использование:**
+
 ```rust
 use leptos_graphql::{execute, GraphqlRequest, GRAPHQL_ENDPOINT};
 
@@ -199,6 +212,7 @@ mutation ResetPassword($token: String!, $newPassword: String!) {
 ```
 
 **Implementation:**
+
 ```rust
 // leptos-auth использует leptos-graphql под капотом
 async fn execute_graphql<V, T>(
@@ -217,6 +231,7 @@ async fn execute_graphql<V, T>(
 ```
 
 **API Functions:**
+
 ```rust
 use leptos_auth::api;
 
@@ -259,46 +274,79 @@ api::reset_password(reset_token, new_password, tenant).await?;
 
 ```graphql
 type Mutation {
-  # Authentication
-  signIn(email: String!, password: String!): SignInPayload!
-  signUp(email: String!, password: String!, name: String): SignUpPayload!
-  signOut: Boolean!
-  refreshToken: RefreshTokenPayload!
-  forgotPassword(email: String!): ForgotPasswordPayload!
-  resetPassword(token: String!, newPassword: String!): ResetPasswordPayload!
+  # Authentication (apps/server/src/graphql/auth/mutation.rs)
+  signIn(input: SignInInput!): AuthPayload!
+  signUp(input: SignUpInput!): AuthPayload!
+  signOut: SignOutPayload!
+  refreshToken(input: RefreshTokenInput!): AuthPayload!
+  forgotPassword(input: ForgotPasswordInput!): ForgotPasswordPayload!
+  resetPassword(input: ResetPasswordInput!): ResetPasswordPayload!
   
-  # User management (existing)
+  # User management (apps/server/src/graphql/mutations.rs)
   createUser(input: CreateUserInput!): User!
   updateUser(id: UUID!, input: UpdateUserInput!): User!
   disableUser(id: UUID!): User!
-  
-  # ... other domain mutations
+  toggleModule(moduleSlug: String!, enabled: Boolean!): TenantModule!
 }
 
 type Query {
-  # Authentication
-  currentUser: User!
+  # Health & info
+  health: String!
+  apiVersion: String!
   
-  # User management (existing)
-  users(limit: Int, offset: Int): UsersConnection!
+  # Authentication
+  me: User                   # Возвращает текущего пользователя (или null)
+  
+  # Tenancy
+  currentTenant: Tenant!
+  enabledModules: [String!]!
+  moduleRegistry: [ModuleRegistryItem!]!
+  tenantModules: [TenantModule!]!
+  
+  # User management (RBAC-protected)
+  users(pagination: PaginationInput, filter: UsersFilter, search: String): UserConnection!
   user(id: UUID!): User
   
-  # ... other domain queries
+  # Dashboard
+  dashboardStats: DashboardStats!
+  recentActivity(limit: Int!): [ActivityItem!]!
 }
 
-# Response types
-type SignInPayload {
-  token: String!
-  user: User!
+# Auth Input types
+input SignInInput {
+  email: String!
+  password: String!
 }
 
-type SignUpPayload {
-  token: String!
-  user: User!
+input SignUpInput {
+  email: String!
+  password: String!
+  name: String
 }
 
-type RefreshTokenPayload {
-  token: String!
+input RefreshTokenInput {
+  refreshToken: String!
+}
+
+# Auth Response types
+type AuthPayload {
+  accessToken: String!
+  refreshToken: String!
+  tokenType: String!
+  expiresIn: Int!
+  user: AuthUser!
+}
+
+type AuthUser {
+  id: String!
+  email: String!
+  name: String
+  role: String!
+  status: String!
+}
+
+type SignOutPayload {
+  success: Boolean!
 }
 
 type ForgotPasswordPayload {
@@ -310,16 +358,20 @@ type ResetPasswordPayload {
   success: Boolean!
 }
 
+# User type (returned by me, users, etc.)
 type User {
   id: ID!
   email: String!
   name: String
-  role: String
-  status: String
+  role: String!
+  status: String!
   createdAt: DateTime!
-  updatedAt: DateTime!
+  tenantName: String         # Via DataLoader
 }
 ```
+
+> **Важно:** Tenant определяется через HTTP header `X-Tenant-Slug`, а не через аргумент мутации.
+> Schema защищена лимитами: `depth=12`, `complexity=600`.
 
 ---
 
@@ -765,7 +817,7 @@ view! {
 
 ## 🚀 Backend Requirements
 
-### Нужно реализовать на backend:
+### Нужно реализовать на backend
 
 **Файл:** `apps/server/src/graphql/mutations.rs`
 
@@ -853,25 +905,126 @@ async fn current_user(&self, ctx: &Context<'_>) -> Result<User> {
 
 ---
 
+## 🔐 Persisted Queries
+
+Для критических admin-операций используется механизм Persisted Queries.
+Сервер проверяет наличие `sha256Hash` в `extensions.persistedQuery` для операций `Users` и `User`.
+
+**Файл whitelist:** `apps/server/src/graphql/persisted.rs`
+
+**Зарегистрированные хэши (Leptos admin):**
+
+| Операция | Хэш | Источник |
+|----------|------|----------|
+| `Users` | `ff1e132e...` | `apps/admin/src/api/queries.rs` |
+| `User` | `85f7f7ba...` | `apps/admin/src/api/queries.rs` |
+
+**Как это работает:**
+
+```rust
+// Leptos admin отправляет persisted query hash
+let request = GraphqlRequest::new(query, Some(variables))
+    .with_extensions(persisted_query_extension(sha256_hash));
+```
+
+Сервер в `graphql_handler` проверяет:
+
+1. Является ли операция критической (`Users` / `User`)
+2. Содержит ли запрос валидный persisted query hash
+3. Если хэш отсутствует или невалиден — возвращает ошибку
+
+**Добавление нового хэша:**
+
+1. Вычислить SHA-256 от GraphQL query строки
+2. Добавить в `ADMIN_PERSISTED_QUERY_HASHES` в `persisted.rs`
+3. Использовать `request_with_persisted()` или `with_extensions()` на клиенте
+
+---
+
+## 🌐 Next.js Admin — Auth Flow
+
+**Приложение:** `apps/next-admin`
+
+**Стек:** Next.js + NextAuth (Credentials provider) + TypeScript
+
+**Ключевые файлы:**
+
+- `src/auth.ts` — конфигурация NextAuth
+- `src/lib/auth-api.ts` — GraphQL auth mutations
+- `src/lib/graphql.ts` — HTTP-клиент для GraphQL
+- `src/middleware.ts` — защита маршрутов
+- `src/types/next-auth.d.ts` — расширение типов NextAuth
+
+### Auth Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              Next.js Admin (apps/next-admin)                  │
+├─────────────────────────────────────────────────────────────┤
+│  1. User enters email, password, tenantSlug                  │
+│  2. Next.js calls NextAuth signIn('credentials', ...)        │
+│     ↓                                                         │
+│  3. authorize() → calls auth-api.ts signIn()                 │
+│     ↓                                                         │
+│  4. graphqlRequest() sends:                                  │
+│     POST /api/graphql                                        │
+│     Headers: X-Tenant-Slug: <tenantSlug>                     │
+│     Body: mutation SignIn($input: SignInInput!) { ... }       │
+│     ↓                                                         │
+│  5. Server returns AuthPayload:                              │
+│     { accessToken, refreshToken, user { ... } }              │
+│     ↓                                                         │
+│  6. authorize() returns user object with rustokToken         │
+│  7. NextAuth JWT callback saves token + role                 │
+│  8. Session callback exposes data via useSession()           │
+│  9. middleware.ts redirects unauthenticated → /auth/sign-in  │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### GraphQL Client
+
+```typescript
+// apps/next-admin/src/lib/graphql.ts
+export async function graphqlRequest<V, T>(
+  query: string,
+  variables?: V,
+  token?: string | null,    // → Authorization: Bearer <token>
+  tenantSlug?: string | null // → X-Tenant-Slug: <slug>
+): Promise<T>
+```
+
+### Данные из GraphQL
+
+Next.js admin использует тот же GraphQL endpoint `/api/graphql` что и Leptos admin.
+Все данные (пользователи, dashboard, модули) запрашиваются через GraphQL.
+
+```typescript
+// Пример: получение текущего пользователя
+const CURRENT_USER_QUERY = `
+query Me {
+  me {
+    id email name role status
+  }
+}
+`;
+```
+
+---
+
 ## 📊 Summary
 
 | Компонент | Назначение | Статус |
 |-----------|------------|--------|
 | `leptos-graphql` | HTTP transport для GraphQL | ✅ Готов |
-| `leptos-auth` | Auth operations через GraphQL | ✅ Переделан |
-| Backend mutations | signIn, signUp, etc. | ⬜ Нужно реализовать |
-| Backend queries | currentUser | ⬜ Нужно реализовать |
-
-**Next Steps:**
-1. ✅ Удалить REST API код из `leptos-auth` 
-2. ✅ Переписать `leptos-auth/api.rs` на GraphQL
-3. ⬜ Реализовать GraphQL mutations на backend
-4. ⬜ Реализовать GraphQL queries на backend
-5. ⬜ Протестировать login flow
+| `leptos-auth` | Auth operations через GraphQL | ✅ Готов |
+| Backend mutations | signIn, signUp, signOut, refreshToken, forgotPassword, resetPassword | ✅ Реализовано |
+| Backend queries | me, users, dashboardStats, recentActivity | ✅ Реализовано |
+| Next.js `auth-api.ts` | GraphQL auth client для Next.js admin | ✅ Исправлено |
+| Next.js `graphql.ts` | HTTP transport для GraphQL | ✅ Готов |
+| Persisted Queries | Whitelist хэшей для критических операций | ✅ Leptos admin |
 
 ---
 
-**Статус:** ✅ Архитектура задокументирована (GraphQL-only)  
-**Критичность:** 🔥 ВЫСОКАЯ (блокирует аутентификацию)  
-**Блокирует:** Login/Register pages  
-**Требует:** Backend GraphQL mutations implementation
+**Статус:** ✅ Реализовано и задокументировано (GraphQL-only для обеих админок)  
+**Критичность:** ⚡ Архитектурное ядро — все UI-клиенты зависят от GraphQL endpoint

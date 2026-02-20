@@ -1,10 +1,10 @@
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::context::AuthContext;
+use crate::graphql::errors::GraphQLError;
 use rustok_blog::PostService;
-use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use super::types::*;
@@ -22,10 +22,10 @@ impl BlogMutation {
     ) -> Result<Uuid> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = ctx
+        let auth = ctx
             .data::<AuthContext>()
-            .map(|a| a.security_context())
-            .unwrap_or_else(|_| SecurityContext::system());
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let security = auth.security_context();
 
         let service = PostService::new(db.clone(), event_bus.clone());
         let post_id = service
@@ -43,10 +43,10 @@ impl BlogMutation {
     ) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = ctx
+        let auth = ctx
             .data::<AuthContext>()
-            .map(|a| a.security_context())
-            .unwrap_or_else(|_| SecurityContext::system());
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let security = auth.security_context();
 
         let service = PostService::new(db.clone(), event_bus.clone());
 
@@ -64,10 +64,10 @@ impl BlogMutation {
     async fn delete_post(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = ctx
+        let auth = ctx
             .data::<AuthContext>()
-            .map(|a| a.security_context())
-            .unwrap_or_else(|_| SecurityContext::system());
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let security = auth.security_context();
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service.delete_post(id, security).await?;
