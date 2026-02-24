@@ -96,6 +96,7 @@
   "register.inviteTitle": "Есть приглашение?",
   "register.languageLabel": "Язык",
   "register.loginLink": "Назад ко входу",
+  "register.nameLabel": "Полное имя",
   "register.passwordHint": "Используйте 10+ символов, регистр, цифры и спецсимволы.",
   "register.passwordLabel": "Пароль",
   "register.resetLink": "Сбросить пароль",

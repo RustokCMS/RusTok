@@ -96,6 +96,7 @@
   "register.inviteTitle": "Have an invite?",
   "register.languageLabel": "Language",
   "register.loginLink": "Back to sign in",
+  "register.nameLabel": "Full name",
   "register.passwordHint": "Use 10+ characters with upper/lowercase, numbers, and symbols.",
   "register.passwordLabel": "Password",
   "register.resetLink": "Reset password",

@@ -158,12 +158,17 @@ export default function UserDetailView({ userId }: { userId: string }) {
               </div>
               <div>
                 <Label htmlFor='edit-role'>Role</Label>
-                <Input
+                <select
                   id='edit-role'
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value)}
-                  placeholder='ADMIN, MANAGER, CUSTOMER'
-                />
+                  className='border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none'
+                >
+                  <option value='CUSTOMER'>Customer</option>
+                  <option value='MANAGER'>Manager</option>
+                  <option value='ADMIN'>Admin</option>
+                  <option value='SUPER_ADMIN'>Super Admin</option>
+                </select>
               </div>
             </div>
           ) : (

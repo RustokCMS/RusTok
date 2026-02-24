@@ -4,7 +4,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
-use crate::graphql::types::{CreateUserInput, TenantModule, UpdateUserInput, User};
+use crate::graphql::types::{CreateUserInput, DeleteUserPayload, TenantModule, UpdateUserInput, User};
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
 use crate::services::module_lifecycle::{ModuleLifecycleService, ToggleModuleError};
@@ -176,6 +176,39 @@ impl RootMutation {
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
         Ok(User::from(&user))
+    }
+
+    async fn delete_user(
+        &self,
+        ctx: &Context<'_>,
+        id: uuid::Uuid,
+    ) -> Result<DeleteUserPayload> {
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+
+        if !rustok_core::Rbac::has_permission(&auth.role, &rustok_core::Permission::USERS_MANAGE) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: users:manage required",
+            ));
+        }
+
+        let user = users::Entity::find_by_id(id)
+            .filter(UsersColumn::TenantId.eq(tenant.id))
+            .one(&app_ctx.db)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .ok_or_else(|| FieldError::new("User not found"))?;
+
+        let model: users::ActiveModel = user.into();
+        model
+            .delete(&app_ctx.db)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        Ok(DeleteUserPayload { success: true })
     }
 
     async fn toggle_module(
