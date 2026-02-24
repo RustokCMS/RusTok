@@ -1,5 +1,6 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
@@ -7,10 +8,30 @@ use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
 use serde::{Deserialize, Serialize};
 
-use crate::api::queries::{USERS_QUERY, USERS_QUERY_HASH};
-use crate::api::{request_with_persisted, ApiError};
+use crate::api::queries::{CREATE_USER_MUTATION, USERS_QUERY, USERS_QUERY_HASH};
+use crate::api::{request, request_with_persisted, ApiError};
 use crate::components::ui::{Button, Input, LanguageToggle, PageHeader};
 use crate::providers::locale::translate;
+
+#[derive(Clone, Debug, Serialize)]
+struct CreateUserVariables {
+    input: CreateUserInput,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct CreateUserInput {
+    email: String,
+    password: String,
+    name: Option<String>,
+    role: Option<String>,
+    status: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct CreateUserResponse {
+    #[serde(rename = "createUser")]
+    create_user: Option<GraphqlUser>,
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct GraphqlUsersResponse {
@@ -224,6 +245,83 @@ pub fn Users() -> impl IntoView {
     let next_page = move |_| set_page.update(|value| *value += 1);
     let previous_page = move |_| set_page.update(|value| *value = (*value - 1).max(1));
 
+    // Create user modal state
+    let (show_create_modal, set_show_create_modal) = signal(false);
+    let (new_email, set_new_email) = signal(String::new());
+    let (new_password, set_new_password) = signal(String::new());
+    let (new_name, set_new_name) = signal(String::new());
+    let (new_role, set_new_role) = signal(String::new());
+    let (new_status, set_new_status) = signal(String::new());
+    let (create_error, set_create_error) = signal(Option::<String>::None);
+    let (is_creating, set_is_creating) = signal(false);
+
+    let open_create_modal = move |_| {
+        set_new_email.set(String::new());
+        set_new_password.set(String::new());
+        set_new_name.set(String::new());
+        set_new_role.set(String::new());
+        set_new_status.set(String::new());
+        set_create_error.set(None);
+        set_show_create_modal.set(true);
+    };
+
+    let close_create_modal = move |_| {
+        set_show_create_modal.set(false);
+    };
+
+    let create_user = {
+        let token = token.clone();
+        let tenant = tenant.clone();
+        let set_refresh_counter = set_refresh_counter.clone();
+        move |_| {
+            let email_val = new_email.get();
+            let password_val = new_password.get();
+            let name_val = new_name.get();
+            let role_val = new_role.get();
+            let status_val = new_status.get();
+            let token_val = token.get();
+            let tenant_val = tenant.get();
+
+            if email_val.is_empty() || password_val.is_empty() {
+                set_create_error.set(Some(translate("users.create.errorRequired").to_string()));
+                return;
+            }
+
+            set_is_creating.set(true);
+            set_create_error.set(None);
+
+            spawn_local(async move {
+                let vars = CreateUserVariables {
+                    input: CreateUserInput {
+                        email: email_val,
+                        password: password_val,
+                        name: if name_val.is_empty() { None } else { Some(name_val) },
+                        role: if role_val.is_empty() { None } else { Some(role_val.to_uppercase()) },
+                        status: if status_val.is_empty() { None } else { Some(status_val.to_uppercase()) },
+                    },
+                };
+                match request::<CreateUserVariables, CreateUserResponse>(
+                    CREATE_USER_MUTATION,
+                    vars,
+                    token_val,
+                    tenant_val,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        set_is_creating.set(false);
+                        set_show_create_modal.set(false);
+                        set_refresh_counter.update(|value| *value += 1);
+                    }
+                    Err(e) => {
+                        set_is_creating.set(false);
+                        set_create_error.set(Some(format!("{:?}", e)));
+                    }
+                }
+            });
+        }
+    };
+
     view! {
         <section class="px-10 py-8">
             <PageHeader
@@ -237,6 +335,9 @@ pub fn Users() -> impl IntoView {
                         class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
                     >
                         {move || translate("users.refresh")}
+                    </Button>
+                    <Button on_click=open_create_modal>
+                        {move || translate("users.create.button")}
                     </Button>
                 }
                 .into_any()
@@ -379,6 +480,77 @@ pub fn Users() -> impl IntoView {
                     }}
                 </Suspense>
             </div>
+
+            // Create User Modal
+            <Show when=move || show_create_modal.get()>
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+                        <h3 class="mb-4 text-lg font-semibold text-slate-900">
+                            {move || translate("users.create.title")}
+                        </h3>
+
+                        <Show when=move || create_error.get().is_some()>
+                            <div class="mb-4 rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
+                                {move || create_error.get().unwrap_or_default()}
+                            </div>
+                        </Show>
+
+                        <div class="space-y-4">
+                            <Input
+                                value=new_email
+                                set_value=set_new_email
+                                placeholder="admin@rustok.io"
+                                label=move || translate("users.create.emailLabel")
+                            />
+                            <Input
+                                value=new_name
+                                set_value=set_new_name
+                                placeholder="John Doe"
+                                label=move || translate("users.create.nameLabel")
+                            />
+                            <Input
+                                value=new_password
+                                set_value=set_new_password
+                                placeholder="••••••••"
+                                type_="password"
+                                label=move || translate("users.create.passwordLabel")
+                            />
+                            <Input
+                                value=new_role
+                                set_value=set_new_role
+                                placeholder="ADMIN, MANAGER, CUSTOMER"
+                                label=move || translate("users.create.roleLabel")
+                            />
+                            <Input
+                                value=new_status
+                                set_value=set_new_status
+                                placeholder="ACTIVE, INACTIVE"
+                                label=move || translate("users.create.statusLabel")
+                            />
+                        </div>
+
+                        <div class="mt-6 flex gap-3">
+                            <Button
+                                on_click=create_user.clone()
+                                disabled=is_creating.into()
+                                class="flex-1"
+                            >
+                                {move || if is_creating.get() {
+                                    translate("users.create.creating").to_string()
+                                } else {
+                                    translate("users.create.submit").to_string()
+                                }}
+                            </Button>
+                            <Button
+                                on_click=close_create_modal
+                                class="border border-slate-200 bg-transparent text-slate-600 hover:bg-slate-50"
+                            >
+                                {move || translate("users.create.cancel")}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Show>
         </section>
     }
 }
