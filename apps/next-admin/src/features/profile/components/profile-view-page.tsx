@@ -1,11 +1,85 @@
 'use client';
 import PageContainer from '@/components/layout/page-container';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { graphqlRequest } from '@/lib/graphql';
 import { useSession } from 'next-auth/react';
+import { useState } from 'react';
+import { toast } from 'sonner';
+
+const UPDATE_PROFILE_MUTATION = `
+mutation UpdateProfile($input: UpdateProfileInput!) {
+  updateProfile(input: $input) {
+    id email name role status
+  }
+}`;
+
+const CHANGE_PASSWORD_MUTATION = `
+mutation ChangePassword($input: ChangePasswordInput!) {
+  changePassword(input: $input) {
+    success
+  }
+}`;
 
 export default function ProfileViewPage() {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const user = session?.user;
+  const token = user?.rustokToken;
+  const tenantSlug = user?.tenantSlug;
+
+  const [name, setName] = useState(user?.name ?? '');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    setIsSavingProfile(true);
+    try {
+      await graphqlRequest<object, unknown>(
+        UPDATE_PROFILE_MUTATION,
+        { input: { name: name.trim() || null } },
+        token,
+        tenantSlug
+      );
+      await update({ name: name.trim() || undefined });
+      toast.success('Profile updated');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update profile');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    if (!currentPassword || !newPassword) {
+      toast.error('Both fields are required');
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      await graphqlRequest<object, unknown>(
+        CHANGE_PASSWORD_MUTATION,
+        { input: { currentPassword, newPassword } },
+        token,
+        tenantSlug
+      );
+      setCurrentPassword('');
+      setNewPassword('');
+      toast.success('Password changed. You will need to sign in again.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to change password');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   return (
     <PageContainer>
@@ -14,21 +88,78 @@ export default function ProfileViewPage() {
         {user ? (
           <div className='grid gap-4 md:grid-cols-2'>
             <Card>
-              <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
-              <CardContent className='space-y-3'>
-                {[
-                  { label: 'Name', value: user.name || '—' },
-                  { label: 'Email', value: user.email },
-                  { label: 'Role', value: user.role },
-                  { label: 'Status', value: user.status },
-                  { label: 'Workspace', value: user.tenantSlug || '—' },
-                  { label: 'ID', value: <span className='font-mono text-xs'>{user.id}</span> }
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className='text-muted-foreground text-xs font-medium uppercase tracking-wider'>{label}</p>
-                    <div className='mt-1 text-sm font-medium'>{value}</div>
+              <CardHeader>
+                <CardTitle>Account Information</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSaveProfile} className='space-y-4'>
+                  <div>
+                    <Label htmlFor='profile-name'>Name</Label>
+                    <Input
+                      id='profile-name'
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder='Your name'
+                      disabled={isSavingProfile}
+                    />
                   </div>
-                ))}
+                  <div>
+                    <p className='text-muted-foreground text-xs font-medium uppercase tracking-wider'>
+                      Email
+                    </p>
+                    <p className='mt-1 text-sm font-medium'>{user.email}</p>
+                  </div>
+                  <div>
+                    <p className='text-muted-foreground text-xs font-medium uppercase tracking-wider'>
+                      Role
+                    </p>
+                    <p className='mt-1 text-sm font-medium'>{user.role}</p>
+                  </div>
+                  <div>
+                    <p className='text-muted-foreground text-xs font-medium uppercase tracking-wider'>
+                      Workspace
+                    </p>
+                    <p className='mt-1 text-sm font-medium'>{user.tenantSlug || '—'}</p>
+                  </div>
+                  <Button type='submit' disabled={isSavingProfile}>
+                    {isSavingProfile ? 'Saving...' : 'Save changes'}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Change Password</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleChangePassword} className='space-y-4'>
+                  <div>
+                    <Label htmlFor='current-password'>Current Password</Label>
+                    <Input
+                      id='current-password'
+                      type='password'
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder='••••••••'
+                      disabled={isChangingPassword}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor='new-password'>New Password</Label>
+                    <Input
+                      id='new-password'
+                      type='password'
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder='••••••••'
+                      disabled={isChangingPassword}
+                    />
+                  </div>
+                  <Button type='submit' disabled={isChangingPassword}>
+                    {isChangingPassword ? 'Updating...' : 'Update password'}
+                  </Button>
+                </form>
               </CardContent>
             </Card>
           </div>

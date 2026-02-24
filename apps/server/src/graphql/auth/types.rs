@@ -63,3 +63,19 @@ pub struct ForgotPasswordPayload {
 pub struct ResetPasswordPayload {
     pub success: bool,
 }
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateProfileInput {
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct ChangePasswordInput {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct ChangePasswordPayload {
+    pub success: bool,
+}

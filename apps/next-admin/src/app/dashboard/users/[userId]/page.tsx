@@ -7,13 +7,14 @@ export const metadata: Metadata = {
   description: 'View user details'
 };
 
-export default function UserDetailPage({ params }: { params: { userId: string } }) {
+export default async function UserDetailPage({ params }: { params: Promise<{ userId: string }> }) {
+  const { userId } = await params;
   return (
     <PageContainer
       pageTitle='User Detail'
       pageDescription='View and manage user information'
     >
-      <UserDetailView userId={params.userId} />
+      <UserDetailView userId={userId} />
     </PageContainer>
   );
 }

@@ -13,6 +13,8 @@ use crate::models::{sessions, users};
 use crate::services::auth::AuthService;
 use crate::services::email::{EmailService, PasswordResetEmail, PasswordResetEmailSender};
 
+use crate::context::AuthContext;
+
 use super::types::*;
 
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
@@ -278,6 +280,94 @@ impl AuthMutation {
             success: true,
             message: "If the email exists, a password reset link has been sent".to_string(),
         })
+    }
+
+    /// Update current user profile (name)
+    async fn update_profile(
+        &self,
+        ctx: &Context<'_>,
+        input: UpdateProfileInput,
+    ) -> Result<AuthUser> {
+        let app_ctx = ctx.data::<AppContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+
+        let user = users::Entity::find_by_id(auth.user_id)
+            .filter(
+                crate::models::_entities::users::Column::TenantId.eq(tenant.id),
+            )
+            .one(&app_ctx.db)
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
+            .ok_or_else(|| FieldError::new("User not found"))?;
+
+        let mut model: users::ActiveModel = user.into();
+        if let Some(name) = input.name {
+            model.name = Set(if name.trim().is_empty() { None } else { Some(name.trim().to_string()) });
+        }
+
+        let updated = model
+            .update(&app_ctx.db)
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        Ok(AuthUser {
+            id: updated.id.to_string(),
+            email: updated.email,
+            name: updated.name,
+            role: updated.role.to_string(),
+            status: updated.status.to_string(),
+        })
+    }
+
+    /// Change password for the currently authenticated user
+    async fn change_password(
+        &self,
+        ctx: &Context<'_>,
+        input: ChangePasswordInput,
+    ) -> Result<ChangePasswordPayload> {
+        let app_ctx = ctx.data::<AppContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+
+        let user = users::Entity::find_by_id(auth.user_id)
+            .filter(
+                crate::models::_entities::users::Column::TenantId.eq(tenant.id),
+            )
+            .one(&app_ctx.db)
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
+            .ok_or_else(|| FieldError::new("User not found"))?;
+
+        if !verify_password(&input.current_password, &user.password_hash)
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
+        {
+            return Err(FieldError::new("Current password is incorrect"));
+        }
+
+        let new_hash = hash_password(&input.new_password)
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        let user_id = user.id;
+        let mut model: users::ActiveModel = user.into();
+        model.password_hash = Set(new_hash);
+        model
+            .update(&app_ctx.db)
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        sessions::Entity::delete_many()
+            .filter(sessions::Column::TenantId.eq(tenant.id))
+            .filter(sessions::Column::UserId.eq(user_id))
+            .exec(&app_ctx.db)
+            .await
+            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        Ok(ChangePasswordPayload { success: true })
     }
 
     /// Reset password using reset token

@@ -1,5 +1,7 @@
+import { auth } from '@/auth';
 import PageContainer from '@/components/layout/page-container';
 import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import UsersView from '@/features/users/components/users-view';
 
 export const metadata: Metadata = {
@@ -7,7 +9,13 @@ export const metadata: Metadata = {
   description: 'Manage users in your workspace'
 };
 
-export default function UsersPage() {
+export default async function UsersPage() {
+  const session = await auth();
+  const role = session?.user?.role;
+  if (!role || role === 'CUSTOMER') {
+    redirect('/dashboard/overview');
+  }
+
   return (
     <PageContainer
       pageTitle='Users'
