@@ -4,9 +4,5 @@
   "devDependencies": {
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.39"
-  },
-  "scripts": {
-    "tailwind:build": "tailwind-rs -i ./input.css -o ./tailwind.css",
-    "tailwind:watch": "tailwind-rs -i ./input.css -o ./tailwind.css --watch"
   }
 }

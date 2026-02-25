@@ -24,6 +24,10 @@ repository = "https://github.com/oovm/tailwind-rs"
 t = "cargo test"
 p = "cargo publish --allow-dirty"
 
+[[bin]]
+name = "tailwind-rs"
+path = "src/bin/tailwind-rs.rs"
+
 [dependencies.itertools]
 version = "0.14.0"
 
@@ -51,6 +55,9 @@ optional = true
 
 [dependencies.xxhash-rust]
 version = "0.8.6"
+
+[dependencies.walkdir]
+version = "2"
 
 [dev-dependencies]
 

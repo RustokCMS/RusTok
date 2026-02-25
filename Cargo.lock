@@ -7765,7 +7765,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "tailwind-rs",
  "thiserror 2.0.18",
  "uuid",
  "web-sys",
@@ -8100,7 +8099,6 @@ dependencies = [
  "leptos_query",
  "leptos_router",
  "serde",
- "tailwind-rs",
  "tokio",
 ]
 
@@ -9630,7 +9628,7 @@ version = "1.3.2"
 dependencies = [
  "css-color",
  "diagnostic",
- "nom 7.1.3",
+ "nom 8.0.0",
  "parcel_css",
  "tl",
 ]
@@ -9645,6 +9643,7 @@ dependencies = [
  "tailwind-css",
  "tailwind-error",
  "tl",
+ "walkdir",
  "xxhash-rust",
 ]
 

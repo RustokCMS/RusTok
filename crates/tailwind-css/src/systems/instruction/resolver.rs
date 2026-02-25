@@ -122,7 +122,7 @@ impl TailwindInstruction {
             // break catched
             // content catched
             // Typography System Extension
-            ["prose"] => todo!(),
+            ["prose"] => return syntax_error!("prose requires @tailwindcss/typography plugin"),
             // Backgrounds System
             ["bg", rest @ ..] => Self::bg_adaptor(rest, arbitrary)?,
             ["from", rest @ ..] => TailwindFrom::parse(rest, arbitrary)?.boxed(),

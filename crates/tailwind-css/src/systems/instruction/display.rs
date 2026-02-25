@@ -21,7 +21,7 @@ impl TailwindInstance for TailwindInstruction {
                 out += o.attributes(ctx);
             },
             Err(e) => {
-                unimplemented!("{}", e);
+                log::warn!("tailwind-css: unsupported class skipped: {}", e);
             },
         }
         out
