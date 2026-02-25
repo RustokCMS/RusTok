@@ -13,9 +13,6 @@ members = [
 [patch.crates-io]
 tailwind-error = { path = "third_party/patches/tailwind-error" }
 parcel_css = { path = "third_party/patches/parcel_css" }
-tailwind-rs = { path = "crates/tailwind-rs" }
-tailwind-css = { path = "crates/tailwind-css" }
-tailwind-ast = { path = "crates/tailwind-ast" }
 utoipa-swagger-ui-vendored = { path = "crates/utoipa-swagger-ui-vendored" }
 leptos-shadcn-pagination = { path = "crates/leptos-shadcn-pagination" }
 
