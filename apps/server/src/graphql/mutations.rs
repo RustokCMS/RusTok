@@ -240,6 +240,9 @@ impl RootMutation {
         .await
         .map_err(|err| match err {
             ToggleModuleError::UnknownModule => FieldError::new("Unknown module"),
+            ToggleModuleError::CoreModuleCannotBeDisabled(module_slug) => {
+                FieldError::new(format!("Core module cannot be disabled: {}", module_slug))
+            }
             ToggleModuleError::MissingDependencies(missing) => {
                 FieldError::new(format!("Missing module dependencies: {}", missing))
             }

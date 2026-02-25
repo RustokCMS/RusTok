@@ -88,7 +88,6 @@ impl ContentMutation {
             depth: input.depth,
             reply_count: input.reply_count,
             metadata: None,
-            published_at: None, // Need parsing logic if string provided, or fix DTO to accept string
             translations: input.translations.map(|ts| {
                 ts.into_iter()
                     .map(|t| rustok_content::dto::NodeTranslationInput {
@@ -108,6 +107,7 @@ impl ContentMutation {
                     })
                     .collect()
             }),
+            expected_version: None,
         };
 
         let node: rustok_content::dto::NodeResponse =

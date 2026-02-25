@@ -5,7 +5,9 @@ use axum::{
 use chrono::{DateTime, Utc};
 use loco_rs::prelude::*;
 use rustok_outbox::entity::{self, SysEventStatus};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

@@ -1,7 +1,8 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ColumnTrait, Condition, EntityTrait, Expr, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    sea_query::Expr, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use std::collections::HashSet;
 
