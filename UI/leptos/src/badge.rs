@@ -11,6 +11,8 @@ pub fn Badge(
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
+    let on_dismiss = on_dismiss;
+
     let size_cls = match size {
         Size::Sm => "px-1.5 py-0 text-[10px]",
         _ => "px-2.5 py-0.5 text-xs",
@@ -46,13 +48,15 @@ pub fn Badge(
         >
             {children()}
             {move || dismissible.then(|| {
+                let on_dismiss = on_dismiss.clone();
+
                 view! {
                     <button
                         type="button"
                         class="ml-0.5 rounded-full opacity-70 hover:opacity-100 focus:outline-none"
                         aria-label="Dismiss"
                         on:click=move |_| {
-                            if let Some(cb) = on_dismiss.as_ref() {
+                            if let Some(cb) = on_dismiss {
                                 cb.run(());
                             }
                         }
