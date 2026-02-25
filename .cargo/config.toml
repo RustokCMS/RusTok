@@ -92,11 +92,10 @@ build-small = "build --release --workspace -Z build-std=std,panic_abort -Z build
 # Security & Auditing
 # ============================================================================
 
-# Run security audit
-audit = "audit"
+## Security audit is provided by external `cargo-audit` subcommand (`cargo audit`)
 
-# Run all security checks (audit + deny)
-audit-all = "audit && deny check"
+# Run additional security checks (deny)
+audit-all = "deny check"
 
 # Check for outdated dependencies
 outdated = "outdated -R"
@@ -167,7 +166,7 @@ expand = "expand"
 pre-commit = "fmt --all -- --check && clippy --workspace --all-targets -- -D warnings && test --workspace --lib"
 
 # Run pre-push checks locally  
-pre-push = "test --workspace && audit"
+pre-push = "test --workspace"
 
 # ============================================================================
 # XTask - Build Automation
