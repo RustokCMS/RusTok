@@ -32,7 +32,7 @@ sea-orm.workspace = true
 async-graphql = { workspace = true, features = ["dataloader"] }
 serde.workspace = true
 serde_json.workspace = true
-toml = "0.9"
+toml = "1.0"
 uuid.workspace = true
 chrono.workspace = true
 tracing.workspace = true
@@ -60,9 +60,9 @@ sea-orm-migration.workspace = true
 
 [dev-dependencies]
 loco-rs = { workspace = true, features = ["testing"] }
-serial_test = "3.1"
+serial_test = "3.4"
 rustok-test-utils.workspace = true
-tempfile = "3.12"
+tempfile = "3.26"
 
 [package.metadata.cargo-udeps.ignore]
 development = ["serial_test"]
