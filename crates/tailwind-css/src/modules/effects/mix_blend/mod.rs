@@ -21,14 +21,14 @@ impl TailwindBlend {
         Ok(Self { kind })
     }
     /// get class of `<blend-mode>`
-    ///
+    //
     /// - https://developer.mozilla.org/zh-CN/docs/Web/CSS/blend-mode
     #[inline]
     pub fn get_class(&self) -> String {
         self.kind.to_string()
     }
     /// get properties of `<blend-mode>`
-    ///
+    //
     /// - https://developer.mozilla.org/zh-CN/docs/Web/CSS/blend-mode
     #[inline]
     pub fn get_properties(&self) -> &str {

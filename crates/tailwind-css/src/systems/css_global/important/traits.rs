@@ -24,12 +24,12 @@ impl Display for ImportantMap {
 impl AddAssign<Self> for ImportantSet {
     fn add_assign(&mut self, rhs: Self) {
         self.important = rhs.important;
-        self.set.extend(rhs.set.into_iter());
+        self.set.extend(rhs.set);
     }
 }
 
 impl AddAssign<Self> for ImportantMap {
     fn add_assign(&mut self, rhs: Self) {
-        self.map.extend(rhs.map.into_iter());
+        self.map.extend(rhs.map);
     }
 }

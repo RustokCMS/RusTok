@@ -9,7 +9,7 @@ impl Display for TailwindContainer {
         write!(f, "container",)
     }
 }
-/// .container {
+// .container {
 //     width: 100%
 // }
 //

@@ -3,7 +3,7 @@ use super::*;
 mod traits;
 
 /// A css property is used to remove duplicates.
-///
+//
 /// In principle, each css property will only appear once, and the one set later will override the previous one.
 #[derive(Debug, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct CssAttributes {
@@ -15,11 +15,13 @@ pub struct CssAttributes {
 
 impl CssAttributes {
     /// # Arguments
-    ///
+    //
     /// * `key`: css class
     /// * `value`: css property
-    ///
-    /// returns: [`CssAttribute`]
+    //
+    /// # Returns
+///
+/// [`CssAttribute`]
     #[track_caller]
     pub fn insert<K, V>(&mut self, key: K, value: V)
     where
@@ -36,10 +38,12 @@ impl CssAttributes {
     }
 
     /// # Arguments
-    ///
+    //
     /// * `items`:
-    ///
-    /// returns: ()
+    //
+    /// # Returns
+///
+/// ()
     pub fn extend<T>(&mut self, items: T)
     where
         T: IntoIterator<Item = (String, String)>,

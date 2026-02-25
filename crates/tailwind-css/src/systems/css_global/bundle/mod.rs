@@ -3,7 +3,7 @@ use crate::Base62;
 mod traits;
 
 /// A collection of css objects
-///
+//
 /// Separate or merge as needed
 #[derive(Debug, Clone, Default, Ord, PartialOrd, Eq, PartialEq)]
 pub(crate) struct CssBundle {
@@ -75,6 +75,7 @@ impl CssBundle {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Inlined {
     pub class: String,
     pub style: String,

@@ -2,7 +2,7 @@ use super::*;
 
 mod builtin;
 
-///
+//
 #[derive(Clone, Debug, Default)]
 pub struct PaletteSystem {
     inner: HashMap<String, Palette>,

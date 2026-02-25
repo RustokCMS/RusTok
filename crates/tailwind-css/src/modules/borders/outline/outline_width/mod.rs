@@ -47,7 +47,7 @@ impl TailwindOutlineWidth {
             )?;
         Ok(Self { kind })
     }
-    ///
+    //
     pub fn check_valid(mode: &str) -> bool {
         [
             "inherit", "initial", "medium", "revert", "thick", "thin", "unset",

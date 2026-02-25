@@ -2,7 +2,7 @@ use super::*;
 mod builtin;
 
 /// In general, it is a look-up table.
-///
+//
 /// When the color is automatically mixed when the interpolation expression is activated.
 #[derive(Clone, Debug)]
 pub struct Palette {
@@ -14,7 +14,7 @@ pub struct Palette {
 }
 
 impl Palette {
-    ///
+    //
     pub fn get_color(&self, weight: u32) -> Result<Srgb> {
         match self.key_points.get(&weight) {
             Some(s) => Ok(*s),

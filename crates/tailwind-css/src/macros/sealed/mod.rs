@@ -33,13 +33,13 @@ macro_rules! color_instance {
             }
         }
         impl $t {
-            ///
+            //
             pub fn parse(input: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
                 Ok(Self {
                     color: TailwindColor::parse(input, arbitrary)?,
                 })
             }
-            ///
+            //
             pub fn parse_arbitrary(arbitrary: &TailwindArbitrary) -> Result<Self> {
                 Ok(Self {
                     color: TailwindColor::parse_arbitrary(arbitrary)?,

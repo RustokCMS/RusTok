@@ -6,12 +6,11 @@ macro_rules! css_attributes {
     };
     ($($k:expr => $v:expr),* $(,)?) => {{
         let mut css = CssAttributes::default();
-        $(crate::macros::sealed::css_insert!(css, $k, $v);)*
+        $($crate::macros::sealed::css_insert!(css, $k, $v);)*
         css
     }};
 }
 
-///
 #[macro_export]
 macro_rules! attributes_ensure {
     ($f:tt, $field:tt, $t:ty) => {
@@ -25,7 +24,6 @@ macro_rules! attributes_ensure {
     };
 }
 
-///
 #[macro_export]
 macro_rules! syntax_error {
     ($msg:literal $(,)?) => {

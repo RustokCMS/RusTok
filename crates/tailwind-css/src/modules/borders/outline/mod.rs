@@ -41,7 +41,7 @@ fn resolve1(n: &str) -> Result<Box<dyn TailwindInstance>> {
     if n.starts_with(|c: char| c.is_numeric()) {
         return Ok(resolve1_length(&a).or_else(|_| resolve1_unit(&a))?.boxed());
     }
-    if n.starts_with(|c: char| c == '#') {
+    if n.starts_with('#') {
         return Ok(resolve1_color(&a)?.boxed());
     }
     Ok(TailwindOutlineColor::from(TailwindColor::Themed(n.to_string(), 0)).boxed())

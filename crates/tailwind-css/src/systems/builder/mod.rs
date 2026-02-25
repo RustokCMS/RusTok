@@ -8,25 +8,25 @@ mod base62;
 mod methods;
 mod setter;
 
-///
+//
 #[derive(Debug)]
 pub struct TailwindBuilder {
-    ///
+    //
     pub preflight: PreflightSystem,
     /// All dynamic color properties
-    ///
+    //
     /// Only determined when packing
     pub palettes: PaletteSystem,
     /// All dynamic break points
-    ///
+    //
     /// Only determined when packing
     pub screens: BreakPointSystem,
     /// All dynamically registered font properties
-    ///
+    //
     /// Only determined when packing
     pub fonts: FontSystem,
     /// All dynamically registered effect properties
-    ///
+    //
     /// Only determined when packing
     pub effects: EffectSystem,
     pub(crate) objects: BTreeSet<CssInstance>,
@@ -35,13 +35,13 @@ pub struct TailwindBuilder {
 
 impl TailwindBuilder {
     /// ## Trace mode
-    ///
-    ///
+    //
+    //
     /// # Returns
     /// **Not all instructions can be inline, if not, it will fall back to trace mode**
-    ///
+    //
     /// - Anonymous style sheets, which can be placed inside `style` tags
-    ///
+    //
     /// ## Example
     /// - input
     /// ```html
@@ -58,13 +58,13 @@ impl TailwindBuilder {
         Ok(out.as_traced())
     }
     /// ## Inline mode
-    ///
-    ///
+    //
+    //
     /// # Returns
     /// **Not all instructions can be inline, if not, it will fall back to trace mode**
-    ///
+    //
     /// - Anonymous style sheets, which can be placed inside `style` tags
-    ///
+    //
     /// ## Example
     /// - input
     /// ```html
@@ -81,13 +81,13 @@ impl TailwindBuilder {
         Ok(out.as_inlined())
     }
     /// ## Inline mode
-    ///
-    ///
+    //
+    //
     /// # Returns
     /// **Not all instructions can be inline, if not, it will fall back to trace mode**
-    ///
+    //
     /// - Anonymous style sheets, which can be placed inside `style` tags
-    ///
+    //
     /// ## Example
     /// - input
     /// ```html
@@ -104,13 +104,13 @@ impl TailwindBuilder {
         Ok(out.as_scope())
     }
     /// ## Inline mode
-    ///
-    ///
+    //
+    //
     /// # Returns
     /// **Not all instructions can be inline, if not, it will fall back to trace mode**
-    ///
+    //
     /// - Anonymous style sheets, which can be placed inside `style` tags
-    ///
+    //
     /// ## Example
     /// - input
     /// ```html
@@ -127,13 +127,13 @@ impl TailwindBuilder {
         Ok(out.as_dataset())
     }
     /// ## Inline mode
-    ///
-    ///
+    //
+    //
     /// # Returns
     /// **Not all instructions can be inline, if not, it will fall back to trace mode**
-    ///
+    //
     /// - Anonymous style sheets, which can be placed inside `style` tags
-    ///
+    //
     /// ## Example
     /// - input
     /// ```html

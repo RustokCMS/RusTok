@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-use nom::{branch::alt, bytes::complete::tag, sequence::tuple, IResult};
+use nom::{branch::alt, bytes::complete::tag, IResult, Parser};
 use tailwind_error::TailwindError;
 
 use tailwind_ast::parse_f32;

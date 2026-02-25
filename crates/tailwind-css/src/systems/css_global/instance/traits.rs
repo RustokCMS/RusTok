@@ -10,7 +10,7 @@ impl PartialEq<Self> for CssInstance {
 
 impl PartialOrd<Self> for CssInstance {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.selector.partial_cmp(&other.selector)
+        Some(self.cmp(other))
     }
 }
 

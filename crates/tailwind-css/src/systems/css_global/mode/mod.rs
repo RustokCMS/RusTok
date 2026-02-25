@@ -1,10 +1,11 @@
 use super::*;
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum CssInlineMode {
     /// ```html
     /// <img class="tailwind"/>
     /// ```
+    #[default]
     None,
     /// ```html
     /// <img style="key:value"/>
@@ -24,8 +25,3 @@ pub enum CssInlineMode {
     DataValue,
 }
 
-impl Default for CssInlineMode {
-    fn default() -> Self {
-        Self::None
-    }
-}

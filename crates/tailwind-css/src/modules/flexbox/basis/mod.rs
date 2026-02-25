@@ -35,7 +35,7 @@ impl Display for TailwindBasis {
 impl TailwindInstance for TailwindBasis {
     fn attributes(&self, _: &TailwindBuilder) -> CssAttributes {
         let basis = match &self.kind {
-            Basis::Number(n) => format!("{}rem", *n as f32 / 4.0),
+            Basis::Number(n) => format!("{}rem", *n / 4.0),
             Basis::Length(n) => n.get_properties(),
             Basis::Standard(s) => s.to_string(),
             Basis::Arbitrary(s) => s.get_properties(),

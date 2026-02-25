@@ -22,7 +22,7 @@ impl Eq for Box<dyn TailwindInstance> {}
 
 impl PartialOrd for Box<dyn TailwindInstance> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.id().partial_cmp(&other.id())
+        Some(self.cmp(other))
     }
 }
 

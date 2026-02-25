@@ -26,7 +26,7 @@ impl FontSystem {
         self.size.insert(name.into(), size)
     }
     /// Get the named font family,
-    ///
+    //
     /// never fail, fallback to the `serif, sans-serif, monospace`
     #[inline]
     pub fn get_family(&self, name: &str) -> String {

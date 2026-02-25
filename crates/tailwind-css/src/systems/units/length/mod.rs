@@ -27,12 +27,12 @@ impl LengthUnit {
     }
     pub fn parse_length(input: &str) -> Result<Self> {
         let valid = (unit("px"), unit("em"), unit("rem"), unit("%"));
-        let (f, unit) = tuple((parse_f32, alt(valid)))(input)?.1;
+        let (f, unit) = (parse_f32, alt(valid)).parse(input)?.1;
         Ok(Self::Unit(f, unit))
     }
     pub fn parse_angle(input: &str) -> Result<Self> {
         let valid = (unit("deg"), unit("rad"), unit("grad"), unit("turn"));
-        let (f, unit) = tuple((parse_f32, alt(valid)))(input)?.1;
+        let (f, unit) = (parse_f32, alt(valid)).parse(input)?.1;
         Ok(Self::Unit(f, unit))
     }
     pub fn px(x: f32) -> Self {

@@ -7,7 +7,7 @@ pub fn Badge(
     #[prop(default = BadgeVariant::Default)] variant: BadgeVariant,
     #[prop(default = Size::Md)] size: Size,
     #[prop(default = false)] dismissible: bool,
-    #[prop(optional)] on_dismiss: Option<Box<dyn Fn() + 'static>>,
+    #[prop(optional)] on_dismiss: Option<Callback<()>>,
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
@@ -46,14 +46,13 @@ pub fn Badge(
         >
             {children()}
             {move || dismissible.then(|| {
-                let on_dismiss = on_dismiss.as_ref().map(|f| Callback::new(move |_: ()| f()));
                 view! {
                     <button
                         type="button"
                         class="ml-0.5 rounded-full opacity-70 hover:opacity-100 focus:outline-none"
                         aria-label="Dismiss"
                         on:click=move |_| {
-                            if let Some(ref cb) = on_dismiss {
+                            if let Some(cb) = on_dismiss.as_ref() {
                                 cb.run(());
                             }
                         }

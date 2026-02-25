@@ -2,7 +2,7 @@ use super::*;
 
 mod traits;
 
-///
+//
 #[derive(Clone, Debug)]
 pub enum TailwindColor {
     RGB(Srgb),
@@ -66,7 +66,7 @@ impl TailwindColor {
     pub fn parse_arbitrary(arbitrary: &TailwindArbitrary) -> Result<TailwindColor> {
         Ok(Self::RGB(arbitrary.as_color()?))
     }
-    ///
+    //
     #[inline]
     pub fn parse_themed(name: &str, weight: &str) -> Result<TailwindColor> {
         let name = name.to_string();
@@ -74,14 +74,14 @@ impl TailwindColor {
         Ok(Self::Themed(name, weight))
     }
     /// get class of `<color>`
-    ///
+    //
     /// - https://developer.mozilla.org/zh-CN/docs/Web/CSS/color_value
     #[inline]
     pub fn get_class(&self) -> String {
         self.to_string()
     }
     /// get properties of `<color>`
-    ///
+    //
     /// - https://developer.mozilla.org/zh-CN/docs/Web/CSS/color_value
     #[inline]
     pub fn get_properties(&self, ctx: &TailwindBuilder) -> String {
