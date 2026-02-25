@@ -2,7 +2,38 @@
 
 **Ветка:** `claude/review-fsd-admin-design-sOKKf`
 **Статус:** 📋 В работе
-**Охват:** `apps/admin` (Leptos CSR) + `apps/next-admin` (Next.js) + `crates/leptos-ui` + `UI/next/components/`
+**Охват:** `apps/admin` (Leptos CSR) + `apps/next-admin` (Next.js) + `UI/` workspace (leptos + next компоненты) + `crates/leptos-ui`
+
+---
+
+## 0. UI/ Workspace — роль и архитектура
+
+`UI/` — **Internal UI workspace** для параллельных реализаций компонентов с единым контрактом.
+
+```
+UI/
+├── tokens/base.css              ← Общие CSS custom properties --iu-* (цвета, spacing, radius, fonts, shadows)
+├── docs/api-contracts.md        ← Единый API-контракт для всех компонентов (Button, Input, Select …)
+├── leptos/
+│   └── components/              ← Rust/Leptos реализации — БУДУТ ЗДЕСЬ (сейчас пусто)
+└── next/
+    └── components/              ← React/Next.js реализации — БУДУТ ЗДЕСЬ (сейчас пусто)
+```
+
+**Принципы (из `UI/README.md`):**
+- **API-паритет**: Leptos и Next.js компоненты экспортируют одинаковый API (props, варианты, поведение)
+- **Общие токены**: Стили базируются на `UI/tokens/base.css` (`--iu-*` CSS custom properties)
+- **Без дублирования shadcn**: `UI/next/components/` оборачивает shadcn как _reference_, `UI/leptos/components/` — нативная Leptos реализация через `cloud-shuttle/leptos-shadcn-ui`
+
+**Как будет подключаться:**
+
+| Приложение | Leptos-компоненты | Next-компоненты | Токены |
+|-----------|------------------|-----------------|--------|
+| `apps/admin` | `iu-leptos` crate (из `UI/leptos/`) | — | `@import "UI/tokens/base.css"` |
+| `apps/next-admin` | — | `@iu/*` tsconfig alias | `@import "UI/tokens/base.css"` |
+
+**Целевой список компонентов** (из `UI/README.md`):
+Button, Input, Textarea, Select, Checkbox, Switch, Badge/Tag, Table, Modal/Dialog, Toast, Sidebar/Navigation, Header/Topbar
 
 ---
 
@@ -479,45 +510,82 @@ UI/next/components/
 
 ## 5. Фазы реализации
 
-### Фаза 1: Подключение leptos-shadcn-ui + рефакторинг crates/leptos-ui
+### Фаза 1: UI/ workspace — инфраструктура и компоненты
 
-**Принцип:** `apps/next-admin` использует shadcn/ui — `apps/admin` (Leptos) использует `leptos-shadcn-ui` от cloud-shuttle. Это гарантирует паритет компонентов между двумя реализациями.
+#### 1.1 Сделать UI/leptos/ Rust-crate (iu-leptos)
+
+`UI/leptos/` становится полноценным Rust crate в workspace. Компоненты живут в `UI/leptos/components/*.rs`, подключены через `mod` в `UI/leptos/src/lib.rs`.
 
 **Задачи:**
-- [ ] Добавить `leptos-shadcn-ui` (или отдельные crates) в workspace `Cargo.toml` — секция `[workspace.dependencies]`
-- [ ] Добавить нужные shadcn-crates в `apps/admin/Cargo.toml`
-- [ ] Рефакторить `crates/leptos-ui/src/lib.rs` — re-export из leptos-shadcn-ui
-- [ ] Оставить `crates/leptos-ui/src/spinner.rs` — кастомный Spinner (нет в shadcn)
-- [ ] Удалить кастомные реализации button/input/badge/card/label/separator из leptos-ui (заменены shadcn)
-- [ ] Подключить `UI/tokens/base.css` в `apps/admin/index.html` или `apps/admin/src/styles.css`
+- [ ] Создать `UI/leptos/Cargo.toml` — crate name `iu-leptos`, `crate-type = ["cdylib", "rlib"]`
+- [ ] Добавить зависимости: `leptos`, `leptos-shadcn-ui` (или `leptos-shadcn-button` и т.д.)
+- [ ] Создать `UI/leptos/src/lib.rs` — точка входа, `mod` на файлы в `components/`
+- [ ] Добавить `"UI/leptos"` в `members` корневого `Cargo.toml`
+- [ ] Добавить `iu-leptos = { path = "UI/leptos" }` в `[workspace.dependencies]`
+- [ ] Добавить `leptos-shadcn-ui` в `[workspace.dependencies]`
 
-**Коммит:** `feat(leptos-ui): migrate to cloud-shuttle/leptos-shadcn-ui for shadcn parity`
+**Коммит:** `feat(ui/workspace): register UI/leptos as iu-leptos Rust crate`
+
+#### 1.2 Реализовать компоненты Leptos в UI/leptos/components/
+
+По контракту из `UI/docs/api-contracts.md`, базируясь на `leptos-shadcn-ui`:
+
+| Файл | Компонент | Ключевые props |
+|------|----------|---------------|
+| `button.rs` | `Button` | variant, size, disabled, loading, leftIcon/rightIcon |
+| `input.rs` | `Input` | size, disabled, invalid, prefix/suffix |
+| `textarea.rs` | `Textarea` | size, disabled, invalid, rows |
+| `select.rs` | `Select` | size, disabled, invalid, options, placeholder |
+| `checkbox.rs` | `Checkbox` | checked (Signal), indeterminate, disabled |
+| `switch.rs` | `Switch` | checked (Signal), disabled, size: sm\|md |
+| `badge.rs` | `Badge` | variant, size, dismissible |
+
+Все компоненты используют `--iu-*` CSS-переменные из `UI/tokens/base.css`.
+
+**Коммит:** `feat(ui/leptos): implement Button, Input, Textarea, Select, Checkbox, Switch, Badge`
+
+#### 1.3 Рефакторинг crates/leptos-ui → wrapper над iu-leptos
+
+- [ ] Добавить `iu-leptos` как зависимость в `crates/leptos-ui/Cargo.toml`
+- [ ] Заменить `src/lib.rs` на `pub use iu_leptos::*;` + кастомный `Spinner`
+- [ ] Удалить `src/{button,input,badge,card,label,separator}.rs` (заменены)
+
+**Коммит:** `refactor(leptos-ui): become thin re-export wrapper over iu-leptos`
+
+#### 1.4 Реализовать компоненты Next.js в UI/next/components/
+
+Thin wrappers над shadcn/ui (shadcn как reference, не дублирование):
+
+| Файл | Обёртка | Ключевые props |
+|------|--------|---------------|
+| `Button.tsx` | shadcn `Button` | variant, size, disabled, loading, leftIcon/rightIcon |
+| `Input.tsx` | shadcn `Input` | size, disabled, invalid, prefix/suffix |
+| `Textarea.tsx` | shadcn `Textarea` | size, disabled, invalid, rows |
+| `Select.tsx` | shadcn `Select` | size, disabled, invalid, options, placeholder |
+| `Checkbox.tsx` | shadcn `Checkbox` | checked, indeterminate, disabled |
+| `Switch.tsx` | shadcn `Switch` | checked, disabled, size |
+| `Badge.tsx` | shadcn `Badge` | variant, size, dismissible |
+| `Spinner.tsx` | кастомный | size: sm\|md\|lg |
+| `index.ts` | barrel export | — |
+
+**Коммит:** `feat(ui/next): implement IU component wrappers in UI/next/components/`
+
+#### 1.5 Подключить токены и path alias
+
+- [ ] Добавить `@import "path/to/UI/tokens/base.css"` в CSS entry точку `apps/admin`
+- [ ] Добавить `@import "../../../UI/tokens/base.css"` в `apps/next-admin/src/styles/globals.css`
+- [ ] Добавить в `apps/next-admin/tsconfig.json`:
+  ```json
+  "@iu/*": ["../../UI/next/components/*"]
+  ```
+
+**Коммит:** `feat(ui): connect shared tokens and @iu/* path alias to both admin apps`
 
 ---
 
-### Фаза 2: UI/next/components/ — Next.js UI library
+### Фаза 2: FSD-реструктуризация apps/admin (Leptos)
 
-**Задачи:**
-- [ ] Создать `UI/next/components/Button.tsx`
-- [ ] Создать `UI/next/components/Input.tsx`
-- [ ] Создать `UI/next/components/Textarea.tsx`
-- [ ] Создать `UI/next/components/Select.tsx`
-- [ ] Создать `UI/next/components/Checkbox.tsx`
-- [ ] Создать `UI/next/components/Switch.tsx`
-- [ ] Создать `UI/next/components/Badge.tsx`
-- [ ] Создать `UI/next/components/Avatar.tsx`
-- [ ] Создать `UI/next/components/Skeleton.tsx`
-- [ ] Создать `UI/next/components/Spinner.tsx`
-- [ ] Создать `UI/next/components/index.ts` — barrel export
-- [ ] Подключить `UI/tokens/base.css` в `apps/next-admin/src/styles/globals.css`
-
-**Коммит:** `feat(ui): implement Next.js UI component library in UI/next/components/`
-
----
-
-### Фаза 3: FSD-реструктуризация apps/admin (Leptos)
-
-#### 3.1 Создать shared/ слой
+#### 2.1 Создать shared/ слой
 
 - [ ] Создать `src/shared/mod.rs`
 - [ ] Переместить `src/api/` → `src/shared/api/` (mod.rs + queries.rs)
@@ -529,7 +597,7 @@ UI/next/components/
 
 **Коммит:** `refactor(admin/leptos): extract shared/ FSD layer`
 
-#### 3.2 Создать entities/ слой
+#### 2.2 Создать entities/ слой
 
 - [ ] Создать `src/entities/mod.rs`
 - [ ] Создать `src/entities/user/mod.rs` + `model.rs` (User, UserRole, UserStatus)
@@ -539,7 +607,7 @@ UI/next/components/
 
 **Коммит:** `feat(admin/leptos): add entities/ FSD layer (user, product, tenant)`
 
-#### 3.3 Создать widgets/ слой
+#### 2.3 Создать widgets/ слой
 
 - [ ] Создать `src/widgets/mod.rs`
 - [ ] Создать `src/widgets/app_shell/mod.rs`
@@ -551,7 +619,7 @@ UI/next/components/
 
 **Коммит:** `refactor(admin/leptos): extract widgets/ FSD layer`
 
-#### 3.4 Создать features/ слой (отдельный от components/)
+#### 2.4 Создать features/ слой (отдельный от components/)
 
 - [ ] Создать `src/features/mod.rs`
 - [ ] Переместить `src/components/features/auth/` → `src/features/auth/`
@@ -560,7 +628,7 @@ UI/next/components/
 
 **Коммит:** `refactor(admin/leptos): extract features/ FSD layer`
 
-#### 3.5 Создать app/ слой
+#### 2.5 Создать app/ слой
 
 - [ ] Создать `src/app/mod.rs`
 - [ ] Создать `src/app/router.rs` — компонент `App` из `src/app.rs` (без изменений логики)
@@ -570,7 +638,7 @@ UI/next/components/
 
 **Коммит:** `refactor(admin/leptos): restructure app/ FSD layer`
 
-#### 3.6 Обновить lib.rs и удалить старые пути
+#### 2.6 Обновить lib.rs и удалить старые пути
 
 - [ ] Обновить `src/lib.rs` — новые mod-объявления
 - [ ] Удалить `src/components/` (весь каталог — перемещён в widgets/, features/, shared/)
@@ -584,9 +652,9 @@ UI/next/components/
 
 ---
 
-### Фаза 4: FSD-реструктуризация apps/next-admin (Next.js)
+### Фаза 3: FSD-реструктуризация apps/next-admin (Next.js)
 
-#### 4.1 Создать shared/ слой
+#### 3.1 Создать shared/ слой
 
 - [ ] Создать `src/shared/` директорию
 - [ ] Создать `src/shared/api/` — переместить `lib/graphql.ts`, `lib/auth-api.ts`
@@ -602,7 +670,7 @@ UI/next/components/
 
 **Коммит:** `refactor(admin/next): extract shared/ FSD layer`
 
-#### 4.2 Создать entities/ слой
+#### 3.2 Создать entities/ слой
 
 - [ ] Создать `src/entities/user/model.ts` — User, UserRole, UserStatus типы (из types/index.ts)
 - [ ] Создать `src/entities/user/ui/user-card.tsx` — компонент карточки
@@ -617,7 +685,7 @@ UI/next/components/
 
 **Коммит:** `feat(admin/next): add entities/ FSD layer (user, product, tenant)`
 
-#### 4.3 Создать widgets/ слой
+#### 3.3 Создать widgets/ слой
 
 - [ ] Создать `src/widgets/app-shell/` — переместить из `components/layout/`, `components/nav-*.tsx`, `components/org-switcher.tsx`
 - [ ] Создать `src/widgets/command-palette/` — переместить из `components/kbar/`
@@ -628,7 +696,7 @@ UI/next/components/
 
 **Коммит:** `refactor(admin/next): extract widgets/ FSD layer`
 
-#### 4.4 Обновить импорты и верифицировать
+#### 3.4 Обновить импорты и верифицировать
 
 - [ ] Обновить все импорты в `src/app/**` — использовать `@/shared/*`, `@/entities/*`, `@/widgets/*`
 - [ ] Обновить все импорты в `src/features/**` — использовать `@/shared/*`, `@/entities/*`, `@/widgets/*`
