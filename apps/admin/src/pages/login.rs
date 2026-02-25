@@ -18,7 +18,7 @@ pub fn Login() -> impl IntoView {
 
     let on_submit = move |_| {
         if tenant.get().is_empty() || email.get().is_empty() || password.get().is_empty() {
-            set_error.set(Some(translate("login.errorRequired").to_string()));
+            set_error.set(Some(translate("auth.errorRequired").to_string()));
             return;
         }
 
@@ -48,16 +48,16 @@ pub fn Login() -> impl IntoView {
         <section class="grid min-h-screen grid-cols-1 lg:grid-cols-[1.2fr_1fr]">
             <aside class="flex flex-col justify-center gap-6 bg-[radial-gradient(circle_at_top_left,#1e3a8a,#0f172a)] p-12 text-white lg:p-16">
                 <span class="inline-flex w-fit items-center rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/80">
-                    {move || translate("login.badge")}
+                    {move || translate("auth.badge")}
                 </span>
-                <h1 class="text-4xl font-semibold">{move || translate("login.heroTitle")}</h1>
-                <p class="text-lg text-white/80">{move || translate("login.heroSubtitle")}</p>
+                <h1 class="text-4xl font-semibold">{move || translate("auth.heroTitle")}</h1>
+                <p class="text-lg text-white/80">{move || translate("auth.heroSubtitle")}</p>
                 <div class="grid gap-2">
                     <p class="text-sm font-semibold">
-                        {move || translate("login.heroListTitle")}
+                        {move || translate("auth.heroListTitle")}
                     </p>
                     <p class="text-sm text-white/75">
-                        {move || translate("login.heroListSubtitle")}
+                        {move || translate("auth.heroListSubtitle")}
                     </p>
                 </div>
             </aside>
@@ -65,14 +65,14 @@ pub fn Login() -> impl IntoView {
                 <div class="flex flex-col gap-5 rounded-3xl bg-white p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
                     <div>
                         <h2 class="text-2xl font-semibold">
-                            {move || translate("login.title")}
+                            {move || translate("auth.title")}
                         </h2>
                         <p class="text-slate-500">
-                            {move || translate("login.subtitle")}
+                            {move || translate("auth.subtitle")}
                         </p>
                     </div>
                     <div class="flex items-center justify-between gap-3 text-sm text-slate-600">
-                        <span>{move || translate("login.languageLabel")}</span>
+                        <span>{move || translate("auth.languageLabel")}</span>
                         <LanguageToggle />
                     </div>
                     <Show when=move || error.get().is_some()>
@@ -84,30 +84,30 @@ pub fn Login() -> impl IntoView {
                         value=tenant
                         set_value=set_tenant
                         placeholder="demo"
-                        label=move || translate("login.tenantLabel")
+                        label=move || translate("auth.tenantLabel")
                     />
                     <Input
                         value=email
                         set_value=set_email
                         placeholder="admin@rustok.io"
-                        label=move || translate("login.emailLabel")
+                        label=move || translate("auth.emailLabel")
                     />
                     <Input
                         value=password
                         set_value=set_password
                         placeholder="••••••••"
                         type_="password"
-                        label=move || translate("login.passwordLabel")
+                        label=move || translate("auth.passwordLabel")
                     />
                     <Button on_click=on_submit class="w-full">
-                        {move || translate("login.submit")}
+                        {move || translate("auth.submit")}
                     </Button>
                     <div class="flex justify-between gap-3 text-sm">
                         <a class="text-blue-600 hover:underline" href="/register">
-                            {move || translate("login.registerLink")}
+                            {move || translate("auth.registerLink")}
                         </a>
                         <a class="text-blue-600 hover:underline" href="/reset">
-                            {move || translate("login.resetLink")}
+                            {move || translate("auth.resetLink")}
                         </a>
                     </div>
                 </div>

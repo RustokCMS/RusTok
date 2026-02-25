@@ -18,14 +18,22 @@ struct DashboardStatsResponse {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct DashboardStats {
-    #[serde(rename = "totalTenants")]
-    total_tenants: i64,
-    #[serde(rename = "totalModules")]
-    total_modules: i64,
-    #[serde(rename = "avgLatencyMs")]
-    avg_latency_ms: i64,
-    #[serde(rename = "queueDepth")]
-    queue_depth: i64,
+    #[serde(rename = "totalUsers")]
+    total_users: i64,
+    #[serde(rename = "totalPosts")]
+    total_posts: i64,
+    #[serde(rename = "totalOrders")]
+    total_orders: i64,
+    #[serde(rename = "totalRevenue")]
+    total_revenue: i64,
+    #[serde(rename = "usersChange")]
+    users_change: f64,
+    #[serde(rename = "postsChange")]
+    posts_change: f64,
+    #[serde(rename = "ordersChange")]
+    orders_change: f64,
+    #[serde(rename = "revenueChange")]
+    revenue_change: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -137,33 +145,33 @@ pub fn Dashboard() -> impl IntoView {
                         .map(|stats| {
                             vec![
                                 (
-                                    translate("app.dashboard.stats.tenants"),
-                                    stats.total_tenants.to_string(),
-                                    translate("app.dashboard.stats.tenantsHint"),
+                                    translate("app.dashboard.stats.users"),
+                                    stats.total_users.to_string(),
+                                    format!("{:+.1}%", stats.users_change),
                                 ),
                                 (
-                                    translate("app.dashboard.stats.modules"),
-                                    stats.total_modules.to_string(),
-                                    translate("app.dashboard.stats.modulesHint"),
+                                    translate("app.dashboard.stats.posts"),
+                                    stats.total_posts.to_string(),
+                                    format!("{:+.1}%", stats.posts_change),
                                 ),
                                 (
-                                    translate("app.dashboard.stats.latency"),
-                                    format!("{}ms", stats.avg_latency_ms),
-                                    translate("app.dashboard.stats.latencyHint"),
+                                    translate("app.dashboard.stats.orders"),
+                                    stats.total_orders.to_string(),
+                                    format!("{:+.1}%", stats.orders_change),
                                 ),
                                 (
-                                    translate("app.dashboard.stats.queue"),
-                                    stats.queue_depth.to_string(),
-                                    translate("app.dashboard.stats.queueHint"),
+                                    translate("app.dashboard.stats.revenue"),
+                                    format!("${}", stats.total_revenue),
+                                    format!("{:+.1}%", stats.revenue_change),
                                 ),
                             ]
                         })
                         .unwrap_or_else(|| {
                             vec![
-                                (translate("app.dashboard.stats.tenants"), "—".to_string(), translate("app.dashboard.stats.tenantsHint")),
-                                (translate("app.dashboard.stats.modules"), "—".to_string(), translate("app.dashboard.stats.modulesHint")),
-                                (translate("app.dashboard.stats.latency"), "—".to_string(), translate("app.dashboard.stats.latencyHint")),
-                                (translate("app.dashboard.stats.queue"), "—".to_string(), translate("app.dashboard.stats.queueHint")),
+                                (translate("app.dashboard.stats.users"), "—".to_string(), "".to_string()),
+                                (translate("app.dashboard.stats.posts"), "—".to_string(), "".to_string()),
+                                (translate("app.dashboard.stats.orders"), "—".to_string(), "".to_string()),
+                                (translate("app.dashboard.stats.revenue"), "—".to_string(), "".to_string()),
                             ]
                         });
 

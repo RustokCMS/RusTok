@@ -8,6 +8,7 @@ import {
   IconLogout,
   IconSparkles
 } from '@tabler/icons-react';
+import { signOut } from 'next-auth/react';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -98,7 +99,7 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/auth/sign-in' })}>
               <IconLogout className='mr-2 h-4 w-4' />
               Log out
             </DropdownMenuItem>

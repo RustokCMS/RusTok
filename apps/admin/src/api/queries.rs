@@ -10,9 +10,17 @@ pub const USER_DETAILS_QUERY_HASH: &str =
     "85f7f7ba212ab47e951fcf7dbb30bb918e66b88710574a576b0088877653f3b7";
 
 pub const DASHBOARD_STATS_QUERY: &str =
-    "query DashboardStats { dashboardStats { totalTenants totalModules avgLatencyMs queueDepth } }";
+    "query DashboardStats { dashboardStats { totalUsers totalPosts totalOrders totalRevenue usersChange postsChange ordersChange revenueChange } }";
 
 pub const RECENT_ACTIVITY_QUERY: &str = "query RecentActivity($limit: Int!) { recentActivity(limit: $limit) { id type description timestamp user { id name } } }";
 
 pub const RECENT_ACTIVITY_QUERY_HASH: &str =
     "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2";
+
+pub const CREATE_USER_MUTATION: &str = r#"
+mutation CreateUser($input: CreateUserInput!) {
+    createUser(input: $input) {
+        id email name role status createdAt tenantName
+    }
+}
+"#;

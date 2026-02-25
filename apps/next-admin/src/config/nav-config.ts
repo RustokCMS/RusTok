@@ -15,7 +15,8 @@ export const navItems: NavItem[] = [
     icon: 'users',
     shortcut: ['u', 'u'],
     isActive: false,
-    items: []
+    items: [],
+    access: { role: 'manager' }
   },
   {
     title: 'Product',

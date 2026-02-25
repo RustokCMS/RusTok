@@ -131,6 +131,11 @@ pub struct TenantModule {
 }
 
 #[derive(SimpleObject, Clone)]
+pub struct DeleteUserPayload {
+    pub success: bool,
+}
+
+#[derive(SimpleObject, Clone)]
 pub struct ModuleRegistryItem {
     pub module_slug: String,
     pub name: String,
