@@ -1,5 +1,5 @@
-import FormCardSkeleton from '@/components/form-card-skeleton';
-import PageContainer from '@/components/layout/page-container';
+import { FormCardSkeleton } from '@/shared/ui';
+import { PageContainer } from '@/widgets/app-shell';
 import { Suspense } from 'react';
 import ProductViewPage from '@/features/products/components/product-view-page';
 

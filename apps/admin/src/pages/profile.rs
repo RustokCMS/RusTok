@@ -3,9 +3,9 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{request, ApiError};
-use crate::components::ui::{Button, Input, LanguageToggle};
-use crate::providers::locale::translate;
+use crate::shared::api::{request, ApiError};
+use crate::shared::ui::{Button, Input, LanguageToggle};
+use crate::app::providers::locale::translate;
 
 // GraphQL mutation for updating profile
 const UPDATE_PROFILE_MUTATION: &str = r#"

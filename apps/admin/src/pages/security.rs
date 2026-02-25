@@ -3,9 +3,9 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_auth, use_tenant, use_token};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{request, ApiError};
-use crate::components::ui::{Button, Input};
-use crate::providers::locale::translate;
+use crate::shared::api::{request, ApiError};
+use crate::shared::ui::{Button, Input};
+use crate::app::providers::locale::translate;
 
 // GraphQL mutation for changing password
 const CHANGE_PASSWORD_MUTATION: &str = r#"

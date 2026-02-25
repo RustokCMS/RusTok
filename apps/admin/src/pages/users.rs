@@ -8,10 +8,10 @@ use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
 use serde::{Deserialize, Serialize};
 
-use crate::api::queries::{CREATE_USER_MUTATION, USERS_QUERY, USERS_QUERY_HASH};
-use crate::api::{request, request_with_persisted, ApiError};
-use crate::components::ui::{Button, Input, LanguageToggle, PageHeader};
-use crate::providers::locale::translate;
+use crate::shared::api::queries::{CREATE_USER_MUTATION, USERS_QUERY, USERS_QUERY_HASH};
+use crate::shared::api::{request, request_with_persisted, ApiError};
+use crate::shared::ui::{Button, Input, LanguageToggle, PageHeader};
+use crate::app::providers::locale::translate;
 
 #[derive(Clone, Debug, Serialize)]
 struct CreateUserVariables {

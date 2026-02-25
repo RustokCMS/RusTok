@@ -16,6 +16,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
+      "@iu/*": ["../../UI/next/components/*"],
+      "@/shared/*": ["./src/shared/*"],
+      "@/entities/*": ["./src/entities/*"],
+      "@/widgets/*": ["./src/widgets/*"],
       "~/*": ["./public/*"]
     },
     "incremental": true,

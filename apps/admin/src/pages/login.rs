@@ -3,8 +3,8 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::use_auth;
 use leptos_router::hooks::use_navigate;
 
-use crate::components::ui::{Button, Input, LanguageToggle};
-use crate::providers::locale::translate;
+use crate::shared::ui::{Button, Input, LanguageToggle};
+use crate::app::providers::locale::translate;
 
 #[component]
 pub fn Login() -> impl IntoView {

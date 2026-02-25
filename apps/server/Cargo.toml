@@ -56,9 +56,9 @@ lettre = { version = "0.11", default-features = false, features = ["builder", "s
 
 # Loco extras
 migration = { path = "migration" }
+sea-orm-migration.workspace = true
 
 [dev-dependencies]
-sea-orm-migration.workspace = true
 loco-rs = { workspace = true, features = ["testing"] }
 serial_test = "3.1"
 rustok-test-utils.workspace = true

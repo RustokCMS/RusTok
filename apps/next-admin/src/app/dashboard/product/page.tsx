@@ -1,9 +1,9 @@
-import PageContainer from '@/components/layout/page-container';
+import { PageContainer } from '@/widgets/app-shell';
 import { buttonVariants } from '@/components/ui/button';
-import { DataTableSkeleton } from '@/components/ui/table/data-table-skeleton';
+import { DataTableSkeleton } from '@/widgets/data-table';
 import ProductListingPage from '@/features/products/components/product-listing';
-import { searchParamsCache, serialize } from '@/lib/searchparams';
-import { cn } from '@/lib/utils';
+import { searchParamsCache } from '@/shared/lib/searchparams';
+import { cn } from '@/shared/lib/utils';
 import { IconPlus } from '@tabler/icons-react';
 import Link from 'next/link';
 import { SearchParams } from 'nuqs/server';

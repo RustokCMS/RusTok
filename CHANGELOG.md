@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-02-25 (continuation)
+
+#### Cleanup & Documentation
+
+**apps/admin — removed orphaned old-structure files**
+- Deleted `src/api/`, `src/components/`, `src/modules/`, `src/providers/`, `src/i18n.rs`
+- These directories were superseded by the FSD structure (`src/shared/`, `src/widgets/`, etc.) and were no longer compiled
+
+**crates/tailwind-{rs,css,ast} — added README.md**
+- Added `README.md` to all three vendored Tailwind crates (was `Readme.md` only)
+- Covers purpose, responsibilities, entry points, interactions, maintenance instructions
+
+**UI/leptos — expanded README.md**
+- Extended crate README with component index table, interactions, and links
+
+**docs/UI/rust-ui-component-catalog.md — filled with decisions**
+- Replaced all `TODO` entries with `adopt`, `pilot`, or `defer`/`reject` decisions
+- Documents which components have full Leptos ↔ Next.js parity
+- Notes components pending porting (Alert Dialog, Combobox, Skeleton in Leptos)
+
+**docs/index.md — updated map**
+- Added links to `docs/UI/fsd-restructuring-plan.md`, `UI/docs/api-contracts.md`
+- Updated `tailwind-*` links from `Readme.md` to `README.md`
+- Added `iu-leptos` and `UI/next/components` to distributed docs inventory
+
+### Added - 2026-02-25
+
+#### FSD Restructuring — Phases 1.1–1.3 + Phase 3 (next-admin)
+
+**UI/leptos as iu-leptos Rust crate (Phase 1.1–1.2)**
+- Created `UI/leptos/Cargo.toml` — `iu-leptos` crate registered in workspace
+- Implemented 8 Leptos components in `UI/leptos/src/`: `Button`, `Input`, `Textarea`, `Select`, `Checkbox`, `Switch`, `Badge`, `Spinner`
+- All components use `--iu-*` CSS custom properties from `UI/tokens/base.css`
+- Components respect `Size`, `ButtonVariant`, `BadgeVariant` enums with `Default` derive
+- Added `iu-leptos = { path = "UI/leptos" }` to `[workspace.dependencies]`
+- Added `"UI/leptos"` to `[workspace.members]`
+
+**crates/leptos-ui refactored to thin wrapper (Phase 1.3)**
+- `leptos-ui` now re-exports from `iu-leptos` for all base components
+- Removed `src/{button,input,badge,types}.rs` (replaced by iu-leptos)
+- Kept `Card`, `Label`, `Separator` as leptos-ui-specific components
+
+**apps/next-admin FSD restructuring (Phase 3.1–3.4)**
+- Created `src/shared/` layer with 7 sub-slices:
+  - `api/` — `graphql.ts`, `auth-api.ts` barrel re-exports
+  - `lib/` — `utils`, `format`, `parsers`, `searchparams`, `data-table`, plus `themes/` sub-folder
+  - `hooks/` — all 10 hooks barrel re-exports
+  - `types/` — `NavItem`, `BaseFormFieldProps`, `DataTableRowAction` etc.
+  - `config/` — `navItems`, `data-table` config
+  - `constants/` — `data.ts`, `mock-api.ts` re-exports
+  - `ui/` — breadcrumbs, icons, search-input, form-card-skeleton, file-uploader, alert-modal, forms/
+- Created `src/entities/` layer: `user/` (model + UserAvatar + UserCard), `product/` (model + ProductCard), `tenant/` (model)
+- Created `src/widgets/` layer: `app-shell/`, `command-palette/`, `data-table/`, `alert-modal/` with barrel `index.ts`
+- Updated `tsconfig.json` with `@/shared/*`, `@/entities/*`, `@/widgets/*` path aliases
+- Updated key imports in `src/app/**` and `src/features/**` to use FSD canonical paths
+
+#### Alloy Scripting — Registered as Optional RusToKModule (improvement 2.13)
+- **AlloyModule** (`apps/server/src/modules/alloy.rs`)
+  - New `AlloyModule` struct implementing `RusToKModule` with `ModuleKind::Optional`
+  - Declares RBAC permissions for the `Scripts` resource (create/read/update/delete/list/manage)
+  - Delegates `ScriptsMigration` from `alloy-scripting` for unified migration management
+  - Registered in `build_registry()` alongside other optional domain modules
+- **modules.toml** — added `alloy = { crate = "alloy-scripting", ... }` entry
+- **rustok-core permissions** (`crates/rustok-core/src/permissions.rs`)
+  - Added `Scripts` variant to `Resource` enum
+  - Added `SCRIPTS_*` permission constants (create/read/update/delete/list/manage)
+- **Documentation** — updated `docs/architecture/improvement-recommendations.md` (2.13 marked ✅)
+
 ### Added - 2026-02-19
 
 #### Admin Dashboard - Real Activity Data

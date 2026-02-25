@@ -4,11 +4,12 @@ use leptos_auth::hooks::{use_auth, use_current_user, use_tenant, use_token};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
-use crate::api::request;
-use crate::components::ui::{Button, LanguageToggle, PageHeader, StatsCard};
-use crate::modules::{components_for_slot, AdminSlot};
-use crate::providers::locale::translate;
+use crate::shared::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
+use crate::shared::api::request;
+use crate::shared::ui::{Button, LanguageToggle, PageHeader};
+use crate::widgets::stats_card::StatsCard;
+use crate::app::modules::{components_for_slot, AdminSlot};
+use crate::app::providers::locale::translate;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct DashboardStatsResponse {

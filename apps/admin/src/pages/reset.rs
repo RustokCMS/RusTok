@@ -2,8 +2,8 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::use_tenant;
 
-use crate::components::ui::{Button, Input, LanguageToggle};
-use crate::providers::locale::translate;
+use crate::shared::ui::{Button, Input, LanguageToggle};
+use crate::app::providers::locale::translate;
 
 #[component]
 pub fn ResetPassword() -> impl IntoView {
