@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 
-@import '../../../UI/tokens/base.css';
+@import '../../../../UI/tokens/base.css';
 
 @import 'tw-animate-css';
 
