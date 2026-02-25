@@ -12,29 +12,28 @@
 
 ```
 UI/
-├── tokens/base.css              ← Общие CSS custom properties --iu-* (цвета, spacing, radius, fonts, shadows)
+├── tokens/base.css              ← Дополнительные токены --iu-* (spacing, radius, fonts)
 ├── docs/api-contracts.md        ← Единый API-контракт для всех компонентов (Button, Input, Select …)
 ├── leptos/                      ← iu-leptos Rust crate (Cargo.toml, src/)
-│   ├── src/                     ← Button, Input, Textarea, Select, Checkbox, Switch, Badge, Spinner
-│   └── components/              ← deprecated placeholder (реализации в src/)
+│   └── src/                     ← Button, Input, Textarea, Select, Checkbox, Switch, Badge, Spinner
 └── next/
     └── components/              ← React/Next.js IU-обёртки над shadcn (Button, Input, Badge …)
 ```
 
-**Принципы (из `UI/README.md`):**
+**Принципы:**
 - **API-паритет**: Leptos и Next.js компоненты экспортируют одинаковый API (props, варианты, поведение)
-- **Общие токены**: Стили базируются на `UI/tokens/base.css` (`--iu-*` CSS custom properties)
-- **Без дублирования shadcn**: `UI/next/components/` оборачивает shadcn как _reference_, `UI/leptos/components/` — нативная Leptos реализация через `cloud-shuttle/leptos-shadcn-ui`
+- **Общий CSS-слой**: оба приложения используют shadcn-совместимые CSS-переменные (`--background`, `--primary`, `--destructive` и т.д.) и идентичный `tailwind.config.js`. Это буквально те же токены что в shadcn/ui Next.js.
+- **Порт классов, не библиотека**: Leptos-компоненты реализованы прямым портом Tailwind-классов из shadcn/ui — без зависимости от внешних Leptos UI-крейтов.
 
-**Как будет подключаться:**
+**Как подключается:**
 
-| Приложение | Leptos-компоненты | Next-компоненты | Токены |
-|-----------|------------------|-----------------|--------|
-| `apps/admin` | `iu-leptos` crate (из `UI/leptos/`) | — | `@import "UI/tokens/base.css"` |
-| `apps/next-admin` | — | `@iu/*` tsconfig alias | `@import "UI/tokens/base.css"` |
+| Приложение | Leptos-компоненты | Next-компоненты | CSS-токены |
+|-----------|------------------|-----------------|------------|
+| `apps/admin` | `iu-leptos` crate (из `UI/leptos/`) | — | `apps/admin/input.css` — shadcn vars + `UI/tokens/base.css` |
+| `apps/next-admin` | — | `@iu/*` tsconfig alias | `apps/next-admin/src/styles/globals.css` — shadcn vars |
 
-**Целевой список компонентов** (из `UI/README.md`):
-Button, Input, Textarea, Select, Checkbox, Switch, Badge/Tag, Table, Modal/Dialog, Toast, Sidebar/Navigation, Header/Topbar
+**Реализованные компоненты:**
+Button, Input, Textarea, Select, Checkbox, Switch, Badge (6 вариантов), Spinner
 
 ---
 
@@ -178,11 +177,10 @@ src/
 
 | Директория | Содержимое | Статус |
 |-----------|------------|--------|
-| `UI/tokens/base.css` | CSS custom properties `--iu-*` (цвета, spacing, radius, fonts, shadows) | ✅ Определены, но не импортированы ни в одном приложении |
-| `UI/docs/api-contracts.md` | Контракты: Button, Input, Textarea, Select, Checkbox, Switch, Badge/Tag | ✅ Задокументированы |
-| `UI/docs/admin-skeleton.md` | Скелет архитектуры | ✅ Есть |
-| `UI/leptos/components/` | **ПУСТО** (только README) | ❌ Нужно реализовать |
-| `UI/next/components/` | **ПУСТО** (только README) | ❌ Нужно реализовать |
+| `UI/tokens/base.css` | Дополнительные токены `--iu-*` (spacing, radius, fonts) — цветовые токены перенесены в shadcn vars | ✅ Импортирован в `apps/admin/input.css` |
+| `UI/docs/api-contracts.md` | Контракты: Button (6 вариантов), Input, Textarea, Select, Checkbox, Switch, Badge (6 вариантов), Spinner | ✅ Актуально |
+| `UI/leptos/src/` | Button, Input, Textarea, Select, Checkbox, Switch, Badge, Spinner — порт shadcn/ui классов | ✅ Реализовано |
+| `UI/next/components/` | Button, Input, Textarea, Select, Checkbox, Switch, Badge, Avatar, Skeleton, Spinner + index.ts | ✅ Реализовано |
 
 ---
 
@@ -428,56 +426,36 @@ src/
 
 ## 4. Самописные библиотеки — Что писать
 
-### 4.1 crates/leptos-ui — Рефакторинг на leptos-shadcn-ui
+### 4.1 crates/leptos-ui — Реализация через порт shadcn/ui классов ✅
 
-**Ключевое решение:** Вместо того чтобы писать компоненты с нуля в `crates/leptos-ui`, используем
-[`cloud-shuttle/leptos-shadcn-ui`](https://github.com/cloud-shuttle/leptos-shadcn-ui) — это Leptos-аналог `shadcn/ui`, который используется в `apps/next-admin`. Это обеспечивает **паритет функций** между двумя админками.
+**Реализованное решение:** `UI/leptos/src/` содержит нативные Leptos-компоненты, реализованные как **прямой порт Tailwind-классов из shadcn/ui**. Это даёт визуальный паритет без зависимости от внешних Leptos UI-крейтов (которые часто отстают по версии Leptos или имеют нестабильный API).
 
-`cloud-shuttle/leptos-shadcn-ui` покрывает 38+ компонентов:
+**Почему не `leptos-shadcn-ui` (cloud-shuttle):**
+- Экосистема Leptos дозревает — внешние UI-крейты нередко не успевают за версиями Leptos
+- shadcn/ui — это **просто Tailwind-классы + CSS-переменные**, которые можно напрямую скопировать
+- Нет зависимости от crates.io-пакетов сомнительной поддержки
+- При обновлении shadcn в Next.js — обновляем только строки классов в Leptos
 
-| Категория | Компоненты |
-|-----------|-----------|
-| Form Elements | Button, Input, Label, Checkbox, Switch, Radio Group, Select, Textarea, Form, Combobox, Command, Input OTP |
-| Layout | Card, Separator, Tabs, Accordion, Collapsible, Scroll Area, Resizable |
-| Overlay | Dialog, Popover, Tooltip, Alert Dialog, Sheet, Drawer |
-| Navigation | Breadcrumb, Navigation Menu, Context Menu, Dropdown Menu, Menubar |
-| Feedback | Alert, Badge, Skeleton, Progress, Toast, Table, Calendar, Pagination |
-| Interactive | Slider, Toggle, Carousel, Avatar |
+**Реализованные компоненты** (в `UI/leptos/src/`):
 
-**Установка** (добавить в `Cargo.toml` workspace):
-```toml
-# Вариант A — отдельные crates (рекомендован)
-leptos-shadcn-button = "0.4.0"
-leptos-shadcn-input = "0.4.0"
-leptos-shadcn-card = "0.4.0"
-leptos-shadcn-badge = "0.4.0"
-# ... и т.д.
+| Файл | Компонент | shadcn-паритет |
+|------|----------|----------------|
+| `button.rs` | `Button` | ✅ 6 вариантов: Default, Destructive, Outline, Secondary, Ghost, Link |
+| `input.rs` | `Input` | ✅ size sm/md/lg, invalid state, aria-invalid |
+| `textarea.rs` | `Textarea` | ✅ size sm/md/lg, invalid state |
+| `select.rs` | `Select` | ✅ native `<select>`, size variants, placeholder |
+| `checkbox.rs` | `Checkbox` | ✅ border-primary, focus-visible:ring-ring |
+| `switch.rs` | `Switch` | ✅ bg-primary/bg-input track, SwitchSize::Sm/Md |
+| `badge.rs` | `Badge` | ✅ 6 вариантов: Default, Secondary, Destructive, Outline, Success, Warning |
+| `spinner.rs` | `Spinner` | ✅ custom (shadcn не имеет Spinner) |
 
-# Вариант B — monolithic с features
-leptos-shadcn-ui = { version = "0.5.0", features = ["button", "input", "card", "badge", "select", "checkbox", "switch", "textarea", "avatar", "skeleton", "dialog", "table", "pagination", "dropdown-menu", "breadcrumb", "tooltip", "sheet", "separator", "tabs"] }
-```
+**Роль `crates/leptos-ui`:** тонкий wrapper над `iu-leptos` — re-export компонентов + доменные обёртки `Card`, `Label`, `Separator`.
 
-**Новая роль `crates/leptos-ui`:**
+**Для сложных компонентов** (Combobox, Dialog, DatePicker) используем Thaw или Leptonic как временное прагматичное решение — они визуально будут «немного другими», но функционально рабочими, пока не дойдут руки написать нативные версии.
 
-`crates/leptos-ui` становится **тонким RusTok-wrapper** над `leptos-shadcn-ui`:
-- Re-export нужных компонентов с RusTok-специфичными defaults
-- Добавляет недостающие компоненты (например, `Spinner` которого нет в shadcn)
-- Применяет `--iu-*` CSS-токены через className
+### 4.2 UI/next/components/ — Библиотека ✅
 
-**Задачи:**
-- [ ] Добавить `leptos-shadcn-ui` в `Cargo.toml` workspace (dependencies)
-- [ ] Добавить `leptos-shadcn-ui` в `apps/admin/Cargo.toml`
-- [ ] Рефакторить `crates/leptos-ui/src/lib.rs` — re-export из leptos-shadcn-ui вместо кастомных реализаций
-- [ ] Удалить `crates/leptos-ui/src/{button,input,badge,card,label,separator}.rs` (заменены)
-- [ ] Добавить `crates/leptos-ui/src/spinner.rs` — единственный кастомный компонент (нет в shadcn)
-- [ ] Обновить `crates/leptos-ui/src/types.rs` — использовать типы из leptos-shadcn-ui где возможно
-- [ ] Подключить `UI/tokens/base.css` в `apps/admin` — для CSS-переменных `--iu-*`
-
-### 4.2 UI/next/components/ — Новая библиотека
-
-Next.js wrappers над shadcn/ui с единым API по контракту. Использовать `--iu-*` CSS-переменные.
-
-**Создать в `UI/next/components/`:**
+Next.js wrappers над shadcn/ui с единым API по контракту из `UI/docs/api-contracts.md`.
 
 ```
 UI/next/components/
@@ -494,18 +472,20 @@ UI/next/components/
 └── Spinner.tsx                ← кастомный (shadcn не имеет Spinner)
 ```
 
-Каждый wrapper:
-- Принимает props по контракту из `UI/docs/api-contracts.md`
-- Использует `--iu-*` переменные через className/style
-- Имеет полную типизацию TypeScript
+### 4.3 Shared CSS-слой — Tailwind + CSS-переменные ✅
 
-### 4.3 UI/tokens/base.css — Подключение
+Вместо `--iu-*` токенов для цветов оба приложения используют **shadcn-совместимый набор CSS-переменных**. Это буквально тот же `globals.css` что в Next.js, скопированный в Leptos admin:
 
-Сейчас токены **определены но не импортированы** ни в одно приложение.
+```
+apps/admin/input.css              ← @import "UI/tokens/base.css" + shadcn vars
+apps/next-admin/src/styles/globals.css  ← shadcn vars
+apps/admin/tailwind.config.js     ← shadcn color tokens
+apps/next-admin/tailwind.config.ts ← shadcn color tokens (reference)
+```
 
-**Добавить импорт в:**
-- `apps/admin/index.html` или `apps/admin/style.css` — `@import "../../UI/tokens/base.css"`
-- `apps/next-admin/src/styles/globals.css` — `@import "../../../UI/tokens/base.css"` или скопировать переменные
+`UI/tokens/base.css` содержит дополнительные токены (`--iu-radius-*`, `--iu-font-*`, `--iu-space-*`) которые не пересекаются с shadcn-переменными и используются для утилит типа font-family в body.
+
+**Принцип:** один `tailwind.config.js` и одна CSS-переменная-схема гарантируют визуальную идентичность между Leptos и Next.js реализациями.
 
 ---
 
@@ -528,20 +508,20 @@ UI/next/components/
 
 #### 1.2 Реализовать компоненты Leptos в UI/leptos/src/ ✅
 
-По контракту из `UI/docs/api-contracts.md`, используя `--iu-*` CSS-переменные:
+По контракту из `UI/docs/api-contracts.md`, классы портируются напрямую из shadcn/ui исходников:
 
 | Файл | Компонент | Ключевые props |
 |------|----------|---------------|
-| `button.rs` | `Button` | variant, size, disabled, loading, left_icon/right_icon |
-| `input.rs` | `Input` | size, disabled, invalid, prefix/suffix |
+| `button.rs` | `Button` | variant (6), size, disabled, loading, type |
+| `input.rs` | `Input` | size, disabled, invalid, placeholder |
 | `textarea.rs` | `Textarea` | size, disabled, invalid, rows |
 | `select.rs` | `Select` | size, disabled, invalid, options, placeholder |
 | `checkbox.rs` | `Checkbox` | checked (Signal), indeterminate, disabled |
 | `switch.rs` | `Switch` | checked (Signal), disabled, size: Sm\|Md |
-| `badge.rs` | `Badge` | variant, size, dismissible |
+| `badge.rs` | `Badge` | variant (6), size, dismissible |
 | `spinner.rs` | `Spinner` | size |
 
-Все компоненты используют `--iu-*` CSS-переменные из `UI/tokens/base.css`.
+Все компоненты используют shadcn CSS-переменные (`--primary`, `--destructive`, `--border` и т.д.) через Tailwind-утилиты.
 
 **Коммит:** `feat(ui/leptos): implement Button, Input, Textarea, Select, Checkbox, Switch, Badge, Spinner`
 
@@ -736,10 +716,11 @@ Thin wrappers над shadcn/ui (shadcn как reference, не дублирова
 - [ ] `pnpm --filter next-admin type-check` — нет TypeScript ошибок
 - [ ] `pnpm --filter next-admin build` — Next.js собирается
 - [ ] Все FSD-слои присутствуют в обеих админках: `app`, `pages`, `widgets`, `features`, `entities`, `shared`
-- [ ] `UI/tokens/base.css` подключён в оба приложения
-- [ ] `UI/next/components/` содержит 10 компонентов с barrel export
-- [ ] `crates/leptos-ui` использует `leptos-shadcn-ui` как основу (паритет с shadcn/ui Next.js)
-- [ ] `leptos-shadcn-ui` компоненты реально используются в pages/ widgets/ features/ (не просто в Cargo.toml)
+- [x] `UI/tokens/base.css` подключён в `apps/admin/input.css`
+- [x] `UI/next/components/` содержит 10 компонентов с barrel export
+- [x] `UI/leptos/src/` содержит 8 shadcn-совместимых компонентов (порт классов из shadcn/ui)
+- [x] `apps/admin/input.css` и `apps/admin/tailwind.config.js` используют shadcn CSS-переменный набор — визуальный паритет с Next.js
+- [x] Все компоненты и страницы `apps/admin` используют только семантические CSS-переменные (нет `bg-slate-*`, `bg-white`, `bg-indigo-*`)
 - [ ] Нарушений правила "слои импортируют только вниз" — ноль
 
 ---

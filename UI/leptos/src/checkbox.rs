@@ -25,10 +25,8 @@ pub fn Checkbox(
             name=name
             disabled=disabled
             class=format!(
-                "h-4 w-4 rounded-[var(--iu-radius-sm)] border border-[hsl(var(--iu-border))] \
-                 bg-[hsl(var(--iu-bg))] text-[hsl(var(--iu-primary))] \
-                 focus-visible:outline-none focus-visible:ring-2 \
-                 focus-visible:ring-[hsl(var(--iu-primary))] focus-visible:ring-offset-2 \
+                "h-4 w-4 rounded border border-primary text-primary shadow \
+                 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring \
                  disabled:cursor-not-allowed disabled:opacity-50 {}",
                 class
             )

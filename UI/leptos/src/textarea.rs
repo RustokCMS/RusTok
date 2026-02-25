@@ -17,22 +17,22 @@ pub fn Textarea(
     let size_cls = match size {
         Size::Sm => "text-xs px-2 py-1.5",
         Size::Md => "text-sm px-3 py-2",
-        Size::Lg | Size::Icon => "text-base px-4 py-3",
+        Size::Lg | Size::Icon => "text-sm px-4 py-3",
     };
 
     let state_cls = if invalid {
-        "border-[hsl(var(--iu-danger))] focus-visible:ring-[hsl(var(--iu-danger))]"
+        "border-destructive focus-visible:ring-destructive"
     } else {
-        "border-[hsl(var(--iu-border))] focus-visible:ring-[hsl(var(--iu-primary))]"
+        "border-input focus-visible:ring-ring"
     };
 
     view! {
         <textarea
             rows=rows
             class=format!(
-                "w-full rounded-[var(--iu-radius-md)] border bg-[hsl(var(--iu-bg))] \
-                 text-[hsl(var(--iu-fg))] resize-y transition-colors \
-                 focus-visible:outline-none focus-visible:ring-2 \
+                "flex w-full rounded-md border bg-background text-foreground shadow-sm \
+                 placeholder:text-muted-foreground resize-y \
+                 focus-visible:outline-none focus-visible:ring-1 \
                  disabled:cursor-not-allowed disabled:opacity-50 {} {} {}",
                 size_cls, state_cls, class
             )

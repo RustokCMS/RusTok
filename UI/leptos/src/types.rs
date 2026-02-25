@@ -3,11 +3,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ButtonVariant {
     #[default]
-    Primary,
+    Default,
+    Destructive,
+    Outline,
     Secondary,
     Ghost,
-    Outline,
-    Destructive,
+    Link,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -24,7 +25,8 @@ pub enum BadgeVariant {
     #[default]
     Default,
     Secondary,
+    Destructive,
+    Outline,
     Success,
     Warning,
-    Danger,
 }

@@ -18,8 +18,8 @@ export default async function RootLayout({
   const messages = await getMessages();
 
   return (
-    <html lang={locale} data-theme="light">
-      <body className="min-h-screen bg-white text-slate-900">
+    <html lang={locale}>
+      <body className="min-h-screen bg-background text-foreground">
         <NextIntlClientProvider messages={messages}>
           {children}
         </NextIntlClientProvider>

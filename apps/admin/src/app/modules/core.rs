@@ -13,19 +13,19 @@ pub fn register_components() {
 
 fn module_status_card() -> AnyView {
     view! {
-        <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-            <h4 class="text-lg font-semibold text-slate-900">"Modules ready"</h4>
-            <p class="mt-2 text-sm text-slate-600">
+        <div class="rounded-2xl bg-card border border-border p-6 shadow">
+            <h4 class="text-lg font-semibold text-card-foreground">"Modules ready"</h4>
+            <p class="mt-2 text-sm text-muted-foreground">
                 "Frontend packages can register dashboard widgets dynamically."
             </p>
             <div class="mt-4 flex flex-wrap gap-2 text-xs">
-                <span class="rounded-full bg-indigo-50 px-3 py-1 font-semibold text-indigo-600">
+                <span class="rounded-full bg-primary/10 px-3 py-1 font-semibold text-primary">
                     "Leptos"
                 </span>
-                <span class="rounded-full bg-emerald-50 px-3 py-1 font-semibold text-emerald-600">
+                <span class="rounded-full bg-emerald-50 px-3 py-1 font-semibold text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
                     "Registry"
                 </span>
-                <span class="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-600">
+                <span class="rounded-full bg-secondary px-3 py-1 font-semibold text-secondary-foreground">
                     "Dynamic"
                 </span>
             </div>

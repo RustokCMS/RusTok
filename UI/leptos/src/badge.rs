@@ -13,34 +13,47 @@ pub fn Badge(
 ) -> impl IntoView {
     let size_cls = match size {
         Size::Sm => "px-1.5 py-0 text-[10px]",
-        _ => "px-2 py-0.5 text-xs",
+        _ => "px-2.5 py-0.5 text-xs",
     };
 
     let variant_cls = match variant {
-        BadgeVariant::Default => "bg-[hsl(var(--iu-primary))] text-[hsl(var(--iu-primary-fg))]",
-        BadgeVariant::Secondary => "bg-[hsl(var(--iu-muted))] text-[hsl(var(--iu-muted-fg))]",
-        BadgeVariant::Success => "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-        BadgeVariant::Warning => "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-        BadgeVariant::Danger => "bg-[hsl(var(--iu-danger)/0.15)] text-[hsl(var(--iu-danger))]",
+        BadgeVariant::Default => {
+            "border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80"
+        }
+        BadgeVariant::Secondary => {
+            "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80"
+        }
+        BadgeVariant::Destructive => {
+            "border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80"
+        }
+        BadgeVariant::Outline => "text-foreground",
+        BadgeVariant::Success => {
+            "border-transparent bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+        }
+        BadgeVariant::Warning => {
+            "border-transparent bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+        }
     };
 
     view! {
         <span
             class=format!(
-                "inline-flex items-center gap-1 rounded-full font-medium {} {} {}",
+                "inline-flex items-center gap-1 rounded-full border font-semibold \
+                 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 \
+                 {} {} {}",
                 size_cls, variant_cls, class
             )
         >
             {children()}
-            {dismissible.then(|| {
-                let handler = on_dismiss.map(|f| Callback::new(move |_| f()));
+            {move || dismissible.then(|| {
+                let on_dismiss = on_dismiss.as_ref().map(|f| Callback::new(move |_: ()| f()));
                 view! {
                     <button
                         type="button"
                         class="ml-0.5 rounded-full opacity-70 hover:opacity-100 focus:outline-none"
                         aria-label="Dismiss"
                         on:click=move |_| {
-                            if let Some(cb) = handler {
+                            if let Some(ref cb) = on_dismiss {
                                 cb.run(());
                             }
                         }

@@ -178,19 +178,19 @@ fn ProductCard(
 ) -> impl IntoView {
     let badge = product.badge.unwrap_or(badge_new);
     view! {
-        <div class="card bg-base-100 shadow-xl">
-            <figure class="bg-base-200">
-                <div class="h-40 w-full bg-gradient-to-br from-primary/20 to-secondary/20" />
-            </figure>
-            <div class="card-body">
+        <div class="rounded-xl border border-border bg-card shadow">
+            <div class="h-40 w-full rounded-t-xl bg-gradient-to-br from-primary/10 to-secondary" />
+            <div class="p-5 space-y-3">
                 <div class="flex items-start justify-between gap-2">
-                    <h3 class="card-title">{product.title}</h3>
-                    <span class="badge badge-secondary">{badge}</span>
+                    <h3 class="text-base font-semibold text-card-foreground">{product.title}</h3>
+                    <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">{badge}</span>
                 </div>
-                <p class="opacity-70">{product.description}</p>
-                <div class="card-actions items-center justify-between">
-                    <span class="text-lg font-semibold">{product.price}</span>
-                    <button class="btn btn-primary btn-sm">{cta_view}</button>
+                <p class="text-sm text-muted-foreground">{product.description}</p>
+                <div class="flex items-center justify-between pt-1">
+                    <span class="text-lg font-semibold text-foreground">{product.price}</span>
+                    <button class="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors">
+                        {cta_view}
+                    </button>
                 </div>
             </div>
         </div>
@@ -203,58 +203,79 @@ fn StorefrontShell(locale: String) -> impl IntoView {
     let products = featured_products(locale.as_str());
     let module_sections = components_for_slot(StorefrontSlot::HomeAfterHero);
     view! {
-        <div class="min-h-screen bg-base-200 text-base-content">
-            <header class="navbar bg-base-100 shadow">
-                <div class="container-app flex w-full items-center">
-                    <div class="navbar-start">
-                        <a class="btn btn-ghost text-xl" href="/">{ "RusToK" }</a>
+        <div class="min-h-screen bg-background text-foreground">
+            <header class="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
+                <div class="container-app flex h-14 w-full items-center">
+                    <div class="flex-1">
+                        <a class="text-xl font-bold text-foreground hover:text-primary transition-colors" href="/">
+                            "RusToK"
+                        </a>
                     </div>
-                    <div class="navbar-center hidden lg:flex">
-                        <ul class="menu menu-horizontal gap-2">
-                            <li><a href="#home">{strings.nav_home}</a></li>
-                            <li><a href="#catalog">{strings.nav_catalog}</a></li>
-                            <li><a href="#about">{strings.nav_about}</a></li>
-                            <li><a href="#contact">{strings.nav_contact}</a></li>
-                        </ul>
-                    </div>
-                    <div class="navbar-end">
-                        <details class="dropdown dropdown-end">
-                            <summary class="btn btn-ghost btn-sm">{strings.nav_language}</summary>
-                            <ul class="menu dropdown-content z-[1] w-32 rounded-box bg-base-100 p-2 shadow">
-                                <li><a href="/?lang=en">"English"</a></li>
-                                <li><a href="/?lang=ru">"Русский"</a></li>
-                            </ul>
-                        </details>
-                        <a class="btn btn-primary btn-sm ml-2" href="#catalog">{strings.cta_primary}</a>
+                    <nav class="hidden lg:flex items-center gap-6">
+                        <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#home">{strings.nav_home}</a>
+                        <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#catalog">{strings.nav_catalog}</a>
+                        <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#about">{strings.nav_about}</a>
+                        <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#contact">{strings.nav_contact}</a>
+                    </nav>
+                    <div class="flex items-center gap-3 ml-6">
+                        <div class="relative">
+                            <details class="group">
+                                <summary class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors list-none">
+                                    {strings.nav_language}
+                                </summary>
+                                <ul class="absolute right-0 mt-1 w-32 rounded-md border border-border bg-popover p-1 shadow-md z-50">
+                                    <li>
+                                        <a class="block rounded px-3 py-1.5 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors" href="/?lang=en">
+                                            "English"
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="block rounded px-3 py-1.5 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors" href="/?lang=ru">
+                                            "Русский"
+                                        </a>
+                                    </li>
+                                </ul>
+                            </details>
+                        </div>
+                        <a class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors" href="#catalog">
+                            {strings.cta_primary}
+                        </a>
                     </div>
                 </div>
             </header>
+
             <main class="space-y-20">
-                <section id="home" class="hero bg-base-100">
-                    <div class="container-app hero-content flex-col gap-10 py-16 lg:flex-row lg:justify-between">
+                <section id="home" class="bg-background">
+                    <div class="container-app flex flex-col gap-10 py-16 lg:flex-row lg:items-center lg:justify-between">
                         <div class="max-w-xl space-y-6">
-                            <h1 class="text-4xl font-bold lg:text-5xl">{strings.hero_title}</h1>
-                            <p class="text-lg opacity-80">{strings.hero_subtitle}</p>
+                            <h1 class="text-4xl font-bold text-foreground lg:text-5xl">
+                                {strings.hero_title}
+                            </h1>
+                            <p class="text-lg text-muted-foreground">{strings.hero_subtitle}</p>
                             <div class="flex flex-wrap gap-3">
-                                <a class="btn btn-primary" href="#catalog">{strings.cta_primary}</a>
-                                <a class="btn btn-ghost" href="#about">{strings.cta_secondary}</a>
+                                <a class="inline-flex items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors" href="#catalog">
+                                    {strings.cta_primary}
+                                </a>
+                                <a class="inline-flex items-center justify-center rounded-md border border-input bg-background px-5 py-2.5 text-sm font-medium text-foreground shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors" href="#about">
+                                    {strings.cta_secondary}
+                                </a>
                             </div>
                         </div>
-                        <div class="stats stats-vertical bg-base-200 shadow lg:stats-horizontal">
-                            <div class="stat">
-                                <div class="stat-title">{strings.stat_ssr_title}</div>
-                                <div class="stat-value">{strings.stat_ssr_value}</div>
-                                <div class="stat-desc">{strings.stat_ssr_desc}</div>
+                        <div class="grid grid-cols-1 divide-y divide-border rounded-xl border border-border bg-card shadow sm:grid-cols-3 sm:divide-x sm:divide-y-0 lg:w-auto">
+                            <div class="p-6 text-center">
+                                <p class="text-sm text-muted-foreground">{strings.stat_ssr_title}</p>
+                                <p class="mt-1 text-2xl font-bold text-foreground">{strings.stat_ssr_value}</p>
+                                <p class="mt-1 text-xs text-muted-foreground">{strings.stat_ssr_desc}</p>
                             </div>
-                            <div class="stat">
-                                <div class="stat-title">{strings.stat_i18n_title}</div>
-                                <div class="stat-value">{strings.stat_i18n_value}</div>
-                                <div class="stat-desc">{strings.stat_i18n_desc}</div>
+                            <div class="p-6 text-center">
+                                <p class="text-sm text-muted-foreground">{strings.stat_i18n_title}</p>
+                                <p class="mt-1 text-2xl font-bold text-foreground">{strings.stat_i18n_value}</p>
+                                <p class="mt-1 text-xs text-muted-foreground">{strings.stat_i18n_desc}</p>
                             </div>
-                            <div class="stat">
-                                <div class="stat-title">{strings.stat_modules_title}</div>
-                                <div class="stat-value">{strings.stat_modules_value}</div>
-                                <div class="stat-desc">{strings.stat_modules_desc}</div>
+                            <div class="p-6 text-center">
+                                <p class="text-sm text-muted-foreground">{strings.stat_modules_title}</p>
+                                <p class="mt-1 text-2xl font-bold text-foreground">{strings.stat_modules_value}</p>
+                                <p class="mt-1 text-xs text-muted-foreground">{strings.stat_modules_desc}</p>
                             </div>
                         </div>
                     </div>
@@ -268,8 +289,8 @@ fn StorefrontShell(locale: String) -> impl IntoView {
                 <section id="catalog" class="container-app">
                     <div class="mx-auto max-w-6xl space-y-6">
                         <div>
-                            <h2 class="text-3xl font-bold">{strings.featured_title}</h2>
-                            <p class="opacity-70">{strings.featured_subtitle}</p>
+                            <h2 class="text-3xl font-bold text-foreground">{strings.featured_title}</h2>
+                            <p class="mt-1 text-muted-foreground">{strings.featured_subtitle}</p>
                         </div>
                         <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                             {products
@@ -290,41 +311,40 @@ fn StorefrontShell(locale: String) -> impl IntoView {
 
                 <section id="about" class="container-app">
                     <div class="mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
-                        <div class="card bg-base-100 shadow">
-                            <div class="card-body space-y-3">
-                                <h3 class="card-title">{strings.story_title}</h3>
-                                <p class="opacity-70">{strings.story_body}</p>
-                                <div class="flex gap-2">
-                                    <span class="badge badge-outline">"GraphQL"</span>
-                                    <span class="badge badge-outline">"Events"</span>
-                                    <span class="badge badge-outline">"Search"</span>
-                                </div>
+                        <div class="rounded-xl border border-border bg-card p-6 shadow space-y-3">
+                            <h3 class="text-lg font-semibold text-card-foreground">{strings.story_title}</h3>
+                            <p class="text-sm text-muted-foreground">{strings.story_body}</p>
+                            <div class="flex gap-2 flex-wrap">
+                                <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-foreground">"GraphQL"</span>
+                                <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-foreground">"Events"</span>
+                                <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-foreground">"Search"</span>
                             </div>
                         </div>
-                        <div class="card bg-base-100 shadow">
-                            <div class="card-body space-y-4">
-                                <h3 class="card-title">{strings.newsletter_title}</h3>
-                                <p class="opacity-70">{strings.newsletter_body}</p>
-                                <div class="join w-full">
-                                    <input
-                                        class="input join-item w-full"
-                                        placeholder=strings.newsletter_placeholder
-                                    />
-                                    <button class="btn btn-secondary join-item">{strings.newsletter_cta}</button>
-                                </div>
-                                <span class="text-xs opacity-60">{strings.newsletter_note}</span>
+                        <div class="rounded-xl border border-border bg-card p-6 shadow space-y-4">
+                            <h3 class="text-lg font-semibold text-card-foreground">{strings.newsletter_title}</h3>
+                            <p class="text-sm text-muted-foreground">{strings.newsletter_body}</p>
+                            <div class="flex gap-2">
+                                <input
+                                    class="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                                    placeholder=strings.newsletter_placeholder
+                                />
+                                <button class="inline-flex items-center justify-center rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-sm hover:bg-secondary/80 transition-colors">
+                                    {strings.newsletter_cta}
+                                </button>
                             </div>
+                            <span class="text-xs text-muted-foreground">{strings.newsletter_note}</span>
                         </div>
                     </div>
                 </section>
             </main>
-            <footer id="contact" class="footer footer-center bg-base-300 p-8 text-base-content">
-                <div class="space-y-2">
-                    <p class="text-sm">{strings.footer_tagline}</p>
-                    <div class="flex gap-4">
-                        <span class="badge badge-primary">"SSR"</span>
-                        <span class="badge badge-secondary">"Tailwind"</span>
-                        <span class="badge badge-outline">"DaisyUI"</span>
+
+            <footer id="contact" class="mt-20 border-t border-border bg-muted/40 px-4 py-10">
+                <div class="container-app space-y-3 text-center">
+                    <p class="text-sm text-muted-foreground">{strings.footer_tagline}</p>
+                    <div class="flex justify-center gap-3">
+                        <span class="inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-foreground">"SSR"</span>
+                        <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">"Tailwind"</span>
+                        <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-foreground">"shadcn"</span>
                     </div>
                 </div>
             </footer>
@@ -340,20 +360,14 @@ fn render_shell(locale: &str) -> String {
     };
     format!(
         r#"<!DOCTYPE html>
-<html lang="{locale}" data-theme="rustok">
+<html lang="{locale}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RusToK Storefront</title>
   <link rel="stylesheet" href="/assets/app.css" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link
-    href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css"
-    rel="stylesheet"
-    type="text/css"
-  />
 </head>
-<body class="bg-base-200">
+<body>
   <div id="app">{app_html}</div>
 </body>
 </html>"#,

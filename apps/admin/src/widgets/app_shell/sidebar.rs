@@ -9,13 +9,13 @@ pub fn Sidebar() -> impl IntoView {
     let current_user = use_current_user();
 
     view! {
-        <aside class="w-64 bg-white border-r border-slate-200 h-screen flex flex-col shrink-0">
-            <div class="p-5 border-b border-slate-200">
+        <aside class="w-64 bg-sidebar border-r border-sidebar-border h-screen flex flex-col shrink-0">
+            <div class="p-5 border-b border-sidebar-border">
                 <A href="/dashboard" attr:class="flex items-center gap-2">
-                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600">
-                        <span class="text-white font-bold text-sm">"R"</span>
+                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+                        <span class="text-primary-foreground font-bold text-sm">"R"</span>
                     </div>
-                    <span class="text-sm font-semibold text-slate-900">"RusTok Admin"</span>
+                    <span class="text-sm font-semibold text-sidebar-foreground">{translate("app.brand.title")}</span>
                 </A>
             </div>
 
@@ -40,7 +40,7 @@ pub fn Sidebar() -> impl IntoView {
                             </div>
                         }.into_any()
                     } else {
-                        view! { <div /> }.into_any()
+                        ().into_any()
                     }
                 }}
 
@@ -55,10 +55,10 @@ pub fn Sidebar() -> impl IntoView {
                 </div>
             </nav>
 
-            <div class="p-4 border-t border-slate-200">
+            <div class="p-4 border-t border-sidebar-border">
                 <div class="flex items-center gap-2">
-                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100">
-                        <span class="text-indigo-700 text-sm font-semibold">
+                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                        <span class="text-primary text-sm font-semibold">
                             {move || {
                                 current_user.get()
                                     .and_then(|u| u.name.clone().or(Some(u.email.clone())))
@@ -69,10 +69,10 @@ pub fn Sidebar() -> impl IntoView {
                         </span>
                     </div>
                     <div class="grid flex-1 min-w-0 text-left text-sm leading-tight">
-                        <span class="truncate font-semibold text-slate-900 text-xs">
-                            {move || current_user.get().and_then(|u| u.name.clone()).unwrap_or_else(|| "User".to_string())}
+                        <span class="truncate font-semibold text-sidebar-foreground text-xs">
+                            {move || current_user.get().and_then(|u| u.name.clone()).unwrap_or_else(|| translate("app.menu.defaultUser").to_string())}
                         </span>
-                        <span class="truncate text-xs text-slate-500">
+                        <span class="truncate text-xs text-sidebar-foreground/60">
                             {move || current_user.get().map(|u| u.email.clone()).unwrap_or_default()}
                         </span>
                     </div>
@@ -85,7 +85,7 @@ pub fn Sidebar() -> impl IntoView {
 #[component]
 fn NavGroupLabel(label: impl Fn() -> String + Send + Sync + 'static) -> impl IntoView {
     view! {
-        <div class="px-3 pb-1 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+        <div class="px-3 pb-1 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
             {label}
         </div>
     }
@@ -96,7 +96,7 @@ fn NavLink(href: &'static str, icon: &'static str, children: Children) -> impl I
     view! {
         <A
             href=href
-            attr:class="flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-700 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors mb-1"
+            attr:class="flex items-center gap-3 px-3 py-2 text-sm font-medium text-sidebar-foreground rounded-lg hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors mb-1"
         >
             <NavIcon icon=icon />
             <span>{children()}</span>
