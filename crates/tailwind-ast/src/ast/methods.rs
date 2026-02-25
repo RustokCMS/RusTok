@@ -61,7 +61,7 @@ impl<'a> AddAssign<&AstStyle<'a>> for AstStyle<'a> {
     fn add_assign(&mut self, rhs: &AstStyle<'a>) {
         self.negative = merge_negative(self.negative, rhs.negative);
         self.variants.extend(rhs.variants.iter().cloned());
-        self.arbitrary = self.arbitrary.or(self.arbitrary);
+        self.arbitrary = self.arbitrary.or(rhs.arbitrary);
         match rhs.is_self_reference() {
             true => {}
             false => self.elements.extend(rhs.elements.iter().cloned()),
