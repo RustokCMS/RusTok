@@ -18,7 +18,7 @@ pub fn Spinner(
             role="status"
             aria-label="Loading"
             class=format!(
-                "inline-block rounded-full border-current border-t-transparent animate-spin {} {}",
+                "inline-block rounded-full border-primary border-t-transparent animate-spin {} {}",
                 size_cls, class
             )
         />

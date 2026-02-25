@@ -14,7 +14,7 @@ pub fn Button(
     #[prop(optional, into)] class: String,
     #[prop(default = Signal::derive(|| false))] disabled: Signal<bool>,
 ) -> impl IntoView {
-    let base_class = "inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60";
+    let base_class = "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2";
     let merged_class = move || {
         if class.is_empty() {
             base_class.to_string()
@@ -47,7 +47,11 @@ pub fn Input(
             {move || {
                 let label_value = label.get();
                 (!label_value.is_empty()).then(|| {
-                    view! { <label class="text-sm text-slate-600">{label_value}</label> }
+                    view! {
+                        <label class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                            {label_value}
+                        </label>
+                    }
                 })
             }}
             <input
@@ -55,7 +59,7 @@ pub fn Input(
                 placeholder=placeholder
                 prop:value=value
                 on:input=move |ev| set_value.set(event_target_value(&ev))
-                class="rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             />
         </div>
     }
@@ -76,9 +80,9 @@ pub fn LanguageToggle() -> impl IntoView {
                 class=move || {
                     let is_active = locale.locale.get() == Locale::Ru;
                     if is_active {
-                        "rounded-lg border border-blue-600 bg-blue-600 px-3 py-1 text-sm font-semibold text-white"
+                        "inline-flex items-center justify-center rounded-md border border-primary bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                     } else {
-                        "rounded-lg border border-slate-200 px-3 py-1 text-sm font-semibold text-blue-600"
+                        "inline-flex items-center justify-center rounded-md border border-input px-3 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                     }
                 }
                 on:click=move |_| set_locale(Locale::Ru)
@@ -90,9 +94,9 @@ pub fn LanguageToggle() -> impl IntoView {
                 class=move || {
                     let is_active = locale.locale.get() == Locale::En;
                     if is_active {
-                        "rounded-lg border border-blue-600 bg-blue-600 px-3 py-1 text-sm font-semibold text-white"
+                        "inline-flex items-center justify-center rounded-md border border-primary bg-primary px-3 py-1 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                     } else {
-                        "rounded-lg border border-slate-200 px-3 py-1 text-sm font-semibold text-blue-600"
+                        "inline-flex items-center justify-center rounded-md border border-input px-3 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                     }
                 }
                 on:click=move |_| set_locale(Locale::En)

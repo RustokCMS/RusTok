@@ -4,6 +4,8 @@ use leptos_router::components::A;
 
 use leptos_auth::hooks::{use_auth, use_current_user};
 
+use crate::shared::i18n::translate;
+
 #[component]
 pub fn UserMenu() -> impl IntoView {
     let auth = use_auth();
@@ -26,30 +28,30 @@ pub fn UserMenu() -> impl IntoView {
         <div class="relative">
             <button
                 on:click=toggle_menu
-                class="flex items-center gap-2 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                class="flex items-center gap-2 rounded-lg p-2 transition-colors hover:bg-accent"
             >
-                <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                    <span class="text-white text-sm font-semibold">
+                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
+                    <span class="text-sm font-semibold text-primary-foreground">
                         {move || {
                             current_user
                                 .get()
                                 .and_then(|u| u.name.clone())
                                 .and_then(|n| n.chars().next())
                                 .map(|c| c.to_string())
-                                .unwrap_or_else(|| "U".to_string())
+                                .unwrap_or_else(|| translate("app.menu.userInitial").to_string())
                         }}
                     </span>
                 </div>
-                <div class="text-left hidden md:block">
-                    <p class="text-sm font-medium text-gray-900">
+                <div class="hidden text-left md:block">
+                    <p class="text-sm font-medium text-foreground">
                         {move || {
                             current_user
                                 .get()
                                 .and_then(|u| u.name.clone())
-                                .unwrap_or_else(|| "User".to_string())
+                                .unwrap_or_else(|| translate("app.menu.defaultUser").to_string())
                         }}
                     </p>
-                    <p class="text-xs text-gray-500">
+                    <p class="text-xs text-muted-foreground">
                         {move || {
                             current_user
                                 .get()
@@ -58,48 +60,58 @@ pub fn UserMenu() -> impl IntoView {
                         }}
                     </p>
                 </div>
-                <span class="text-gray-400 text-sm">
-                    {move || if open.get() { "▲" } else { "▼" }}
-                </span>
+                <svg
+                    class="h-4 w-4 text-muted-foreground"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    {move || if open.get() {
+                        view! { <path d="M18 15l-6-6-6 6" /> }.into_any()
+                    } else {
+                        view! { <path d="M6 9l6 6 6-6" /> }.into_any()
+                    }}
+                </svg>
             </button>
 
             <Show when=move || open.get()>
-                <div class="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                    <div class="px-4 py-3 border-b border-gray-200">
-                        <p class="text-sm font-medium text-gray-900">
+                <div class="absolute right-0 z-50 mt-2 w-56 rounded-lg border border-border bg-popover py-1 shadow-md">
+                    <div class="border-b border-border px-4 py-3">
+                        <p class="text-sm font-medium text-popover-foreground">
                             {move || {
                                 current_user
                                     .get()
                                     .and_then(|u| u.name.clone())
-                                    .unwrap_or_else(|| "User".to_string())
+                                    .unwrap_or_else(|| translate("app.menu.defaultUser").to_string())
                             }}
                         </p>
-                        <p class="text-xs text-gray-500 truncate">
+                        <p class="truncate text-xs text-muted-foreground">
                             {move || {
                                 current_user
                                     .get()
                                     .map(|u| u.email.clone())
-                                    .unwrap_or_else(|| "user@example.com".to_string())
+                                    .unwrap_or_default()
                             }}
                         </p>
                     </div>
 
                     <div class="py-1">
-                        <DropdownLink href="/profile" icon="👤">
-                            "Profile"
+                        <DropdownLink href="/profile" icon="user">
+                            {move || translate("app.menu.profile")}
                         </DropdownLink>
-                        <DropdownLink href="/security" icon="🔒">
-                            "Security"
+                        <DropdownLink href="/security" icon="lock">
+                            {move || translate("app.menu.security")}
                         </DropdownLink>
                     </div>
 
-                    <div class="border-t border-gray-200 py-1">
+                    <div class="border-t border-border py-1">
                         <button
                             on:click=move |ev| handle_logout.run(ev)
-                            class="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                            class="flex w-full items-center gap-3 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
                         >
-                            <span>"🚪"</span>
-                            <span>"Sign Out"</span>
+                            <MenuIcon icon="logout" />
+                            <span>{move || translate("app.menu.signOut")}</span>
                         </button>
                     </div>
                 </div>
@@ -113,10 +125,34 @@ fn DropdownLink(href: &'static str, icon: &'static str, children: Children) -> i
     view! {
         <A
             href=href
-            attr:class="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+            attr:class="flex items-center gap-3 px-4 py-2 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
         >
-            <span>{icon}</span>
+            <MenuIcon icon=icon />
             <span>{children()}</span>
         </A>
+    }
+}
+
+#[component]
+fn MenuIcon(icon: &'static str) -> impl IntoView {
+    let path = match icon {
+        "user" => "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+        "lock" => "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4",
+        "logout" => "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
+        _ => "M12 12m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0",
+    };
+
+    view! {
+        <svg
+            class="h-4 w-4 shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <path d=path />
+        </svg>
     }
 }

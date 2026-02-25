@@ -1,8 +1,13 @@
 {
   "name": "rustok-admin-leptos",
   "private": true,
+  "scripts": {
+    "tw:build": "tailwindcss -i input.css -o dist/output.css --minify",
+    "tw:watch": "tailwindcss -i input.css -o dist/output.css --watch"
+  },
   "devDependencies": {
     "autoprefixer": "^10.4.19",
-    "postcss": "^8.4.39"
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.0"
   }
 }

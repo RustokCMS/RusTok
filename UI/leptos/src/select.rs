@@ -33,22 +33,21 @@ pub fn Select(
 ) -> impl IntoView {
     let size_cls = match size {
         Size::Sm => "h-8 text-xs px-2",
-        Size::Md => "h-9 text-sm px-3",
-        Size::Lg | Size::Icon => "h-10 text-base px-4",
+        Size::Md => "h-9 text-sm px-3 py-1",
+        Size::Lg | Size::Icon => "h-10 text-sm px-4 py-2",
     };
 
     let state_cls = if invalid {
-        "border-[hsl(var(--iu-danger))] focus-visible:ring-[hsl(var(--iu-danger))]"
+        "border-destructive focus:ring-destructive"
     } else {
-        "border-[hsl(var(--iu-border))] focus-visible:ring-[hsl(var(--iu-primary))]"
+        "border-input focus:ring-ring"
     };
 
     view! {
         <select
             class=format!(
-                "w-full rounded-[var(--iu-radius-md)] border bg-[hsl(var(--iu-bg))] \
-                 text-[hsl(var(--iu-fg))] transition-colors \
-                 focus-visible:outline-none focus-visible:ring-2 \
+                "flex w-full rounded-md border bg-background text-foreground shadow-sm \
+                 focus:outline-none focus:ring-1 \
                  disabled:cursor-not-allowed disabled:opacity-50 {} {} {}",
                 size_cls, state_cls, class
             )
@@ -67,12 +66,13 @@ pub fn Select(
                 </option>
             })}
             {options.into_iter().map(|opt| {
-                let opt_val = opt.value.clone();
+                let opt_value = opt.value;
+                let opt_val_cmp = opt_value.clone();
                 view! {
                     <option
-                        value=opt.value.clone()
+                        value=opt_value
                         disabled=opt.disabled
-                        selected=move || value.map(|v| v.get()).unwrap_or_default() == opt_val
+                        selected=move || value.map(|v| v.get()).unwrap_or_default() == opt_val_cmp
                     >
                         {opt.label}
                     </option>

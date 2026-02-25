@@ -1,6 +1,6 @@
 # RusToK Next.js Storefront
 
-Скелет витрины (storefront) на Next.js (App Router) с DaisyUI, shadcn/ui и локализацией.
+Скелет витрины (storefront) на Next.js (App Router) с shadcn/ui и локализацией.
 
 ## Быстрый старт
 
@@ -12,8 +12,7 @@ npm run dev
 ## Основные библиотеки
 
 - Next.js + React
-- TailwindCSS + DaisyUI
-- shadcn/ui (базовые компоненты)
+- TailwindCSS + shadcn/ui
 - React Query
 - Zod
 - Next SEO
