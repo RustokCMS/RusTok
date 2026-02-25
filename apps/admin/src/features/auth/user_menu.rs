@@ -26,10 +26,10 @@ pub fn UserMenu() -> impl IntoView {
         <div class="relative">
             <button
                 on:click=toggle_menu
-                class="flex items-center gap-2 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                class="flex items-center gap-2 p-2 hover:bg-accent rounded-lg transition-colors"
             >
-                <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                    <span class="text-white text-sm font-semibold">
+                <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                    <span class="text-primary-foreground text-sm font-semibold">
                         {move || {
                             current_user
                                 .get()
@@ -41,7 +41,7 @@ pub fn UserMenu() -> impl IntoView {
                     </span>
                 </div>
                 <div class="text-left hidden md:block">
-                    <p class="text-sm font-medium text-gray-900">
+                    <p class="text-sm font-medium text-foreground">
                         {move || {
                             current_user
                                 .get()
@@ -49,7 +49,7 @@ pub fn UserMenu() -> impl IntoView {
                                 .unwrap_or_else(|| "User".to_string())
                         }}
                     </p>
-                    <p class="text-xs text-gray-500">
+                    <p class="text-xs text-muted-foreground">
                         {move || {
                             current_user
                                 .get()
@@ -58,15 +58,15 @@ pub fn UserMenu() -> impl IntoView {
                         }}
                     </p>
                 </div>
-                <span class="text-gray-400 text-sm">
+                <span class="text-muted-foreground text-sm">
                     {move || if open.get() { "▲" } else { "▼" }}
                 </span>
             </button>
 
             <Show when=move || open.get()>
-                <div class="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                    <div class="px-4 py-3 border-b border-gray-200">
-                        <p class="text-sm font-medium text-gray-900">
+                <div class="absolute right-0 mt-2 w-56 bg-popover rounded-lg shadow-md border border-border py-1 z-50">
+                    <div class="px-4 py-3 border-b border-border">
+                        <p class="text-sm font-medium text-popover-foreground">
                             {move || {
                                 current_user
                                     .get()
@@ -74,7 +74,7 @@ pub fn UserMenu() -> impl IntoView {
                                     .unwrap_or_else(|| "User".to_string())
                             }}
                         </p>
-                        <p class="text-xs text-gray-500 truncate">
+                        <p class="text-xs text-muted-foreground truncate">
                             {move || {
                                 current_user
                                     .get()
@@ -93,10 +93,10 @@ pub fn UserMenu() -> impl IntoView {
                         </DropdownLink>
                     </div>
 
-                    <div class="border-t border-gray-200 py-1">
+                    <div class="border-t border-border py-1">
                         <button
                             on:click=move |ev| handle_logout.run(ev)
-                            class="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                            class="w-full flex items-center gap-3 px-4 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
                         >
                             <span>"🚪"</span>
                             <span>"Sign Out"</span>
@@ -113,7 +113,7 @@ fn DropdownLink(href: &'static str, icon: &'static str, children: Children) -> i
     view! {
         <A
             href=href
-            attr:class="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+            attr:class="flex items-center gap-3 px-4 py-2 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
         >
             <span>{icon}</span>
             <span>{children()}</span>

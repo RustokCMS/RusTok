@@ -16,23 +16,24 @@ pub fn Input(
 ) -> impl IntoView {
     let size_cls = match size {
         Size::Sm => "h-8 text-xs px-2",
-        Size::Md => "h-9 text-sm px-3",
-        Size::Lg | Size::Icon => "h-10 text-base px-4",
+        Size::Md => "h-9 text-sm px-3 py-1",
+        Size::Lg | Size::Icon => "h-10 text-sm px-4 py-2",
     };
 
     let state_cls = if invalid {
-        "border-[hsl(var(--iu-danger))] focus-visible:ring-[hsl(var(--iu-danger))]"
+        "border-destructive focus-visible:ring-destructive"
     } else {
-        "border-[hsl(var(--iu-border))] focus-visible:ring-[hsl(var(--iu-primary))]"
+        "border-input focus-visible:ring-ring"
     };
 
     view! {
         <input
             type=r#type
             class=format!(
-                "w-full rounded-[var(--iu-radius-md)] border bg-[hsl(var(--iu-bg))] \
-                 text-[hsl(var(--iu-fg))] transition-colors \
-                 focus-visible:outline-none focus-visible:ring-2 \
+                "flex w-full rounded-md border bg-background text-foreground shadow-sm \
+                 transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium \
+                 placeholder:text-muted-foreground \
+                 focus-visible:outline-none focus-visible:ring-1 \
                  disabled:cursor-not-allowed disabled:opacity-50 {} {} {}",
                 size_cls, state_cls, class
             )

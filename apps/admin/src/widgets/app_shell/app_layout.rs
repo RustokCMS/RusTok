@@ -7,7 +7,7 @@ use super::sidebar::Sidebar;
 #[component]
 pub fn AppLayout() -> impl IntoView {
     view! {
-        <div class="flex h-screen bg-slate-50 overflow-hidden">
+        <div class="flex h-screen bg-background overflow-hidden">
             <Sidebar />
             <div class="flex flex-1 flex-col overflow-hidden">
                 <Header />

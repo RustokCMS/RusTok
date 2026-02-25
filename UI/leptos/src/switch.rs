@@ -22,8 +22,8 @@ pub fn Switch(
             "h-3 w-3 data-[state=checked]:translate-x-3",
         ),
         SwitchSize::Md => (
-            "w-9 h-5",
-            "h-4 w-4 data-[state=checked]:translate-x-4",
+            "w-11 h-6",
+            "h-5 w-5 data-[state=checked]:translate-x-5",
         ),
     };
 
@@ -37,21 +37,16 @@ pub fn Switch(
             aria-checked=move || is_checked().to_string()
             data-state=move || if is_checked() { "checked" } else { "unchecked" }
             disabled=disabled
-            class=format!(
-                "relative inline-flex shrink-0 cursor-pointer items-center \
-                 rounded-full border-2 border-transparent transition-colors \
+            class=move || format!(
+                "peer inline-flex shrink-0 cursor-pointer items-center \
+                 rounded-full border-2 border-transparent shadow-sm transition-colors \
                  focus-visible:outline-none focus-visible:ring-2 \
-                 focus-visible:ring-[hsl(var(--iu-primary))] focus-visible:ring-offset-2 \
-                 disabled:cursor-not-allowed disabled:opacity-50 {} {}",
-                track_cls, class
+                 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background \
+                 disabled:cursor-not-allowed disabled:opacity-50 {} {} {}",
+                if is_checked() { "bg-primary" } else { "bg-input" },
+                track_cls,
+                class
             )
-            style=move || {
-                if is_checked() {
-                    "background-color: hsl(var(--iu-primary))"
-                } else {
-                    "background-color: hsl(var(--iu-muted))"
-                }
-            }
             on:click=move |_| {
                 if !disabled {
                     if let Some(set) = set_checked {
@@ -63,7 +58,7 @@ pub fn Switch(
         >
             <span
                 class=format!(
-                    "pointer-events-none block rounded-full bg-white shadow-lg \
+                    "pointer-events-none block rounded-full bg-background shadow-lg \
                      ring-0 transition-transform data-[state=unchecked]:translate-x-0 {}",
                     thumb_cls
                 )

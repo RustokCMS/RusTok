@@ -116,7 +116,7 @@ pub fn Dashboard() -> impl IntoView {
                     <LanguageToggle />
                     <Button
                         on_click=logout
-                        class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
+                        class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || translate("app.dashboard.logout")}
                     </Button>
@@ -132,7 +132,7 @@ pub fn Dashboard() -> impl IntoView {
                     <div class="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
                         {(0..4)
                             .map(|_| {
-                                view! { <div class="h-32 animate-pulse rounded-2xl bg-slate-100"></div> }
+                                view! { <div class="h-32 animate-pulse rounded-xl bg-muted"></div> }
                             })
                             .collect_view()}
                     </div>
@@ -185,7 +185,7 @@ pub fn Dashboard() -> impl IntoView {
                                         <StatsCard
                                             title=title
                                             value=value
-                                            icon=view! { <span class="text-slate-400">"•"</span> }.into_any()
+                                            icon=view! { <span class="text-muted-foreground">"•"</span> }.into_any()
                                             trend=hint
                                             class="transition-all hover:scale-[1.02]"
                                         />
@@ -198,8 +198,8 @@ pub fn Dashboard() -> impl IntoView {
             </Suspense>
 
             <div class="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-                <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-                    <h4 class="mb-4 text-lg font-semibold">
+                <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
+                    <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                         {move || translate("app.dashboard.activity.title")}
                     </h4>
                     <Suspense
@@ -207,7 +207,7 @@ pub fn Dashboard() -> impl IntoView {
                             <div class="space-y-3">
                                 {(0..4)
                                     .map(|_| {
-                                        view! { <div class="h-14 animate-pulse rounded-lg bg-slate-100"></div> }
+                                        view! { <div class="h-14 animate-pulse rounded-lg bg-muted"></div> }
                                     })
                                     .collect_view()}
                             </div>
@@ -222,7 +222,7 @@ pub fn Dashboard() -> impl IntoView {
 
                             if activities.is_empty() {
                                 view! {
-                                    <div class="py-8 text-center text-slate-500">
+                                    <div class="py-8 text-center text-muted-foreground">
                                         "No recent activity"
                                     </div>
                                 }.into_any()
@@ -238,17 +238,17 @@ pub fn Dashboard() -> impl IntoView {
                                                 .and_then(|u| u.name.clone())
                                                 .unwrap_or_else(|| "System".to_string());
                                             view! {
-                                                <div class="flex items-center justify-between border-b border-slate-200 py-3 last:border-b-0">
+                                                <div class="flex items-center justify-between border-b border-border py-3 last:border-b-0">
                                                     <div class="min-w-0 flex-1">
                                                         <div class="flex items-center gap-2">
                                                             <ActivityIcon activity_type=item.r#type.clone() />
-                                                            <strong class="truncate">{item.description}</strong>
+                                                            <strong class="truncate text-foreground">{item.description}</strong>
                                                         </div>
-                                                        <p class="mt-1 text-sm text-slate-500">
+                                                        <p class="mt-1 text-sm text-muted-foreground">
                                                             {format!("by {}", user_name)}
                                                         </p>
                                                     </div>
-                                                    <span class="ml-3 inline-flex shrink-0 items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                                                    <span class="ml-3 inline-flex shrink-0 items-center rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
                                                         {time_ago}
                                                     </span>
                                                 </div>
@@ -260,18 +260,18 @@ pub fn Dashboard() -> impl IntoView {
                         }}
                     </Suspense>
                 </div>
-                <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-                    <h4 class="mb-4 text-lg font-semibold">
+                <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
+                    <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                         {move || translate("app.dashboard.quick.title")}
                     </h4>
                     <div class="grid gap-3">
-                        <a class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200" href="/security">
+                        <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/security">
                             {move || translate("app.dashboard.quick.security")}
                         </a>
-                        <a class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200" href="/profile">
+                        <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/profile">
                             {move || translate("app.dashboard.quick.profile")}
                         </a>
-                        <a class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200" href="/users">
+                        <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/users">
                             {move || translate("app.dashboard.quick.users")}
                         </a>
                     </div>

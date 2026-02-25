@@ -25,9 +25,9 @@ pub fn Header() -> impl IntoView {
     });
 
     view! {
-        <header class="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0">
-            <div class="flex items-center gap-2 text-sm text-slate-500">
-                <span class="font-medium text-slate-900">"RusTok"</span>
+        <header class="h-14 bg-background border-b border-border flex items-center justify-between px-6 shrink-0">
+            <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                <span class="font-medium text-foreground">"RusTok"</span>
                 <span>"/"</span>
                 {{
                     let crumbs = breadcrumbs.get();
@@ -39,9 +39,9 @@ pub fn Header() -> impl IntoView {
                             let label_key = crumb.label_key;
                             let is_last = index == last_index;
                             let content = if let Some(href) = crumb.href {
-                                view! { <A href=href attr:class="hover:text-slate-700">{move || translate(label_key)}</A> }.into_any()
+                                view! { <A href=href attr:class="hover:text-foreground transition-colors">{move || translate(label_key)}</A> }.into_any()
                             } else {
-                                view! { <span class="text-slate-700">{move || translate(label_key)}</span> }.into_any()
+                                view! { <span class="text-foreground">{move || translate(label_key)}</span> }.into_any()
                             };
                             view! {
                                 <div class="flex items-center gap-2">
