@@ -29,13 +29,14 @@ static EN_MESSAGES: OnceLock<Map<String, Value>> = OnceLock::new();
 static RU_MESSAGES: OnceLock<Map<String, Value>> = OnceLock::new();
 
 pub fn translate_locale(locale: Locale, key: &str) -> String {
-    let messages =
-        match locale {
-            Locale::En => EN_MESSAGES
-                .get_or_init(|| load_messages(include_str!("../../../locales/en.json"))),
-            Locale::Ru => RU_MESSAGES
-                .get_or_init(|| load_messages(include_str!("../../../locales/ru.json"))),
-        };
+    let messages = match locale {
+        Locale::En => {
+            EN_MESSAGES.get_or_init(|| load_messages(include_str!("../../../locales/en.json")))
+        }
+        Locale::Ru => {
+            RU_MESSAGES.get_or_init(|| load_messages(include_str!("../../../locales/ru.json")))
+        }
+    };
 
     messages
         .get(key)
