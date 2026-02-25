@@ -183,9 +183,11 @@ impl MenuService {
                         status: None,
                         parent_id: Some(parent_id),
                         author_id: None,
+                        category_id: None,
                         locale: None,
                         page: 1,
                         per_page: 100,
+                        include_deleted: false,
                     },
                 )
                 .await?;

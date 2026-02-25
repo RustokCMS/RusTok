@@ -92,9 +92,6 @@ build-small = "build --release --workspace -Z build-std=std,panic_abort -Z build
 # Security & Auditing
 # ============================================================================
 
-# Run security audit
-audit = "audit"
-
 # Run all security checks (audit + deny)
 audit-all = "audit && deny check"
 

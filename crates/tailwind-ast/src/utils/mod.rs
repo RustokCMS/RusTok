@@ -15,7 +15,7 @@ where
 {
     map_res(recognize(digit1), str::parse).parse(input)
 }
-///
+/// Parses an integer with optional `px` suffix.
 pub fn parse_i_px_maybe<T>(input: &str) -> IResult<&str, T>
 where
     T: FromStr,
@@ -29,7 +29,7 @@ pub fn parse_f32(input: &str) -> IResult<&str, f32> {
     let float1 = (digit1, opt((tag("."), digit1)));
     map_res(recognize(float1), str::parse).parse(input)
 }
-///
+/// Parses a float followed by percent sign, returns numeric part.
 pub fn parse_f_percent(input: &str) -> IResult<&str, f32> {
     let (rest, (f, _)) = (parse_f32, char('%')).parse(input)?;
     Ok((rest, f))

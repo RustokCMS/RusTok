@@ -1,7 +1,7 @@
 use super::*;
 
 impl<'a> AstStyle<'a> {
-    ///
+    /// Returns true when style elements contain only `&` self-reference token.
     #[inline]
     pub fn is_self_reference(&self) -> bool {
         matches!(self.elements.as_slice(), ["&"])
@@ -9,7 +9,7 @@ impl<'a> AstStyle<'a> {
 }
 
 impl<'a> AstGroup<'a> {
-    ///
+    /// Expands group into standalone styles.
     #[inline]
     pub fn expand(self, styles: &mut Vec<AstStyle<'a>>) {
         let head = &self.head;
@@ -30,7 +30,7 @@ impl<'a> Add<AstGroup<'a>> for AstStyle<'a> {
 }
 
 impl<'a> AstGroupItem<'a> {
-    ///
+    /// Expands an item into output styles.
     #[inline]
     pub fn expand(self, styles: &mut Vec<AstStyle<'a>>) {
         match self {
@@ -39,7 +39,7 @@ impl<'a> AstGroupItem<'a> {
         }
     }
 
-    ///
+    /// Expands an item using provided head style.
     #[inline]
     pub fn expand_with_head(self, styles: &mut Vec<AstStyle<'a>>, head: &AstStyle<'a>) {
         match self {
@@ -61,7 +61,7 @@ impl<'a> AddAssign<&AstStyle<'a>> for AstStyle<'a> {
     fn add_assign(&mut self, rhs: &AstStyle<'a>) {
         self.negative = merge_negative(self.negative, rhs.negative);
         self.variants.extend(rhs.variants.iter().cloned());
-        self.arbitrary = self.arbitrary.or(self.arbitrary);
+        self.arbitrary = self.arbitrary.or(rhs.arbitrary);
         match rhs.is_self_reference() {
             true => {}
             false => self.elements.extend(rhs.elements.iter().cloned()),

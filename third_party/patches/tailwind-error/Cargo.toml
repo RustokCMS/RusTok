@@ -80,3 +80,23 @@ optional = true
 
 [features]
 default = []
+chrono = ["dep:chrono"]
+css-color = ["dep:css-color"]
+glob = ["dep:glob"]
+globset = ["dep:globset"]
+nom = ["dep:nom"]
+num = ["dep:num"]
+parcel_css = ["dep:parcel_css"]
+peginator = ["dep:peginator"]
+pest = ["dep:pest"]
+rust_decimal = ["dep:rust_decimal"]
+tl = ["dep:tl"]
+
+# feature flags referenced by cfg gates in `src/error_3rd/mod.rs`
+# (kept for compatibility with upstream API surface)
+docx-rs = []
+git2 = []
+html_parser = []
+lsp-types = []
+rsass = []
+serde_json = []

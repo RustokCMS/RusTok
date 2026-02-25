@@ -5,14 +5,14 @@ mod parse;
 #[cfg(test)]
 mod tests;
 use nom::{
-    Err, IResult,
+    Err, IResult, Parser,
     branch::alt,
     bytes::complete::{tag, take_till1},
     character::complete::{alphanumeric1, char, multispace1},
     combinator::opt,
     error::Error,
     multi::{many0, separated_list0},
-    sequence::{delimited, tuple},
+    sequence::delimited,
 };
 use std::{
     fmt::{Display, Formatter},
@@ -21,8 +21,8 @@ use std::{
 
 /// Decompose a string into tailwind instructions
 pub fn parse_tailwind(input: &str) -> Result<Vec<AstStyle>, Err<Error<&str>>> {
-    let rest = many0(tuple((multispace1, AstGroupItem::parse)));
-    let (head, groups) = match tuple((AstGroupItem::parse, rest))(input.trim()) {
+    let rest = many0((multispace1, AstGroupItem::parse));
+    let (head, groups) = match (AstGroupItem::parse, rest).parse(input.trim()) {
         Ok(o) => o.1,
         Err(e) => return Err(e),
     };
@@ -39,9 +39,9 @@ pub fn parse_tailwind(input: &str) -> Result<Vec<AstStyle>, Err<Error<&str>>> {
 pub struct AstGroup<'a> {
     /// Is a `!important` group
     pub important: bool,
-    ///
+    /// Group head style used as a prefix for children.
     pub head: AstStyle<'a>,
-    ///
+    /// Nested group/style children.
     pub children: Vec<AstGroupItem<'a>>,
 }
 
@@ -61,9 +61,9 @@ pub struct AstStyle<'a> {
     pub important: bool,
     /// Is a negative style
     pub negative: bool,
-    ///
+    /// Variants applied to this style.
     pub variants: Vec<ASTVariant<'a>>,
-    ///
+    /// Element segments of the style token.
     pub elements: Vec<&'a str>,
     /// Is a arbitrary value
     pub arbitrary: Option<&'a str>,

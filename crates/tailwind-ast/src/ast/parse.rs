@@ -75,7 +75,7 @@ impl<'a> AstElements<'a> {
     pub fn parse(input: &'a str) -> IResult<&'a str, Self> {
         let (rest, (first, other)) = (Self::parse_head, many0(Self::parse_rest)).parse(input)?;
         let mut out = vec![first];
-        out.extend(other.into_iter());
+        out.extend(other);
         Ok((rest, Self { elements: out }))
     }
     #[inline]
@@ -179,7 +179,7 @@ fn take_until_unbalanced(
             index += n;
             let mut it = i[index..].chars();
             match it.next().unwrap_or_default() {
-                c if c == '\\' => {
+                '\\' => {
                     // Skip the escape char `\`.
                     index += '\\'.len_utf8();
                     // Skip also the following char.
