@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2026-02-25
+
+#### Alloy Scripting — Registered as Optional RusToKModule (improvement 2.13)
+- **AlloyModule** (`apps/server/src/modules/alloy.rs`)
+  - New `AlloyModule` struct implementing `RusToKModule` with `ModuleKind::Optional`
+  - Declares RBAC permissions for the `Scripts` resource (create/read/update/delete/list/manage)
+  - Delegates `ScriptsMigration` from `alloy-scripting` for unified migration management
+  - Registered in `build_registry()` alongside other optional domain modules
+- **modules.toml** — added `alloy = { crate = "alloy-scripting", ... }` entry
+- **rustok-core permissions** (`crates/rustok-core/src/permissions.rs`)
+  - Added `Scripts` variant to `Resource` enum
+  - Added `SCRIPTS_*` permission constants (create/read/update/delete/list/manage)
+- **Documentation** — updated `docs/architecture/improvement-recommendations.md` (2.13 marked ✅)
+
 ### Added - 2026-02-19
 
 #### Admin Dashboard - Real Activity Data

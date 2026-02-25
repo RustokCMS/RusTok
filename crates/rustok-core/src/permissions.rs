@@ -31,6 +31,8 @@ pub enum Resource {
     ForumCategories,
     ForumTopics,
     ForumReplies,
+    // Scripting (alloy)
+    Scripts,
 }
 
 impl fmt::Display for Resource {
@@ -59,6 +61,7 @@ impl fmt::Display for Resource {
             Self::ForumCategories => "forum_categories",
             Self::ForumTopics => "forum_topics",
             Self::ForumReplies => "forum_replies",
+            Self::Scripts => "scripts",
         };
         write!(f, "{value}")
     }
@@ -92,6 +95,7 @@ impl FromStr for Resource {
             "forum_categories" => Ok(Self::ForumCategories),
             "forum_topics" => Ok(Self::ForumTopics),
             "forum_replies" => Ok(Self::ForumReplies),
+            "scripts" => Ok(Self::Scripts),
             _ => Err(format!("Unknown resource: {value}")),
         }
     }
@@ -257,4 +261,11 @@ impl Permission {
     pub const FORUM_REPLIES_LIST: Self = Self::new(Resource::ForumReplies, Action::List);
     pub const FORUM_REPLIES_MODERATE: Self = Self::new(Resource::ForumReplies, Action::Moderate);
     pub const FORUM_REPLIES_MANAGE: Self = Self::new(Resource::ForumReplies, Action::Manage);
+
+    pub const SCRIPTS_CREATE: Self = Self::new(Resource::Scripts, Action::Create);
+    pub const SCRIPTS_READ: Self = Self::new(Resource::Scripts, Action::Read);
+    pub const SCRIPTS_UPDATE: Self = Self::new(Resource::Scripts, Action::Update);
+    pub const SCRIPTS_DELETE: Self = Self::new(Resource::Scripts, Action::Delete);
+    pub const SCRIPTS_LIST: Self = Self::new(Resource::Scripts, Action::List);
+    pub const SCRIPTS_MANAGE: Self = Self::new(Resource::Scripts, Action::Manage);
 }

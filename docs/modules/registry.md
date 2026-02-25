@@ -24,6 +24,7 @@ graph TD
         INDEX[crates/rustok-index]
         RBAC[crates/rustok-rbac]
         TENANT[crates/rustok-tenant]
+        ALLOY[crates/alloy-scripting]
     end
 
     subgraph Infrastructure
@@ -57,6 +58,7 @@ graph TD
     SERVER --> BLOG
     SERVER --> FORUM
     SERVER --> PAGES
+    SERVER --> ALLOY
 
     ADMIN --> L_AUTH
     ADMIN --> L_UI
@@ -80,6 +82,7 @@ graph TD
     INDEX --> CORE
     OUTBOX --> IGGY
     IGGY --> IGGY_CONN
+    ALLOY --> CORE
 
     Domain Modules -.-> TELEMETRY
 ```
@@ -125,7 +128,7 @@ These implement `RusToKModule` and are registered via `ModuleRegistry` in `apps/
 | `crates/rustok-blog` | **Blog** | `Optional` | `rustok-content` ([CRATE_API](../../crates/rustok-blog/CRATE_API.md)) |
 | `crates/rustok-forum` | **Forum** | `Optional` | `rustok-content` ([CRATE_API](../../crates/rustok-forum/CRATE_API.md)) |
 | `crates/rustok-pages` | **Pages** | `Optional` | `rustok-core` ([CRATE_API](../../crates/rustok-pages/CRATE_API.md)) |
-| `crates/alloy-scripting` | **Alloy** | Infra (not via registry) | `rustok-core` |
+| `crates/alloy-scripting` | **Alloy Scripting** | `Optional` | `rustok-core` (registered via `AlloyModule` in `apps/server/src/modules/alloy.rs`) |
 
 ### Internal Frontend Libraries (`crates/`)
 

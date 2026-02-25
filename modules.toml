@@ -21,6 +21,7 @@ commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-c
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content"] }
 pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages" }
+alloy = { crate = "alloy-scripting", source = "path", path = "crates/alloy-scripting" }
 
 # Platform lifecycle modules (Core in ModuleRegistry)
 tenant = { crate = "rustok-tenant", source = "path", path = "crates/rustok-tenant", required = true }

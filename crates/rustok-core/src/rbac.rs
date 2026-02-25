@@ -27,6 +27,7 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Analytics,
         Resource::Logs,
         Resource::Webhooks,
+        Resource::Scripts,
     ]
     .into_iter()
     .map(|resource| Permission::new(resource, Action::Manage))
@@ -60,6 +61,7 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
 
     permissions.insert(Permission::new(Resource::Modules, Action::Read));
     permissions.insert(Permission::new(Resource::Modules, Action::List));
+    permissions.insert(Permission::new(Resource::Scripts, Action::Manage));
 
     permissions
 });
