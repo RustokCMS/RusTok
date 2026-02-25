@@ -343,11 +343,11 @@ fn ActivityIcon(activity_type: String) -> impl IntoView {
         ),
         "security.login" | "security.auth" => (
             "M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2zm10-10V7a4 4 0 0 0-8 0v4h8z",
-            "text-indigo-500",
+            "text-violet-500",
         ),
         _ => (
             "M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
-            "text-slate-400",
+            "text-muted-foreground",
         ),
     };
 
