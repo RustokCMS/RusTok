@@ -85,26 +85,25 @@ impl RateLimiter {
 
         {
             let requests = self.requests.read().await;
-            if let Some(counter) = requests.get(key) {
-                if now.duration_since(counter.window_start) <= self.config.window {
-                    if counter.count >= self.config.max_requests {
-                        let retry_after = self
-                            .config
-                            .window
-                            .saturating_sub(now.duration_since(counter.window_start))
-                            .as_secs();
+            if let Some(counter) = requests.get(key).filter(|counter| {
+                now.duration_since(counter.window_start) <= self.config.window
+                    && counter.count >= self.config.max_requests
+            }) {
+                let retry_after = self
+                    .config
+                    .window
+                    .saturating_sub(now.duration_since(counter.window_start))
+                    .as_secs();
 
-                        warn!(
-                            key = %key,
-                            count = counter.count,
-                            limit = self.config.max_requests,
-                            retry_after = retry_after,
-                            "Rate limit exceeded"
-                        );
+                warn!(
+                    key = %key,
+                    count = counter.count,
+                    limit = self.config.max_requests,
+                    retry_after = retry_after,
+                    "Rate limit exceeded"
+                );
 
-                        return Err(StatusCode::TOO_MANY_REQUESTS);
-                    }
-                }
+                return Err(StatusCode::TOO_MANY_REQUESTS);
             }
         }
 

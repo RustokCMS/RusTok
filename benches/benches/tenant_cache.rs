@@ -1,5 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::collections::HashMap;
+use std::hint::black_box;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -51,7 +52,7 @@ use tenant_cache_sim::*;
 
 fn bench_cache_operations(c: &mut Criterion) {
     let cache = TenantCache::new();
-    let tenant_ids: Vec<TenantId> = (0..1000).map(|i| TenantId::new_v4()).collect();
+    let tenant_ids: Vec<TenantId> = (0..1000).map(|_| TenantId::new_v4()).collect();
 
     // Pre-populate cache
     for (i, id) in tenant_ids.iter().enumerate() {
@@ -69,18 +70,30 @@ fn bench_cache_operations(c: &mut Criterion) {
         cache.insert(data);
     }
 
+    black_box(cache.len());
+
     let mut group = c.benchmark_group("tenant_cache");
 
     // Benchmark: Cache hit (read-only)
     group.bench_function("get_hit", |b| {
         let id = tenant_ids[500];
-        b.iter(|| black_box(cache.get(&id)))
+        b.iter(|| {
+            let result = cache
+                .get(&id)
+                .map(|tenant| (tenant.name.len(), tenant.config.len()));
+            black_box(result)
+        })
     });
 
     // Benchmark: Cache miss
     group.bench_function("get_miss", |b| {
         let missing_id = TenantId::new_v4();
-        b.iter(|| black_box(cache.get(&missing_id)))
+        b.iter(|| {
+            let result = cache
+                .get(&missing_id)
+                .map(|tenant| (tenant.name.len(), tenant.config.len()));
+            black_box(result)
+        })
     });
 
     // Benchmark: Insert (write)
@@ -133,7 +146,10 @@ fn bench_cache_throughput(c: &mut Criterion) {
 
             b.iter(|| {
                 for id in &ids {
-                    black_box(cache.get(id));
+                    let result = cache
+                        .get(id)
+                        .map(|tenant| (tenant.name.len(), tenant.config.len()));
+                    black_box(result);
                 }
             })
         });
@@ -162,7 +178,10 @@ fn bench_cache_contention(c: &mut Criterion) {
                     let cache = cache.clone();
                     thread::spawn(move || {
                         for _ in 0..100 {
-                            black_box(cache.get(&id));
+                            let result = cache
+                                .get(&id)
+                                .map(|tenant| (tenant.name.len(), tenant.config.len()));
+                            black_box(result);
                         }
                     })
                 })

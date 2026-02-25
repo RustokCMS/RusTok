@@ -22,7 +22,7 @@ pub trait PasswordResetEmailSender: Send + Sync {
 #[derive(Clone)]
 pub enum EmailService {
     Disabled,
-    Smtp(SmtpEmailSender),
+    Smtp(Box<SmtpEmailSender>),
 }
 
 impl EmailService {
@@ -34,7 +34,7 @@ impl EmailService {
             return Ok(Self::Disabled);
         }
 
-        Ok(Self::Smtp(SmtpEmailSender::try_new(&settings)?))
+        Ok(Self::Smtp(Box::new(SmtpEmailSender::try_new(&settings)?)))
     }
 
     pub fn password_reset_url(&self, ctx: &AppContext, token: &str) -> Result<String> {
