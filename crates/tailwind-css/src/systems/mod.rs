@@ -9,6 +9,6 @@ mod preflight;
 mod units;
 
 pub use self::{
-    breakpoints::*, builder::*, colors::*, css_global::*, effect_system::*, font_system::*, instruction::*, preflight::*,
-    units::*,
+    breakpoints::*, builder::*, colors::*, css_global::*, effect_system::*, font_system::*,
+    instruction::*, preflight::*, units::*,
 };

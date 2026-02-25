@@ -5,8 +5,9 @@ use tailwind_error::Result;
 use crate::{CssAttributes, NumericValue, TailwindArbitrary, TailwindBuilder, TailwindInstance};
 
 pub use self::{
-    blur::TailwindBlur, brightness::TailwindBrightness, contrast::TailwindContrast, grayscale::TailwindGrayscale,
-    hue_rotate::TailwindHueRotate, invert::TailwindInvert, saturate::TailwindSaturate, sepia::TailwindSepia,
+    blur::TailwindBlur, brightness::TailwindBrightness, contrast::TailwindContrast,
+    grayscale::TailwindGrayscale, hue_rotate::TailwindHueRotate, invert::TailwindInvert,
+    saturate::TailwindSaturate, sepia::TailwindSepia,
 };
 
 mod blur;
@@ -32,10 +33,10 @@ impl Backdrop {
         match self.0 {
             true => {
                 write!(f, "backdrop-")
-            },
+            }
             false => {
                 write!(f, "")
-            },
+            }
         }
     }
     pub fn get_filter<T>(&self, value: T) -> CssAttributes

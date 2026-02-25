@@ -33,6 +33,9 @@ impl TailwindOverscroll {
     }
     /// https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior#syntax
     pub fn check_valid(mode: &str) -> bool {
-        ["auto", "contain", "inherit", "initial", "none", "revert", "unset"].contains(&mode)
+        [
+            "auto", "contain", "inherit", "initial", "none", "revert", "unset",
+        ]
+        .contains(&mode)
     }
 }

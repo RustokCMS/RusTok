@@ -4,10 +4,10 @@ use leptos_router::hooks::{use_navigate, use_params};
 use leptos_router::params::Params;
 use serde::{Deserialize, Serialize};
 
+use crate::app::providers::locale::translate;
 use crate::shared::api::queries::{USER_DETAILS_QUERY, USER_DETAILS_QUERY_HASH};
 use crate::shared::api::{request, request_with_persisted, ApiError};
 use crate::shared::ui::{Button, Input, LanguageToggle};
-use crate::app::providers::locale::translate;
 use leptos_auth::hooks::{use_tenant, use_token};
 
 #[derive(Params, PartialEq)]

@@ -295,9 +295,7 @@ impl AuthMutation {
         let tenant = ctx.data::<TenantContext>()?;
 
         let user = users::Entity::find_by_id(auth.user_id)
-            .filter(
-                crate::models::_entities::users::Column::TenantId.eq(tenant.id),
-            )
+            .filter(crate::models::_entities::users::Column::TenantId.eq(tenant.id))
             .one(&app_ctx.db)
             .await
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
@@ -305,7 +303,11 @@ impl AuthMutation {
 
         let mut model: users::ActiveModel = user.into();
         if let Some(name) = input.name {
-            model.name = Set(if name.trim().is_empty() { None } else { Some(name.trim().to_string()) });
+            model.name = Set(if name.trim().is_empty() {
+                None
+            } else {
+                Some(name.trim().to_string())
+            });
         }
 
         let updated = model
@@ -335,9 +337,7 @@ impl AuthMutation {
         let tenant = ctx.data::<TenantContext>()?;
 
         let user = users::Entity::find_by_id(auth.user_id)
-            .filter(
-                crate::models::_entities::users::Column::TenantId.eq(tenant.id),
-            )
+            .filter(crate::models::_entities::users::Column::TenantId.eq(tenant.id))
             .one(&app_ctx.db)
             .await
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?

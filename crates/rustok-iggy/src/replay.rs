@@ -133,10 +133,7 @@ impl ReplayManager {
     }
 }
 
-pub async fn replay_events(
-    connector: &dyn IggyConnector,
-    config: ReplayConfig,
-) -> Result<Uuid> {
+pub async fn replay_events(connector: &dyn IggyConnector, config: ReplayConfig) -> Result<Uuid> {
     let manager = ReplayManager::new();
     manager.start_replay(connector, config).await
 }

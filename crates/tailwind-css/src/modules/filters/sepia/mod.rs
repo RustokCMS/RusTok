@@ -27,6 +27,9 @@ impl TailwindSepia {
             [] if arbitrary.is_none() => 100i32.into(),
             _ => NumericValue::positive_parser("sepia", |_| false)(rest, arbitrary)?,
         };
-        Ok(Self { percent, backdrop: Backdrop::from(backdrop) })
+        Ok(Self {
+            percent,
+            backdrop: Backdrop::from(backdrop),
+        })
     }
 }

@@ -17,7 +17,12 @@ impl AxisXY {
             _ => unreachable!(),
         }
     }
-    pub(crate) fn write_xy<A, B>(&self, f: &mut Formatter<'_>, before: B, after: A) -> std::fmt::Result
+    pub(crate) fn write_xy<A, B>(
+        &self,
+        f: &mut Formatter<'_>,
+        before: B,
+        after: A,
+    ) -> std::fmt::Result
     where
         A: Display,
         B: Display,
@@ -35,7 +40,12 @@ impl AxisXY {
             _ => (AxisXY::N, pattern),
         }
     }
-    pub(crate) fn write_xyn<A, B>(&self, f: &mut Formatter<'_>, before: B, after: A) -> std::fmt::Result
+    pub(crate) fn write_xyn<A, B>(
+        &self,
+        f: &mut Formatter<'_>,
+        before: B,
+        after: A,
+    ) -> std::fmt::Result
     where
         A: Display,
         B: Display,

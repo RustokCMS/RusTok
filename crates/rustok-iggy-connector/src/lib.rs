@@ -33,13 +33,9 @@ use tokio::sync::RwLock;
 
 #[cfg(feature = "iggy")]
 use {
-    iggy::client::Client,
-    iggy::consumer::Consumer as IggyConsumer,
-    iggy::error::IggyError,
-    iggy::identifier::Identifier,
-    iggy::messages::poll_messages::PollMessages,
-    iggy::messages::send_messages::SendMessages,
-    iggy::tcp::TcpClient,
+    iggy::client::Client, iggy::consumer::Consumer as IggyConsumer, iggy::error::IggyError,
+    iggy::identifier::Identifier, iggy::messages::poll_messages::PollMessages,
+    iggy::messages::send_messages::SendMessages, iggy::tcp::TcpClient,
 };
 
 /// Connection mode for Iggy connector
@@ -204,7 +200,11 @@ impl PublishRequest {
     }
 
     /// Creates a simple request with default stream/topic
-    pub fn simple(partition_key: impl Into<String>, payload: Vec<u8>, event_id: impl Into<String>) -> Self {
+    pub fn simple(
+        partition_key: impl Into<String>,
+        payload: Vec<u8>,
+        event_id: impl Into<String>,
+    ) -> Self {
         Self::new("rustok", "domain", partition_key, payload, event_id)
     }
 }
@@ -496,9 +496,7 @@ impl IggyConnector for RemoteConnector {
         #[cfg(feature = "iggy")]
         {
             let client_guard = self.client.read().await;
-            let client = client_guard
-                .as_ref()
-                .ok_or(ConnectorError::NotConnected)?;
+            let client = client_guard.as_ref().ok_or(ConnectorError::NotConnected)?;
 
             let stream_id = self
                 .stream_id
@@ -848,7 +846,11 @@ mod tests {
         for i in 0..1000 {
             let key = format!("tenant-{}", i);
             let partition = calculate_partition(&key);
-            assert!(partition >= 1 && partition <= 8, "Partition {} out of range", partition);
+            assert!(
+                partition >= 1 && partition <= 8,
+                "Partition {} out of range",
+                partition
+            );
         }
     }
 
@@ -949,14 +951,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_remote_subscriber() {
-        let mut subscriber = RemoteMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 1);
+        let mut subscriber =
+            RemoteMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 1);
         let result = subscriber.recv().await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_embedded_subscriber() {
-        let mut subscriber = EmbeddedMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 1);
+        let mut subscriber =
+            EmbeddedMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 1);
         let result = subscriber.recv().await;
         assert!(result.is_ok());
     }

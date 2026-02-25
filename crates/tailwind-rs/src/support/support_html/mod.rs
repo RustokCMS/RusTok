@@ -23,7 +23,11 @@ impl CLIConfig {
 }
 
 impl HtmlConfig {
-    pub fn trace_all_class(input: &str, tw: &mut TailwindBuilder, obfuscate: bool) -> Result<String> {
+    pub fn trace_all_class(
+        input: &str,
+        tw: &mut TailwindBuilder,
+        obfuscate: bool,
+    ) -> Result<String> {
         let mut dom = parse(input, ParserOptions::default())?;
         for node in dom.nodes_mut() {
             // ignore if any problem
@@ -71,7 +75,7 @@ fn trace_class(node: &mut Node, tw: &mut TailwindBuilder, obfuscate: bool) -> Op
     match tw.trace(class.try_as_utf8_str()?, obfuscate) {
         Ok(c) => {
             class.set(c).ok()?;
-        },
+        }
         Err(e) => error!("{}", e),
     }
     Some(())
@@ -85,16 +89,15 @@ fn inline_class(node: &mut Node, tw: &mut TailwindBuilder) -> Option<()> {
         Ok((c, s)) => {
             if c.is_empty() {
                 attributes.remove("class");
-            }
-            else {
+            } else {
                 class.set(c).ok()?;
             }
             style.set(s).ok()?;
-        },
+        }
         Err(e) => {
             error!("{}", e);
             return Some(());
-        },
+        }
     };
     attributes.insert("style", Some(style));
     Some(())
@@ -106,10 +109,10 @@ fn scope_class(node: &mut Node, tw: &mut TailwindBuilder) -> Option<()> {
     match tw.scope(class.try_as_utf8_str()?) {
         Ok((c1, c2)) => {
             class.set([c1, c2].join(" ")).ok()?;
-        },
+        }
         Err(e) => {
             error!("{}", e);
-        },
+        }
     };
     Some(())
 }
@@ -122,15 +125,14 @@ fn key_class(node: &mut Node, tw: &mut TailwindBuilder) -> Option<()> {
         Ok((c, k)) => {
             if c.is_empty() {
                 attributes.remove("class");
-            }
-            else {
+            } else {
                 class.set(c).ok()?;
             }
             key.set(format!("data-tw-{}", k)).ok()?;
-        },
+        }
         Err(e) => {
             error!("{}", e);
-        },
+        }
     };
     attributes.insert::<_, &str>(key, None);
     Some(())
@@ -144,15 +146,14 @@ fn value_class(node: &mut Node, tw: &mut TailwindBuilder) -> Option<()> {
         Ok((c, v)) => {
             if c.is_empty() {
                 attributes.remove("class");
-            }
-            else {
+            } else {
                 class.set(c).ok()?;
             }
             value.set(v).ok()?;
-        },
+        }
         Err(e) => {
             error!("{}", e);
-        },
+        }
     };
     attributes.insert("data-tw", Some(value));
     Some(())

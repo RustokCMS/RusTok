@@ -41,11 +41,17 @@ impl TailwindInstance for TailwindOutlineWidth {
 impl TailwindOutlineWidth {
     /// <https://tailwindcss.com/docs/outline-width>
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
-        let kind = UnitValue::positive_parser("outline-width", Self::check_valid, true, false, false)(pattern, arbitrary)?;
+        let kind =
+            UnitValue::positive_parser("outline-width", Self::check_valid, true, false, false)(
+                pattern, arbitrary,
+            )?;
         Ok(Self { kind })
     }
     ///
     pub fn check_valid(mode: &str) -> bool {
-        ["inherit", "initial", "medium", "revert", "thick", "thin", "unset"].contains(&mode)
+        [
+            "inherit", "initial", "medium", "revert", "thick", "thin", "unset",
+        ]
+        .contains(&mode)
     }
 }

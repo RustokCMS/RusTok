@@ -24,7 +24,10 @@ impl TailwindInstance for TailwindOutlineOffset {
 impl TailwindOutlineOffset {
     /// <https://tailwindcss.com/docs/outline-offset>
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
-        let kind = UnitValue::positive_parser("outline-offset", Self::check_valid, true, true, false)(pattern, arbitrary)?;
+        let kind =
+            UnitValue::positive_parser("outline-offset", Self::check_valid, true, true, false)(
+                pattern, arbitrary,
+            )?;
         Ok(Self { kind })
     }
     pub fn check_valid(mode: &str) -> bool {

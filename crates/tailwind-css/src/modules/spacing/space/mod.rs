@@ -32,7 +32,11 @@ impl TailwindInstance for TailwindSpace {
 
 impl TailwindSpace {
     /// https://tailwindcss.com/docs/space
-    pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary, negative: Negative) -> Result<Box<dyn TailwindInstance>> {
+    pub fn parse(
+        pattern: &[&str],
+        arbitrary: &TailwindArbitrary,
+        negative: Negative,
+    ) -> Result<Box<dyn TailwindInstance>> {
         match pattern {
             ["x", rest @ ..] => Self::parse_axis(rest, arbitrary, true, negative),
             ["y", rest @ ..] => Self::parse_axis(rest, arbitrary, false, negative),
@@ -50,14 +54,27 @@ impl TailwindSpace {
             ["reverse"] => Ok(TailwindSpaceReverse::from(axis).boxed()),
             _ => {
                 let size = SpacingSize::parse(pattern, arbitrary, &Self::check_valid)?;
-                Ok(Self { axis, negative, size }.boxed())
-            },
+                Ok(Self {
+                    axis,
+                    negative,
+                    size,
+                }
+                .boxed())
+            }
         }
     }
     /// https://tailwindcss.com/docs/margin#arbitrary-values
-    pub fn parse_arbitrary(arbitrary: &TailwindArbitrary, negative: Negative, axis: bool) -> Result<Self> {
+    pub fn parse_arbitrary(
+        arbitrary: &TailwindArbitrary,
+        negative: Negative,
+        axis: bool,
+    ) -> Result<Self> {
         let size = SpacingSize::parse_arbitrary(arbitrary)?;
-        Ok(Self { axis, negative, size })
+        Ok(Self {
+            axis,
+            negative,
+            size,
+        })
     }
     /// https://developer.mozilla.org/en-US/docs/Web/CSS/margin#syntax
     pub fn check_valid(mode: &str) -> bool {

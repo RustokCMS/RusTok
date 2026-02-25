@@ -25,7 +25,9 @@ impl TailwindRingOffsetWidth {
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
         let kind = match pattern {
             [] => NumericValue::from(3u32),
-            _ => NumericValue::positive_parser("ring-offset-width", Self::check_valid)(pattern, arbitrary)?,
+            _ => NumericValue::positive_parser("ring-offset-width", Self::check_valid)(
+                pattern, arbitrary,
+            )?,
         };
         Ok(Self { kind })
     }

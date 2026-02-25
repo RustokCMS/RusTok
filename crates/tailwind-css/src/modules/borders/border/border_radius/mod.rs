@@ -95,12 +95,29 @@ impl TailwindRounded {
             _ => Self::parse_inner(pattern, RoundedKind::Rounded, arbitrary),
         }
     }
-    fn parse_inner(pattern: &[&str], kind: RoundedKind, arbitrary: &TailwindArbitrary) -> Result<Self> {
+    fn parse_inner(
+        pattern: &[&str],
+        kind: RoundedKind,
+        arbitrary: &TailwindArbitrary,
+    ) -> Result<Self> {
         if arbitrary.is_some() {
-            return Ok(Self { kind, size: arbitrary.as_length_or_fraction()? });
+            return Ok(Self {
+                kind,
+                size: arbitrary.as_length_or_fraction()?,
+            });
         }
-        let rem = |n| Ok(Self { kind, size: LengthUnit::rem(n) });
-        let px = |n| Ok(Self { kind, size: LengthUnit::px(n) });
+        let rem = |n| {
+            Ok(Self {
+                kind,
+                size: LengthUnit::rem(n),
+            })
+        };
+        let px = |n| {
+            Ok(Self {
+                kind,
+                size: LengthUnit::px(n),
+            })
+        };
         match pattern {
             ["none"] => px(0.0),
             ["sm"] => rem(0.125),

@@ -27,6 +27,9 @@ impl TailwindContrast {
             [] if arbitrary.is_none() => 100u32.into(),
             _ => NumericValue::positive_parser("contrast", |_| false)(rest, arbitrary)?,
         };
-        Ok(Self { percent, backdrop: Backdrop::from(backdrop) })
+        Ok(Self {
+            percent,
+            backdrop: Backdrop::from(backdrop),
+        })
     }
 }

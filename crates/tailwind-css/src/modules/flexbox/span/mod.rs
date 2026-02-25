@@ -56,12 +56,16 @@ impl TailwindInstance for TailwindRow {
 
 impl TailwindRow {
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
-        Ok(Self { kind: GridKind::parse(pattern, arbitrary)? })
+        Ok(Self {
+            kind: GridKind::parse(pattern, arbitrary)?,
+        })
     }
 }
 
 impl TailwindColumn {
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
-        Ok(Self { kind: GridKind::parse(pattern, arbitrary)? })
+        Ok(Self {
+            kind: GridKind::parse(pattern, arbitrary)?,
+        })
     }
 }

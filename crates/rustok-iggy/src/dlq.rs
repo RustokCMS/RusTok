@@ -52,11 +52,7 @@ impl DlqManager {
         self
     }
 
-    pub async fn move_to_dlq(
-        &self,
-        connector: &dyn IggyConnector,
-        entry: DlqEntry,
-    ) -> Result<()> {
+    pub async fn move_to_dlq(&self, connector: &dyn IggyConnector, entry: DlqEntry) -> Result<()> {
         let stream = self.stream.read().await.clone();
         let topic = self.topic.read().await.clone();
 

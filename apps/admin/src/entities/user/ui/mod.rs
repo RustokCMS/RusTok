@@ -30,22 +30,10 @@ pub fn UserRoleBadge(role: UserRole) -> impl IntoView {
             "Super Admin",
             "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",
         ),
-        UserRole::Admin => (
-            "Admin",
-            "bg-primary/10 text-primary",
-        ),
-        UserRole::Manager => (
-            "Manager",
-            "bg-secondary text-secondary-foreground",
-        ),
-        UserRole::Customer => (
-            "Customer",
-            "bg-muted text-muted-foreground",
-        ),
-        UserRole::Unknown => (
-            "Unknown",
-            "bg-muted text-muted-foreground",
-        ),
+        UserRole::Admin => ("Admin", "bg-primary/10 text-primary"),
+        UserRole::Manager => ("Manager", "bg-secondary text-secondary-foreground"),
+        UserRole::Customer => ("Customer", "bg-muted text-muted-foreground"),
+        UserRole::Unknown => ("Unknown", "bg-muted text-muted-foreground"),
     };
 
     view! {
@@ -65,18 +53,9 @@ pub fn UserStatusBadge(status: UserStatus) -> impl IntoView {
             "Active",
             "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
         ),
-        UserStatus::Inactive => (
-            "Inactive",
-            "bg-muted text-muted-foreground",
-        ),
-        UserStatus::Suspended => (
-            "Suspended",
-            "bg-destructive/10 text-destructive",
-        ),
-        UserStatus::Unknown => (
-            "Unknown",
-            "bg-muted text-muted-foreground",
-        ),
+        UserStatus::Inactive => ("Inactive", "bg-muted text-muted-foreground"),
+        UserStatus::Suspended => ("Suspended", "bg-destructive/10 text-destructive"),
+        UserStatus::Unknown => ("Unknown", "bg-muted text-muted-foreground"),
     };
 
     view! {

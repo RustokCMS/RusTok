@@ -41,7 +41,9 @@ impl TailwindInstance for TailwindStrokeWidth {
 impl TailwindStrokeWidth {
     /// https://tailwindcss.com/docs/stroke-width
     pub fn try_new(width: &str) -> Result<Self> {
-        Ok(Self { kind: StrokeWidth::parse(width)? })
+        Ok(Self {
+            kind: StrokeWidth::parse(width)?,
+        })
     }
 }
 

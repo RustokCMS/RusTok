@@ -24,11 +24,19 @@ impl TailwindInstance for TailwindHueRotate {
 
 impl TailwindHueRotate {
     /// <https://tailwindcss.com/docs/hue-rotate>
-    pub fn parse(rest: &[&str], arbitrary: &TailwindArbitrary, backdrop: bool, negative: Negative) -> Result<Self> {
+    pub fn parse(
+        rest: &[&str],
+        arbitrary: &TailwindArbitrary,
+        backdrop: bool,
+        negative: Negative,
+    ) -> Result<Self> {
         let degree = match rest {
             [] if arbitrary.is_none() => 180u32.into(),
             _ => NumericValue::negative_parser("hue-rotate", |_| false)(rest, arbitrary, negative)?,
         };
-        Ok(Self { degree, backdrop: Backdrop::from(backdrop) })
+        Ok(Self {
+            degree,
+            backdrop: Backdrop::from(backdrop),
+        })
     }
 }

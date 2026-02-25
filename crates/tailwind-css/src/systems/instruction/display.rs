@@ -19,10 +19,10 @@ impl TailwindInstance for TailwindInstruction {
         match self.get_instance() {
             Ok(o) => {
                 out += o.attributes(ctx);
-            },
+            }
             Err(e) => {
                 log::warn!("tailwind-css: unsupported class skipped: {}", e);
-            },
+            }
         }
         out
     }
@@ -37,10 +37,10 @@ impl Display for TailwindVariant {
         match self.pseudo {
             true => {
                 write!(f, "::")
-            },
+            }
             false => {
                 write!(f, ":")
-            },
+            }
         }
     }
 }

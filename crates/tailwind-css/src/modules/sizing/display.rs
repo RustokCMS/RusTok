@@ -28,7 +28,9 @@ impl SizingUnit {
             Self::Auto => "auto".to_string(),
             Self::Full => "100%".to_string(),
             Self::Screen => format!("100{}", is_width),
-            Self::Fraction(numerator, denominator) => format!("{}%", *numerator as f32 / *denominator as f32),
+            Self::Fraction(numerator, denominator) => {
+                format!("{}%", *numerator as f32 / *denominator as f32)
+            }
             Self::Length(x) => format!("{}", x),
         }
     }

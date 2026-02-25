@@ -18,6 +18,9 @@ pub fn create_router<S: ScriptRegistry + 'static>(state: Arc<AppState<S>>) -> Ro
         .route("/scripts/:id", put(handlers::update_script::<S>))
         .route("/scripts/:id", delete(handlers::delete_script::<S>))
         .route("/scripts/:id/run", post(handlers::run_script::<S>))
-        .route("/scripts/name/:name/run", post(handlers::run_script_by_name::<S>))
+        .route(
+            "/scripts/name/:name/run",
+            post(handlers::run_script_by_name::<S>),
+        )
         .with_state(state)
 }

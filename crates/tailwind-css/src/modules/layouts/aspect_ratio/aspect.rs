@@ -26,7 +26,7 @@ impl Aspect {
             [n] => {
                 let (a, b) = TailwindArbitrary::from(*n).as_fraction()?;
                 Self::Radio(a, b)
-            },
+            }
             [] => Self::parse_arbitrary(arbitrary)?,
             _ => return syntax_error!("unknown aspect-ratio elements"),
         };

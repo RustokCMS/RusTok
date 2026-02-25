@@ -4,8 +4,8 @@ use std::{
 };
 
 use crate::{
-    css_attributes, syntax_error, CssAttributes, LengthUnit, Negative, NumericValue, Result, StandardValue, TailwindArbitrary,
-    TailwindBuilder, TailwindDisplay, TailwindInstance,
+    css_attributes, syntax_error, CssAttributes, LengthUnit, Negative, NumericValue, Result,
+    StandardValue, TailwindArbitrary, TailwindBuilder, TailwindDisplay, TailwindInstance,
 };
 
 pub use self::{
@@ -14,15 +14,16 @@ pub use self::{
     flex::{flex_direction::TailwindFlexDirection, flex_wrap::TailwindFlexWrap, TailwindFlex},
     gap::TailwindGap,
     grid::{
-        grid_auto::TailwindGridAuto, grid_cols::TailwindGridColumns, grid_flow::TailwindGridFlow, grid_rows::TailwindGridRows,
-        TailwindGrid,
+        grid_auto::TailwindGridAuto, grid_cols::TailwindGridColumns, grid_flow::TailwindGridFlow,
+        grid_rows::TailwindGridRows, TailwindGrid,
     },
     grow::TailWindGrow,
     items::TailwindItems,
     justify::*,
     order::TailWindOrder,
     place::{
-        place_content::TailwindPlaceContent, place_item::TailwindPlaceItems, place_self::TailwindPlaceSelf, TailwindPlace,
+        place_content::TailwindPlaceContent, place_item::TailwindPlaceItems,
+        place_self::TailwindPlaceSelf, TailwindPlace,
     },
     shrink::TailWindShrink,
     span::{TailwindColumn, TailwindRow},

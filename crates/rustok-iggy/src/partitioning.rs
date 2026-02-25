@@ -55,7 +55,11 @@ mod tests {
         for i in 0..1000 {
             let key = format!("key-{}", i);
             let partition = calculate_partition(&key, 16);
-            assert!(partition < 16, "Partition {} out of range for 16 partitions", partition);
+            assert!(
+                partition < 16,
+                "Partition {} out of range for 16 partitions",
+                partition
+            );
         }
     }
 }

@@ -4,8 +4,8 @@ use std::{
 };
 
 use crate::{
-    css_attributes, CssAttributes, Negative, Result, StandardValue, TailwindArbitrary, TailwindBuilder, TailwindColor,
-    TailwindInstance, TailwindScrollMargin, TailwindScrollPadding,
+    css_attributes, CssAttributes, Negative, Result, StandardValue, TailwindArbitrary,
+    TailwindBuilder, TailwindColor, TailwindInstance, TailwindScrollMargin, TailwindScrollPadding,
 };
 
 pub use self::{
@@ -17,7 +17,9 @@ pub use self::{
     resize::TailwindResize,
     scroll::scroll_behavior::TailwindScrollBehavior,
     select::TailwindSelect,
-    snap::{snap_align::TailwindSnapAlign, snap_stop::TailwindSnapStop, snap_type::TailwindSnapType},
+    snap::{
+        snap_align::TailwindSnapAlign, snap_stop::TailwindSnapStop, snap_type::TailwindSnapType,
+    },
     torch::TailwindTorch,
     will_change::TailwindWillChange,
 };

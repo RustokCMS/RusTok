@@ -11,7 +11,11 @@ pub fn StatsCard(
     #[prop(optional, into)] class: String,
 ) -> impl IntoView {
     let is_up = trend_up.unwrap_or(true);
-    let color_class = if is_up { "text-emerald-600" } else { "text-destructive" };
+    let color_class = if is_up {
+        "text-emerald-600"
+    } else {
+        "text-destructive"
+    };
     let prefix = if is_up { "+" } else { "" };
     let label = trend_label.unwrap_or_default();
 

@@ -47,10 +47,14 @@ impl TailwindInstance for TailwindTransition {
 
 impl TailwindTransition {
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
-        Ok(Self { kind: Transition::parse(pattern, arbitrary)? })
+        Ok(Self {
+            kind: Transition::parse(pattern, arbitrary)?,
+        })
     }
     pub fn parse_arbitrary(arbitrary: &TailwindArbitrary) -> Result<Self> {
-        Ok(Self { kind: Transition::parse_arbitrary(arbitrary)? })
+        Ok(Self {
+            kind: Transition::parse_arbitrary(arbitrary)?,
+        })
     }
 }
 

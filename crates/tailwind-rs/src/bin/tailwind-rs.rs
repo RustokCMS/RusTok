@@ -13,8 +13,7 @@
 //! add bridge/override rules that map standard Tailwind names to the right CSS.
 
 use std::{
-    env,
-    fs,
+    env, fs,
     io::Write,
     path::{Path, PathBuf},
 };
@@ -37,20 +36,20 @@ fn main() {
             "-i" => {
                 i += 1;
                 src_dir = Some(PathBuf::from(&args[i]));
-            },
+            }
             "-o" => {
                 i += 1;
                 out_path = Some(PathBuf::from(&args[i]));
-            },
+            }
             "--append" => {
                 i += 1;
                 append_path = Some(PathBuf::from(&args[i]));
-            },
+            }
             "--minify" => minify = true,
             other => {
                 eprintln!("tailwind-rs: unknown argument `{}`", other);
                 std::process::exit(1);
-            },
+            }
         }
         i += 1;
     }
@@ -68,7 +67,7 @@ fn main() {
         Err(e) => {
             eprintln!("tailwind-rs: bundle failed: {}", e);
             std::process::exit(1);
-        },
+        }
     };
 
     // ── append custom CSS (bridge rules, overrides) ──────────────────────────
@@ -77,23 +76,30 @@ fn main() {
             Ok(extra) => {
                 css.push('\n');
                 css.push_str(&extra);
-            },
+            }
             Err(e) => {
-                eprintln!("tailwind-rs: cannot read append file `{}`: {}", path.display(), e);
+                eprintln!(
+                    "tailwind-rs: cannot read append file `{}`: {}",
+                    path.display(),
+                    e
+                );
                 std::process::exit(1);
-            },
+            }
         }
     }
 
     // ── optional minify via parcel_css ──────────────────────────────────────
     let css = if minify {
-        let config = CLIConfig { minify: true, ..Default::default() };
+        let config = CLIConfig {
+            minify: true,
+            ..Default::default()
+        };
         match config.compile_css(&css) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("tailwind-rs: minify failed: {}", e);
                 css
-            },
+            }
         }
     } else {
         css
@@ -106,11 +112,11 @@ fn main() {
         }
     }
     match fs::File::create(&out_path).and_then(|mut f| f.write_all(css.as_bytes())) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             eprintln!("tailwind-rs: write `{}` failed: {}", out_path.display(), e);
             std::process::exit(1);
-        },
+        }
     }
 }
 

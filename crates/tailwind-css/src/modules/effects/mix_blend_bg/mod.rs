@@ -22,7 +22,9 @@ impl TailwindInstance for TailwindBackgroundBlend {
 impl TailwindBackgroundBlend {
     /// <https://tailwindcss.com/docs/background-blend-mode>
     pub fn parse(input: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
-        Ok(Self { wrapper: TailwindBlend::parse(input, arbitrary)? })
+        Ok(Self {
+            wrapper: TailwindBlend::parse(input, arbitrary)?,
+        })
     }
     pub fn check_valid(input: &str) -> bool {
         TailwindBlend::check_valid(input)

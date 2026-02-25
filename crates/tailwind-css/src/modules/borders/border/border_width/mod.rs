@@ -81,12 +81,22 @@ impl TailwindBorderWidth {
             _ => Self::parse_inner(pattern, BorderKind::Border, arbitrary),
         }
     }
-    fn parse_inner(pattern: &[&str], kind: BorderKind, arbitrary: &TailwindArbitrary) -> Result<Self> {
+    fn parse_inner(
+        pattern: &[&str],
+        kind: BorderKind,
+        arbitrary: &TailwindArbitrary,
+    ) -> Result<Self> {
         if arbitrary.is_some() {
-            Ok(Self { kind, width: arbitrary.as_length_or_fraction()? })
+            Ok(Self {
+                kind,
+                width: arbitrary.as_length_or_fraction()?,
+            })
         } else {
             let width = pattern.first().unwrap_or(&"1");
-            Ok(Self { kind, width: LengthUnit::px(width.parse()?) })
+            Ok(Self {
+                kind,
+                width: LengthUnit::px(width.parse()?),
+            })
         }
     }
 }

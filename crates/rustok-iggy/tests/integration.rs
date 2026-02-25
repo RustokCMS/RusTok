@@ -55,8 +55,8 @@ async fn test_iggy_transport_bincode() -> TestResult<()> {
 
 mod config_tests {
     use rustok_iggy::config::{
-        EmbeddedConfig, IggyConfig, IggyMode, RemoteConfig, RetentionConfig,
-        SerializationFormat, TopologyConfig,
+        EmbeddedConfig, IggyConfig, IggyMode, RemoteConfig, RetentionConfig, SerializationFormat,
+        TopologyConfig,
     };
 
     #[test]
@@ -140,9 +140,9 @@ topology:
 }
 
 mod serialization_tests {
-    use rustok_iggy::serialization::{BincodeSerializer, EventSerializer, JsonSerializer};
     use rustok_core::events::{DomainEvent, EventEnvelope};
     use rustok_iggy::config::SerializationFormat;
+    use rustok_iggy::serialization::{BincodeSerializer, EventSerializer, JsonSerializer};
     use uuid::Uuid;
 
     fn create_test_envelope() -> EventEnvelope {

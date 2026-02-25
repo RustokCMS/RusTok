@@ -60,7 +60,11 @@ pub fn gcd<T>(a: T, b: T) -> T
 where
     T: PartialEq + Rem<Output = T> + Default + Copy,
 {
-    if b == T::default() { a } else { gcd(b, a % b) }
+    if b == T::default() {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 fn unit(unit: &'static str) -> impl Fn(&str) -> IResult<&str, &'static str> {
@@ -82,7 +86,7 @@ impl LengthUnit {
             Self::Fraction(a, b) => {
                 let p = *a as f32 / *b as f32;
                 format!("{}%", 100.0 * p)
-            },
+            }
             Self::Unit(a, b) => format!("{}{}", a, b),
         }
     }

@@ -1,4 +1,7 @@
-use crate::{css_attributes, CssAttributes, Result, StandardValue, TailwindArbitrary, TailwindBuilder, TailwindInstance};
+use crate::{
+    css_attributes, CssAttributes, Result, StandardValue, TailwindArbitrary, TailwindBuilder,
+    TailwindInstance,
+};
 use std::{
     collections::BTreeSet,
     fmt::{Debug, Display, Formatter},

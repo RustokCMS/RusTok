@@ -38,7 +38,9 @@ impl OutboxTransport {
             created_at: Set(Utc::now()),
             dispatched_at: Set(None),
         };
-        entity::Entity::insert(model).exec_without_returning(txn).await?;
+        entity::Entity::insert(model)
+            .exec_without_returning(txn)
+            .await?;
         Ok(())
     }
 }

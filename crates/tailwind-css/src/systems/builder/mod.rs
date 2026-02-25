@@ -191,7 +191,7 @@ fn try_inline(tw: &mut TailwindBuilder, style: &str, mode: CssInlineMode) -> Res
             false => {
                 out.add_trace(&i);
                 tw.objects.insert(i);
-            },
+            }
         };
     }
     out.set_mode(mode);

@@ -22,6 +22,8 @@ impl TailwindInstance for TailwindBackgroundImage {
 
 impl TailwindBackgroundImage {
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
-        Ok(Self { kind: AnchorPoint::parse(pattern, arbitrary, false)? })
+        Ok(Self {
+            kind: AnchorPoint::parse(pattern, arbitrary, false)?,
+        })
     }
 }

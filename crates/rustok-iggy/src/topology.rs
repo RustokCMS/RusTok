@@ -33,7 +33,11 @@ impl TopologyManager {
         }
     }
 
-    pub async fn ensure_topology(&self, config: &IggyConfig, connector: &dyn IggyConnector) -> Result<()> {
+    pub async fn ensure_topology(
+        &self,
+        config: &IggyConfig,
+        connector: &dyn IggyConnector,
+    ) -> Result<()> {
         let stream_name = config.topology.stream_name.clone();
         let partitions = config.topology.domain_partitions;
 
@@ -88,7 +92,10 @@ mod tests {
         let manager = TopologyManager::new();
         let config = IggyConfig::default();
 
-        manager.ensure_topology(&config, &MockConnector).await.unwrap();
+        manager
+            .ensure_topology(&config, &MockConnector)
+            .await
+            .unwrap();
 
         assert!(manager.is_initialized().await);
         assert_eq!(manager.stream_name().await, "rustok");
@@ -123,8 +130,10 @@ mod tests {
             _stream: &str,
             _topic: &str,
             _partition: u32,
-        ) -> Result<Box<dyn rustok_iggy_connector::MessageSubscriber>, rustok_iggy_connector::ConnectorError>
-        {
+        ) -> Result<
+            Box<dyn rustok_iggy_connector::MessageSubscriber>,
+            rustok_iggy_connector::ConnectorError,
+        > {
             Ok(Box::new(MockSubscriber))
         }
 

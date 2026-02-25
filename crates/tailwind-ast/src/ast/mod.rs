@@ -5,6 +5,7 @@ mod parse;
 #[cfg(test)]
 mod tests;
 use nom::{
+    Err, IResult,
     branch::alt,
     bytes::complete::{tag, take_till1},
     character::complete::{alphanumeric1, char, multispace1},
@@ -12,7 +13,6 @@ use nom::{
     error::Error,
     multi::{many0, separated_list0},
     sequence::{delimited, tuple},
-    Err, IResult,
 };
 use std::{
     fmt::{Display, Formatter},

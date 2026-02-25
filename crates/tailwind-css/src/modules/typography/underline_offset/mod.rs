@@ -46,12 +46,14 @@ impl TailwindUnderlineOffset {
     /// https://tailwindcss.com/docs/text-underline-offset
     pub fn parse(input: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
         match input {
-            ["auto"] => Ok(Self { kind: UnderlineOffset::Auto }),
+            ["auto"] => Ok(Self {
+                kind: UnderlineOffset::Auto,
+            }),
             [] => Self::parse_arbitrary(arbitrary),
             [n] => {
                 let a = TailwindArbitrary::from(*n);
                 Self::parse_arbitrary(&a)
-            },
+            }
             _ => syntax_error!("Unknown opacity instructions: {}", input.join("-")),
         }
     }
@@ -61,10 +63,14 @@ impl TailwindUnderlineOffset {
     }
     fn maybe_length(arbitrary: &TailwindArbitrary) -> Result<Self> {
         let n = arbitrary.as_length_or_fraction()?;
-        Ok(Self { kind: UnderlineOffset::Length(n) })
+        Ok(Self {
+            kind: UnderlineOffset::Length(n),
+        })
     }
     fn maybe_no_unit(arbitrary: &TailwindArbitrary) -> Result<Self> {
         let n = arbitrary.as_integer()?;
-        Ok(Self { kind: UnderlineOffset::Unit(n) })
+        Ok(Self {
+            kind: UnderlineOffset::Unit(n),
+        })
     }
 }

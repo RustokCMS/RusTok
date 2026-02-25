@@ -18,7 +18,11 @@ impl Display for SpacingSize {
 }
 
 impl SpacingSize {
-    pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary, check_valid: &'static impl Fn(&str) -> bool) -> Result<Self> {
+    pub fn parse(
+        pattern: &[&str],
+        arbitrary: &TailwindArbitrary,
+        check_valid: &'static impl Fn(&str) -> bool,
+    ) -> Result<Self> {
         match pattern {
             [] => Self::parse_arbitrary(arbitrary),
             ["px"] => Ok(Self::Arbitrary(TailwindArbitrary::from("1px"))),

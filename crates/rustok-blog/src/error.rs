@@ -106,11 +106,9 @@ impl From<BlogError> for RichError {
                     .with_user_message("Archived posts must be restored before publishing.")
                     .with_error_code("CANNOT_PUBLISH_ARCHIVED")
             }
-            BlogError::AuthorRequired => {
-                RichError::new(ErrorKind::Validation, "Author required")
-                    .with_user_message("An author must be specified for blog posts")
-                    .with_error_code("AUTHOR_REQUIRED")
-            }
+            BlogError::AuthorRequired => RichError::new(ErrorKind::Validation, "Author required")
+                .with_user_message("An author must be specified for blog posts")
+                .with_error_code("AUTHOR_REQUIRED"),
             BlogError::Validation(msg) => {
                 RichError::new(ErrorKind::Validation, msg).with_user_message("Invalid input data")
             }

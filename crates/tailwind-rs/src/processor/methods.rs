@@ -14,7 +14,10 @@ impl CLIConfig {
             warnings: None,
         };
         let mut stylesheet = StyleSheet::parse(css, parser)?;
-        let minify = MinifyOptions { targets: None, unused_symbols: self.unused_symbols.to_owned() };
+        let minify = MinifyOptions {
+            targets: None,
+            unused_symbols: self.unused_symbols.to_owned(),
+        };
         stylesheet.minify(minify)?;
         let printer = PrinterOptions {
             //

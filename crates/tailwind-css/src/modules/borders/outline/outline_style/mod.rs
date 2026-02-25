@@ -13,7 +13,9 @@ where
     T: Into<String>,
 {
     fn from(input: T) -> Self {
-        Self { kind: StandardValue::from(input.into()) }
+        Self {
+            kind: StandardValue::from(input.into()),
+        }
     }
 }
 
@@ -64,8 +66,8 @@ impl TailwindOutlineStyle {
     /// <https://developer.mozilla.org/en-US/docs/Web/CSS/outline-style#syntax>
     pub fn check_valid(mode: &str) -> bool {
         let set = BTreeSet::from_iter(vec![
-            "auto", "dashed", "dotted", "double", "groove", "inherit", "initial", "inset", "none", "outset", "revert", "ridge",
-            "solid", "unset",
+            "auto", "dashed", "dotted", "double", "groove", "inherit", "initial", "inset", "none",
+            "outset", "revert", "ridge", "solid", "unset",
         ]);
         set.contains(mode)
     }

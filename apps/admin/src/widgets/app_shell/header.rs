@@ -3,8 +3,8 @@ use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 
 use crate::features::auth::UserMenu;
-use crate::shared::ui::LanguageToggle;
 use crate::shared::i18n::translate;
+use crate::shared::ui::LanguageToggle;
 
 #[derive(Clone, Copy, PartialEq)]
 struct Breadcrumb {
@@ -20,7 +20,11 @@ pub fn Header() -> impl IntoView {
     let title_key = Memo::new(move |_| resolve_title_key(&location.pathname.get()));
 
     Effect::new(move |_| {
-        let title = format!("{} — {}", translate("app.brand.title"), translate(title_key.get()));
+        let title = format!(
+            "{} — {}",
+            translate("app.brand.title"),
+            translate(title_key.get())
+        );
         set_document_title(&title);
     });
 

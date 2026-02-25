@@ -1,6 +1,8 @@
 use rustok_core::events::{DomainEvent, EventEnvelope, EventTransport};
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration};
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait, TransactionTrait};
+use sea_orm::{
+    ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait, TransactionTrait,
+};
 use sea_orm_migration::prelude::SchemaManager;
 use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;

@@ -9,7 +9,9 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 
-use crate::dto::{CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSummary, UpdatePostInput};
+use crate::dto::{
+    CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSummary, UpdatePostInput,
+};
 use crate::error::{BlogError, BlogResult};
 use crate::locale::{available_locales, resolve_body, resolve_translation};
 use crate::state_machine::BlogPostStatus;
@@ -194,7 +196,11 @@ impl PostService {
             update.expected_version = Some(version);
         }
 
-        let node = self.nodes.get_node(post_id).await.map_err(BlogError::from)?;
+        let node = self
+            .nodes
+            .get_node(post_id)
+            .await
+            .map_err(BlogError::from)?;
         let tenant_id = node.tenant_id;
 
         self.nodes
@@ -206,10 +212,7 @@ impl PostService {
             .publish(
                 tenant_id,
                 security.user_id,
-                DomainEvent::BlogPostUpdated {
-                    post_id,
-                    locale,
-                },
+                DomainEvent::BlogPostUpdated { post_id, locale },
             )
             .await
             .map_err(BlogError::from)?;
@@ -218,12 +221,12 @@ impl PostService {
     }
 
     #[instrument(skip(self, security))]
-    pub async fn publish_post(
-        &self,
-        post_id: Uuid,
-        security: SecurityContext,
-    ) -> BlogResult<()> {
-        let node = self.nodes.get_node(post_id).await.map_err(BlogError::from)?;
+    pub async fn publish_post(&self, post_id: Uuid, security: SecurityContext) -> BlogResult<()> {
+        let node = self
+            .nodes
+            .get_node(post_id)
+            .await
+            .map_err(BlogError::from)?;
         let author_id = node.author_id;
 
         self.nodes
@@ -235,10 +238,7 @@ impl PostService {
             .publish(
                 node.tenant_id,
                 security.user_id,
-                DomainEvent::BlogPostPublished {
-                    post_id,
-                    author_id,
-                },
+                DomainEvent::BlogPostPublished { post_id, author_id },
             )
             .await
             .map_err(BlogError::from)?;
@@ -247,12 +247,12 @@ impl PostService {
     }
 
     #[instrument(skip(self, security))]
-    pub async fn unpublish_post(
-        &self,
-        post_id: Uuid,
-        security: SecurityContext,
-    ) -> BlogResult<()> {
-        let node = self.nodes.get_node(post_id).await.map_err(BlogError::from)?;
+    pub async fn unpublish_post(&self, post_id: Uuid, security: SecurityContext) -> BlogResult<()> {
+        let node = self
+            .nodes
+            .get_node(post_id)
+            .await
+            .map_err(BlogError::from)?;
 
         self.nodes
             .unpublish_node(post_id, security.clone())
@@ -278,7 +278,11 @@ impl PostService {
         security: SecurityContext,
         reason: Option<String>,
     ) -> BlogResult<()> {
-        let node = self.nodes.get_node(post_id).await.map_err(BlogError::from)?;
+        let node = self
+            .nodes
+            .get_node(post_id)
+            .await
+            .map_err(BlogError::from)?;
 
         self.nodes
             .archive_node(post_id, security.clone())
@@ -301,12 +305,12 @@ impl PostService {
     }
 
     #[instrument(skip(self, security))]
-    pub async fn delete_post(
-        &self,
-        post_id: Uuid,
-        security: SecurityContext,
-    ) -> BlogResult<()> {
-        let node = self.nodes.get_node(post_id).await.map_err(BlogError::from)?;
+    pub async fn delete_post(&self, post_id: Uuid, security: SecurityContext) -> BlogResult<()> {
+        let node = self
+            .nodes
+            .get_node(post_id)
+            .await
+            .map_err(BlogError::from)?;
         let status = map_content_status(node.status.clone());
         if status == BlogPostStatus::Published {
             return Err(BlogError::CannotDeletePublished);
@@ -333,7 +337,11 @@ impl PostService {
 
     #[instrument(skip(self))]
     pub async fn get_post(&self, post_id: Uuid, locale: &str) -> BlogResult<PostResponse> {
-        let node = self.nodes.get_node(post_id).await.map_err(BlogError::from)?;
+        let node = self
+            .nodes
+            .get_node(post_id)
+            .await
+            .map_err(BlogError::from)?;
 
         let tr = resolve_translation(&node.translations, locale);
         let br = resolve_body(&node.bodies, locale);
@@ -346,7 +354,11 @@ impl PostService {
             .metadata
             .get("tags")
             .and_then(|t| t.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let category_id = node
@@ -377,13 +389,17 @@ impl PostService {
             id: node.id,
             tenant_id: node.tenant_id,
             author_id: node.author_id.unwrap_or_default(),
-            title: translation.and_then(|t| t.title.clone()).unwrap_or_default(),
+            title: translation
+                .and_then(|t| t.title.clone())
+                .unwrap_or_default(),
             slug: translation.and_then(|t| t.slug.clone()).unwrap_or_default(),
             locale: locale.to_string(),
             effective_locale: tr.effective_locale,
             available_locales: all_locales,
             body: body_resp.and_then(|b| b.body.clone()).unwrap_or_default(),
-            body_format: body_resp.map(|b| b.format.clone()).unwrap_or_else(|| "markdown".to_string()),
+            body_format: body_resp
+                .map(|b| b.format.clone())
+                .unwrap_or_else(|| "markdown".to_string()),
             excerpt: translation.and_then(|t| t.excerpt.clone()),
             status: map_content_status(node.status),
             category_id,
@@ -395,8 +411,14 @@ impl PostService {
             metadata: node.metadata,
             comment_count: node.reply_count as i64,
             view_count: 0,
-            created_at: node.created_at.parse().unwrap_or_else(|_| chrono::Utc::now()),
-            updated_at: node.updated_at.parse().unwrap_or_else(|_| chrono::Utc::now()),
+            created_at: node
+                .created_at
+                .parse()
+                .unwrap_or_else(|_| chrono::Utc::now()),
+            updated_at: node
+                .updated_at
+                .parse()
+                .unwrap_or_else(|_| chrono::Utc::now()),
             published_at: node.published_at.and_then(|p| p.parse().ok()),
             version: node.version,
         })
@@ -434,7 +456,11 @@ impl PostService {
                 .metadata
                 .get("tags")
                 .and_then(|t| t.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
 
             let category_id = item.category_id.or_else(|| {
@@ -466,7 +492,10 @@ impl PostService {
                 featured_image_url,
                 comment_count: 0,
                 published_at: item.published_at.and_then(|p| p.parse().ok()),
-                created_at: item.created_at.parse().unwrap_or_else(|_| chrono::Utc::now()),
+                created_at: item
+                    .created_at
+                    .parse()
+                    .unwrap_or_else(|_| chrono::Utc::now()),
             });
         }
 
@@ -552,7 +581,10 @@ mod tests {
         let s = map_content_status(rustok_content::entities::node::ContentStatus::Draft);
         assert_eq!(s, BlogPostStatus::Draft);
         let back = map_blog_status_to_content(s);
-        assert!(matches!(back, rustok_content::entities::node::ContentStatus::Draft));
+        assert!(matches!(
+            back,
+            rustok_content::entities::node::ContentStatus::Draft
+        ));
     }
 
     #[test]
@@ -560,7 +592,10 @@ mod tests {
         let s = map_content_status(rustok_content::entities::node::ContentStatus::Published);
         assert_eq!(s, BlogPostStatus::Published);
         let back = map_blog_status_to_content(s);
-        assert!(matches!(back, rustok_content::entities::node::ContentStatus::Published));
+        assert!(matches!(
+            back,
+            rustok_content::entities::node::ContentStatus::Published
+        ));
     }
 
     #[test]
@@ -568,7 +603,10 @@ mod tests {
         let s = map_content_status(rustok_content::entities::node::ContentStatus::Archived);
         assert_eq!(s, BlogPostStatus::Archived);
         let back = map_blog_status_to_content(s);
-        assert!(matches!(back, rustok_content::entities::node::ContentStatus::Archived));
+        assert!(matches!(
+            back,
+            rustok_content::entities::node::ContentStatus::Archived
+        ));
     }
 
     #[test]

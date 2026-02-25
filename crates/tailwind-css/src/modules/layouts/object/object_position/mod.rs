@@ -23,7 +23,9 @@ impl TailwindInstance for TailwindObjectPosition {
 impl TailwindObjectPosition {
     /// <https://tailwindcss.com/docs/object-fit>
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
-        Ok(Self { kind: AnchorPoint::parse(pattern, arbitrary, true)? })
+        Ok(Self {
+            kind: AnchorPoint::parse(pattern, arbitrary, true)?,
+        })
     }
     /// <https://developer.mozilla.org/en-US/docs/Web/CSS/object-fit#syntax>
     pub fn check_valid(mode: &str) -> bool {

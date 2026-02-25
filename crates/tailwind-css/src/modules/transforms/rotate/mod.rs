@@ -25,8 +25,14 @@ impl TailwindInstance for TailwindRotate {
 
 impl TailwindRotate {
     // <https://tailwindcss.com/docs/rotate>
-    pub fn parse(input: &[&str], arbitrary: &TailwindArbitrary, negative: Negative) -> Result<Self> {
-        let kind = UnitValue::negative_parser("scale", |_| false, false, false, false)(input, arbitrary, negative)?;
+    pub fn parse(
+        input: &[&str],
+        arbitrary: &TailwindArbitrary,
+        negative: Negative,
+    ) -> Result<Self> {
+        let kind = UnitValue::negative_parser("scale", |_| false, false, false, false)(
+            input, arbitrary, negative,
+        )?;
         Ok(Self { kind })
     }
 }

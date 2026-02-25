@@ -51,7 +51,9 @@ impl TailwindLeading {
             ["wider" | "relaxed"] => scale(1.625),
             ["widest" | "loose"] => scale(2.0),
             // https://developer.mozilla.org/zh-CN/docs/Web/CSS/line-height#normal
-            ["normal"] => Ok(Self { kind: LineHeight::Standard("normal".to_string()) }),
+            ["normal"] => Ok(Self {
+                kind: LineHeight::Standard("normal".to_string()),
+            }),
             [] => Self::parse_arbitrary(arbitrary),
             [n] => Self::parse_arbitrary(&TailwindArbitrary::from(*n)),
             _ => syntax_error!("Unknown leading instructions: {}", pattern.join("-")),
@@ -72,9 +74,13 @@ impl TailwindLeading {
 
 #[inline(always)]
 fn scale(x: f32) -> Result<TailwindLeading> {
-    Ok(TailwindLeading { kind: LineHeight::Length(LengthUnit::percent(x * 100.0)) })
+    Ok(TailwindLeading {
+        kind: LineHeight::Length(LengthUnit::percent(x * 100.0)),
+    })
 }
 #[inline(always)]
 fn rem(x: f32) -> Result<TailwindLeading> {
-    Ok(TailwindLeading { kind: LineHeight::Length(LengthUnit::rem(x)) })
+    Ok(TailwindLeading {
+        kind: LineHeight::Length(LengthUnit::rem(x)),
+    })
 }

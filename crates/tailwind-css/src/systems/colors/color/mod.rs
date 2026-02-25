@@ -36,9 +36,19 @@ impl Display for TailwindColor {
 #[allow(non_upper_case_globals)]
 impl TailwindColor {
     /// `black`
-    pub const Black: Self = Self::RGB(Srgb { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+    pub const Black: Self = Self::RGB(Srgb {
+        red: 0.0,
+        green: 0.0,
+        blue: 0.0,
+        alpha: 1.0,
+    });
     /// `white`
-    pub const White: Self = Self::RGB(Srgb { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 });
+    pub const White: Self = Self::RGB(Srgb {
+        red: 1.0,
+        green: 1.0,
+        blue: 1.0,
+        alpha: 1.0,
+    });
     /// https://developer.mozilla.org/zh-CN/docs/Web/CSS/color_value
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
         let out = match pattern {
@@ -76,7 +86,13 @@ impl TailwindColor {
     #[inline]
     pub fn get_properties(&self, ctx: &TailwindBuilder) -> String {
         match self {
-            Self::RGB(c) => format!("rgba({}, {}, {}, {})", 255.0 * c.red, 255.0 * c.green, 255.0 * c.blue, c.alpha),
+            Self::RGB(c) => format!(
+                "rgba({}, {}, {}, {})",
+                255.0 * c.red,
+                255.0 * c.green,
+                255.0 * c.blue,
+                c.alpha
+            ),
             Self::Arbitrary(a) => a.get_properties(),
             Self::Keyword(s) => match s.as_str() {
                 "transparent" => "transparent".to_string(),
@@ -84,7 +100,13 @@ impl TailwindColor {
                 _ => s.to_string(),
             },
             Self::Themed(name, weight) => match ctx.palettes.try_get_color(name, *weight) {
-                Ok(c) => format!("rgba({}, {}, {}, {})", 255.0 * c.red, 255.0 * c.green, 255.0 * c.blue, c.alpha),
+                Ok(c) => format!(
+                    "rgba({}, {}, {}, {})",
+                    255.0 * c.red,
+                    255.0 * c.green,
+                    255.0 * c.blue,
+                    c.alpha
+                ),
                 Err(_) => "currentColor".to_string(),
             },
         }

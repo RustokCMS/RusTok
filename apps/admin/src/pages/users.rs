@@ -8,10 +8,10 @@ use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
 use serde::{Deserialize, Serialize};
 
+use crate::app::providers::locale::translate;
 use crate::shared::api::queries::{CREATE_USER_MUTATION, USERS_QUERY, USERS_QUERY_HASH};
 use crate::shared::api::{request, request_with_persisted, ApiError};
 use crate::shared::ui::{Button, Input, LanguageToggle, PageHeader};
-use crate::app::providers::locale::translate;
 
 #[derive(Clone, Debug, Serialize)]
 struct CreateUserVariables {
@@ -292,9 +292,21 @@ pub fn Users() -> impl IntoView {
                     input: CreateUserInput {
                         email: email_val,
                         password: password_val,
-                        name: if name_val.is_empty() { None } else { Some(name_val) },
-                        role: if role_val.is_empty() { None } else { Some(role_val.to_uppercase()) },
-                        status: if status_val.is_empty() { None } else { Some(status_val.to_uppercase()) },
+                        name: if name_val.is_empty() {
+                            None
+                        } else {
+                            Some(name_val)
+                        },
+                        role: if role_val.is_empty() {
+                            None
+                        } else {
+                            Some(role_val.to_uppercase())
+                        },
+                        status: if status_val.is_empty() {
+                            None
+                        } else {
+                            Some(status_val.to_uppercase())
+                        },
                     },
                 };
                 match request::<CreateUserVariables, CreateUserResponse>(

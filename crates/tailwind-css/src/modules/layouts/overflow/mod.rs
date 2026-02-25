@@ -33,6 +33,9 @@ impl TailwindOverflow {
     }
     /// <https://developer.mozilla.org/en-US/docs/Web/CSS/overflow#syntax>
     pub fn check_valid(mode: &str) -> bool {
-        ["auto", "clip", "hidden", "inherit", "initial", "revert", "scroll", "unset", "visible"].contains(&mode)
+        [
+            "auto", "clip", "hidden", "inherit", "initial", "revert", "scroll", "unset", "visible",
+        ]
+        .contains(&mode)
     }
 }

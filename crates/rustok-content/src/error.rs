@@ -81,7 +81,9 @@ impl From<ContentError> for RichError {
                     expected, actual
                 ),
             )
-            .with_user_message("This content was modified by another user. Please refresh and try again.")
+            .with_user_message(
+                "This content was modified by another user. Please refresh and try again.",
+            )
             .with_field("expected_version", expected.to_string())
             .with_field("actual_version", actual.to_string())
             .with_error_code("CONCURRENT_MODIFICATION"),

@@ -809,8 +809,7 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_optional_uuid("author_id", author_id)?;
                 Ok(())
             }
-            Self::BlogPostUnpublished { post_id }
-            | Self::BlogPostDeleted { post_id } => {
+            Self::BlogPostUnpublished { post_id } | Self::BlogPostDeleted { post_id } => {
                 validators::validate_not_nil_uuid("post_id", post_id)?;
                 Ok(())
             }

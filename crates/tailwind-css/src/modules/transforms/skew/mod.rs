@@ -30,9 +30,15 @@ impl TailwindInstance for TailwindSkew {
 
 impl TailwindSkew {
     // <https://tailwindcss.com/docs/skew>
-    pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary, negative: Negative) -> Result<Self> {
+    pub fn parse(
+        pattern: &[&str],
+        arbitrary: &TailwindArbitrary,
+        negative: Negative,
+    ) -> Result<Self> {
         let (axis, rest) = AxisXY::split_xyn(pattern);
-        let kind = UnitValue::negative_parser("skew", |_| false, false, false, false)(rest, arbitrary, negative)?;
+        let kind = UnitValue::negative_parser("skew", |_| false, false, false, false)(
+            rest, arbitrary, negative,
+        )?;
         Ok(Self { kind, axis })
     }
 }

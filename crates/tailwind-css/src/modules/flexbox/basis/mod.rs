@@ -49,11 +49,15 @@ impl TailwindInstance for TailwindBasis {
 impl TailwindBasis {
     /// <https://tailwindcss.com/docs/flex-basis>
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
-        Ok(Self { kind: Basis::parse(pattern, arbitrary)? })
+        Ok(Self {
+            kind: Basis::parse(pattern, arbitrary)?,
+        })
     }
 
     pub fn parse_arbitrary(arbitrary: &TailwindArbitrary) -> Result<Self> {
-        Ok(Self { kind: Basis::parse_arbitrary(arbitrary)? })
+        Ok(Self {
+            kind: Basis::parse_arbitrary(arbitrary)?,
+        })
     }
     /// https://developer.mozilla.org/en-US/docs/Web/CSS/flex-basis#syntax
     pub fn check_valid(mode: &str) -> bool {
@@ -72,7 +76,7 @@ impl Basis {
             [n] => {
                 let a = TailwindArbitrary::from(*n);
                 Self::maybe_length(&a).or_else(|_| Self::maybe_float(&a))?
-            },
+            }
             [] => Self::parse_arbitrary(arbitrary)?,
             _ => return syntax_error!("Unknown basis instructions"),
         };

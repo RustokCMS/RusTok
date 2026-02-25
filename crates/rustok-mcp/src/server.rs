@@ -15,8 +15,8 @@ use crate::tools::{
     McpHealthResponse, McpState, McpToolResponse, ModuleDetailsResponse, ModuleListResponse,
     ModuleLookupRequest, ModuleLookupResponse, ModuleQueryRequest, MODULE_BLOG, MODULE_CONTENT,
     MODULE_FORUM, MODULE_PAGES, TOOL_BLOG_MODULE, TOOL_CONTENT_MODULE, TOOL_FORUM_MODULE,
-    TOOL_LIST_MODULES, TOOL_MCP_HEALTH, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS,
-    TOOL_PAGES_MODULE, TOOL_QUERY_MODULES,
+    TOOL_LIST_MODULES, TOOL_MCP_HEALTH, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS, TOOL_PAGES_MODULE,
+    TOOL_QUERY_MODULES,
 };
 
 /// Configuration for the MCP server
@@ -117,10 +117,7 @@ impl RusToKMcpServer {
     fn health_response(&self, tool_count: usize) -> McpHealthResponse {
         McpHealthResponse {
             status: "ready".to_string(),
-            protocol_version: format!(
-                "{:?}",
-                rmcp::model::ProtocolVersion::V_2024_11_05
-            ),
+            protocol_version: format!("{:?}", rmcp::model::ProtocolVersion::V_2024_11_05),
             tool_count,
             enabled_tools: self
                 .enabled_tools
@@ -179,14 +176,13 @@ impl ServerHandler for RusToKMcpServer {
         match request.name.as_ref() {
             TOOL_LIST_MODULES => {
                 let result = self.list_modules_internal().await;
-                let content = serde_json::to_string(&McpToolResponse::success(result)).map_err(
-                    |e| {
+                let content =
+                    serde_json::to_string(&McpToolResponse::success(result)).map_err(|e| {
                         rmcp::ErrorData::internal_error(
                             format!("Failed to serialize response: {}", e),
                             None,
                         )
-                    },
-                )?;
+                    })?;
                 Ok(CallToolResult::success(vec![rmcp::model::Content::text(
                     content,
                 )]))
@@ -200,14 +196,13 @@ impl ServerHandler for RusToKMcpServer {
                         rmcp::ErrorData::invalid_params(format!("Invalid arguments: {}", e), None)
                     })?;
                 let result = self.list_modules_filtered_internal(req).await;
-                let content = serde_json::to_string(&McpToolResponse::success(result)).map_err(
-                    |e| {
+                let content =
+                    serde_json::to_string(&McpToolResponse::success(result)).map_err(|e| {
                         rmcp::ErrorData::internal_error(
                             format!("Failed to serialize response: {}", e),
                             None,
                         )
-                    },
-                )?;
+                    })?;
                 Ok(CallToolResult::success(vec![rmcp::model::Content::text(
                     content,
                 )]))
@@ -221,14 +216,13 @@ impl ServerHandler for RusToKMcpServer {
                         rmcp::ErrorData::invalid_params(format!("Invalid arguments: {}", e), None)
                     })?;
                 let result = self.module_exists_internal(&req.slug).await;
-                let content = serde_json::to_string(&McpToolResponse::success(result)).map_err(
-                    |e| {
+                let content =
+                    serde_json::to_string(&McpToolResponse::success(result)).map_err(|e| {
                         rmcp::ErrorData::internal_error(
                             format!("Failed to serialize response: {}", e),
                             None,
                         )
-                    },
-                )?;
+                    })?;
                 Ok(CallToolResult::success(vec![rmcp::model::Content::text(
                     content,
                 )]))
@@ -242,70 +236,65 @@ impl ServerHandler for RusToKMcpServer {
                         rmcp::ErrorData::invalid_params(format!("Invalid arguments: {}", e), None)
                     })?;
                 let result = self.module_details_internal(&req.slug).await;
-                let content = serde_json::to_string(&McpToolResponse::success(result)).map_err(
-                    |e| {
+                let content =
+                    serde_json::to_string(&McpToolResponse::success(result)).map_err(|e| {
                         rmcp::ErrorData::internal_error(
                             format!("Failed to serialize response: {}", e),
                             None,
                         )
-                    },
-                )?;
+                    })?;
                 Ok(CallToolResult::success(vec![rmcp::model::Content::text(
                     content,
                 )]))
             }
             TOOL_CONTENT_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_CONTENT);
-                let content = serde_json::to_string(&McpToolResponse::success(result)).map_err(
-                    |e| {
+                let content =
+                    serde_json::to_string(&McpToolResponse::success(result)).map_err(|e| {
                         rmcp::ErrorData::internal_error(
                             format!("Failed to serialize response: {}", e),
                             None,
                         )
-                    },
-                )?;
+                    })?;
                 Ok(CallToolResult::success(vec![rmcp::model::Content::text(
                     content,
                 )]))
             }
             TOOL_BLOG_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_BLOG);
-                let content = serde_json::to_string(&McpToolResponse::success(result)).map_err(
-                    |e| {
+                let content =
+                    serde_json::to_string(&McpToolResponse::success(result)).map_err(|e| {
                         rmcp::ErrorData::internal_error(
                             format!("Failed to serialize response: {}", e),
                             None,
                         )
-                    },
-                )?;
+                    })?;
                 Ok(CallToolResult::success(vec![rmcp::model::Content::text(
                     content,
                 )]))
             }
             TOOL_FORUM_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_FORUM);
-                let content = serde_json::to_string(&McpToolResponse::success(result)).map_err(
-                    |e| {
+                let content =
+                    serde_json::to_string(&McpToolResponse::success(result)).map_err(|e| {
                         rmcp::ErrorData::internal_error(
                             format!("Failed to serialize response: {}", e),
                             None,
                         )
-                    },
-                )?;
+                    })?;
                 Ok(CallToolResult::success(vec![rmcp::model::Content::text(
                     content,
                 )]))
             }
             TOOL_PAGES_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_PAGES);
-                let content = serde_json::to_string(&McpToolResponse::success(result)).map_err(
-                    |e| {
+                let content =
+                    serde_json::to_string(&McpToolResponse::success(result)).map_err(|e| {
                         rmcp::ErrorData::internal_error(
                             format!("Failed to serialize response: {}", e),
                             None,
                         )
-                    },
-                )?;
+                    })?;
                 Ok(CallToolResult::success(vec![rmcp::model::Content::text(
                     content,
                 )]))
@@ -313,14 +302,13 @@ impl ServerHandler for RusToKMcpServer {
             TOOL_MCP_HEALTH => {
                 let tool_count = self.available_tool_names().len();
                 let result = self.health_response(tool_count);
-                let content = serde_json::to_string(&McpToolResponse::success(result)).map_err(
-                    |e| {
+                let content =
+                    serde_json::to_string(&McpToolResponse::success(result)).map_err(|e| {
                         rmcp::ErrorData::internal_error(
                             format!("Failed to serialize response: {}", e),
                             None,
                         )
-                    },
-                )?;
+                    })?;
                 Ok(CallToolResult::success(vec![rmcp::model::Content::text(
                     content,
                 )]))

@@ -23,7 +23,11 @@ impl TailwindInstance for TailwindLeft {
 
 impl TailwindLeft {
     /// <https://tailwindcss.com/docs/top-right-bottom-left>
-    pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary, negative: Negative) -> Result<Self> {
+    pub fn parse(
+        pattern: &[&str],
+        arbitrary: &TailwindArbitrary,
+        negative: Negative,
+    ) -> Result<Self> {
         let kind = get_kind_px_full_auto_fact("left", pattern, arbitrary, negative)?;
         Ok(Self { kind })
     }

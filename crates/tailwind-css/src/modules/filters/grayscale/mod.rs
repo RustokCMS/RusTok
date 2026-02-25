@@ -26,6 +26,9 @@ impl TailwindGrayscale {
             [] if arbitrary.is_none() => 100u32.into(),
             _ => NumericValue::positive_parser("grayscale", |_| false)(rest, arbitrary)?,
         };
-        Ok(Self { percent, backdrop: Backdrop::from(backdrop) })
+        Ok(Self {
+            percent,
+            backdrop: Backdrop::from(backdrop),
+        })
     }
 }

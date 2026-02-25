@@ -22,6 +22,8 @@ impl TailwindInstance for TailwindGridColumns {
 
 impl TailwindGridColumns {
     pub fn parse(pattern: &[&str], arbitrary: &TailwindArbitrary) -> Result<Self> {
-        Ok(Self { kind: GridTemplate::parse(pattern, arbitrary)? })
+        Ok(Self {
+            kind: GridTemplate::parse(pattern, arbitrary)?,
+        })
     }
 }

@@ -5,7 +5,9 @@ impl<'a> From<AstStyle<'a>> for TailwindInstruction {
         Self {
             negative: Negative::from(node.negative),
             variants: node.variants.into_iter().map(|s| s.into()).collect(),
-            elements: TailwindElements { inner: node.elements.into_iter().map(|s| s.to_string()).collect() },
+            elements: TailwindElements {
+                inner: node.elements.into_iter().map(|s| s.to_string()).collect(),
+            },
             arbitrary: TailwindArbitrary::from(node.arbitrary.unwrap_or_default()),
         }
     }
@@ -13,7 +15,11 @@ impl<'a> From<AstStyle<'a>> for TailwindInstruction {
 
 impl<'a> From<ASTVariant<'a>> for TailwindVariant {
     fn from(node: ASTVariant<'a>) -> Self {
-        Self { not: node.not, pseudo: node.pseudo, names: node.names.into_iter().map(|s| s.to_string()).collect() }
+        Self {
+            not: node.not,
+            pseudo: node.pseudo,
+            names: node.names.into_iter().map(|s| s.to_string()).collect(),
+        }
     }
 }
 

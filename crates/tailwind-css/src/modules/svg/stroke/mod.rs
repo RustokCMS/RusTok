@@ -19,7 +19,7 @@ impl TailwindStroke {
             ["color", rest] => {
                 let a = TailwindArbitrary::from(*rest);
                 color(TailwindColor::parse_arbitrary(&a)?)
-            },
+            }
             // https://tailwindcss.com/docs/text-decoration-color
             [theme, weight] => color(TailwindColor::parse_themed(theme, weight)?),
             // https://tailwindcss.com/docs/text-decoration-thickness

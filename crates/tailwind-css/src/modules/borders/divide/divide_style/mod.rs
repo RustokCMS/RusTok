@@ -12,7 +12,9 @@ where
     T: Into<String>,
 {
     fn from(input: T) -> Self {
-        Self { kind: StandardValue::from(input.into()) }
+        Self {
+            kind: StandardValue::from(input.into()),
+        }
     }
 }
 

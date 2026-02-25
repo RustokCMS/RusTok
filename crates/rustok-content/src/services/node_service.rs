@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, Set, TransactionTrait, QuerySelect,
+    PaginatorTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
 };
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
@@ -281,7 +281,9 @@ impl NodeService {
             active.status = Set(status.clone());
             // Auto-manage published_at based on status
             match status {
-                crate::entities::node::ContentStatus::Published if node_model.published_at.is_none() => {
+                crate::entities::node::ContentStatus::Published
+                    if node_model.published_at.is_none() =>
+                {
                     active.published_at = Set(Some(now));
                 }
                 crate::entities::node::ContentStatus::Draft => {
@@ -312,8 +314,14 @@ impl NodeService {
             // Check slug uniqueness for new translations
             for translation in &translations {
                 if let Some(ref slug) = translation.slug {
-                    self.ensure_slug_unique(&txn, node_model.tenant_id, &translation.locale, slug, Some(node_id))
-                        .await?;
+                    self.ensure_slug_unique(
+                        &txn,
+                        node_model.tenant_id,
+                        &translation.locale,
+                        slug,
+                        Some(node_id),
+                    )
+                    .await?;
                 }
             }
 
@@ -327,8 +335,14 @@ impl NodeService {
 
                 // Check uniqueness of resolved slug
                 if let Some(ref s) = slug {
-                    self.ensure_slug_unique(&txn, node_model.tenant_id, &translation.locale, s, Some(node_id))
-                        .await?;
+                    self.ensure_slug_unique(
+                        &txn,
+                        node_model.tenant_id,
+                        &translation.locale,
+                        s,
+                        Some(node_id),
+                    )
+                    .await?;
                 }
 
                 node_translation::ActiveModel {
@@ -567,9 +581,7 @@ impl NodeService {
         let node_model = self.find_node_with_deleted(node_id).await?;
 
         if node_model.deleted_at.is_none() {
-            return Err(ContentError::Validation(
-                "Node is not deleted".to_string(),
-            ));
+            return Err(ContentError::Validation("Node is not deleted".to_string()));
         }
 
         // Scope Enforcement
@@ -736,8 +748,7 @@ impl NodeService {
         }
 
         let locale = filter.locale.clone().unwrap_or_else(|| "en".to_string());
-        let mut query = node::Entity::find()
-            .filter(node::Column::TenantId.eq(tenant_id));
+        let mut query = node::Entity::find().filter(node::Column::TenantId.eq(tenant_id));
 
         // Filter out soft-deleted nodes unless explicitly requested
         if !filter.include_deleted {

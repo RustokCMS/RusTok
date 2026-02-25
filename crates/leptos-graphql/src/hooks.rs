@@ -3,9 +3,9 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use std::sync::Arc;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 
 use crate::{execute, GraphqlHttpError, GraphqlRequest};
 

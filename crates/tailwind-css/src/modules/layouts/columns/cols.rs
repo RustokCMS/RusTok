@@ -41,7 +41,7 @@ impl Columns {
             [name] => {
                 let a = TailwindArbitrary::from(*name);
                 Self::Columns(a.as_integer()?)
-            },
+            }
             [] => Self::parse_arbitrary(arbitrary)?,
             _ => return syntax_error!("Unknown columns instructions: {}", input.join("-")),
         };

@@ -26,7 +26,10 @@ impl TailwindOpacity {
     pub fn parse(input: &[&str], arbitrary: &TailwindArbitrary, backdrop: bool) -> Result<Self> {
         let backdrop = Backdrop::from(backdrop);
         if input.is_empty() {
-            return Ok(Self { percent: NumericValue::from(50u32), backdrop });
+            return Ok(Self {
+                percent: NumericValue::from(50u32),
+                backdrop,
+            });
         };
         let percent = match backdrop.0 {
             true => NumericValue::positive_parser("opacity", |_| false)(input, arbitrary)?,

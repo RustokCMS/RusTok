@@ -26,6 +26,9 @@ impl TailwindBlur {
             [] if arbitrary.is_none() => 8u32.into(),
             _ => NumericValue::positive_parser("blur", |_| false)(rest, arbitrary)?,
         };
-        Ok(Self { px, backdrop: Backdrop::from(backdrop) })
+        Ok(Self {
+            px,
+            backdrop: Backdrop::from(backdrop),
+        })
     }
 }
