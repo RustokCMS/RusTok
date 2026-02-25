@@ -21,30 +21,30 @@ pub fn PageHeader(
             <div>
                 {eyebrow.map(|text| {
                     view! {
-                        <span class="mb-2 inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                        <span class="mb-2 inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
                             {text}
                         </span>
                     }
                 })}
 
-                <h1 class="text-2xl font-semibold text-slate-900">{title}</h1>
+                <h1 class="text-2xl font-semibold text-foreground">{title}</h1>
 
                 {subtitle.map(|text| {
-                    view! { <p class="mt-2 text-sm text-slate-500">{text}</p> }
+                    view! { <p class="mt-2 text-sm text-muted-foreground">{text}</p> }
                 })}
 
                 {breadcrumbs.map(|crumbs| {
                     view! {
-                        <div class="mt-4 flex items-center gap-2 text-sm text-slate-500">
+                        <div class="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
                             {crumbs
                                 .into_iter()
                                 .enumerate()
                                 .map(|(index, (label, href))| {
                                     view! {
-                                        <span class="text-slate-300">
+                                        <span class="text-border">
                                             {if index > 0 { "/" } else { "" }}
                                         </span>
-                                        <a href=href class="transition-colors hover:text-slate-900">
+                                        <a href=href class="transition-colors hover:text-foreground">
                                             {label}
                                         </a>
                                     }
