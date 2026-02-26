@@ -3,7 +3,7 @@ use moka::future::Cache;
 use once_cell::sync::Lazy;
 use sea_orm::{
     sea_query::OnConflict, ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection,
-    EntityTrait, QueryFilter,
+    EntityTrait, PaginatorTrait, QueryFilter,
 };
 use std::collections::HashSet;
 use std::fmt::Write;
@@ -13,7 +13,7 @@ use tracing::{debug, warn};
 
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 
-use crate::models::_entities::{permissions, role_permissions, roles, user_roles};
+use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
 
 pub struct AuthService;
 
@@ -533,6 +533,68 @@ impl AuthService {
         Self::invalidate_user_permissions_cache(tenant_id, user_id).await;
 
         Self::assign_role_permissions(db, user_id, tenant_id, role).await
+    }
+
+    pub async fn count_users_without_roles(db: &DatabaseConnection) -> Result<u64> {
+        let users_with_roles: Vec<uuid::Uuid> = user_roles::Entity::find()
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|ur| ur.user_id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        let mut query = users::Entity::find();
+        if !users_with_roles.is_empty() {
+            query = query.filter(users::Column::Id.is_not_in(users_with_roles));
+        }
+
+        Ok(query.count(db).await?)
+    }
+
+    pub async fn backfill_missing_role_permissions(
+        db: &DatabaseConnection,
+        dry_run: bool,
+    ) -> Result<u64> {
+        let users_with_roles: HashSet<uuid::Uuid> = user_roles::Entity::find()
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|ur| ur.user_id)
+            .collect();
+
+        let all_users = users::Entity::find().all(db).await?;
+        let users_without_roles: Vec<_> = all_users
+            .into_iter()
+            .filter(|u| !users_with_roles.contains(&u.id))
+            .collect();
+
+        let count = users_without_roles.len() as u64;
+
+        if dry_run {
+            for user in &users_without_roles {
+                tracing::info!(
+                    user_id = %user.id,
+                    tenant_id = %user.tenant_id,
+                    role = %user.role,
+                    "rbac_backfill dry-run: would assign role permissions"
+                );
+            }
+            return Ok(count);
+        }
+
+        for user in users_without_roles {
+            Self::assign_role_permissions(db, &user.id, &user.tenant_id, user.role.clone()).await?;
+            tracing::info!(
+                user_id = %user.id,
+                tenant_id = %user.tenant_id,
+                role = %user.role,
+                "rbac_backfill: assigned role permissions"
+            );
+        }
+
+        Ok(count)
     }
 
     async fn get_or_create_role(

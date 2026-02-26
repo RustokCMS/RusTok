@@ -20,6 +20,7 @@ pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
             payload.push_str(&render_tenant_cache_metrics(&ctx).await);
             payload.push_str(&render_outbox_metrics(&ctx).await);
             payload.push_str(&render_rbac_metrics());
+            payload.push_str(&render_rbac_integrity_metrics(&ctx).await);
 
             Ok((
                 StatusCode::OK,
@@ -122,6 +123,13 @@ rustok_rbac_claim_role_mismatch_total {claim_role_mismatch_total}\n",
     )
 }
 
+async fn render_rbac_integrity_metrics(ctx: &AppContext) -> String {
+    let users_without_roles = AuthService::count_users_without_roles(&ctx.db)
+        .await
+        .unwrap_or(0);
+    format!("rustok_rbac_users_without_roles_total {users_without_roles}\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::render_rbac_metrics;
@@ -129,6 +137,15 @@ mod tests {
     #[test]
     fn rbac_metrics_include_claim_role_mismatch_counter() {
         let payload = render_rbac_metrics();
+        assert!(payload.contains("rustok_rbac_claim_role_mismatch_total"));
+    }
+
+    #[test]
+    fn rbac_metrics_include_all_counters() {
+        let payload = render_rbac_metrics();
+        assert!(payload.contains("rustok_rbac_permission_cache_hits"));
+        assert!(payload.contains("rustok_rbac_permission_checks_allowed"));
+        assert!(payload.contains("rustok_rbac_permission_checks_denied"));
         assert!(payload.contains("rustok_rbac_claim_role_mismatch_total"));
     }
 }

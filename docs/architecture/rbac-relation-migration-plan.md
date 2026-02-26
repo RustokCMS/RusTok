@@ -36,14 +36,19 @@
   - В auth extractor добавлен shadow-control: warning-лог `rbac_claim_role_mismatch`, если role-claim в JWT расходится с ролью, выведенной из relation-permissions.
   - В `/metrics` добавлен счётчик `rustok_rbac_claim_role_mismatch_total` для наблюдения расхождений claim-vs-relation.
   - Полный отказ от role-claim в policy-решениях ещё не завершён (есть оставшиеся role-based места).
-- [ ] **Фаза 4 — Миграция данных и защитные инварианты:** не начато.
+- [~] **Фаза 4 — Миграция данных и защитные инварианты (начато):**
+  - Реализован idempotent backfill-task `rbac_backfill` (`apps/server/src/tasks/rbac_backfill.rs`) с поддержкой dry-run режима.
+  - В `AuthService` добавлены методы `count_users_without_roles` и `backfill_missing_role_permissions`.
+  - В `/metrics` добавлен gauge `rustok_rbac_users_without_roles_total` для мониторинга консистентности.
+  - Выполнение backfill на staging и проверка целостности — pending (требует живого окружения).
 - [ ] **Фаза 5 — Dual-read и cutover:** не начато.
 - [ ] **Фаза 6 — Cleanup legacy-модели:** не начато.
 
 ### Что осталось приоритетно на ближайший шаг
 
-1. Добрать оставшиеся runtime-проверки, где `users.role` всё ещё влияет на policy scope в доменных сервисах.
-2. Подготовить и согласовать ADR по final cutover (`relation-only`).
+1. Выполнить backfill на staging: `cargo loco task --name rbac_backfill --args "dry_run=true"`, затем `cargo loco task --name rbac_backfill` и убедиться, что `rustok_rbac_users_without_roles_total == 0`.
+2. Добрать оставшиеся runtime-проверки, где `users.role` всё ещё влияет на policy scope в доменных сервисах.
+3. Подготовить и согласовать ADR по final cutover (`relation-only`).
 
 ---
 
@@ -270,11 +275,11 @@
 
 Ввести и мониторить:
 
-- `rbac_resolver_latency_ms` (p50/p95/p99).
-- `rbac_cache_hit_total`, `rbac_cache_miss_total`.
-- `rbac_decision_deny_total` с reason labels.
-- `rbac_decision_mismatch_total` (только в dual-read период).
-- `users_without_roles_total` (consistency gauge).
+- `rustok_rbac_permission_check_latency_ms_total` / `rustok_rbac_permission_lookup_latency_ms_total` (latency).
+- `rustok_rbac_permission_cache_hits`, `rustok_rbac_permission_cache_misses`.
+- `rustok_rbac_permission_checks_allowed`, `rustok_rbac_permission_checks_denied` с reason labels (`rustok_rbac_permission_denied_reason_*`).
+- `rustok_rbac_claim_role_mismatch_total` (только в переходный период).
+- `rustok_rbac_users_without_roles_total` (consistency gauge, добавлен в `/metrics`).
 
 Оповещения:
 
@@ -355,10 +360,11 @@
 
 ### 9.5 Фаза 4 — Data migration
 
-- [ ] Подготовлен idempotent backfill-script.
-- [ ] Выполнен dry-run с отчётом расхождений.
+- [x] Подготовлен idempotent backfill-script (`cargo loco task --name rbac_backfill`).
+- [x] Добавлен dry-run режим (`--args "dry_run=true"`).
+- [ ] Выполнен dry-run с отчётом расхождений на staging.
 - [ ] Выполнен backfill на staging.
-- [ ] Выполнен post-check целостности.
+- [ ] Выполнен post-check целостности (метрика `rustok_rbac_users_without_roles_total == 0`).
 - [ ] Подготовлен rollback-план и проверен на staging.
 
 ### 9.6 Фаза 5 — Cutover
