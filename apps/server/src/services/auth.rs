@@ -402,14 +402,23 @@ impl AuthService {
 
         Self::record_permission_check_result(allowed);
         Self::record_permission_check_latency(latency_ms);
-        Self::shadow_compare_permission_decision(
+        if let Err(error) = Self::shadow_compare_permission_decision(
             db,
             tenant_id,
             user_id,
             required_permission,
             allowed,
         )
-        .await?;
+        .await
+        {
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permission = %required_permission,
+                error = %error,
+                "rbac dual-read shadow compare failed"
+            );
+        }
 
         Ok(allowed)
     }
@@ -469,14 +478,23 @@ impl AuthService {
 
         Self::record_permission_check_result(allowed);
         Self::record_permission_check_latency(latency_ms);
-        Self::shadow_compare_any_permission_decision(
+        if let Err(error) = Self::shadow_compare_any_permission_decision(
             db,
             tenant_id,
             user_id,
             required_permissions,
             allowed,
         )
-        .await?;
+        .await
+        {
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                error = %error,
+                "rbac dual-read shadow compare failed"
+            );
+        }
 
         Ok(allowed)
     }
@@ -533,14 +551,23 @@ impl AuthService {
 
         Self::record_permission_check_result(allowed);
         Self::record_permission_check_latency(latency_ms);
-        Self::shadow_compare_all_permission_decision(
+        if let Err(error) = Self::shadow_compare_all_permission_decision(
             db,
             tenant_id,
             user_id,
             required_permissions,
             allowed,
         )
-        .await?;
+        .await
+        {
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                error = %error,
+                "rbac dual-read shadow compare failed"
+            );
+        }
 
         Ok(allowed)
     }
@@ -885,5 +912,13 @@ mod tests {
     fn rbac_authz_mode_parse_supports_dual_read() {
         assert_eq!(RbacAuthzMode::parse("dual_read"), RbacAuthzMode::DualRead);
         assert_eq!(RbacAuthzMode::parse("DUAL_READ"), RbacAuthzMode::DualRead);
+    }
+
+    #[test]
+    fn rbac_authz_mode_parse_trims_value() {
+        assert_eq!(
+            RbacAuthzMode::parse("  dual_read  "),
+            RbacAuthzMode::DualRead
+        );
     }
 }
