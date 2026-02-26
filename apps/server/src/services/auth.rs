@@ -527,6 +527,45 @@ impl AuthService {
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
+        let resolver = Self::resolver(db);
+        resolver
+            .assign_role_permissions(tenant_id, user_id, role)
+            .await
+    }
+
+    pub async fn replace_user_role(
+        db: &DatabaseConnection,
+        user_id: &uuid::Uuid,
+        tenant_id: &uuid::Uuid,
+        role: UserRole,
+    ) -> Result<()> {
+        let resolver = Self::resolver(db);
+        resolver.replace_user_role(tenant_id, user_id, role).await
+    }
+
+    pub async fn remove_tenant_role_assignments(
+        db: &DatabaseConnection,
+        user_id: &uuid::Uuid,
+        tenant_id: &uuid::Uuid,
+    ) -> Result<()> {
+        Self::remove_tenant_role_assignments_via_store(db, user_id, tenant_id).await
+    }
+
+    pub async fn remove_user_role_assignment(
+        db: &DatabaseConnection,
+        user_id: &uuid::Uuid,
+        tenant_id: &uuid::Uuid,
+        role: UserRole,
+    ) -> Result<()> {
+        Self::remove_user_role_assignment_via_store(db, user_id, tenant_id, role).await
+    }
+
+    async fn assign_role_permissions_via_store(
+        db: &DatabaseConnection,
+        user_id: &uuid::Uuid,
+        tenant_id: &uuid::Uuid,
+        role: UserRole,
+    ) -> Result<()> {
         let role_model = Self::get_or_create_role(db, tenant_id, &role).await?;
 
         user_roles::Entity::insert(user_roles::ActiveModel {
@@ -568,11 +607,21 @@ impl AuthService {
         Ok(())
     }
 
-    pub async fn replace_user_role(
+    async fn replace_user_role_via_store(
         db: &DatabaseConnection,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
         role: UserRole,
+    ) -> Result<()> {
+        Self::remove_tenant_role_assignments_via_store(db, user_id, tenant_id).await?;
+
+        Self::assign_role_permissions_via_store(db, user_id, tenant_id, role).await
+    }
+
+    async fn remove_tenant_role_assignments_via_store(
+        db: &DatabaseConnection,
+        user_id: &uuid::Uuid,
+        tenant_id: &uuid::Uuid,
     ) -> Result<()> {
         let tenant_role_models = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(*tenant_id))
@@ -594,7 +643,33 @@ impl AuthService {
 
         Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
 
-        Self::assign_role_permissions(db, user_id, tenant_id, role).await
+        Ok(())
+    }
+
+    async fn remove_user_role_assignment_via_store(
+        db: &DatabaseConnection,
+        user_id: &uuid::Uuid,
+        tenant_id: &uuid::Uuid,
+        role: UserRole,
+    ) -> Result<()> {
+        let role_slug = role.to_string();
+        let tenant_role = roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(*tenant_id))
+            .filter(roles::Column::Slug.eq(role_slug))
+            .one(db)
+            .await?;
+
+        if let Some(tenant_role) = tenant_role {
+            user_roles::Entity::delete_many()
+                .filter(user_roles::Column::UserId.eq(*user_id))
+                .filter(user_roles::Column::RoleId.eq(tenant_role.id))
+                .exec(db)
+                .await?;
+        }
+
+        Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
+
+        Ok(())
     }
 
     async fn get_or_create_role(
@@ -806,7 +881,7 @@ impl RoleAssignmentStore for ServerRoleAssignmentStore {
         user_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
-        AuthService::assign_role_permissions(&self.db, user_id, tenant_id, role).await
+        AuthService::assign_role_permissions_via_store(&self.db, user_id, tenant_id, role).await
     }
 
     async fn replace_user_role(
@@ -815,7 +890,7 @@ impl RoleAssignmentStore for ServerRoleAssignmentStore {
         user_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
-        AuthService::replace_user_role(&self.db, user_id, tenant_id, role).await
+        AuthService::replace_user_role_via_store(&self.db, user_id, tenant_id, role).await
     }
 }
 

@@ -44,6 +44,7 @@
   - В `rustok-rbac` добавлен модульный use-case слой `permission_authorizer` (authorize single/any/all), который собирает decision (`allowed/missing/denied_reason/cache_hit`) поверх `PermissionResolver`; `AuthService` использует этот API вместо локальной сборки policy-решения.
   - Алгоритм relation-resolve (цепочка `user_roles -> roles(tenant) -> permissions`) вынесен в `rustok-rbac::resolve_permissions_from_relations` через контракт `RelationPermissionStore`; в `apps/server` оставлен SeaORM adapter к этому контракту.
   - В `rustok-rbac` добавлен модульный runtime-resolver `RuntimePermissionResolver` (+ контракт `RoleAssignmentStore`), который объединяет relation-store + cache + role-assignment use-cases; `apps/server` теперь использует его как основной resolver и удалил локальный `ServerPermissionResolver`.
+  - Public write-path RBAC операции (`assign_role_permissions`, `replace_user_role`) в `AuthService` переведены на вызов модульного `RuntimePermissionResolver`, чтобы server-слой оставался adapter-only и для assignment use-cases.
   - Реализованы tenant-scoping и deduplication; сохранена семантика `resource:manage` как wildcard.
   - Для cache-path в модульном resolver сохранён инвариант стабильного normalized output (dedup + сортировка), чтобы format результата не зависел от источника (cache или relation DB).
   - Переведена часть GraphQL-checks (users CRUD/read/list, alloy, content mutation/query) и RBAC extractors на relation-проверки.
@@ -65,6 +66,7 @@
   - Добавлена maintenance-задача `cleanup --args "rbac-report"` для отчёта по инвариантам (`users_without_roles`, `orphan_user_roles`, `orphan_role_permissions`).
   - Добавлена maintenance-задача `cleanup --args "target=rbac-backfill"` для idempotent backfill relation-RBAC по `users.role` в пределах tenant c повторной проверкой инвариантов после выполнения.
   - Для staged rollout в backfill добавлены safety-controls: `dry_run=true` (без изменений данных), `limit=<N>` (батчевый прогон) и `continue_on_error=true` (best-effort режим при частичных ошибках).
+  - Backfill расширен исключениями для service/special-case аккаунтов (`exclude_user_ids`, `exclude_roles`) и добавлен rollback-путь `rbac-backfill-rollback` через snapshot-файл (`rollback_file` -> `source`) с role-targeted откатом (удаляется только роль из snapshot, а не все tenant-роли пользователя).
 - [~] **Фаза 5 — Dual-read и cutover (частично):**
   - В `AuthService` добавлен runtime shadow dual-read для `has_permission/has_any_permission/has_all_permissions` под env-флагом `RUSTOK_RBAC_AUTHZ_MODE=dual_read` (relation decision остаётся авторитативным).
   - Режим rollout-конфигурации (`RbacAuthzMode`: `relation_only`/`dual_read`) перенесён в `crates/rustok-rbac` как модульный контракт, `apps/server` использует его без локального enum-дублирования.
@@ -76,7 +78,7 @@
 
 ### Что осталось приоритетно на ближайший шаг
 
-1. Расширить backfill для service-аккаунтов/исключений и согласовать rollback-процедуру (Фаза 4).
+1. Провести staged dry-run/backfill/rollback в staging и приложить отчёт по инвариантам (Фаза 4).
 2. Подготовить и согласовать ADR по final cutover (`relation-only`).
 3. Зафиксировать module-first extraction backlog: выделить policy/use-case API в `crates/rustok-rbac` и описать server-adapter границы.
 
@@ -99,11 +101,13 @@
 
 Это создаёт риск рассинхронизации: пользователь может иметь роль в `users`, но не иметь корректных связей в `user_roles`.
 
-### 1.1 Симптомы в текущей реализации
+### 1.1 Исторические симптомы (закрыты в фазах 1–3)
 
-- В `register`/`sign_up` вызывается `AuthService::assign_role_permissions`, а в части других user-flow это не гарантировано единообразно.
-- Проверки прав в GraphQL сейчас ориентируются на `auth.role`, а не на relation-права.
-- В `CurrentUser` permissions формируются от роли, а не через relation-вычисление.
+- В `register`/`sign_up` назначение relation-RBAC ранее было неравномерным между user-flow.
+- Часть GraphQL-проверок ранее опиралась на `auth.role` вместо relation-проверок.
+- `CurrentUser` permissions ранее формировались от role-claim, а не relation-resolver.
+
+Текущее состояние по этим пунктам зафиксировано в progress tracker выше: baseline-симптомы закрыты, фокус смещён на data migration/cutover/cleanup.
 
 ---
 
@@ -383,23 +387,23 @@
   - [x] invite accept
   - [x] seed / sync / system bootstrap (seed_user)
 - [x] В каждом flow гарантированно формируются `user_roles` (все публичные entrypoints покрыты; `GraphQL update_user` синхронизирует через `replace_user_role`).
-- [ ] В каждом flow роль и tenant валидируются до записи.
+- [x] В каждом flow роль и tenant валидируются до записи.
 - [ ] Reset password в REST и GraphQL имеет одинаковую policy отзыва сессий.
 - [ ] Добавлены интеграционные тесты на каждый flow.
 
 ### 9.3 Фаза 2 — Resolver
 
-- [ ] Введён единый tenant-aware resolver API.
-- [ ] Удалено дублирование permission-логики из handlers/resolvers.
-- [ ] Проверки прав на критичных маршрутах переведены на resolver.
-- [ ] Включено fail-closed поведение при ошибке резолва.
-- [ ] Добавлены метрики latency/hit/miss/denied.
+- [x] Введён единый tenant-aware resolver API.
+- [x] Удалено дублирование permission-логики из handlers/resolvers.
+- [x] Проверки прав на критичных маршрутах переведены на resolver.
+- [x] Включено fail-closed поведение при ошибке резолва.
+- [x] Добавлены метрики latency/hit/miss/denied.
 
 ### 9.4 Фаза 3 — Auth context и токены
 
-- [ ] AuthContext получает permissions только из relation-resolver.
-- [ ] JWT role-claim не влияет на authorization decision.
-- [ ] Внедрена инвалидация permission-cache при изменениях ролей.
+- [x] AuthContext получает permissions только из relation-resolver.
+- [x] JWT role-claim не влияет на authorization decision.
+- [x] Внедрена инвалидация permission-cache при изменениях ролей.
 - [ ] Проверено поведение long-lived sessions после изменения прав.
 
 ### 9.5 Фаза 4 — Data migration
@@ -408,7 +412,7 @@
 - [ ] Выполнен dry-run с отчётом расхождений.
 - [ ] Выполнен backfill на staging.
 - [ ] Выполнен post-check целостности.
-- [ ] Подготовлен rollback-план и проверен на staging.
+- [~] Подготовлен rollback-план (CLI rollback target + snapshot-файл), проверка на staging в работе.
 
 ### 9.6 Фаза 5 — Cutover
 
