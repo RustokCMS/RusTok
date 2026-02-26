@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use alloy_scripting::{ScriptEngine, ScriptOrchestrator, SeaOrmExecutionLog, SeaOrmStorage};
 use async_graphql::{Context, FieldError, Result};
+use rustok_core::{Action, Permission};
 
 use crate::context::AuthContext;
 use crate::graphql::errors::GraphQLError;
@@ -38,14 +39,22 @@ impl AlloyState {
     }
 }
 
-pub(crate) fn require_admin(ctx: &Context<'_>) -> Result<AuthContext> {
+fn has_effective_permission(auth: &AuthContext, required_permission: Permission) -> bool {
+    auth.permissions.contains(&required_permission)
+        || auth.permissions.contains(&Permission::new(
+            required_permission.resource,
+            Action::Manage,
+        ))
+}
+
+pub(crate) async fn require_admin(ctx: &Context<'_>) -> Result<AuthContext> {
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
-    if !matches!(
-        auth.role,
-        rustok_core::UserRole::Admin | rustok_core::UserRole::SuperAdmin
+    if !has_effective_permission(
+        auth,
+        Permission::new(rustok_core::Resource::Scripts, Action::Manage),
     ) {
         return Err(<FieldError as GraphQLError>::permission_denied("Forbidden"));
     }

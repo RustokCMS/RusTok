@@ -20,7 +20,7 @@ impl AlloyQuery {
         status: Option<GqlScriptStatus>,
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<GqlScriptConnection> {
-        require_admin(ctx)?;
+        require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let query = match status {
             Some(status) => ScriptQuery::ByStatus(status.into()),
@@ -43,7 +43,7 @@ impl AlloyQuery {
     }
 
     async fn script(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<GqlScript>> {
-        require_admin(ctx)?;
+        require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         match state.storage.get(id).await {
             Ok(script) => Ok(Some(script.into())),
@@ -52,7 +52,7 @@ impl AlloyQuery {
     }
 
     async fn script_by_name(&self, ctx: &Context<'_>, name: String) -> Result<Option<GqlScript>> {
-        require_admin(ctx)?;
+        require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         match state.storage.get_by_name(&name).await {
             Ok(script) => Ok(Some(script.into())),
@@ -66,7 +66,7 @@ impl AlloyQuery {
         entity_type: String,
         event: GqlEventType,
     ) -> Result<Vec<GqlScript>> {
-        require_admin(ctx)?;
+        require_admin(ctx).await?;
         let state = ctx.data::<AlloyState>()?;
         let scripts = state
             .storage

@@ -11,7 +11,7 @@ use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
 use crate::services::auth::AuthService;
 use crate::services::module_lifecycle::{ModuleLifecycleService, ToggleModuleError};
-use rustok_core::ModuleRegistry;
+use rustok_core::{Action, ModuleRegistry, Permission, Resource};
 
 #[derive(Default)]
 pub struct RootMutation;
@@ -266,15 +266,24 @@ impl RootMutation {
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
-        if !matches!(
-            auth.role,
-            rustok_core::UserRole::Admin | rustok_core::UserRole::SuperAdmin
-        ) {
-            return Err(<FieldError as GraphQLError>::permission_denied("Forbidden"));
-        }
-
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
+
+        let can_manage_modules = AuthService::has_permission(
+            &app_ctx.db,
+            &tenant.id,
+            &auth.user_id,
+            &Permission::new(Resource::Modules, Action::Manage),
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        if !can_manage_modules {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: modules:manage required",
+            ));
+        }
+
         let registry = ctx.data::<ModuleRegistry>()?;
 
         let module = ModuleLifecycleService::toggle_module(

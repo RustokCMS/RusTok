@@ -1,5 +1,5 @@
 use crate::auth::{decode_access_token, AuthConfig};
-use crate::context::TenantContextExt;
+use crate::context::{infer_user_role_from_permissions, TenantContextExt};
 use crate::models::{
     sessions::Entity as Sessions,
     users::{self, Entity as Users},
@@ -25,7 +25,8 @@ pub struct CurrentUser {
 
 impl CurrentUser {
     pub fn security_context(&self) -> rustok_core::SecurityContext {
-        rustok_core::SecurityContext::new(self.user.role.clone(), Some(self.user.id))
+        let inferred_role = infer_user_role_from_permissions(&self.permissions);
+        rustok_core::SecurityContext::new(inferred_role, Some(self.user.id))
     }
 }
 
