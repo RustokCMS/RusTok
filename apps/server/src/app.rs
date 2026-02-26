@@ -81,7 +81,8 @@ impl Hooks for App {
             engine.clone(),
             storage.clone(),
         ));
-        let alloy_state = crate::graphql::alloy::AlloyState::new(engine.clone(), storage.clone(), orchestrator.clone());
+        let execution_log = Arc::new(alloy_scripting::SeaOrmExecutionLog::new(ctx.db.clone()));
+        let alloy_state = crate::graphql::alloy::AlloyState::new(engine.clone(), storage.clone(), orchestrator.clone(), execution_log);
 
         let executor = alloy_scripting::ScriptExecutor::new(engine.clone(), storage.clone());
         let scheduler = Arc::new(alloy_scripting::Scheduler::new(executor, storage.clone()));

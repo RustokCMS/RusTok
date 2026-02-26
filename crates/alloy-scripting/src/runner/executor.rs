@@ -69,6 +69,7 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
                 script_id: script.id,
                 script_name: script.name.clone(),
                 execution_id,
+                phase: ctx.phase,
                 started_at,
                 finished_at: Utc::now(),
                 outcome: ExecutionOutcome::Failed {
@@ -146,6 +147,7 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
             script_id: script.id,
             script_name: script.name.clone(),
             execution_id,
+            phase: ctx.phase,
             started_at,
             finished_at: Utc::now(),
             outcome,

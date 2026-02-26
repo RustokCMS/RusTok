@@ -40,11 +40,23 @@ impl ActiveModelBehavior for ActiveModel {}
 #[derive(Clone)]
 pub struct SeaOrmStorage {
     db: DatabaseConnection,
+    tenant_id: Option<Uuid>,
 }
 
 impl SeaOrmStorage {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self { db, tenant_id: None }
+    }
+
+    pub fn with_tenant(db: DatabaseConnection, tenant_id: Uuid) -> Self {
+        Self { db, tenant_id: Some(tenant_id) }
+    }
+
+    pub fn for_tenant(&self, tenant_id: Uuid) -> Self {
+        Self {
+            db: self.db.clone(),
+            tenant_id: Some(tenant_id),
+        }
     }
 
     fn trigger_to_parts(trigger: &ScriptTrigger) -> (String, serde_json::Value) {
@@ -173,8 +185,9 @@ impl SeaOrmStorage {
     fn apply_query(
         select: sea_orm::Select<Entity>,
         query: ScriptQuery,
+        tenant_id: Option<Uuid>,
     ) -> sea_orm::Select<Entity> {
-        match query {
+        let select = match query {
             ScriptQuery::ById(id) => select.filter(Column::Id.eq(id)),
             ScriptQuery::ByName(name) => select.filter(Column::Name.eq(name)),
             ScriptQuery::ByEvent { entity_type, event } => select
@@ -202,6 +215,12 @@ impl SeaOrmStorage {
                 select.filter(Column::Status.eq(status.as_str()))
             }
             ScriptQuery::All => select,
+        };
+
+        if let Some(tid) = tenant_id {
+            select.filter(Column::TenantId.eq(tid))
+        } else {
+            select
         }
     }
 }
@@ -209,7 +228,7 @@ impl SeaOrmStorage {
 #[async_trait::async_trait]
 impl ScriptRegistry for SeaOrmStorage {
     async fn find(&self, query: ScriptQuery) -> ScriptResult<Vec<Script>> {
-        let select = Self::apply_query(Entity::find(), query);
+        let select = Self::apply_query(Entity::find(), query, self.tenant_id);
         let models = select
             .order_by_asc(Column::Name)
             .all(&self.db)
@@ -225,13 +244,13 @@ impl ScriptRegistry for SeaOrmStorage {
         offset: u64,
         limit: u64,
     ) -> ScriptResult<ScriptPage> {
-        let total = Self::apply_query(Entity::find(), query.clone())
+        let total = Self::apply_query(Entity::find(), query.clone(), self.tenant_id)
             .order_by_asc(Column::Name)
             .count(&self.db)
             .await
             .map_err(|err| ScriptError::Storage(err.to_string()))?;
 
-        let models = Self::apply_query(Entity::find(), query)
+        let models = Self::apply_query(Entity::find(), query, self.tenant_id)
             .order_by_asc(Column::Name)
             .offset(offset)
             .limit(limit)
@@ -258,8 +277,11 @@ impl ScriptRegistry for SeaOrmStorage {
     }
 
     async fn get_by_name(&self, name: &str) -> ScriptResult<Script> {
-        let model = Entity::find()
-            .filter(Column::Name.eq(name))
+        let mut query = Entity::find().filter(Column::Name.eq(name));
+        if let Some(tid) = self.tenant_id {
+            query = query.filter(Column::TenantId.eq(tid));
+        }
+        let model = query
             .one(&self.db)
             .await
             .map_err(|err| ScriptError::Storage(err.to_string()))?

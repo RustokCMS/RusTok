@@ -1,3 +1,4 @@
+mod http;
 mod utils;
 
 use crate::context::ExecutionPhase;
@@ -99,7 +100,9 @@ impl Bridge {
 
     fn register_db_services(_engine: &mut Engine) {}
 
-    fn register_external_services(_engine: &mut Engine) {}
+    fn register_external_services(engine: &mut Engine) {
+        http::register_http(engine);
+    }
 }
 
 #[cfg(test)]

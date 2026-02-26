@@ -3,6 +3,7 @@ pub mod bridge;
 pub mod context;
 pub mod engine;
 pub mod error;
+pub mod execution_log;
 pub mod integration;
 pub mod migration;
 pub mod model;
@@ -16,6 +17,7 @@ pub use bridge::Bridge;
 pub use context::{ExecutionContext, ExecutionPhase};
 pub use engine::{EngineConfig, ScriptEngine};
 pub use error::{ScriptError, ScriptResult};
+pub use execution_log::{ExecutionLogEntry, ScriptExecutionsMigration, SeaOrmExecutionLog};
 pub use integration::{BeforeHookResult, HookExecutor, ScriptableEntity};
 pub use migration::ScriptsMigration;
 pub use model::{

@@ -4,7 +4,7 @@ mod types;
 
 use std::sync::Arc;
 
-use alloy_scripting::{ScriptEngine, ScriptOrchestrator, SeaOrmStorage};
+use alloy_scripting::{ScriptEngine, ScriptOrchestrator, SeaOrmExecutionLog, SeaOrmStorage};
 use async_graphql::{Context, FieldError, Result};
 
 use crate::context::AuthContext;
@@ -19,6 +19,7 @@ pub struct AlloyState {
     pub engine: Arc<ScriptEngine>,
     pub storage: Arc<SeaOrmStorage>,
     pub orchestrator: Arc<ScriptOrchestrator<SeaOrmStorage>>,
+    pub execution_log: Arc<SeaOrmExecutionLog>,
 }
 
 impl AlloyState {
@@ -26,11 +27,13 @@ impl AlloyState {
         engine: Arc<ScriptEngine>,
         storage: Arc<SeaOrmStorage>,
         orchestrator: Arc<ScriptOrchestrator<SeaOrmStorage>>,
+        execution_log: Arc<SeaOrmExecutionLog>,
     ) -> Self {
         Self {
             engine,
             storage,
             orchestrator,
+            execution_log,
         }
     }
 }

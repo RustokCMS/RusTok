@@ -12,6 +12,7 @@ pub struct ExecutionResult {
     pub script_id: ScriptId,
     pub script_name: String,
     pub execution_id: Uuid,
+    pub phase: ExecutionPhase,
     pub started_at: DateTime<Utc>,
     pub finished_at: DateTime<Utc>,
     pub outcome: ExecutionOutcome,

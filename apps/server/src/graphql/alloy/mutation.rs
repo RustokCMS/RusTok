@@ -167,9 +167,19 @@ impl AlloyMutation {
 
         let result = state
             .orchestrator
-            .run_manual(&input.script_name, params, user_id)
+            .run_manual(&input.script_name, params, user_id.clone())
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        let tenant_id = ctx
+            .data::<TenantContext>()
+            .map(|t| t.id)
+            .ok();
+
+        let _ = state
+            .execution_log
+            .record_with_context(&result, user_id, tenant_id)
+            .await;
 
         let (success, error, return_value, changes) = match result.outcome {
             ExecutionOutcome::Success {
