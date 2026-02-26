@@ -411,7 +411,7 @@
 - [x] AuthContext получает permissions только из relation-resolver.
 - [x] JWT role-claim не влияет на authorization decision.
 - [x] Внедрена инвалидация permission-cache при изменениях ролей.
-- [ ] Проверено поведение long-lived sessions после изменения прав.
+- [x] Проверено поведение long-lived sessions после изменения прав (добавлен regression-test `replace_user_role_invalidates_cached_permissions_for_existing_session_context`, подтверждающий инвалидацию permission-cache и применение новых прав в рамках активного session-context).
 
 ### 9.5 Фаза 4 — Data migration
 

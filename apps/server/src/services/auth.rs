@@ -900,7 +900,7 @@ mod tests {
     use crate::models::{roles, tenants, user_roles, users};
     use chrono::Utc;
     use migration::Migrator;
-    use rustok_core::UserRole;
+    use rustok_core::{Permission, UserRole};
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
     use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -1229,6 +1229,65 @@ mod tests {
             .expect("failed to query remaining user_roles links");
 
         assert!(remaining_links.is_empty());
+    }
+
+    #[tokio::test]
+    async fn replace_user_role_invalidates_cached_permissions_for_existing_session_context() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant_id = rustok_core::generate_id();
+        let user_id = rustok_core::generate_id();
+
+        tenants::Entity::insert(tenants::ActiveModel {
+            id: Set(tenant_id),
+            name: Set("Test tenant".to_string()),
+            slug: Set("test-tenant-permission-cache-invalidation".to_string()),
+            domain: Set(None),
+            settings: Set(serde_json::json!({})),
+            is_active: Set(true),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        })
+        .exec(&db)
+        .await
+        .expect("failed to insert tenant");
+
+        users::Entity::insert(users::ActiveModel {
+            id: Set(user_id),
+            tenant_id: Set(tenant_id),
+            email: Set("permission-cache-invalidation@example.com".to_string()),
+            password_hash: Set("hash".to_string()),
+            name: Set(None),
+            role: Set(UserRole::Customer),
+            status: Set(rustok_core::UserStatus::Active),
+            email_verified_at: Set(None),
+            last_login_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        })
+        .exec(&db)
+        .await
+        .expect("failed to insert user");
+
+        AuthService::assign_role_permissions(&db, &user_id, &tenant_id, UserRole::Customer)
+            .await
+            .expect("customer role assignment should succeed");
+
+        let can_update_products_before =
+            AuthService::has_permission(&db, &tenant_id, &user_id, &Permission::PRODUCTS_UPDATE)
+                .await
+                .expect("permission check before role replacement should succeed");
+        assert!(!can_update_products_before);
+
+        AuthService::replace_user_role(&db, &user_id, &tenant_id, UserRole::Manager)
+            .await
+            .expect("replace role should succeed");
+
+        let can_update_products_after =
+            AuthService::has_permission(&db, &tenant_id, &user_id, &Permission::PRODUCTS_UPDATE)
+                .await
+                .expect("permission check after role replacement should succeed");
+        assert!(can_update_products_after);
     }
 
     #[test]
