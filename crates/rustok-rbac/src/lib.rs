@@ -3,6 +3,7 @@ pub mod entities;
 pub mod error;
 pub mod services;
 
+pub use services::authz_mode::RbacAuthzMode;
 pub use services::permission_authorizer::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,
     AuthorizationDecision,
@@ -22,6 +23,9 @@ pub use services::relation_permission_resolver::{
     resolve_permissions_with_cache, PermissionCache, RelationPermissionStore,
 };
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
+pub use services::shadow_decision::{
+    compare_all_permissions, compare_any_permissions, compare_single_permission, ShadowDecision,
+};
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};

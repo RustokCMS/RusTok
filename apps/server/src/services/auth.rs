@@ -13,33 +13,12 @@ use tracing::{debug, warn};
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 use rustok_rbac::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,
+    compare_all_permissions, compare_any_permissions, compare_single_permission,
     invalidate_cached_permissions, DeniedReasonKind, PermissionCache, PermissionResolver,
-    RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver,
+    RbacAuthzMode, RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RbacAuthzMode {
-    RelationOnly,
-    DualRead,
-}
-
-impl RbacAuthzMode {
-    fn parse(value: &str) -> Self {
-        if value.trim().eq_ignore_ascii_case("dual_read") {
-            return Self::DualRead;
-        }
-
-        Self::RelationOnly
-    }
-
-    fn from_env() -> Self {
-        std::env::var("RUSTOK_RBAC_AUTHZ_MODE")
-            .map(|raw| Self::parse(&raw))
-            .unwrap_or(Self::RelationOnly)
-    }
-}
 
 pub struct AuthService;
 
@@ -150,16 +129,16 @@ impl AuthService {
             return Ok(());
         };
 
-        let legacy_allowed = Rbac::has_permission(&legacy_role, required_permission);
-        if legacy_allowed != relation_allowed {
+        let shadow = compare_single_permission(&legacy_role, required_permission, relation_allowed);
+        if shadow.mismatch() {
             Self::record_decision_mismatch();
             warn!(
                 tenant_id = %tenant_id,
                 user_id = %user_id,
                 required_permission = %required_permission,
                 legacy_role = %legacy_role,
-                relation_allowed,
-                legacy_allowed,
+                relation_allowed = shadow.relation_allowed,
+                legacy_allowed = shadow.legacy_allowed,
                 "rbac_decision_mismatch"
             );
         }
@@ -182,16 +161,16 @@ impl AuthService {
             return Ok(());
         };
 
-        let legacy_allowed = Rbac::has_any_permission(&legacy_role, required_permissions);
-        if legacy_allowed != relation_allowed {
+        let shadow = compare_any_permissions(&legacy_role, required_permissions, relation_allowed);
+        if shadow.mismatch() {
             Self::record_decision_mismatch();
             warn!(
                 tenant_id = %tenant_id,
                 user_id = %user_id,
                 required_permissions = ?required_permissions,
                 legacy_role = %legacy_role,
-                relation_allowed,
-                legacy_allowed,
+                relation_allowed = shadow.relation_allowed,
+                legacy_allowed = shadow.legacy_allowed,
                 "rbac_decision_mismatch"
             );
         }
@@ -214,16 +193,16 @@ impl AuthService {
             return Ok(());
         };
 
-        let legacy_allowed = Rbac::has_all_permissions(&legacy_role, required_permissions);
-        if legacy_allowed != relation_allowed {
+        let shadow = compare_all_permissions(&legacy_role, required_permissions, relation_allowed);
+        if shadow.mismatch() {
             Self::record_decision_mismatch();
             warn!(
                 tenant_id = %tenant_id,
                 user_id = %user_id,
                 required_permissions = ?required_permissions,
                 legacy_role = %legacy_role,
-                relation_allowed,
-                legacy_allowed,
+                relation_allowed = shadow.relation_allowed,
+                legacy_allowed = shadow.legacy_allowed,
                 "rbac_decision_mismatch"
             );
         }
