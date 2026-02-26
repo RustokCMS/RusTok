@@ -395,7 +395,7 @@
   - [x] seed / sync / system bootstrap (seed_user)
 - [x] В каждом flow гарантированно формируются `user_roles` (все публичные entrypoints покрыты; `GraphQL update_user` синхронизирует через `replace_user_role`).
 - [x] В каждом flow роль и tenant валидируются до записи.
-- [ ] Reset password в REST и GraphQL имеет одинаковую policy отзыва сессий.
+- [x] Reset password в REST и GraphQL имеет одинаковую policy отзыва сессий (`AuthLifecycleService::confirm_password_reset` используется обоими каналами и всегда вызывает `revoke_user_sessions(..., None)`).
 - [ ] Добавлены интеграционные тесты на каждый flow.
 
 ### 9.3 Фаза 2 — Resolver
