@@ -13,7 +13,9 @@ use axum_extra::{
     TypedHeader,
 };
 use loco_rs::prelude::*;
-use rustok_core::{Permission, Rbac};
+use rustok_core::Permission;
+
+use crate::services::auth::AuthService;
 
 pub struct CurrentUser {
     pub user: users::Model,
@@ -81,10 +83,9 @@ where
         return Err((StatusCode::FORBIDDEN, "User is inactive"));
     }
 
-    let permissions = Rbac::permissions_for_role(&user.role)
-        .iter()
-        .cloned()
-        .collect();
+    let permissions = AuthService::get_user_permissions(&ctx.db, &tenant_id, &user.id)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
     Ok(CurrentUser {
         user,

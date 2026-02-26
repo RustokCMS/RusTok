@@ -25,13 +25,19 @@ impl RootMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
 
-        if !rustok_core::Rbac::has_any_permission(
-            &auth.role,
+        let can_create_users = AuthService::has_any_permission(
+            &app_ctx.db,
+            &tenant.id,
+            &auth.user_id,
             &[
                 rustok_core::Permission::USERS_CREATE,
                 rustok_core::Permission::USERS_MANAGE,
             ],
-        ) {
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        if !can_create_users {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "Permission denied: users:create required",
             ));
@@ -100,13 +106,19 @@ impl RootMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
 
-        if !rustok_core::Rbac::has_any_permission(
-            &auth.role,
+        let can_update_users = AuthService::has_any_permission(
+            &app_ctx.db,
+            &tenant.id,
+            &auth.user_id,
             &[
                 rustok_core::Permission::USERS_UPDATE,
                 rustok_core::Permission::USERS_MANAGE,
             ],
-        ) {
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        if !can_update_users {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "Permission denied: users:update required",
             ));
@@ -173,7 +185,16 @@ impl RootMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
 
-        if !rustok_core::Rbac::has_permission(&auth.role, &rustok_core::Permission::USERS_MANAGE) {
+        let can_manage_users = AuthService::has_permission(
+            &app_ctx.db,
+            &tenant.id,
+            &auth.user_id,
+            &rustok_core::Permission::USERS_MANAGE,
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        if !can_manage_users {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "Permission denied: users:manage required",
             ));
@@ -204,7 +225,16 @@ impl RootMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
 
-        if !rustok_core::Rbac::has_permission(&auth.role, &rustok_core::Permission::USERS_MANAGE) {
+        let can_manage_users = AuthService::has_permission(
+            &app_ctx.db,
+            &tenant.id,
+            &auth.user_id,
+            &rustok_core::Permission::USERS_MANAGE,
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        if !can_manage_users {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "Permission denied: users:manage required",
             ));

@@ -17,6 +17,7 @@ use crate::models::_entities::tenant_modules::Column as TenantModulesColumn;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
+use crate::services::auth::AuthService;
 use rustok_content::entities::node::{Column as NodesColumn, Entity as NodesEntity};
 use rustok_core::ModuleRegistry;
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity};
@@ -144,7 +145,16 @@ impl RootQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
 
-        if !rustok_core::Rbac::has_permission(&auth.role, &rustok_core::Permission::USERS_READ) {
+        let can_read_users = AuthService::has_permission(
+            &app_ctx.db,
+            &tenant.id,
+            &auth.user_id,
+            &rustok_core::Permission::USERS_READ,
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        if !can_read_users {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "Permission denied: users:read required",
             ));
@@ -172,7 +182,16 @@ impl RootQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
 
-        if !rustok_core::Rbac::has_permission(&auth.role, &rustok_core::Permission::USERS_LIST) {
+        let can_list_users = AuthService::has_permission(
+            &app_ctx.db,
+            &tenant.id,
+            &auth.user_id,
+            &rustok_core::Permission::USERS_LIST,
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        if !can_list_users {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "Permission denied: users:list required",
             ));
