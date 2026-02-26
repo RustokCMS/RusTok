@@ -200,6 +200,36 @@ test_json_report_includes_timestamps() {
   pass "json report includes per-sample timestamps"
 }
 
+
+
+test_samples_are_persisted_by_default() {
+  local tmp
+  tmp="$(mktemp -d)"
+  make_mock_curl "$tmp"
+
+  MOCK_CURL_STATE_FILE="$tmp/state" MOCK_CURL_PROFILE=steady RUSTOK_CURL_BIN="$tmp/mock-curl" "$SCRIPT"     --samples 2 --interval-sec 0 --artifacts-dir "$tmp/artifacts" >"$tmp/out.log" 2>&1
+
+  samples_dir="$(find "$tmp/artifacts" -maxdepth 1 -type d -name 'rbac_cutover_samples_*' | head -n 1)"
+  [[ -n "$samples_dir" ]] || fail "expected persisted samples directory by default"
+  [[ -f "$samples_dir/sample_1.prom" ]] || fail "expected persisted sample_1.prom"
+  [[ -f "$samples_dir/sample_2.prom" ]] || fail "expected persisted sample_2.prom"
+  pass "baseline helper persists raw samples by default"
+}
+
+
+test_no_save_samples_disables_raw_snapshot_artifacts() {
+  local tmp
+  tmp="$(mktemp -d)"
+  make_mock_curl "$tmp"
+
+  MOCK_CURL_STATE_FILE="$tmp/state" MOCK_CURL_PROFILE=steady RUSTOK_CURL_BIN="$tmp/mock-curl" "$SCRIPT"     --samples 2 --interval-sec 0 --no-save-samples --artifacts-dir "$tmp/artifacts" >"$tmp/out.log" 2>&1
+
+  if find "$tmp/artifacts" -maxdepth 1 -type d -name 'rbac_cutover_samples_*' | rg -q .; then
+    fail "did not expect samples directory when --no-save-samples is set"
+  fi
+  pass "no-save-samples disables raw sample artifacts"
+}
+
 test_baseline_passes_when_mismatch_is_stable
 test_baseline_fails_when_mismatch_changes
 test_allow_mismatch_disables_strict_gate
@@ -207,5 +237,7 @@ test_baseline_fails_when_decision_volume_is_too_low
 test_min_decision_delta_zero_allows_idle_windows
 test_baseline_fails_on_counter_reset
 test_json_report_includes_timestamps
+test_samples_are_persisted_by_default
+test_no_save_samples_disables_raw_snapshot_artifacts
 
 echo "All rbac_cutover_baseline tests passed"

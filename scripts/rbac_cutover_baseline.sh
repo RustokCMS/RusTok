@@ -12,6 +12,8 @@ Options:
   --interval-sec <N>          Delay between scrapes in seconds (default: 60)
   --artifacts-dir <dir>       Output folder for baseline artifacts (default: artifacts/rbac-cutover)
   --min-decision-delta <N>    Minimum total permission decision delta required for a valid baseline (default: 1)
+  --save-samples              Persist raw /metrics snapshots per sample (default: enabled)
+  --no-save-samples           Do not persist raw /metrics snapshots in artifacts
   --require-zero-mismatch     Exit non-zero if mismatch counter delta is not zero (default: enabled)
   --allow-mismatch            Disable strict mismatch gate
   --help                      Show this message
@@ -30,6 +32,7 @@ SAMPLES=7
 INTERVAL_SEC=60
 ARTIFACTS_DIR="artifacts/rbac-cutover"
 MIN_DECISION_DELTA=1
+SAVE_SAMPLES="true"
 REQUIRE_ZERO_MISMATCH="true"
 CURL_BIN="${RUSTOK_CURL_BIN:-curl}"
 
@@ -45,6 +48,10 @@ while [[ $# -gt 0 ]]; do
       ARTIFACTS_DIR="$2"; shift 2 ;;
     --min-decision-delta)
       MIN_DECISION_DELTA="$2"; shift 2 ;;
+    --save-samples)
+      SAVE_SAMPLES="true"; shift ;;
+    --no-save-samples)
+      SAVE_SAMPLES="false"; shift ;;
     --require-zero-mismatch)
       REQUIRE_ZERO_MISMATCH="true"; shift ;;
     --allow-mismatch)
@@ -79,6 +86,12 @@ JSON_FILE="$ARTIFACTS_DIR/rbac_cutover_baseline_${TS}.json"
 REPORT_FILE="$ARTIFACTS_DIR/rbac_cutover_baseline_${TS}.md"
 
 tmp_dir="$(mktemp -d)"
+SAMPLES_DIR="$ARTIFACTS_DIR/rbac_cutover_samples_${TS}"
+if [[ "$SAVE_SAMPLES" == "true" ]]; then
+  mkdir -p "$SAMPLES_DIR"
+else
+  SAMPLES_DIR=""
+fi
 trap 'rm -rf "$tmp_dir"' EXIT
 
 metric_value() {
@@ -120,6 +133,11 @@ for ((i = 1; i <= SAMPLES; i++)); do
   sample_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   sample_file="$tmp_dir/sample_${i}.prom"
   "$CURL_BIN" -fsS "$METRICS_URL" > "$sample_file"
+  sample_artifact=""
+  if [[ "$SAVE_SAMPLES" == "true" ]]; then
+    sample_artifact="$SAMPLES_DIR/sample_${i}.prom"
+    cp "$sample_file" "$sample_artifact"
+  fi
 
   mismatch_raw="$(metric_value "$sample_file" "rustok_rbac_decision_mismatch_total")"
   shadow_fail_raw="$(metric_value "$sample_file" "rustok_rbac_shadow_compare_failures_total")"
@@ -201,6 +219,8 @@ fi
   echo "  \"permission_checks_total_delta\": ${total_decisions_delta},"
   echo "  \"counter_reset_detected\": ${counter_reset_detected},"
   echo "  \"min_decision_delta\": ${MIN_DECISION_DELTA},"
+  echo "  \"save_samples\": ${SAVE_SAMPLES},"
+  echo "  \"samples_dir\": \"${SAMPLES_DIR}\","
   echo "  \"gate_status\": \"${gate_status}\","
   echo "  \"gate_message\": \"${gate_message}\","
   echo "  \"samples_data\": ["
@@ -222,6 +242,7 @@ fi
   echo "- samples: ${SAMPLES}"
   echo "- interval_sec: ${INTERVAL_SEC}"
   echo "- min_decision_delta: ${MIN_DECISION_DELTA}"
+  echo "- save_samples: ${SAVE_SAMPLES}"
   echo "- mismatch_total: ${first_mismatch} -> ${last_mismatch} (delta ${mismatch_delta})"
   echo "- shadow_compare_failures_total: ${first_shadow_fail} -> ${last_shadow_fail} (delta ${shadow_fail_delta})"
   echo "- permission_checks_denied delta: ${denied_delta}"
@@ -238,6 +259,9 @@ fi
   echo
   echo "- json: ${JSON_FILE}"
   echo "- report: ${REPORT_FILE}"
+  if [[ "$SAVE_SAMPLES" == "true" ]]; then
+    echo "- samples_dir: ${SAMPLES_DIR}"
+  fi
 } > "$REPORT_FILE"
 
 echo "Done. Report: ${REPORT_FILE}"
