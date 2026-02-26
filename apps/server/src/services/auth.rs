@@ -874,6 +874,12 @@ impl RoleAssignmentStore for ServerRoleAssignmentStore {
 #[cfg(test)]
 mod tests {
     use super::AuthService;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().expect("env lock")
+    }
 
     #[test]
     fn claim_role_mismatch_counter_increments() {
@@ -882,6 +888,24 @@ mod tests {
         let after = AuthService::metrics_snapshot().claim_role_mismatch_total;
 
         assert_eq!(after, before + 1);
+    }
+
+    #[test]
+    fn authz_mode_defaults_to_relation_only_when_env_missing() {
+        let _guard = env_lock();
+        std::env::remove_var("RUSTOK_RBAC_AUTHZ_MODE");
+
+        assert!(!AuthService::is_dual_read_enabled());
+    }
+
+    #[test]
+    fn authz_mode_enables_dual_read_from_env() {
+        let _guard = env_lock();
+        std::env::set_var("RUSTOK_RBAC_AUTHZ_MODE", "dual_read");
+
+        assert!(AuthService::is_dual_read_enabled());
+
+        std::env::remove_var("RUSTOK_RBAC_AUTHZ_MODE");
     }
 
     #[test]
