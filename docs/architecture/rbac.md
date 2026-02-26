@@ -1,5 +1,9 @@
 # RBAC Enforcement in RusToK
 
+> Scope boundary: this document describes RBAC enforcement model and permissions.
+> Auth lifecycle consistency (`register/login/refresh/reset/change-password`, transport parity, session invalidation policy) is tracked separately in `docs/architecture/user-auth-consistency-remediation-plan.md` and ADR `DECISIONS/2026-02-26-auth-lifecycle-unification-session-invalidation.md`.
+> Relation-model migration and RBAC source-of-truth cutover are tracked in `docs/architecture/rbac-relation-migration-plan.md`.
+
 This document describes the Role-Based Access Control (RBAC) enforcement system in RusToK.
 
 ## Overview

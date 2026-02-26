@@ -159,9 +159,9 @@ REST/GraphQL должны вызывать этот сервис, оставая
 
 ## 5.2 Документационные задачи
 
-- [ ] ADR: "Auth lifecycle unification + session invalidation policy".
+- [x] ADR: "Auth lifecycle unification + session invalidation policy".
 - [x] Обновить `docs/architecture/api.md` (REST/GraphQL adapters + service layer).
-- [ ] Обновить `docs/architecture/rbac.md` ссылкой на разделение ответственности между этим планом и RBAC migration plan.
+- [x] Обновить `docs/architecture/rbac.md` ссылкой на разделение ответственности между этим планом и RBAC migration plan.
 - [x] Обновить `apps/server/docs/README.md` кратким changelog по auth behavior.
 
 ---
