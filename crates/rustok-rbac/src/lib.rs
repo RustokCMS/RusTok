@@ -3,6 +3,11 @@ pub mod entities;
 pub mod error;
 pub mod services;
 
+pub use services::permission_policy::{
+    denied_reason_for_denial, has_effective_permission_in_set, missing_permissions,
+    DeniedReasonKind,
+};
+
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;

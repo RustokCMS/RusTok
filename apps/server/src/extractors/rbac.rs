@@ -4,10 +4,7 @@ use rustok_core::{Action, Permission};
 use crate::extractors::auth::CurrentUser;
 
 fn has_effective_permission(user: &CurrentUser, permission: &Permission) -> bool {
-    rustok_rbac::services::permission_policy::has_effective_permission_in_set(
-        &user.permissions,
-        permission,
-    )
+    rustok_rbac::has_effective_permission_in_set(&user.permissions, permission)
 }
 
 /// Extractor that enforces a specific permission

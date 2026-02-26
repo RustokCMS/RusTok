@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
-use rustok_rbac::services::permission_policy::{
+use rustok_rbac::{
     denied_reason_for_denial, has_effective_permission_in_set, missing_permissions,
     DeniedReasonKind,
 };
