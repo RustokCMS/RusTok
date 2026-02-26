@@ -24,7 +24,8 @@ pub use services::relation_permission_resolver::{
 };
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
 pub use services::shadow_decision::{
-    compare_all_permissions, compare_any_permissions, compare_single_permission, ShadowDecision,
+    compare_all_permissions, compare_any_permissions, compare_shadow_decision,
+    compare_single_permission, ShadowCheck, ShadowDecision,
 };
 
 use async_trait::async_trait;

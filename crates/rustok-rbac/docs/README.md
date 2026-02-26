@@ -18,4 +18,4 @@
 - `RuntimePermissionResolver` composes relation-store/cache/role-assignment adapters and supports unified resolver error mapping (`Into<E>`) so integration layers can keep their own adapter-specific error types; the same resolver contract is used for both read-path permission resolution and write-path role assignment/replacement use-cases.
 - `RbacAuthzMode` defines shared rollout-mode parsing for relation-only/dual-read authorization execution (`RUSTOK_RBAC_AUTHZ_MODE`).
 
-- `shadow_decision` exports legacy-vs-relation shadow comparison helpers (`compare_single_permission/compare_any_permissions/compare_all_permissions`) to keep dual-read decision semantics in the RBAC module.
+- `shadow_decision` exports legacy-vs-relation shadow comparison helpers (`ShadowCheck` + `compare_shadow_decision`, as well as `compare_single_permission/compare_any_permissions/compare_all_permissions`) to keep dual-read decision semantics in the RBAC module.

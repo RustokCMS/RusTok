@@ -12,6 +12,13 @@ impl ShadowDecision {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ShadowCheck<'a> {
+    Single(&'a Permission),
+    Any(&'a [Permission]),
+    All(&'a [Permission]),
+}
+
 pub fn compare_single_permission(
     legacy_role: &UserRole,
     required_permission: &Permission,
@@ -45,9 +52,29 @@ pub fn compare_all_permissions(
     }
 }
 
+pub fn compare_shadow_decision(
+    legacy_role: &UserRole,
+    check: ShadowCheck<'_>,
+    relation_allowed: bool,
+) -> ShadowDecision {
+    match check {
+        ShadowCheck::Single(permission) => {
+            compare_single_permission(legacy_role, permission, relation_allowed)
+        }
+        ShadowCheck::Any(permissions) => {
+            compare_any_permissions(legacy_role, permissions, relation_allowed)
+        }
+        ShadowCheck::All(permissions) => {
+            compare_all_permissions(legacy_role, permissions, relation_allowed)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{compare_any_permissions, compare_single_permission};
+    use super::{
+        compare_any_permissions, compare_shadow_decision, compare_single_permission, ShadowCheck,
+    };
     use rustok_core::{Action, Permission, Resource, UserRole};
 
     fn permission(resource: Resource, action: Action) -> Permission {
@@ -74,5 +101,22 @@ mod tests {
 
         assert!(decision.legacy_allowed);
         assert!(!decision.mismatch());
+    }
+
+    #[test]
+    fn unified_shadow_check_supports_all_modes() {
+        let required = vec![
+            permission(Resource::BlogPost, Action::Read),
+            permission(Resource::User, Action::Delete),
+        ];
+
+        let single =
+            compare_shadow_decision(&UserRole::Editor, ShadowCheck::Single(&required[0]), true);
+        let any = compare_shadow_decision(&UserRole::Editor, ShadowCheck::Any(&required), true);
+        let all = compare_shadow_decision(&UserRole::Editor, ShadowCheck::All(&required), true);
+
+        assert!(!single.mismatch());
+        assert!(!any.mismatch());
+        assert!(all.mismatch());
     }
 }
