@@ -1,6 +1,16 @@
 use rustok_core::Permission;
 use std::collections::HashSet;
 
+fn normalize_permissions(permissions: Vec<Permission>) -> Vec<Permission> {
+    let mut unique = permissions
+        .into_iter()
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    unique.sort_by_key(|permission| permission.to_string());
+    unique
+}
+
 #[async_trait::async_trait]
 pub trait RelationPermissionStore {
     type Error;
@@ -44,8 +54,7 @@ pub async fn resolve_permissions_from_relations<S: RelationPermissionStore>(
         .load_permissions_for_roles(tenant_id, &tenant_role_ids)
         .await?;
 
-    let unique = permissions.into_iter().collect::<HashSet<_>>();
-    Ok(unique.into_iter().collect())
+    Ok(normalize_permissions(permissions))
 }
 
 #[cfg(test)]
@@ -105,6 +114,37 @@ mod tests {
         .unwrap();
 
         assert!(resolved.is_empty());
+    }
+
+    #[tokio::test]
+    async fn returns_stable_sorted_permissions() {
+        let role_id = uuid::Uuid::new_v4();
+        let store = StubStore {
+            role_ids: vec![role_id],
+            tenant_role_ids: vec![role_id],
+            permissions: vec![
+                Permission::USERS_UPDATE,
+                Permission::USERS_READ,
+                Permission::USERS_MANAGE,
+            ],
+        };
+
+        let resolved = resolve_permissions_from_relations(
+            &store,
+            &uuid::Uuid::new_v4(),
+            &uuid::Uuid::new_v4(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            resolved,
+            vec![
+                Permission::USERS_MANAGE,
+                Permission::USERS_READ,
+                Permission::USERS_UPDATE,
+            ]
+        );
     }
 
     #[tokio::test]

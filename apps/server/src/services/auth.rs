@@ -768,7 +768,7 @@ impl RelationPermissionStore for SeaOrmRelationPermissionStore<'_> {
     ) -> Result<Vec<uuid::Uuid>> {
         let tenant_role_models = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(*tenant_id))
-            .filter(roles::Column::Id.is_in(role_ids.to_vec()))
+            .filter(roles::Column::Id.is_in(role_ids.iter().copied()))
             .all(self.db)
             .await?;
 
@@ -781,7 +781,7 @@ impl RelationPermissionStore for SeaOrmRelationPermissionStore<'_> {
         role_ids: &[uuid::Uuid],
     ) -> Result<Vec<Permission>> {
         let role_permission_models = role_permissions::Entity::find()
-            .filter(role_permissions::Column::RoleId.is_in(role_ids.to_vec()))
+            .filter(role_permissions::Column::RoleId.is_in(role_ids.iter().copied()))
             .all(self.db)
             .await?;
 
