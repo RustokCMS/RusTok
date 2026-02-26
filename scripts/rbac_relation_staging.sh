@@ -19,6 +19,7 @@ Options:
   --run-rollback-dry          Run rollback dry-run after backfill
   --run-rollback-apply        Run actual rollback (dangerous; explicit)
   --rollback-source <file>    Use existing rollback snapshot file instead of generated one
+  --fail-on-regression        Exit non-zero if post-check invariants regress vs pre-check
   --artifacts-dir <dir>       Output folder for logs/report (default: artifacts/rbac-staging)
   --help                      Show this message
 
@@ -40,6 +41,7 @@ RUN_APPLY="false"
 RUN_ROLLBACK_DRY="false"
 RUN_ROLLBACK_APPLY="false"
 ROLLBACK_SOURCE=""
+FAIL_ON_REGRESSION="false"
 ARTIFACTS_DIR="artifacts/rbac-staging"
 CARGO_BIN="${RUSTOK_CARGO_BIN:-cargo}"
 
@@ -63,6 +65,8 @@ while [[ $# -gt 0 ]]; do
       RUN_ROLLBACK_APPLY="true"; shift ;;
     --rollback-source)
       ROLLBACK_SOURCE="$2"; shift 2 ;;
+    --fail-on-regression)
+      FAIL_ON_REGRESSION="true"; shift ;;
     --artifacts-dir)
       ARTIFACTS_DIR="$2"; shift 2 ;;
     --help)
@@ -104,6 +108,64 @@ build_args() {
   fi
 
   echo "$args"
+}
+
+extract_metric_from_json() {
+  local file="$1"
+  local key="$2"
+  python - "$file" "$key" <<'PY'
+import json
+import sys
+path, key = sys.argv[1], sys.argv[2]
+with open(path, 'r', encoding='utf-8') as fh:
+    payload = json.load(fh)
+value = payload.get(key)
+if not isinstance(value, int):
+    raise SystemExit(f"invalid or missing integer metric '{key}' in {path}")
+print(value)
+PY
+}
+
+append_invariant_summary() {
+  local title="$1"
+  local before_file="$2"
+  local after_file="$3"
+
+  if [[ ! -f "$before_file" || ! -f "$after_file" ]]; then
+    return 0
+  fi
+
+  local users_before users_after users_delta
+  local orphan_roles_before orphan_roles_after orphan_roles_delta
+  local orphan_permissions_before orphan_permissions_after orphan_permissions_delta
+
+  users_before="$(extract_metric_from_json "$before_file" "users_without_roles_total")"
+  users_after="$(extract_metric_from_json "$after_file" "users_without_roles_total")"
+  users_delta="$((users_after - users_before))"
+
+  orphan_roles_before="$(extract_metric_from_json "$before_file" "orphan_user_roles_total")"
+  orphan_roles_after="$(extract_metric_from_json "$after_file" "orphan_user_roles_total")"
+  orphan_roles_delta="$((orphan_roles_after - orphan_roles_before))"
+
+  orphan_permissions_before="$(extract_metric_from_json "$before_file" "orphan_role_permissions_total")"
+  orphan_permissions_after="$(extract_metric_from_json "$after_file" "orphan_role_permissions_total")"
+  orphan_permissions_delta="$((orphan_permissions_after - orphan_permissions_before))"
+
+  {
+    echo
+    echo "## ${title}"
+    echo
+    echo "- users_without_roles_total: ${users_before} -> ${users_after} (delta ${users_delta})"
+    echo "- orphan_user_roles_total: ${orphan_roles_before} -> ${orphan_roles_after} (delta ${orphan_roles_delta})"
+    echo "- orphan_role_permissions_total: ${orphan_permissions_before} -> ${orphan_permissions_after} (delta ${orphan_permissions_delta})"
+  } >> "$REPORT_FILE"
+
+  if [[ "$FAIL_ON_REGRESSION" == "true" ]]; then
+    if (( users_delta > 0 || orphan_roles_delta > 0 || orphan_permissions_delta > 0 )); then
+      echo "Invariant regression detected in ${title}. Check ${REPORT_FILE}." >&2
+      exit 1
+    fi
+  fi
 }
 
 require_rollback_source() {
@@ -169,6 +231,7 @@ cat > "$REPORT_FILE" <<REPORT
 - Excluded user IDs: ${EXCLUDE_USER_IDS:-<none>}
 - Excluded roles: ${EXCLUDE_ROLES:-<none>}
 - Continue on error: ${CONTINUE_ON_ERROR}
+- Fail on regression: ${FAIL_ON_REGRESSION}
 
 ## Generated logs
 
@@ -177,6 +240,9 @@ $(for f in "$ARTIFACTS_DIR"/${TS}_*.log; do
   echo "- $(basename "$f")"
 done)
 REPORT
+
+append_invariant_summary "Invariant diff: pre-check vs post-apply" "$PRECHECK_JSON" "$POST_APPLY_JSON"
+append_invariant_summary "Invariant diff: pre-check vs post-rollback" "$PRECHECK_JSON" "$POST_ROLLBACK_JSON"
 
 echo "Done. Report: ${REPORT_FILE}"
 echo "Rollback snapshot: ${ROLLBACK_FILE}"
