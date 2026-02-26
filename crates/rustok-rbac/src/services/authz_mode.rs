@@ -5,7 +5,11 @@ pub enum RbacAuthzMode {
 }
 
 const AUTHZ_MODE_ENV: &str = "RUSTOK_RBAC_AUTHZ_MODE";
-const RELATION_DUAL_READ_ENABLED_ENV: &str = "RUSTOK_RBAC_RELATION_DUAL_READ_ENABLED";
+const RELATION_DUAL_READ_FLAG_ALIASES: [&str; 3] = [
+    "RUSTOK_RBAC_RELATION_DUAL_READ_ENABLED",
+    "RBAC_RELATION_DUAL_READ_ENABLED",
+    "rbac_relation_dual_read_enabled",
+];
 
 impl RbacAuthzMode {
     pub fn parse(value: &str) -> Self {
@@ -21,7 +25,10 @@ impl RbacAuthzMode {
             return Self::parse(&raw_mode);
         }
 
-        if env_flag_enabled(RELATION_DUAL_READ_ENABLED_ENV) {
+        if RELATION_DUAL_READ_FLAG_ALIASES
+            .iter()
+            .any(|name| env_flag_enabled(name))
+        {
             return Self::DualRead;
         }
 
@@ -46,7 +53,7 @@ fn env_flag_enabled(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{RbacAuthzMode, AUTHZ_MODE_ENV, RELATION_DUAL_READ_ENABLED_ENV};
+    use super::{RbacAuthzMode, AUTHZ_MODE_ENV, RELATION_DUAL_READ_FLAG_ALIASES};
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
     struct EnvVarGuard {
@@ -116,24 +123,26 @@ mod tests {
     }
 
     #[test]
-    fn from_env_supports_legacy_dual_read_flag() {
+    fn from_env_supports_all_legacy_dual_read_flag_aliases() {
         let mode_env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
         mode_env.remove();
 
-        let dual_read_env = EnvVarGuard::lock(RELATION_DUAL_READ_ENABLED_ENV);
-        dual_read_env.set("true");
-
-        assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::DualRead);
+        for name in RELATION_DUAL_READ_FLAG_ALIASES {
+            let alias = EnvVarGuard::lock(name);
+            alias.set("true");
+            assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::DualRead);
+        }
     }
 
     #[test]
-    fn authz_mode_env_has_priority_over_legacy_flag() {
+    fn authz_mode_env_has_priority_over_legacy_flag_aliases() {
         let mode_env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
         mode_env.set("relation_only");
 
-        let dual_read_env = EnvVarGuard::lock(RELATION_DUAL_READ_ENABLED_ENV);
-        dual_read_env.set("true");
-
-        assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::RelationOnly);
+        for name in RELATION_DUAL_READ_FLAG_ALIASES {
+            let alias = EnvVarGuard::lock(name);
+            alias.set("true");
+            assert_eq!(RbacAuthzMode::from_env(), RbacAuthzMode::RelationOnly);
+        }
     }
 }

@@ -72,7 +72,7 @@
 - [~] **Фаза 5 — Dual-read и cutover (частично):**
   - В `AuthService` добавлен runtime shadow dual-read для `has_permission/has_any_permission/has_all_permissions` под env-флагом `RUSTOK_RBAC_AUTHZ_MODE=dual_read` (relation decision остаётся авторитативным).
   - Режим rollout-конфигурации (`RbacAuthzMode`: `relation_only`/`dual_read`) перенесён в `crates/rustok-rbac` как модульный контракт, `apps/server` использует его без локального enum-дублирования.
-  - Для rollout-совместимости `RbacAuthzMode` поддерживает legacy toggle `RUSTOK_RBAC_RELATION_DUAL_READ_ENABLED` (если `RUSTOK_RBAC_AUTHZ_MODE` не задан), чтобы staged cutover можно было выполнять без одномоментного переезда всех окружений на новый env-ключ.
+  - Для rollout-совместимости `RbacAuthzMode` поддерживает legacy toggle `RUSTOK_RBAC_RELATION_DUAL_READ_ENABLED` (aliases: `RBAC_RELATION_DUAL_READ_ENABLED`, `rbac_relation_dual_read_enabled`) (если `RUSTOK_RBAC_AUTHZ_MODE` не задан), чтобы staged cutover можно было выполнять без одномоментного переезда всех окружений на новый env-ключ.
   - Legacy-vs-relation shadow decision semantics вынесены в модульный `rustok-rbac::shadow_decision`; `apps/server` оставляет только загрузку legacy-ролей, метрики и logging/feature-flag orchestration.
   - Для server-adapter слоя shadow orchestration унифицирован через `ShadowCheck` + `compare_shadow_decision` (single/any/all без дублирования policy-веток в `AuthService`).
   - В `rustok-rbac` добавлен модульный dual-read orchestrator `evaluate_dual_read` (`DualReadOutcome`), поэтому `apps/server` больше не держит локальную decision-ветвистость для `skip/compare` и использует модульный исход dual-read-решения.
