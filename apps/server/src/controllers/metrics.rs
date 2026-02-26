@@ -98,10 +98,24 @@ fn render_rbac_metrics() -> String {
         "rustok_rbac_permission_cache_hits {cache_hits}\n\
 rustok_rbac_permission_cache_misses {cache_misses}\n\
 rustok_rbac_permission_checks_allowed {checks_allowed}\n\
-rustok_rbac_permission_checks_denied {checks_denied}\n",
+rustok_rbac_permission_checks_denied {checks_denied}\n\
+rustok_rbac_permission_check_latency_ms_total {check_latency_ms_total}\n\
+rustok_rbac_permission_check_latency_samples {check_latency_samples}\n\
+rustok_rbac_permission_lookup_latency_ms_total {lookup_latency_ms_total}\n\
+rustok_rbac_permission_lookup_latency_samples {lookup_latency_samples}\n\
+rustok_rbac_permission_denied_reason_no_permissions_resolved {denied_no_permissions_resolved}\n\
+rustok_rbac_permission_denied_reason_missing_permissions {denied_missing_permissions}\n\
+rustok_rbac_permission_denied_reason_unknown {denied_unknown}\n",
         cache_hits = stats.permission_cache_hits,
         cache_misses = stats.permission_cache_misses,
         checks_allowed = stats.permission_checks_allowed,
         checks_denied = stats.permission_checks_denied,
+        check_latency_ms_total = stats.permission_check_latency_ms_total,
+        check_latency_samples = stats.permission_check_latency_samples,
+        lookup_latency_ms_total = stats.permission_lookup_latency_ms_total,
+        lookup_latency_samples = stats.permission_lookup_latency_samples,
+        denied_no_permissions_resolved = stats.denied_no_permissions_resolved,
+        denied_missing_permissions = stats.denied_missing_permissions,
+        denied_unknown = stats.denied_unknown,
     )
 }

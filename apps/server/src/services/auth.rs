@@ -31,12 +31,26 @@ pub struct RbacResolverMetricsSnapshot {
     pub permission_cache_misses: u64,
     pub permission_checks_allowed: u64,
     pub permission_checks_denied: u64,
+    pub permission_check_latency_ms_total: u64,
+    pub permission_check_latency_samples: u64,
+    pub permission_lookup_latency_ms_total: u64,
+    pub permission_lookup_latency_samples: u64,
+    pub denied_no_permissions_resolved: u64,
+    pub denied_missing_permissions: u64,
+    pub denied_unknown: u64,
 }
 
 static RBAC_PERMISSION_CACHE_HITS: AtomicU64 = AtomicU64::new(0);
 static RBAC_PERMISSION_CACHE_MISSES: AtomicU64 = AtomicU64::new(0);
 static RBAC_PERMISSION_CHECKS_ALLOWED: AtomicU64 = AtomicU64::new(0);
 static RBAC_PERMISSION_CHECKS_DENIED: AtomicU64 = AtomicU64::new(0);
+static RBAC_PERMISSION_CHECK_LATENCY_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
+static RBAC_PERMISSION_CHECK_LATENCY_SAMPLES: AtomicU64 = AtomicU64::new(0);
+static RBAC_PERMISSION_LOOKUP_LATENCY_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
+static RBAC_PERMISSION_LOOKUP_LATENCY_SAMPLES: AtomicU64 = AtomicU64::new(0);
+static RBAC_DENIED_NO_PERMISSIONS_RESOLVED: AtomicU64 = AtomicU64::new(0);
+static RBAC_DENIED_MISSING_PERMISSIONS: AtomicU64 = AtomicU64::new(0);
+static RBAC_DENIED_UNKNOWN: AtomicU64 = AtomicU64::new(0);
 
 impl AuthService {
     fn has_effective_permission(
@@ -84,6 +98,20 @@ impl AuthService {
         reason
     }
 
+    fn denied_reason_bucket(denied_reason: &str) {
+        if denied_reason == "no_permissions_resolved" {
+            RBAC_DENIED_NO_PERMISSIONS_RESOLVED.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+
+        if denied_reason.starts_with("missing_permissions:") {
+            RBAC_DENIED_MISSING_PERMISSIONS.fetch_add(1, Ordering::Relaxed);
+            return;
+        }
+
+        RBAC_DENIED_UNKNOWN.fetch_add(1, Ordering::Relaxed);
+    }
+
     fn cache_key(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) -> (uuid::Uuid, uuid::Uuid) {
         (*tenant_id, *user_id)
     }
@@ -102,12 +130,34 @@ impl AuthService {
         }
     }
 
+    fn record_permission_check_latency(latency_ms: u64) {
+        RBAC_PERMISSION_CHECK_LATENCY_MS_TOTAL.fetch_add(latency_ms, Ordering::Relaxed);
+        RBAC_PERMISSION_CHECK_LATENCY_SAMPLES.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn record_permission_lookup_latency(latency_ms: u64) {
+        RBAC_PERMISSION_LOOKUP_LATENCY_MS_TOTAL.fetch_add(latency_ms, Ordering::Relaxed);
+        RBAC_PERMISSION_LOOKUP_LATENCY_SAMPLES.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn metrics_snapshot() -> RbacResolverMetricsSnapshot {
         RbacResolverMetricsSnapshot {
             permission_cache_hits: RBAC_PERMISSION_CACHE_HITS.load(Ordering::Relaxed),
             permission_cache_misses: RBAC_PERMISSION_CACHE_MISSES.load(Ordering::Relaxed),
             permission_checks_allowed: RBAC_PERMISSION_CHECKS_ALLOWED.load(Ordering::Relaxed),
             permission_checks_denied: RBAC_PERMISSION_CHECKS_DENIED.load(Ordering::Relaxed),
+            permission_check_latency_ms_total: RBAC_PERMISSION_CHECK_LATENCY_MS_TOTAL
+                .load(Ordering::Relaxed),
+            permission_check_latency_samples: RBAC_PERMISSION_CHECK_LATENCY_SAMPLES
+                .load(Ordering::Relaxed),
+            permission_lookup_latency_ms_total: RBAC_PERMISSION_LOOKUP_LATENCY_MS_TOTAL
+                .load(Ordering::Relaxed),
+            permission_lookup_latency_samples: RBAC_PERMISSION_LOOKUP_LATENCY_SAMPLES
+                .load(Ordering::Relaxed),
+            denied_no_permissions_resolved: RBAC_DENIED_NO_PERMISSIONS_RESOLVED
+                .load(Ordering::Relaxed),
+            denied_missing_permissions: RBAC_DENIED_MISSING_PERMISSIONS.load(Ordering::Relaxed),
+            denied_unknown: RBAC_DENIED_UNKNOWN.load(Ordering::Relaxed),
         }
     }
 
@@ -126,6 +176,7 @@ impl AuthService {
             vec![*required_permission]
         };
         let denied_reason = Self::denied_reason(&user_permissions, &missing_permissions);
+        let latency_ms = started_at.elapsed().as_millis() as u64;
 
         debug!(
             tenant_id = %tenant_id,
@@ -134,7 +185,7 @@ impl AuthService {
             permissions_count = user_permissions.len(),
             denied_reason = %denied_reason,
             allowed,
-            latency_ms = started_at.elapsed().as_millis(),
+            latency_ms,
             "rbac resolver decision (single permission check)"
         );
 
@@ -149,6 +200,10 @@ impl AuthService {
         }
 
         Self::record_permission_check_result(allowed);
+        Self::record_permission_check_latency(latency_ms);
+        if !allowed {
+            Self::denied_reason_bucket(&denied_reason);
+        }
 
         Ok(allowed)
     }
@@ -175,6 +230,7 @@ impl AuthService {
             required_permissions.to_vec()
         };
         let denied_reason = Self::denied_reason(&user_permissions, &missing_permissions);
+        let latency_ms = started_at.elapsed().as_millis() as u64;
 
         debug!(
             tenant_id = %tenant_id,
@@ -183,7 +239,7 @@ impl AuthService {
             permissions_count = user_permissions.len(),
             denied_reason = %denied_reason,
             allowed,
-            latency_ms = started_at.elapsed().as_millis(),
+            latency_ms,
             "rbac resolver decision (any-permission check)"
         );
 
@@ -198,6 +254,10 @@ impl AuthService {
         }
 
         Self::record_permission_check_result(allowed);
+        Self::record_permission_check_latency(latency_ms);
+        if !allowed {
+            Self::denied_reason_bucket(&denied_reason);
+        }
 
         Ok(allowed)
     }
@@ -219,6 +279,7 @@ impl AuthService {
             Self::missing_permissions(&user_permissions, required_permissions);
         let allowed = missing_permissions.is_empty();
         let denied_reason = Self::denied_reason(&user_permissions, &missing_permissions);
+        let latency_ms = started_at.elapsed().as_millis() as u64;
 
         debug!(
             tenant_id = %tenant_id,
@@ -228,7 +289,7 @@ impl AuthService {
             denied_reason = %denied_reason,
             missing_permissions = ?missing_permissions,
             allowed,
-            latency_ms = started_at.elapsed().as_millis(),
+            latency_ms,
             "rbac resolver decision (all-permissions check)"
         );
 
@@ -244,6 +305,10 @@ impl AuthService {
         }
 
         Self::record_permission_check_result(allowed);
+        Self::record_permission_check_latency(latency_ms);
+        if !allowed {
+            Self::denied_reason_bucket(&denied_reason);
+        }
 
         Ok(allowed)
     }
@@ -267,6 +332,8 @@ impl AuthService {
                 "rbac resolver permission lookup"
             );
 
+            Self::record_permission_lookup_latency(started_at.elapsed().as_millis() as u64);
+
             return Ok(cached_permissions);
         }
 
@@ -286,6 +353,8 @@ impl AuthService {
             latency_ms = started_at.elapsed().as_millis(),
             "rbac resolver permission lookup"
         );
+
+        Self::record_permission_lookup_latency(started_at.elapsed().as_millis() as u64);
 
         Ok(resolved_permissions)
     }
@@ -544,5 +613,12 @@ mod tests {
             AuthService::missing_permissions(&user_permissions, &required_permissions);
 
         assert!(missing_permissions.is_empty());
+    }
+
+    #[test]
+    fn denied_reason_bucket_classifies_missing_permissions() {
+        let denied_reason =
+            AuthService::denied_reason(&[Permission::USERS_READ], &[Permission::USERS_UPDATE]);
+        assert!(denied_reason.starts_with("missing_permissions:"));
     }
 }
