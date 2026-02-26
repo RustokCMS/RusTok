@@ -21,7 +21,7 @@
 - [~] **Фаза 2 — Единый Permission Resolver (начато):**
   - В `AuthService` добавлены tenant-aware методы `get_user_permissions / has_permission / has_any_permission / has_all_permissions`.
   - Реализованы tenant-scoping и deduplication; сохранена семантика `resource:manage` как wildcard.
-  - Переведена часть GraphQL-checks (users CRUD/read/list) и RBAC extractors на relation-проверки.
+  - Переведена часть GraphQL-checks (users CRUD/read/list, alloy, content mutation/query) и RBAC extractors на relation-проверки.
 - [~] **Фаза 3 — AuthContext и токены (начато):**
   - `CurrentUser.permissions` теперь резолвятся из relation-модели, а не из `users.role`.
   - Полный отказ от role-claim в policy-решениях ещё не завершён (есть оставшиеся role-based места).
@@ -31,7 +31,7 @@
 
 ### Что осталось приоритетно на ближайший шаг
 
-1. Добрать оставшиеся runtime-проверки, где ещё используется `auth.role` для доступа.
+1. Добрать оставшиеся runtime-проверки, где `users.role` всё ещё влияет на policy scope в доменных сервисах.
 2. Добавить observability для resolver-решений (latency/cache/deny reasons).
 3. Подготовить и согласовать ADR по final cutover (`relation-only`).
 

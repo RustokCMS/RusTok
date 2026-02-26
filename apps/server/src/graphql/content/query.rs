@@ -60,7 +60,7 @@ impl ContentQuery {
 
         let security = ctx
             .data::<AuthContext>()
-            .map(|auth| SecurityContext::new(auth.role.clone(), Some(auth.user_id)))
+            .map(|auth| auth.security_context())
             .unwrap_or_else(|_| SecurityContext::new(UserRole::Customer, None));
 
         let (items, total): (Vec<rustok_content::dto::NodeListItem>, u64) = service
