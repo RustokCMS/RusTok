@@ -39,6 +39,7 @@ pub struct RbacResolverMetricsSnapshot {
     pub denied_missing_permissions: u64,
     pub denied_unknown: u64,
     pub claim_role_mismatch_total: u64,
+    pub decision_mismatch_total: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,9 +61,10 @@ static RBAC_DENIED_NO_PERMISSIONS_RESOLVED: AtomicU64 = AtomicU64::new(0);
 static RBAC_DENIED_MISSING_PERMISSIONS: AtomicU64 = AtomicU64::new(0);
 static RBAC_DENIED_UNKNOWN: AtomicU64 = AtomicU64::new(0);
 static RBAC_CLAIM_ROLE_MISMATCH_TOTAL: AtomicU64 = AtomicU64::new(0);
+static RBAC_DECISION_MISMATCH_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 impl AuthService {
-    fn has_effective_permission(
+    pub fn has_effective_permission_in_set(
         user_permissions: &[Permission],
         required_permission: &Permission,
     ) -> bool {
@@ -80,7 +82,9 @@ impl AuthService {
         required_permissions
             .iter()
             .copied()
-            .filter(|permission| !Self::has_effective_permission(user_permissions, permission))
+            .filter(|permission| {
+                !Self::has_effective_permission_in_set(user_permissions, permission)
+            })
             .collect()
     }
 
@@ -156,6 +160,10 @@ impl AuthService {
         RBAC_CLAIM_ROLE_MISMATCH_TOTAL.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub fn record_decision_mismatch() {
+        RBAC_DECISION_MISMATCH_TOTAL.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn metrics_snapshot() -> RbacResolverMetricsSnapshot {
         RbacResolverMetricsSnapshot {
             permission_cache_hits: RBAC_PERMISSION_CACHE_HITS.load(Ordering::Relaxed),
@@ -175,6 +183,7 @@ impl AuthService {
             denied_missing_permissions: RBAC_DENIED_MISSING_PERMISSIONS.load(Ordering::Relaxed),
             denied_unknown: RBAC_DENIED_UNKNOWN.load(Ordering::Relaxed),
             claim_role_mismatch_total: RBAC_CLAIM_ROLE_MISMATCH_TOTAL.load(Ordering::Relaxed),
+            decision_mismatch_total: RBAC_DECISION_MISMATCH_TOTAL.load(Ordering::Relaxed),
         }
     }
 
@@ -186,7 +195,7 @@ impl AuthService {
     ) -> Result<bool> {
         let started_at = Instant::now();
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        let allowed = Self::has_effective_permission(&user_permissions, required_permission);
+        let allowed = Self::has_effective_permission_in_set(&user_permissions, required_permission);
         let missing_permissions = if allowed {
             Vec::new()
         } else {
@@ -245,7 +254,7 @@ impl AuthService {
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
         let allowed = required_permissions
             .iter()
-            .any(|permission| Self::has_effective_permission(&user_permissions, permission));
+            .any(|permission| Self::has_effective_permission_in_set(&user_permissions, permission));
         let missing_permissions = if allowed {
             Vec::new()
         } else {

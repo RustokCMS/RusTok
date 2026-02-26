@@ -23,6 +23,7 @@
   - В `AuthService` добавлены tenant-aware методы `get_user_permissions / has_permission / has_any_permission / has_all_permissions`.
   - Реализованы tenant-scoping и deduplication; сохранена семантика `resource:manage` как wildcard.
   - Переведена часть GraphQL-checks (users CRUD/read/list, alloy, content mutation/query) и RBAC extractors на relation-проверки.
+  - RBAC extractors перестали держать локальную wildcard-логику и используют общий helper `AuthService::has_effective_permission_in_set` (снижение дублирования policy-семантики).
   - `GraphQL update_user` теперь синхронно обновляет relation-модель (`user_roles`) через `replace_user_role`, чтобы legacy-role и relation RBAC не расходились.
   - Назначение relation-ролей/пермишенов переведено на conflict-safe idempotent upsert (`ON CONFLICT DO NOTHING`) для устойчивости к конкурентным операциям.
   - Поле `User.can` в GraphQL переведено с role-based (`users.role`) на tenant-aware relation-проверку через `AuthService::has_permission`.
@@ -34,7 +35,7 @@
   - `CurrentUser.permissions` теперь резолвятся из relation-модели, а не из `users.role`.
   - `AuthContext` в GraphQL больше не хранит `role` как policy-источник; security-context продолжает выводиться из relation-permissions.
   - В auth extractor добавлен shadow-control: warning-лог `rbac_claim_role_mismatch`, если role-claim в JWT расходится с ролью, выведенной из relation-permissions.
-  - В `/metrics` добавлен счётчик `rustok_rbac_claim_role_mismatch_total` для наблюдения расхождений claim-vs-relation.
+  - В `/metrics` добавлены счётчики `rustok_rbac_claim_role_mismatch_total` и `rustok_rbac_decision_mismatch_total` для наблюдения расхождений claim-vs-relation/shadow-decision.
   - Полный отказ от role-claim в policy-решениях ещё не завершён (есть оставшиеся role-based места).
 - [ ] **Фаза 4 — Миграция данных и защитные инварианты:** не начато.
 - [ ] **Фаза 5 — Dual-read и cutover:** не начато.

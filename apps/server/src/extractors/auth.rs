@@ -92,6 +92,7 @@ where
     let inferred_role = infer_user_role_from_permissions(&permissions);
     if claims.role != inferred_role {
         AuthService::record_claim_role_mismatch();
+        AuthService::record_decision_mismatch();
         warn!(
             user_id = %user.id,
             tenant_id = %tenant_id,
