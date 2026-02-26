@@ -65,6 +65,8 @@ graph TD
 - [Database Schema](./architecture/database.md)
 - [API Architecture](./architecture/api.md)
 - [RBAC Enforcement](./architecture/rbac.md)
+- [RBAC Relation Migration Plan](./architecture/rbac-relation-migration-plan.md)
+- [User/Auth Consistency Remediation Plan](./architecture/user-auth-consistency-remediation-plan.md)
 - [Dataloader](./architecture/dataloader.md)
 - [Modules Overview](./architecture/modules.md)
 - [Routing Policy](./architecture/routing.md)
