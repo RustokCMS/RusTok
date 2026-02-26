@@ -158,25 +158,24 @@ impl AuthService {
         .await?;
 
         for permission in Rbac::permissions_for_role(&role).iter() {
-            if let Some(permission_model) =
-                Self::get_or_create_permission(db, tenant_id, permission).await?
-            {
-                role_permissions::Entity::insert(role_permissions::ActiveModel {
-                    id: ActiveValue::Set(rustok_core::generate_id()),
-                    role_id: ActiveValue::Set(role_model.id),
-                    permission_id: ActiveValue::Set(permission_model.id),
-                })
-                .on_conflict(
-                    OnConflict::columns([
-                        role_permissions::Column::RoleId,
-                        role_permissions::Column::PermissionId,
-                    ])
-                    .do_nothing()
-                    .to_owned(),
-                )
-                .exec(db)
-                .await?;
-            }
+            let permission_model =
+                Self::get_or_create_permission(db, tenant_id, permission).await?;
+
+            role_permissions::Entity::insert(role_permissions::ActiveModel {
+                id: ActiveValue::Set(rustok_core::generate_id()),
+                role_id: ActiveValue::Set(role_model.id),
+                permission_id: ActiveValue::Set(permission_model.id),
+            })
+            .on_conflict(
+                OnConflict::columns([
+                    role_permissions::Column::RoleId,
+                    role_permissions::Column::PermissionId,
+                ])
+                .do_nothing()
+                .to_owned(),
+            )
+            .exec(db)
+            .await?;
         }
 
         Ok(())
@@ -215,6 +214,7 @@ impl AuthService {
         role: &UserRole,
     ) -> Result<roles::Model> {
         let role_slug = role.to_string();
+
         if let Some(existing) = roles::Entity::find()
             .filter(roles::Column::TenantId.eq(*tenant_id))
             .filter(roles::Column::Slug.eq(&role_slug))
@@ -224,7 +224,7 @@ impl AuthService {
             return Ok(existing);
         }
 
-        let role = roles::ActiveModel {
+        roles::Entity::insert(roles::ActiveModel {
             id: ActiveValue::Set(rustok_core::generate_id()),
             tenant_id: ActiveValue::Set(*tenant_id),
             name: ActiveValue::Set(role_slug.clone()),
@@ -233,18 +233,28 @@ impl AuthService {
             is_system: ActiveValue::Set(true),
             created_at: ActiveValue::NotSet,
             updated_at: ActiveValue::NotSet,
-        }
-        .insert(db)
+        })
+        .on_conflict(
+            OnConflict::columns([roles::Column::TenantId, roles::Column::Slug])
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec(db)
         .await?;
 
-        Ok(role)
+        roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(*tenant_id))
+            .filter(roles::Column::Slug.eq(role.to_string()))
+            .one(db)
+            .await?
+            .ok_or_else(|| Error::InternalServerError("role upsert failed".to_string()))
     }
 
     async fn get_or_create_permission(
         db: &DatabaseConnection,
         tenant_id: &uuid::Uuid,
         permission: &Permission,
-    ) -> Result<Option<permissions::Model>> {
+    ) -> Result<permissions::Model> {
         let resource_str = permission.resource.to_string();
         let action_str = permission.action.to_string();
 
@@ -255,20 +265,35 @@ impl AuthService {
             .one(db)
             .await?
         {
-            return Ok(Some(existing));
+            return Ok(existing);
         }
 
-        let permission = permissions::ActiveModel {
+        permissions::Entity::insert(permissions::ActiveModel {
             id: ActiveValue::Set(rustok_core::generate_id()),
             tenant_id: ActiveValue::Set(*tenant_id),
-            resource: ActiveValue::Set(resource_str),
-            action: ActiveValue::Set(action_str),
+            resource: ActiveValue::Set(resource_str.clone()),
+            action: ActiveValue::Set(action_str.clone()),
             description: ActiveValue::Set(None),
             created_at: ActiveValue::NotSet,
-        }
-        .insert(db)
+        })
+        .on_conflict(
+            OnConflict::columns([
+                permissions::Column::TenantId,
+                permissions::Column::Resource,
+                permissions::Column::Action,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec(db)
         .await?;
 
-        Ok(Some(permission))
+        permissions::Entity::find()
+            .filter(permissions::Column::TenantId.eq(*tenant_id))
+            .filter(permissions::Column::Resource.eq(resource_str))
+            .filter(permissions::Column::Action.eq(action_str))
+            .one(db)
+            .await?
+            .ok_or_else(|| Error::InternalServerError("permission upsert failed".to_string()))
     }
 }
