@@ -2,10 +2,12 @@
   "name": "rustok-storefront",
   "private": true,
   "devDependencies": {
-    "daisyui": "^5.5.18"
+    "tailwindcss": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39"
   },
   "scripts": {
-    "build:css": "tailwind-rs -c tailwind.config.cjs -i ./assets/input.css -o ./static/app.css --minify",
-    "watch:css": "tailwind-rs -c tailwind.config.cjs -i ./assets/input.css -o ./static/app.css --watch"
+    "build:css": "npx tailwindcss -i ./assets/input.css -o ./static/app.css --minify",
+    "watch:css": "npx tailwindcss -i ./assets/input.css -o ./static/app.css --watch"
   }
 }

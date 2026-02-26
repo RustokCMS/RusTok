@@ -3,11 +3,10 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_auth, use_tenant, use_token};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{request, ApiError};
-use crate::components::ui::{Button, Input};
-use crate::providers::locale::translate;
+use crate::app::providers::locale::translate;
+use crate::shared::api::{request, ApiError};
+use crate::shared::ui::{Button, Input};
 
-// GraphQL mutation for changing password
 const CHANGE_PASSWORD_MUTATION: &str = r#"
 mutation ChangePassword($input: ChangePasswordInput!) {
     changePassword(input: $input) {
@@ -116,20 +115,20 @@ pub fn Security() -> impl IntoView {
         <section class="px-10 py-8">
             <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <span class="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                    <span class="inline-flex items-center rounded-full border bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
                         {move || translate("security.badge")}
                     </span>
-                    <h1 class="mt-2 text-2xl font-semibold">
+                    <h1 class="mt-2 text-2xl font-semibold text-foreground">
                         {move || translate("security.title")}
                     </h1>
-                    <p class="mt-2 text-sm text-slate-500">
+                    <p class="mt-2 text-sm text-muted-foreground">
                         {move || translate("security.subtitle")}
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
                     <Button
                         on_click=on_sign_out_all
-                        class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
+                        class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || translate("security.signOutAll")}
                     </Button>
@@ -137,11 +136,11 @@ pub fn Security() -> impl IntoView {
             </header>
 
             <div class="grid gap-6 lg:grid-cols-2">
-                <div class="grid gap-4 rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-                    <h3 class="text-lg font-semibold">
+                <div class="grid gap-4 rounded-xl border border-border bg-card p-6 shadow-sm">
+                    <h3 class="text-lg font-semibold text-card-foreground">
                         {move || translate("security.passwordTitle")}
                     </h3>
-                    <p class="text-sm text-slate-500">
+                    <p class="text-sm text-muted-foreground">
                         {move || translate("security.passwordSubtitle")}
                     </p>
                     <Input
@@ -158,32 +157,32 @@ pub fn Security() -> impl IntoView {
                         type_="password"
                         label=move || translate("security.newPasswordLabel")
                     />
-                    <p class="text-sm text-slate-500">
+                    <p class="text-sm text-muted-foreground">
                         {move || translate("security.passwordHint")}
                     </p>
                     <Button on_click=on_change_password class="w-full">
                         {move || translate("security.passwordSubmit")}
                     </Button>
                     <Show when=move || error.get().is_some()>
-                        <div class="rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
+                        <div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
                             {move || error.get().unwrap_or_default()}
                         </div>
                     </Show>
                     <Show when=move || status.get().is_some()>
-                        <div class="rounded-xl bg-emerald-100 px-4 py-2 text-sm text-emerald-700">
+                        <div class="rounded-md bg-emerald-100 border border-emerald-200 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                             {move || status.get().unwrap_or_default()}
                         </div>
                     </Show>
                 </div>
 
-                <div class="grid gap-4 rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-                    <h3 class="text-lg font-semibold">
+                <div class="grid gap-4 rounded-xl border border-border bg-card p-6 shadow-sm">
+                    <h3 class="text-lg font-semibold text-card-foreground">
                         {move || translate("security.sessionsTitle")}
                     </h3>
-                    <p class="text-sm text-slate-500">
+                    <p class="text-sm text-muted-foreground">
                         {move || translate("security.sessionsSubtitle")}
                     </p>
-                    <div class="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    <div class="rounded-lg bg-muted px-4 py-8 text-center text-sm text-muted-foreground">
                         "Session management via GraphQL — coming soon"
                     </div>
                 </div>

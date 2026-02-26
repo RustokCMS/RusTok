@@ -4,11 +4,12 @@ use leptos_auth::hooks::{use_auth, use_current_user, use_tenant, use_token};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
-use crate::api::request;
-use crate::components::ui::{Button, LanguageToggle, PageHeader, StatsCard};
-use crate::modules::{components_for_slot, AdminSlot};
-use crate::providers::locale::translate;
+use crate::app::modules::{components_for_slot, AdminSlot};
+use crate::app::providers::locale::translate;
+use crate::shared::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
+use crate::shared::api::request;
+use crate::shared::ui::{Button, LanguageToggle, PageHeader};
+use crate::widgets::stats_card::StatsCard;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct DashboardStatsResponse {
@@ -115,7 +116,7 @@ pub fn Dashboard() -> impl IntoView {
                     <LanguageToggle />
                     <Button
                         on_click=logout
-                        class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
+                        class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || translate("app.dashboard.logout")}
                     </Button>
@@ -131,7 +132,7 @@ pub fn Dashboard() -> impl IntoView {
                     <div class="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
                         {(0..4)
                             .map(|_| {
-                                view! { <div class="h-32 animate-pulse rounded-2xl bg-slate-100"></div> }
+                                view! { <div class="h-32 animate-pulse rounded-xl bg-muted"></div> }
                             })
                             .collect_view()}
                     </div>
@@ -184,8 +185,9 @@ pub fn Dashboard() -> impl IntoView {
                                         <StatsCard
                                             title=title
                                             value=value
-                                            icon=view! { <span class="text-slate-400">"•"</span> }.into_any()
+                                            icon=view! { <span class="text-muted-foreground">"•"</span> }.into_any()
                                             trend=hint
+                                            trend_label=translate("app.dashboard.stats.vsLastMonth")
                                             class="transition-all hover:scale-[1.02]"
                                         />
                                     }
@@ -197,8 +199,8 @@ pub fn Dashboard() -> impl IntoView {
             </Suspense>
 
             <div class="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-                <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-                    <h4 class="mb-4 text-lg font-semibold">
+                <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
+                    <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                         {move || translate("app.dashboard.activity.title")}
                     </h4>
                     <Suspense
@@ -206,7 +208,7 @@ pub fn Dashboard() -> impl IntoView {
                             <div class="space-y-3">
                                 {(0..4)
                                     .map(|_| {
-                                        view! { <div class="h-14 animate-pulse rounded-lg bg-slate-100"></div> }
+                                        view! { <div class="h-14 animate-pulse rounded-lg bg-muted"></div> }
                                     })
                                     .collect_view()}
                             </div>
@@ -221,8 +223,8 @@ pub fn Dashboard() -> impl IntoView {
 
                             if activities.is_empty() {
                                 view! {
-                                    <div class="py-8 text-center text-slate-500">
-                                        "No recent activity"
+                                    <div class="py-8 text-center text-muted-foreground">
+                                        {translate("app.dashboard.activity.empty")}
                                     </div>
                                 }.into_any()
                             } else {
@@ -235,19 +237,19 @@ pub fn Dashboard() -> impl IntoView {
                                                 .user
                                                 .as_ref()
                                                 .and_then(|u| u.name.clone())
-                                                .unwrap_or_else(|| "System".to_string());
+                                                .unwrap_or_else(|| translate("app.dashboard.activity.system").to_string());
                                             view! {
-                                                <div class="flex items-center justify-between border-b border-slate-200 py-3 last:border-b-0">
+                                                <div class="flex items-center justify-between border-b border-border py-3 last:border-b-0">
                                                     <div class="min-w-0 flex-1">
                                                         <div class="flex items-center gap-2">
                                                             <ActivityIcon activity_type=item.r#type.clone() />
-                                                            <strong class="truncate">{item.description}</strong>
+                                                            <strong class="truncate text-foreground">{item.description}</strong>
                                                         </div>
-                                                        <p class="mt-1 text-sm text-slate-500">
+                                                        <p class="mt-1 text-sm text-muted-foreground">
                                                             {format!("by {}", user_name)}
                                                         </p>
                                                     </div>
-                                                    <span class="ml-3 inline-flex shrink-0 items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                                                    <span class="ml-3 inline-flex shrink-0 items-center rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
                                                         {time_ago}
                                                     </span>
                                                 </div>
@@ -259,18 +261,18 @@ pub fn Dashboard() -> impl IntoView {
                         }}
                     </Suspense>
                 </div>
-                <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-                    <h4 class="mb-4 text-lg font-semibold">
+                <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
+                    <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                         {move || translate("app.dashboard.quick.title")}
                     </h4>
                     <div class="grid gap-3">
-                        <a class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200" href="/security">
+                        <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/security">
                             {move || translate("app.dashboard.quick.security")}
                         </a>
-                        <a class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200" href="/profile">
+                        <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/profile">
                             {move || translate("app.dashboard.quick.profile")}
                         </a>
-                        <a class="rounded-xl bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-900 transition hover:bg-slate-200" href="/users">
+                        <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/users">
                             {move || translate("app.dashboard.quick.users")}
                         </a>
                     </div>
@@ -288,7 +290,6 @@ pub fn Dashboard() -> impl IntoView {
     }
 }
 
-/// Format a timestamp as relative time (e.g., "2 min ago", "1 hour ago")
 fn format_time_ago(timestamp: &str) -> String {
     use chrono::{DateTime, Utc};
 
@@ -304,19 +305,18 @@ fn format_time_ago(timestamp: &str) -> String {
     let days = duration.num_days();
 
     if minutes < 1 {
-        "just now".to_string()
+        translate("app.time.justNow").to_string()
     } else if minutes < 60 {
-        format!("{} min ago", minutes)
+        translate("app.time.minutesAgo").replace("{n}", &minutes.to_string())
     } else if hours < 24 {
-        format!("{} hour{} ago", hours, if hours == 1 { "" } else { "s" })
+        translate("app.time.hoursAgo").replace("{n}", &hours.to_string())
     } else if days < 30 {
-        format!("{} day{} ago", days, if days == 1 { "" } else { "s" })
+        translate("app.time.daysAgo").replace("{n}", &days.to_string())
     } else {
-        dt.format("%b %d, %Y").to_string()
+        dt.format("%d.%m.%Y").to_string()
     }
 }
 
-/// Activity icon component based on activity type
 #[component]
 fn ActivityIcon(activity_type: String) -> impl IntoView {
     let (icon, color_class) = match activity_type.as_str() {
@@ -342,11 +342,11 @@ fn ActivityIcon(activity_type: String) -> impl IntoView {
         ),
         "security.login" | "security.auth" => (
             "M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2zm10-10V7a4 4 0 0 0-8 0v4h8z",
-            "text-indigo-500",
+            "text-violet-500",
         ),
         _ => (
             "M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
-            "text-slate-400",
+            "text-muted-foreground",
         ),
     };
 

@@ -30,7 +30,8 @@ impl EventSerializer for BincodeSerializer {
     }
 
     fn serialize(&self, envelope: &EventEnvelope) -> Result<Vec<u8>> {
-        Ok(bincode::serialize(envelope)?)
+        bincode::serde::encode_to_vec(envelope, bincode::config::standard())
+            .map_err(|err| rustok_core::Error::External(err.to_string()))
     }
 }
 

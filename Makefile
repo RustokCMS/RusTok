@@ -1,7 +1,17 @@
 .PHONY: docs-sync-loco docs-check-loco docs-sync-server-libs docs-check-server-libs
 .PHONY: dev-start dev-stop dev-restart dev-logs dev-status
 .PHONY: dev-admin dev-storefront dev-server
+.PHONY: install-tailwind
 .PHONY: help
+
+# ============================================================================
+# Tailwind CSS tooling
+# ============================================================================
+
+# Build and install the vendored tailwind-rs CLI binary into ~/.cargo/bin.
+# Must be run once before `trunk build` or `trunk serve` in apps/admin.
+install-tailwind:
+	cargo install --path crates/tailwind-rs
 
 # ============================================================================
 # Documentation targets
@@ -87,5 +97,8 @@ help:
 	@echo "  2. Open http://localhost:3000 (Next.js Admin)"
 	@echo "  3. Open http://localhost:3001 (Leptos Admin)"
 	@echo "  4. Login: admin@local / admin12345"
+	@echo ""
+	@echo "Tailwind:"
+	@echo "  make install-tailwind      - Build & install vendored tailwind-rs CLI"
 	@echo ""
 	@echo "For more info see: ./QUICKSTART.md"

@@ -917,7 +917,7 @@ async fn current_user(&self, ctx: &Context<'_>) -> Result<User> {
 | Операция | Хэш | Источник |
 |----------|------|----------|
 | `Users` | `ff1e132e...` | `apps/admin/src/api/queries.rs` |
-| `User` | `85f7f7ba...` | `apps/admin/src/api/queries.rs` |
+| `User` | `85f7f7b0...` | `apps/admin/src/api/queries.rs` |
 
 **Как это работает:**
 

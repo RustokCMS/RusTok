@@ -8,10 +8,10 @@ use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
 use serde::{Deserialize, Serialize};
 
-use crate::api::queries::{CREATE_USER_MUTATION, USERS_QUERY, USERS_QUERY_HASH};
-use crate::api::{request, request_with_persisted, ApiError};
-use crate::components::ui::{Button, Input, LanguageToggle, PageHeader};
-use crate::providers::locale::translate;
+use crate::app::providers::locale::translate;
+use crate::shared::api::queries::{CREATE_USER_MUTATION, USERS_QUERY, USERS_QUERY_HASH};
+use crate::shared::api::{request, request_with_persisted, ApiError};
+use crate::shared::ui::{Button, Input, LanguageToggle, PageHeader};
 
 #[derive(Clone, Debug, Serialize)]
 struct CreateUserVariables {
@@ -98,18 +98,18 @@ fn users_table_skeleton() -> impl IntoView {
         <div>
             <div class="mb-4 grid gap-3 md:grid-cols-3">
                 {(0..3)
-                    .map(|_| view! { <div class="h-12 animate-pulse rounded-xl bg-slate-100"></div> })
+                    .map(|_| view! { <div class="h-12 animate-pulse rounded-xl bg-muted"></div> })
                     .collect_view()}
             </div>
             <div class="space-y-3">
                 {(0..6)
-                    .map(|_| view! { <div class="h-10 animate-pulse rounded-lg bg-slate-100"></div> })
+                    .map(|_| view! { <div class="h-10 animate-pulse rounded-lg bg-muted"></div> })
                     .collect_view()}
             </div>
             <div class="mt-4 flex items-center gap-3">
-                <div class="h-9 w-24 animate-pulse rounded-lg bg-slate-100"></div>
-                <div class="h-4 w-20 animate-pulse rounded bg-slate-100"></div>
-                <div class="h-9 w-24 animate-pulse rounded-lg bg-slate-100"></div>
+                <div class="h-9 w-24 animate-pulse rounded-lg bg-muted"></div>
+                <div class="h-4 w-20 animate-pulse rounded bg-muted"></div>
+                <div class="h-9 w-24 animate-pulse rounded-lg bg-muted"></div>
             </div>
         </div>
     }
@@ -139,18 +139,16 @@ pub fn Users() -> impl IntoView {
     let (role_filter, set_role_filter) = signal(initial_role);
     let (status_filter, set_status_filter) = signal(initial_status);
 
-    // Debounced version of search_query — 300ms delay
     let (debounced_search, set_debounced_search) = signal(initial_search);
     let debounce_search = use_debounce_fn(
         move || set_debounced_search.set(search_query.get_untracked()),
         300.0,
     );
     Effect::new(move |_| {
-        let _ = search_query.get(); // track changes
+        let _ = search_query.get();
         debounce_search();
     });
 
-    // Reset page to 1 when filters change
     Effect::new(move |_| {
         let _ = debounced_search.get();
         let _ = role_filter.get();
@@ -245,7 +243,6 @@ pub fn Users() -> impl IntoView {
     let next_page = move |_| set_page.update(|value| *value += 1);
     let previous_page = move |_| set_page.update(|value| *value = (*value - 1).max(1));
 
-    // Create user modal state
     let (show_create_modal, set_show_create_modal) = signal(false);
     let (new_email, set_new_email) = signal(String::new());
     let (new_password, set_new_password) = signal(String::new());
@@ -295,9 +292,21 @@ pub fn Users() -> impl IntoView {
                     input: CreateUserInput {
                         email: email_val,
                         password: password_val,
-                        name: if name_val.is_empty() { None } else { Some(name_val) },
-                        role: if role_val.is_empty() { None } else { Some(role_val.to_uppercase()) },
-                        status: if status_val.is_empty() { None } else { Some(status_val.to_uppercase()) },
+                        name: if name_val.is_empty() {
+                            None
+                        } else {
+                            Some(name_val)
+                        },
+                        role: if role_val.is_empty() {
+                            None
+                        } else {
+                            Some(role_val.to_uppercase())
+                        },
+                        status: if status_val.is_empty() {
+                            None
+                        } else {
+                            Some(status_val.to_uppercase())
+                        },
                     },
                 };
                 match request::<CreateUserVariables, CreateUserResponse>(
@@ -332,7 +341,7 @@ pub fn Users() -> impl IntoView {
                     <LanguageToggle />
                     <Button
                         on_click=refresh
-                        class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
+                        class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || translate("users.refresh")}
                     </Button>
@@ -343,8 +352,8 @@ pub fn Users() -> impl IntoView {
                 .into_any()
             />
 
-            <div class="rounded-2xl bg-white p-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-                <h4 class="mb-4 text-lg font-semibold">
+            <div class="rounded-2xl bg-card p-6 shadow border border-border">
+                <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                     {move || translate("users.graphql.title")}
                 </h4>
                 <Suspense
@@ -357,7 +366,7 @@ pub fn Users() -> impl IntoView {
                             let edges = response.users.edges;
                             view! {
                             <div>
-                                <p class="text-xs text-slate-400 mb-4">
+                                <p class="text-xs text-muted-foreground mb-4">
                                     {move || translate("users.graphql.total")} " " {total_count}
                                 </p>
                                 <div class="mb-4 grid gap-3 md:grid-cols-3">
@@ -384,19 +393,19 @@ pub fn Users() -> impl IntoView {
                                     <table class="w-full border-collapse text-sm">
                                         <thead>
                                             <tr>
-                                                <th class="pb-2 text-left text-xs font-semibold text-slate-500">
+                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
                                                     {move || translate("users.graphql.email")}
                                                 </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-slate-500">
+                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
                                                     {move || translate("users.graphql.name")}
                                                 </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-slate-500">
+                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
                                                     {move || translate("users.graphql.role")}
                                                 </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-slate-500">
+                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
                                                     {move || translate("users.graphql.status")}
                                                 </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-slate-500">
+                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
                                                     {move || translate("users.graphql.createdAt")}
                                                 </th>
                                             </tr>
@@ -417,21 +426,21 @@ pub fn Users() -> impl IntoView {
                                                         } = edge.node.clone();
                                                         view! {
                                                             <tr>
-                                                                <td class="border-b border-slate-200 py-2">
+                                                                <td class="border-b border-border py-2">
                                                                     <A href=format!("/users/{}", id)>
-                                                                        <span class="text-blue-600 hover:underline">
+                                                                        <span class="text-primary hover:underline">
                                                                             {email}
                                                                         </span>
                                                                     </A>
                                                                 </td>
-                                                                <td class="border-b border-slate-200 py-2">
+                                                                <td class="border-b border-border py-2 text-foreground">
                                                                     {name.unwrap_or_else(|| translate("users.placeholderDash").to_string())}
                                                                 </td>
-                                                                <td class="border-b border-slate-200 py-2">{role}</td>
-                                                                <td class="border-b border-slate-200 py-2">
+                                                                <td class="border-b border-border py-2 text-foreground">{role}</td>
+                                                                <td class="border-b border-border py-2">
                                                                     <Badge variant=if status.eq_ignore_ascii_case("active") { BadgeVariant::Success } else { BadgeVariant::Default }>{status}</Badge>
                                                                 </td>
-                                                                <td class="border-b border-slate-200 py-2">{created_at}</td>
+                                                                <td class="border-b border-border py-2 text-foreground">{created_at}</td>
                                                             </tr>
                                                         }
                                                     })
@@ -443,17 +452,17 @@ pub fn Users() -> impl IntoView {
                                 <div class="mt-4 flex flex-wrap items-center gap-3">
                                     <Button
                                         on_click=previous_page
-                                        class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
+                                        class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                                         disabled=Signal::derive(move || page.get() <= 1)
                                     >
                                         {move || translate("users.pagination.prev")}
                                     </Button>
-                                    <span class="text-xs text-slate-400">
+                                    <span class="text-xs text-muted-foreground">
                                         {move || translate("users.pagination.page")} " " {page.get()}
                                     </span>
                                     <Button
                                         on_click=next_page
-                                        class="border border-indigo-200 bg-transparent text-blue-600 hover:bg-blue-50"
+                                        class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                                         disabled=Signal::derive(move || {
                                             let total = total_count;
                                             page.get() * limit.get() >= total
@@ -467,7 +476,7 @@ pub fn Users() -> impl IntoView {
                             .into_any()
                         }
                         Some(Err(err)) => view! {
-                            <div class="rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
+                            <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
                                 {match err {
                                     ApiError::Unauthorized => translate("users.graphql.unauthorized").to_string(),
                                     ApiError::Http(code) => format!("{} {}", translate("users.graphql.error"), code),
@@ -481,16 +490,15 @@ pub fn Users() -> impl IntoView {
                 </Suspense>
             </div>
 
-            // Create User Modal
             <Show when=move || show_create_modal.get()>
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-                        <h3 class="mb-4 text-lg font-semibold text-slate-900">
+                    <div class="w-full max-w-md rounded-2xl bg-card p-6 shadow-xl border border-border">
+                        <h3 class="mb-4 text-lg font-semibold text-card-foreground">
                             {move || translate("users.create.title")}
                         </h3>
 
                         <Show when=move || create_error.get().is_some()>
-                            <div class="mb-4 rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
+                            <div class="mb-4 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
                                 {move || create_error.get().unwrap_or_default()}
                             </div>
                         </Show>
@@ -543,7 +551,7 @@ pub fn Users() -> impl IntoView {
                             </Button>
                             <Button
                                 on_click=close_create_modal
-                                class="border border-slate-200 bg-transparent text-slate-600 hover:bg-slate-50"
+                                class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                             >
                                 {move || translate("users.create.cancel")}
                             </Button>

@@ -427,7 +427,10 @@ mod tests {
             None,
             None,
             metadata,
-            vec![tr("en", "Fallback EN", "fallback-en"), tr("de", "Rückfall", "rueckfall")],
+            vec![
+                tr("en", "Fallback EN", "fallback-en"),
+                tr("de", "Rückfall", "rueckfall"),
+            ],
             vec![body("en", "English body")],
         );
 

@@ -1,7 +1,6 @@
-pub mod api;
 pub mod app;
-pub mod components;
-pub mod i18n;
-pub mod modules;
+pub mod entities;
+pub mod features;
 pub mod pages;
-pub mod providers;
+pub mod shared;
+pub mod widgets;

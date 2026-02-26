@@ -307,12 +307,7 @@ mod tests {
             "topic_count": 10,
             "reply_count": 50
         });
-        let node = make_category_node(
-            metadata,
-            vec![tr("en", "General", "general")],
-            None,
-            3,
-        );
+        let node = make_category_node(metadata, vec![tr("en", "General", "general")], None, 3);
 
         let result = CategoryService::node_to_category(node, "en");
 
@@ -330,12 +325,7 @@ mod tests {
 
     #[test]
     fn node_to_category_defaults_on_empty_metadata() {
-        let node = make_category_node(
-            serde_json::json!({}),
-            vec![tr("en", "", "")],
-            None,
-            0,
-        );
+        let node = make_category_node(serde_json::json!({}), vec![tr("en", "", "")], None, 0);
 
         let result = CategoryService::node_to_category(node, "en");
 
@@ -364,7 +354,10 @@ mod tests {
     fn node_to_category_fallback_to_en() {
         let node = make_category_node(
             serde_json::json!({}),
-            vec![tr("en", "General", "general"), tr("ru", "Общее", "obshchee")],
+            vec![
+                tr("en", "General", "general"),
+                tr("ru", "Общее", "obshchee"),
+            ],
             None,
             0,
         );
@@ -377,7 +370,10 @@ mod tests {
     fn node_to_category_fallback_to_first_when_no_en() {
         let node = make_category_node(
             serde_json::json!({}),
-            vec![tr("de", "Allgemein", "allgemein"), tr("fr", "Général", "general")],
+            vec![
+                tr("de", "Allgemein", "allgemein"),
+                tr("fr", "Général", "general"),
+            ],
             None,
             0,
         );
@@ -389,7 +385,11 @@ mod tests {
     fn node_to_category_available_locales() {
         let node = make_category_node(
             serde_json::json!({}),
-            vec![tr("en", "A", "a"), tr("ru", "А", "a-ru"), tr("de", "A", "a-de")],
+            vec![
+                tr("en", "A", "a"),
+                tr("ru", "А", "a-ru"),
+                tr("de", "A", "a-de"),
+            ],
             None,
             0,
         );

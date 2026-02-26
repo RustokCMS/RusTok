@@ -32,8 +32,14 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_reply_status(tenant_id, reply_id, topic_id, security, reply_status::APPROVED)
-            .await
+        self.update_reply_status(
+            tenant_id,
+            reply_id,
+            topic_id,
+            security,
+            reply_status::APPROVED,
+        )
+        .await
     }
 
     #[instrument(skip(self, security))]
@@ -44,8 +50,14 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_reply_status(tenant_id, reply_id, topic_id, security, reply_status::REJECTED)
-            .await
+        self.update_reply_status(
+            tenant_id,
+            reply_id,
+            topic_id,
+            security,
+            reply_status::REJECTED,
+        )
+        .await
     }
 
     #[instrument(skip(self, security))]
@@ -56,8 +68,14 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_reply_status(tenant_id, reply_id, topic_id, security, reply_status::HIDDEN)
-            .await
+        self.update_reply_status(
+            tenant_id,
+            reply_id,
+            topic_id,
+            security,
+            reply_status::HIDDEN,
+        )
+        .await
     }
 
     // ── Topic moderation ───────────────────────────────────────────────────
@@ -85,21 +103,13 @@ impl ModerationService {
     }
 
     #[instrument(skip(self, security))]
-    pub async fn lock_topic(
-        &self,
-        topic_id: Uuid,
-        security: SecurityContext,
-    ) -> ForumResult<()> {
+    pub async fn lock_topic(&self, topic_id: Uuid, security: SecurityContext) -> ForumResult<()> {
         self.update_topic_bool_flag(topic_id, security, "is_locked", true)
             .await
     }
 
     #[instrument(skip(self, security))]
-    pub async fn unlock_topic(
-        &self,
-        topic_id: Uuid,
-        security: SecurityContext,
-    ) -> ForumResult<()> {
+    pub async fn unlock_topic(&self, topic_id: Uuid, security: SecurityContext) -> ForumResult<()> {
         self.update_topic_bool_flag(topic_id, security, "is_locked", false)
             .await
     }

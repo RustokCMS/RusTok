@@ -2,10 +2,10 @@
 ///
 /// These tests cover module-level invariants: constants, DTO defaults, and error
 /// message formatting.  They run in CI without any external dependencies.
-use rustok_forum::constants::{
-    topic_status, reply_status, KIND_CATEGORY, KIND_REPLY, KIND_TOPIC,
+use rustok_forum::constants::{reply_status, topic_status, KIND_CATEGORY, KIND_REPLY, KIND_TOPIC};
+use rustok_forum::dto::{
+    CreateCategoryInput, CreateReplyInput, CreateTopicInput, ListTopicsFilter,
 };
-use rustok_forum::dto::{ListTopicsFilter, CreateTopicInput, CreateCategoryInput, CreateReplyInput};
 use rustok_forum::error::ForumError;
 use uuid::Uuid;
 
@@ -45,8 +45,7 @@ fn reply_status_values() {
 #[test]
 fn list_topics_filter_serde_defaults() {
     // serde defaults (page=1, per_page=20) apply during JSON deserialization.
-    let filter: ListTopicsFilter =
-        serde_json::from_str("{}").expect("deserialise empty object");
+    let filter: ListTopicsFilter = serde_json::from_str("{}").expect("deserialise empty object");
     assert_eq!(filter.page, 1);
     assert_eq!(filter.per_page, 20);
     assert!(filter.category_id.is_none());

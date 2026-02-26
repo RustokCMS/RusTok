@@ -23,10 +23,10 @@ pub fn load_user() -> Result<AuthUser, AuthError> {
 }
 
 pub fn clear_session() {
-    let _ = LocalStorage::delete(ADMIN_SESSION_KEY);
-    let _ = LocalStorage::delete(ADMIN_TOKEN_KEY);
-    let _ = LocalStorage::delete(ADMIN_TENANT_KEY);
-    let _ = LocalStorage::delete(ADMIN_USER_KEY);
+    LocalStorage::delete(ADMIN_SESSION_KEY);
+    LocalStorage::delete(ADMIN_TOKEN_KEY);
+    LocalStorage::delete(ADMIN_TENANT_KEY);
+    LocalStorage::delete(ADMIN_USER_KEY);
 }
 
 pub fn get_token() -> Option<String> {

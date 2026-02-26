@@ -1,5 +1,13 @@
 use regex::Regex;
 use std::sync::Arc;
+use std::sync::LazyLock;
+
+static EMAIL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+        .expect("email regex must be valid")
+});
+
+type CustomValidator = dyn Fn(&str) -> Result<(), String> + Send + Sync;
 
 #[derive(Clone)]
 pub struct Validator {
@@ -13,7 +21,7 @@ enum ValidationRule {
     MinLength(usize),
     MaxLength(usize),
     Pattern(Arc<Regex>),
-    Custom(Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>),
+    Custom(Arc<CustomValidator>),
 }
 
 impl Validator {
@@ -64,9 +72,7 @@ impl Validator {
                     }
                 }
                 ValidationRule::Email => {
-                    let email_regex =
-                        Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
-                    if !email_regex.is_match(value) {
+                    if !EMAIL_REGEX.is_match(value) {
                         return Err("Invalid email address".to_string());
                     }
                 }

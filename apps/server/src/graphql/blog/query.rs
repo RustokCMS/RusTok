@@ -54,8 +54,10 @@ impl BlogQuery {
             parent_id: None,
             author_id: filter.author_id,
             locale: filter.locale,
+            category_id: None,
             page: filter.page.unwrap_or(1),
             per_page: filter.per_page.unwrap_or(20),
+            include_deleted: false,
         };
 
         let security = ctx

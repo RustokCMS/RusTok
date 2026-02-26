@@ -2,8 +2,8 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::use_tenant;
 
-use crate::components::ui::{Button, Input, LanguageToggle};
-use crate::providers::locale::translate;
+use crate::app::providers::locale::translate;
+use crate::shared::ui::{Button, Input, LanguageToggle};
 
 #[component]
 pub fn ResetPassword() -> impl IntoView {
@@ -41,42 +41,42 @@ pub fn ResetPassword() -> impl IntoView {
 
     view! {
         <section class="grid min-h-screen grid-cols-1 lg:grid-cols-[1.2fr_1fr]">
-            <aside class="flex flex-col justify-center gap-6 bg-[radial-gradient(circle_at_top_left,#1e3a8a,#0f172a)] p-12 text-white lg:p-16">
-                <span class="inline-flex w-fit items-center rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white/80">
+            <aside class="flex flex-col justify-center gap-6 bg-primary p-12 text-primary-foreground lg:p-16">
+                <span class="inline-flex w-fit items-center rounded-full bg-primary-foreground/10 px-3 py-1 text-xs font-semibold text-primary-foreground/80">
                     {move || translate("reset.badge")}
                 </span>
                 <h1 class="text-4xl font-semibold">{move || translate("reset.heroTitle")}</h1>
-                <p class="text-lg text-white/80">{move || translate("reset.heroSubtitle")}</p>
+                <p class="text-lg text-primary-foreground/80">{move || translate("reset.heroSubtitle")}</p>
                 <div class="grid gap-2">
                     <p class="text-sm font-semibold">
                         {move || translate("reset.heroListTitle")}
                     </p>
-                    <p class="text-sm text-white/75">
+                    <p class="text-sm text-primary-foreground/75">
                         {move || translate("reset.heroListSubtitle")}
                     </p>
                 </div>
             </aside>
-            <div class="flex flex-col justify-center gap-7 bg-slate-50 p-12 lg:p-20">
-                <div class="flex flex-col gap-5 rounded-3xl bg-white p-8 shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
+            <div class="flex flex-col justify-center gap-7 bg-background p-12 lg:p-20">
+                <div class="flex flex-col gap-5 rounded-xl border border-border bg-card p-8 shadow-md">
                     <div>
-                        <h2 class="text-2xl font-semibold">
+                        <h2 class="text-2xl font-semibold text-card-foreground">
                             {move || translate("reset.title")}
                         </h2>
-                        <p class="text-slate-500">
+                        <p class="text-muted-foreground">
                             {move || translate("reset.subtitle")}
                         </p>
                     </div>
-                    <div class="flex items-center justify-between gap-3 text-sm text-slate-600">
+                    <div class="flex items-center justify-between gap-3 text-sm text-muted-foreground">
                         <span>{move || translate("reset.languageLabel")}</span>
                         <LanguageToggle />
                     </div>
                     <Show when=move || error.get().is_some()>
-                        <div class="rounded-xl bg-red-100 px-4 py-2 text-sm text-red-700">
+                        <div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
                             {move || error.get().unwrap_or_default()}
                         </div>
                     </Show>
                     <Show when=move || status.get().is_some()>
-                        <div class="rounded-xl bg-emerald-100 px-4 py-2 text-sm text-emerald-700">
+                        <div class="rounded-md bg-emerald-100 border border-emerald-200 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                             {move || status.get().unwrap_or_default()}
                         </div>
                     </Show>
@@ -84,10 +84,10 @@ pub fn ResetPassword() -> impl IntoView {
                     <Input value=email set_value=set_email placeholder="admin@rustok.io" label=move || translate("reset.emailLabel") />
                     <Button on_click=on_request class="w-full">{move || translate("reset.requestSubmit")}</Button>
                     <div class="flex justify-between gap-3 text-sm">
-                        <a class="text-blue-600 hover:underline" href="/login">
+                        <a class="text-primary hover:underline underline-offset-4" href="/login">
                             {move || translate("reset.loginLink")}
                         </a>
-                        <a class="text-blue-600 hover:underline" href="/register">
+                        <a class="text-primary hover:underline underline-offset-4" href="/register">
                             {move || translate("reset.registerLink")}
                         </a>
                     </div>

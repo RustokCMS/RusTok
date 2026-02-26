@@ -14,18 +14,18 @@ pub fn register_components() {
 fn module_spotlight() -> AnyView {
     view! {
         <section class="container-app">
-            <div class="rounded-3xl bg-base-100 p-6 shadow">
+            <div class="rounded-2xl border border-border bg-card p-6 shadow">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                        <h3 class="text-2xl font-bold">"Composable storefront modules"</h3>
-                        <p class="mt-2 text-sm opacity-70">
+                        <h3 class="text-2xl font-bold text-card-foreground">"Composable storefront modules"</h3>
+                        <p class="mt-2 text-sm text-muted-foreground">
                             "Ship curated sections from optional packages without touching core."
                         </p>
                     </div>
                     <div class="flex flex-wrap gap-2 text-xs">
-                        <span class="badge badge-primary">"Leptos"</span>
-                        <span class="badge badge-secondary">"Registry"</span>
-                        <span class="badge badge-outline">"Extensions"</span>
+                        <span class="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 font-medium text-primary">"Leptos"</span>
+                        <span class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 font-medium text-emerald-700">"Registry"</span>
+                        <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-foreground">"Extensions"</span>
                     </div>
                 </div>
             </div>

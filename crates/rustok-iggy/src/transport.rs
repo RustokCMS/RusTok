@@ -38,7 +38,9 @@ impl IggyTransport {
             })?;
 
         let topology = TopologyManager::new();
-        topology.ensure_topology(&config, connector.as_ref()).await?;
+        topology
+            .ensure_topology(&config, connector.as_ref())
+            .await?;
 
         let serializer: Arc<dyn EventSerializer> = match config.serialization {
             crate::config::SerializationFormat::Json => Arc::new(JsonSerializer),
@@ -64,13 +66,10 @@ impl IggyTransport {
     pub async fn shutdown(&self) -> Result<()> {
         info!(mode = %self.config.mode, "Shutting down Iggy transport");
 
-        self.connector
-            .shutdown()
-            .await
-            .map_err(|error| {
-                error!(error = %error, "Failed to shutdown Iggy connector");
-                rustok_core::Error::External(error.to_string())
-            })?;
+        self.connector.shutdown().await.map_err(|error| {
+            error!(error = %error, "Failed to shutdown Iggy connector");
+            rustok_core::Error::External(error.to_string())
+        })?;
 
         Ok(())
     }
@@ -145,9 +144,6 @@ mod tests {
 
     #[test]
     fn reliability_level_is_streaming() {
-        assert_eq!(
-            ReliabilityLevel::Streaming,
-            ReliabilityLevel::Streaming
-        );
+        assert_eq!(ReliabilityLevel::Streaming, ReliabilityLevel::Streaming);
     }
 }

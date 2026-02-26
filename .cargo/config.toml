@@ -92,9 +92,6 @@ build-small = "build --release --workspace -Z build-std=std,panic_abort -Z build
 # Security & Auditing
 # ============================================================================
 
-# Run security audit
-audit = "audit"
-
 # Run all security checks (audit + deny)
 audit-all = "audit && deny check"
 
@@ -167,7 +164,7 @@ expand = "expand"
 pre-commit = "fmt --all -- --check && clippy --workspace --all-targets -- -D warnings && test --workspace --lib"
 
 # Run pre-push checks locally  
-pre-push = "test --workspace && audit"
+pre-push = "test --workspace"
 
 # ============================================================================
 # XTask - Build Automation

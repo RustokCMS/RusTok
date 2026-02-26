@@ -35,18 +35,13 @@ use tokio::sync::RwLock;
 use iggy::prelude::{IggyClient, IggyError};
 
 /// Connection mode for Iggy connector
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectorMode {
     /// Embedded mode - runs Iggy server within the application
+    #[default]
     Embedded,
     /// Remote mode - connects to external Iggy server
     Remote,
-}
-
-impl Default for ConnectorMode {
-    fn default() -> Self {
-        Self::Embedded
-    }
 }
 
 impl std::fmt::Display for ConnectorMode {
@@ -196,7 +191,11 @@ impl PublishRequest {
     }
 
     /// Creates a simple request with default stream/topic
-    pub fn simple(partition_key: impl Into<String>, payload: Vec<u8>, event_id: impl Into<String>) -> Self {
+    pub fn simple(
+        partition_key: impl Into<String>,
+        payload: Vec<u8>,
+        event_id: impl Into<String>,
+    ) -> Self {
         Self::new("rustok", "domain", partition_key, payload, event_id)
     }
 }
@@ -716,7 +715,11 @@ mod tests {
         for i in 0..1000 {
             let key = format!("tenant-{}", i);
             let partition = calculate_partition(&key);
-            assert!(partition >= 1 && partition <= 8, "Partition {} out of range", partition);
+            assert!(
+                (1..=8).contains(&partition),
+                "Partition {} out of range",
+                partition
+            );
         }
     }
 
@@ -815,14 +818,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_remote_subscriber() {
-        let mut subscriber = RemoteMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 1);
+        let mut subscriber =
+            RemoteMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 1);
         let result = subscriber.recv().await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_embedded_subscriber() {
-        let mut subscriber = EmbeddedMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 1);
+        let mut subscriber =
+            EmbeddedMessageSubscriber::new("stream1".to_string(), "topic1".to_string(), 1);
         let result = subscriber.recv().await;
         assert!(result.is_ok());
     }

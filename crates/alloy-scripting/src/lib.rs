@@ -49,7 +49,9 @@ pub fn create_engine_for_phase(phase: context::ExecutionPhase) -> ScriptEngine {
     engine
 }
 
-pub fn create_orchestrator<R: ScriptRegistry>(registry: std::sync::Arc<R>) -> ScriptOrchestrator<R> {
+pub fn create_orchestrator<R: ScriptRegistry>(
+    registry: std::sync::Arc<R>,
+) -> ScriptOrchestrator<R> {
     let engine = create_default_engine();
     ScriptOrchestrator::new(std::sync::Arc::new(engine), registry)
 }
@@ -153,20 +155,14 @@ mod tests {
         let engine = create_default_engine();
         let ctx = ExecutionContext::new(ExecutionPhase::Manual);
 
-        let result1 = engine
-            .execute("cache_test", "let x = 1; x", &ctx)
-            .unwrap();
+        let result1 = engine.execute("cache_test", "let x = 1; x", &ctx).unwrap();
         assert_eq!(result1.as_int().unwrap(), 1);
 
-        let result2 = engine
-            .execute("cache_test", "let x = 2; x", &ctx)
-            .unwrap();
+        let result2 = engine.execute("cache_test", "let x = 2; x", &ctx).unwrap();
         assert_eq!(result2.as_int().unwrap(), 2);
 
         engine.invalidate("cache_test");
-        let result3 = engine
-            .execute("cache_test", "let x = 3; x", &ctx)
-            .unwrap();
+        let result3 = engine.execute("cache_test", "let x = 3; x", &ctx).unwrap();
         assert_eq!(result3.as_int().unwrap(), 3);
     }
 

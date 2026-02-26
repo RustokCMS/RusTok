@@ -140,8 +140,6 @@ struct AuthPayload {
     access_token: String,
     #[serde(rename = "refreshToken")]
     refresh_token: String,
-    #[serde(rename = "tokenType")]
-    token_type: String,
     #[serde(rename = "expiresIn")]
     expires_in: i32,
     user: AuthUserGraphQL,
@@ -258,7 +256,6 @@ pub async fn sign_in(
         role: payload.user.role,
     };
 
-    let now = now_unix_secs();
     let session = AuthSession {
         token: payload.access_token,
         refresh_token: payload.refresh_token,
@@ -305,7 +302,6 @@ pub async fn sign_up(
         role: payload.user.role,
     };
 
-    let now = now_unix_secs();
     let session = AuthSession {
         token: payload.access_token,
         refresh_token: payload.refresh_token,

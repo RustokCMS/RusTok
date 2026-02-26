@@ -1,3 +1,4 @@
+mod alloy;
 mod manifest;
 
 use rustok_blog::BlogModule;
@@ -9,6 +10,8 @@ use rustok_index::IndexModule;
 use rustok_pages::PagesModule;
 use rustok_rbac::RbacModule;
 use rustok_tenant::TenantModule;
+
+pub use alloy::AlloyModule;
 
 pub fn build_registry() -> ModuleRegistry {
     ModuleRegistry::new()
@@ -22,6 +25,7 @@ pub fn build_registry() -> ModuleRegistry {
         .register(BlogModule)
         .register(ForumModule)
         .register(PagesModule)
+        .register(AlloyModule)
 }
 
 pub use manifest::validate_registry_vs_manifest;

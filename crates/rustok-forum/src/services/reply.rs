@@ -7,7 +7,9 @@ use rustok_core::{DomainEvent, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::constants::{reply_status, topic_status, KIND_REPLY, KIND_TOPIC};
-use crate::dto::{CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput};
+use crate::dto::{
+    CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput,
+};
 use crate::error::{ForumError, ForumResult};
 use crate::locale::resolve_body;
 
@@ -242,7 +244,10 @@ impl ReplyService {
             effective_locale: resolved.effective_locale,
             topic_id,
             author_id: node.author_id,
-            content: resolved.body.and_then(|b| b.body.clone()).unwrap_or_default(),
+            content: resolved
+                .body
+                .and_then(|b| b.body.clone())
+                .unwrap_or_default(),
             status: metadata
                 .get("reply_status")
                 .and_then(|v| v.as_str())

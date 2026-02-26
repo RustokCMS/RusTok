@@ -4,7 +4,9 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
-use crate::graphql::types::{CreateUserInput, DeleteUserPayload, TenantModule, UpdateUserInput, User};
+use crate::graphql::types::{
+    CreateUserInput, DeleteUserPayload, TenantModule, UpdateUserInput, User,
+};
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
 use crate::services::module_lifecycle::{ModuleLifecycleService, ToggleModuleError};
@@ -178,11 +180,7 @@ impl RootMutation {
         Ok(User::from(&user))
     }
 
-    async fn delete_user(
-        &self,
-        ctx: &Context<'_>,
-        id: uuid::Uuid,
-    ) -> Result<DeleteUserPayload> {
+    async fn delete_user(&self, ctx: &Context<'_>, id: uuid::Uuid) -> Result<DeleteUserPayload> {
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
@@ -242,6 +240,9 @@ impl RootMutation {
         .await
         .map_err(|err| match err {
             ToggleModuleError::UnknownModule => FieldError::new("Unknown module"),
+            ToggleModuleError::CoreModuleCannotBeDisabled(module_slug) => {
+                FieldError::new(format!("Core module cannot be disabled: {}", module_slug))
+            }
             ToggleModuleError::MissingDependencies(missing) => {
                 FieldError::new(format!("Missing module dependencies: {}", missing))
             }

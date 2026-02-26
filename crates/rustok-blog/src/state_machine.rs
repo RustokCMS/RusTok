@@ -46,6 +46,7 @@
 /// ```
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 // ============================================================================
@@ -332,18 +333,15 @@ impl<S> BlogPost<S> {
 // ============================================================================
 
 /// Blog post status enum for database storage
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sea_orm::EnumIter)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sea_orm::EnumIter, ToSchema, Default,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum BlogPostStatus {
+    #[default]
     Draft,
     Published,
     Archived,
-}
-
-impl Default for BlogPostStatus {
-    fn default() -> Self {
-        Self::Draft
-    }
 }
 
 /// Convert type-safe state to database enum
@@ -374,19 +372,14 @@ impl ToBlogPostStatus for BlogPost<Archived> {
 // ============================================================================
 
 /// Comment status enum for database storage
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sea_orm::EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sea_orm::EnumIter, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CommentStatus {
+    #[default]
     Pending,
     Approved,
     Spam,
     Trash,
-}
-
-impl Default for CommentStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
 }
 
 impl CommentStatus {

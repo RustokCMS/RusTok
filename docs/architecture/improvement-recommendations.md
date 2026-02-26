@@ -337,11 +337,11 @@ pub trait RusToKModule {
 
 ---
 
-### 2.13 🟢 УЛУЧШЕНИЕ: Формализовать Alloy Scripting как опциональный модуль
+### 2.13 ✅ РЕАЛИЗОВАНО: Формализовать Alloy Scripting как опциональный модуль
 
-**Проблема.** `alloy-scripting` подключается напрямую в `app.rs` через `alloy_scripting::create_default_engine()` — минуя ModuleRegistry. Это нарушает единообразие модульной архитектуры.
+**Проблема.** `alloy-scripting` подключался напрямую в `app.rs` через `alloy_scripting::create_default_engine()` — минуя ModuleRegistry. Это нарушало единообразие модульной архитектуры.
 
-**Рекомендация.** Обернуть в `RusToKModule`:
+**Решение.** Создан `AlloyModule` в `apps/server/src/modules/alloy.rs`:
 
 ```rust
 pub struct AlloyModule;
@@ -352,10 +352,19 @@ impl RusToKModule for AlloyModule {
 }
 ```
 
-Это позволит:
-- Включать/отключать скриптовый движок per-tenant.
-- Отображать состояние в `/health/modules`.
-- Ограничивать доступ через RBAC (`scripting:execute` permission).
+- `AlloyModule` реализует `RusToKModule` с `ModuleKind::Optional`.
+- Зарегистрирован в `build_registry()` вместе с остальными опциональными модулями.
+- Объявляет RBAC-разрешения для ресурса `Scripts` (create/read/update/delete/list/manage).
+- Делегирует `ScriptsMigration` из `alloy-scripting::migration`.
+- Добавлен в `modules.toml` как `alloy = { crate = "alloy-scripting", ... }`.
+- Добавлен ресурс `Scripts` и константы `SCRIPTS_*` в `rustok-core/src/permissions.rs`.
+- Скриптовый рантайм (`AlloyState`) по-прежнему инициализируется в `app.rs::after_routes()` — это правильно, т.к. это session-level состояние, не module-metadata.
+
+Это позволяет:
+- Отображать состояние `alloy` в `/health/modules`.
+- Ограничивать доступ через RBAC (`scripts:*` permissions).
+- Запускать миграции через единый механизм реестра.
+- Включать/отключать скриптовый движок per-tenant в будущем.
 
 ---
 
@@ -404,7 +413,7 @@ fn routes(ctx: &AppContext) -> AppRoutes {
 | 2.12 | Outbox DLQ + backlog metrics | 🟢 Улучшение | Backlog | Средняя | Event reliability | Platform foundation + operational tooling | Итерация 2 |
 | 2.10 | Per-tenant typed module config | 🟢 Улучшение | Backlog | Средняя | Extensibility | Platform foundation + domain modules | Итерация 3 |
 | 2.11 | `rustok-notifications` модуль | 🟢 Улучшение | Backlog | Высокая | New capability | Domain modules | Итерация 3 |
-| 2.13 | Alloy как `RusToKModule` | 🟢 Улучшение | Backlog | Низкая | Consistency | Platform foundation | Итерация 3 |
+| 2.13 | Alloy как `RusToKModule` | ✅ Готово | Done | — | — | Platform foundation | Завершено |
 | 2.9 | Вынести `DomainEvent` из core | 🔵 Стратегически | In Progress (Phase 1) | Высокая | Extensibility | Platform foundation (ADR) | Итерация 3+ |
 | 2.14 | Авторегистрация HTTP routes | 🔵 Стратегически | ADR Needed | Высокая | DX / scalability | Platform foundation (ADR) | После ADR |
 
@@ -433,7 +442,7 @@ graph TD
     end
 
     subgraph "Optional Infrastructure"
-        ALLOY[alloy-scripting ← as RusToKModule]
+        ALLOY[alloy-scripting ← registered as RusToKModule ✅]
         MCP[rustok-mcp]
         IGGY[rustok-iggy]
     end

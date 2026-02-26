@@ -8,10 +8,10 @@ ignore = ["./dist"]
 
 [[hooks]]
 stage = "build"
-command = "tailwind-rs"
-command_arguments = ["-i", "input.css", "-o", "dist/output.css", "--minify"]
+command = "npx"
+command_arguments = ["tailwindcss", "-i", "input.css", "-o", "dist/output.css", "--minify"]
 
 [[hooks]]
 stage = "watch"
-command = "tailwind-rs"
-command_arguments = ["-i", "input.css", "-o", "dist/output.css"]
+command = "npx"
+command_arguments = ["tailwindcss", "-i", "input.css", "-o", "dist/output.css"]

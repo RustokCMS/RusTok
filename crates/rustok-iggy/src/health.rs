@@ -63,11 +63,12 @@ pub async fn health_check(connector: &dyn IggyConnector) -> Result<HealthCheckRe
     }
 
     info!("Iggy health check passed");
-    Ok(HealthCheckResult::healthy("Iggy transport is healthy")
-        .with_details(serde_json::json!({
+    Ok(
+        HealthCheckResult::healthy("Iggy transport is healthy").with_details(serde_json::json!({
             "connected": true,
             "mode": "embedded_or_remote"
-        })))
+        })),
+    )
 }
 
 #[cfg(test)]
@@ -97,8 +98,8 @@ mod tests {
 
     #[test]
     fn health_check_result_with_details() {
-        let result = HealthCheckResult::healthy("OK")
-            .with_details(serde_json::json!({ "latency_ms": 5 }));
+        let result =
+            HealthCheckResult::healthy("OK").with_details(serde_json::json!({ "latency_ms": 5 }));
 
         assert!(result.details.is_some());
         let details = result.details.unwrap();

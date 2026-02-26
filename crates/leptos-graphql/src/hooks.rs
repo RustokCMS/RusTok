@@ -3,9 +3,9 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use std::sync::Arc;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 
 use crate::{execute, GraphqlHttpError, GraphqlRequest};
 
@@ -111,6 +111,8 @@ pub struct MutationResult<T> {
     mutate_fn: StoredValue<Arc<dyn Fn(Value) + Send + Sync>>,
 }
 
+pub type LazyQueryFetchFn<V> = Box<dyn Fn(Option<V>) + Send + Sync>;
+
 impl<T> MutationResult<T> {
     pub fn mutate(&self, variables: Value) {
         self.mutate_fn.with_value(|f| f(variables));
@@ -161,7 +163,7 @@ where
     let (error, set_error) = signal(None);
     let (loading, set_loading) = signal(false);
 
-    let mutate_fn = store_value(Arc::new(move |variables: Value| {
+    let mutate_fn = StoredValue::new(Arc::new(move |variables: Value| {
         set_loading.set(true);
         set_error.set(None);
 
@@ -202,7 +204,7 @@ pub fn use_lazy_query<V, T>(
     query: String,
     token: Option<String>,
     tenant: Option<String>,
-) -> (QueryResult<T>, Box<dyn Fn(Option<V>) + Send + Sync>)
+) -> (QueryResult<T>, LazyQueryFetchFn<V>)
 where
     V: Serialize + Clone + 'static,
     T: DeserializeOwned + Clone + Send + Sync + 'static,
@@ -210,9 +212,9 @@ where
     let (data, set_data) = signal(None);
     let (error, set_error) = signal(None);
     let (loading, set_loading) = signal(false);
-    let (refetch_trigger, set_refetch_trigger) = signal(0u32);
+    let (_refetch_trigger, set_refetch_trigger) = signal(0u32);
 
-    let fetch = Box::new(move |variables: Option<V>| {
+    let fetch: LazyQueryFetchFn<V> = Box::new(move |variables: Option<V>| {
         set_loading.set(true);
         set_error.set(None);
 

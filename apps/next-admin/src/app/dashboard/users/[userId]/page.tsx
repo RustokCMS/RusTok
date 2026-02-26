@@ -1,4 +1,4 @@
-import PageContainer from '@/components/layout/page-container';
+import { PageContainer } from '@/widgets/app-shell';
 import { Metadata } from 'next';
 import UserDetailView from '@/features/users/components/user-detail-view';
 

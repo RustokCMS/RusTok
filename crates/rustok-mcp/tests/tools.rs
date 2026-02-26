@@ -4,8 +4,8 @@ use sea_orm_migration::MigrationTrait;
 use rustok_core::module::{MigrationSource, RusToKModule};
 use rustok_core::registry::ModuleRegistry;
 use rustok_mcp::tools::{
-    list_modules, list_modules_filtered, module_details, module_exists, McpState,
-    McpToolResponse, ModuleLookupRequest, ModuleQueryRequest,
+    list_modules, list_modules_filtered, module_details, module_exists, McpState, McpToolResponse,
+    ModuleLookupRequest, ModuleQueryRequest,
 };
 
 struct DemoModule;
@@ -162,7 +162,9 @@ fn tool_response_error_sets_error_payload() {
 
 #[tokio::test]
 async fn list_modules_filtered_applies_filters_and_pagination() {
-    let registry = ModuleRegistry::new().register(DemoModule).register(ExtraModule);
+    let registry = ModuleRegistry::new()
+        .register(DemoModule)
+        .register(ExtraModule);
     let state = Box::leak(Box::new(McpState { registry }));
 
     let response = list_modules_filtered(
@@ -182,7 +184,9 @@ async fn list_modules_filtered_applies_filters_and_pagination() {
 
 #[tokio::test]
 async fn list_modules_filtered_paginates_results() {
-    let registry = ModuleRegistry::new().register(DemoModule).register(ExtraModule);
+    let registry = ModuleRegistry::new()
+        .register(DemoModule)
+        .register(ExtraModule);
     let state = Box::leak(Box::new(McpState { registry }));
 
     let response = list_modules_filtered(

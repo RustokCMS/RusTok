@@ -121,20 +121,20 @@ mod tests {
         let permissions = module.permissions();
 
         // Check pages permissions
-        assert!(permissions.iter().any(|p| {
-            p.resource == Resource::Pages && p.action == Action::Create
-        }));
-        assert!(permissions.iter().any(|p| {
-            p.resource == Resource::Pages && p.action == Action::Publish
-        }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::Pages && p.action == Action::Create }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::Pages && p.action == Action::Publish }));
 
         // Check blocks (nodes) permissions
-        assert!(permissions.iter().any(|p| {
-            p.resource == Resource::Nodes && p.action == Action::Create
-        }));
-        assert!(permissions.iter().any(|p| {
-            p.resource == Resource::Nodes && p.action == Action::Delete
-        }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::Nodes && p.action == Action::Create }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::Nodes && p.action == Action::Delete }));
     }
 
     #[test]

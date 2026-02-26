@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import PageContainer from '@/components/layout/page-container';
+import { PageContainer } from '@/widgets/app-shell';
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import UsersView from '@/features/users/components/users-view';

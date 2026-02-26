@@ -5,7 +5,9 @@ use axum::{
 };
 use loco_rs::{app::AppContext, controller::Routes, prelude::*, Result};
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
-use sea_orm::{ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
+};
 
 use crate::middleware::tenant::tenant_cache_stats;
 

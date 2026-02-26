@@ -12,3 +12,4 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 leptos = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+iu-leptos = { workspace = true }

@@ -51,9 +51,11 @@ impl ContentQuery {
             status: filter.status.map(Into::into),
             parent_id: filter.parent_id,
             author_id: filter.author_id,
+            category_id: None,
             locale: filter.locale,
             page: filter.page.unwrap_or(1),
             per_page: filter.per_page.unwrap_or(20),
+            include_deleted: false,
         };
 
         let security = ctx

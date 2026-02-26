@@ -1,4 +1,4 @@
-import PageContainer from '@/components/layout/page-container';
+import { PageContainer } from '@/widgets/app-shell';
 import { Button } from '@/components/ui/button';
 import {
   Card,

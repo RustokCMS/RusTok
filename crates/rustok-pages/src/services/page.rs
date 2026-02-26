@@ -160,9 +160,11 @@ impl PageService {
                     status: filter.status,
                     parent_id: None,
                     author_id: None,
+                    category_id: None,
                     locale: filter.locale,
                     page: filter.page,
                     per_page: filter.per_page,
+                    include_deleted: false,
                 },
             )
             .await?;
@@ -251,7 +253,7 @@ impl PageService {
                             .collect()
                     }),
                     bodies,
-                    published_at: None,
+                    expected_version: None,
                 },
             )
             .await?;

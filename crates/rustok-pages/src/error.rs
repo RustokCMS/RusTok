@@ -97,12 +97,6 @@ impl From<PagesError> for RichError {
     }
 }
 
-impl From<RichError> for PagesError {
-    fn from(err: RichError) -> Self {
-        PagesError::Rich(err)
-    }
-}
-
 /// Helper functions for creating common pages errors
 impl PagesError {
     /// Create a page not found error
