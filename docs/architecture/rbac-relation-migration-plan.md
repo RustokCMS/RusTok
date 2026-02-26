@@ -24,6 +24,7 @@
   - Переведена часть GraphQL-checks (users CRUD/read/list, alloy, content mutation/query) и RBAC extractors на relation-проверки.
   - `GraphQL update_user` теперь синхронно обновляет relation-модель (`user_roles`) через `replace_user_role`, чтобы legacy-role и relation RBAC не расходились.
   - Назначение relation-ролей/пермишенов переведено на conflict-safe idempotent upsert (`ON CONFLICT DO NOTHING`) для устойчивости к конкурентным операциям.
+  - Поле `User.can` в GraphQL переведено с role-based (`users.role`) на tenant-aware relation-проверку через `AuthService::has_permission`.
 - [~] **Фаза 3 — AuthContext и токены (начато):**
   - `CurrentUser.permissions` теперь резолвятся из relation-модели, а не из `users.role`.
   - Полный отказ от role-claim в policy-решениях ещё не завершён (есть оставшиеся role-based места).

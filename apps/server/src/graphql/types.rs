@@ -1,13 +1,14 @@
 use async_graphql::{
     dataloader::DataLoader, ComplexObject, Context, Enum, InputObject, Result, SimpleObject,
 };
-use rustok_core::{Permission, Rbac, UserRole, UserStatus};
+use rustok_core::{Permission, UserRole, UserStatus};
 use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::graphql::common::PageInfo;
 use crate::graphql::loaders::TenantNameLoader;
 use crate::models::users;
+use crate::services::auth::AuthService;
 
 #[derive(SimpleObject, Clone)]
 pub struct Tenant {
@@ -97,10 +98,13 @@ impl User {
         self.name.clone().unwrap_or_else(|| self.email.clone())
     }
 
-    async fn can(&self, _ctx: &Context<'_>, action: String) -> Result<bool> {
-        let role = UserRole::from_str(&self.role).map_err(|err| err.to_string())?;
+    async fn can(&self, ctx: &Context<'_>, action: String) -> Result<bool> {
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
         let permission = Permission::from_str(&action).map_err(|err| err.to_string())?;
-        Ok(Rbac::has_permission(&role, &permission))
+
+        AuthService::has_permission(&app_ctx.db, &self.tenant_id, &self.id, &permission)
+            .await
+            .map_err(|err| err.to_string().into())
     }
 
     async fn tenant_name(&self, ctx: &Context<'_>) -> Result<Option<String>> {
