@@ -30,7 +30,7 @@
 
 - [x] **Фаза 0 — Архитектурное решение и подготовка (частично):**
   - План и архитектурные ссылки зафиксированы в `docs/architecture/*` и `docs/index.md`.
-  - ADR про RBAC source-of-truth в relation-модели — **в работе** (не закрыт этим шагом).
+  - ADR про RBAC source-of-truth в relation-модели принят: `DECISIONS/2026-02-26-rbac-relation-source-of-truth-cutover.md`.
 - [x] **Фаза 1 — Быстрые исправления консистентности (базовые пункты):**
   - user creation flows для `register/sign_up/create_user/accept_invite` уже заведены через назначение relation RBAC (`assign_role_permissions`).
   - `seed_user` (dev/test seed bootstrap) теперь также вызывает `assign_role_permissions` после создания пользователя.
@@ -374,7 +374,7 @@
 
 ### 9.1 Фаза 0 — Подготовка
 
-- [ ] ADR создан в `DECISIONS/` и согласован platform/team leads.
+- [x] ADR создан в `DECISIONS/` и согласован platform/team leads (`2026-02-26-rbac-relation-source-of-truth-cutover.md`).
 - [ ] Определён владелец migration-program (DRI) и резервный DRI.
 - [ ] Определён freeze-период для изменения RBAC API-контрактов.
 - [ ] Зафиксированы feature flags:

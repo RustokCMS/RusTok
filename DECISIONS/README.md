@@ -14,3 +14,4 @@ All significant architectural choices should be recorded as ADRs.
 |-----|-------|--------|
 | [2026-02-19](./2026-02-19-module-kind-core-vs-optional.md) | Разделение модулей на Core и Optional | Accepted & Implemented |
 | [2026-02-26](./2026-02-26-auth-lifecycle-unification-session-invalidation.md) | Унификация auth lifecycle и policy инвалидирования сессий | Accepted |
+| [2026-02-26](./2026-02-26-rbac-relation-source-of-truth-cutover.md) | RBAC source of truth: relation-модель и staged cutover | Accepted |
