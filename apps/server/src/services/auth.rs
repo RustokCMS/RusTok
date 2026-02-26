@@ -13,8 +13,8 @@ use tracing::{debug, warn};
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 use rustok_rbac::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,
-    resolve_permissions_from_relations, DeniedReasonKind, PermissionResolution, PermissionResolver,
-    RelationPermissionStore,
+    invalidate_cached_permissions, resolve_permissions_with_cache, DeniedReasonKind,
+    PermissionCache, PermissionResolution, PermissionResolver, RelationPermissionStore,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -243,14 +243,15 @@ impl AuthService {
     }
 
     pub async fn invalidate_user_permissions_cache(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
-        USER_PERMISSION_CACHE
-            .invalidate(&Self::cache_key(tenant_id, user_id))
-            .await;
+        let cache = MokaPermissionCache;
+        invalidate_cached_permissions(&cache, tenant_id, user_id).await;
     }
 
     pub async fn invalidate_user_rbac_caches(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        let cache = MokaPermissionCache;
+        invalidate_cached_permissions(&cache, tenant_id, user_id).await;
+
         let cache_key = Self::cache_key(tenant_id, user_id);
-        USER_PERMISSION_CACHE.invalidate(&cache_key).await;
         USER_LEGACY_ROLE_CACHE.invalidate(&cache_key).await;
     }
 
@@ -526,53 +527,29 @@ impl AuthService {
         user_id: &uuid::Uuid,
     ) -> Result<(Vec<Permission>, bool)> {
         let started_at = Instant::now();
-        let cache_key = Self::cache_key(tenant_id, user_id);
+        let store = SeaOrmRelationPermissionStore { db };
+        let cache = MokaPermissionCache;
 
-        if let Some(cached_permissions) = USER_PERMISSION_CACHE.get(&cache_key).await {
+        let resolved = resolve_permissions_with_cache(&store, &cache, tenant_id, user_id).await?;
+
+        if resolved.cache_hit {
             RBAC_PERMISSION_CACHE_HITS.fetch_add(1, Ordering::Relaxed);
-            debug!(
-                tenant_id = %tenant_id,
-                user_id = %user_id,
-                cache_hit = true,
-                permissions_count = cached_permissions.len(),
-                latency_ms = started_at.elapsed().as_millis(),
-                "rbac resolver permission lookup"
-            );
-
-            Self::record_permission_lookup_latency(started_at.elapsed().as_millis() as u64);
-
-            return Ok((cached_permissions, true));
+        } else {
+            RBAC_PERMISSION_CACHE_MISSES.fetch_add(1, Ordering::Relaxed);
         }
-
-        RBAC_PERMISSION_CACHE_MISSES.fetch_add(1, Ordering::Relaxed);
-
-        let resolved_permissions =
-            Self::load_user_permissions_from_db(db, tenant_id, user_id).await?;
-        USER_PERMISSION_CACHE
-            .insert(cache_key, resolved_permissions.clone())
-            .await;
 
         debug!(
             tenant_id = %tenant_id,
             user_id = %user_id,
-            cache_hit = false,
-            permissions_count = resolved_permissions.len(),
+            cache_hit = resolved.cache_hit,
+            permissions_count = resolved.permissions.len(),
             latency_ms = started_at.elapsed().as_millis(),
             "rbac resolver permission lookup"
         );
 
         Self::record_permission_lookup_latency(started_at.elapsed().as_millis() as u64);
 
-        Ok((resolved_permissions, false))
-    }
-
-    async fn load_user_permissions_from_db(
-        db: &DatabaseConnection,
-        tenant_id: &uuid::Uuid,
-        user_id: &uuid::Uuid,
-    ) -> Result<Vec<Permission>> {
-        let store = SeaOrmRelationPermissionStore { db };
-        resolve_permissions_from_relations(&store, tenant_id, user_id).await
+        Ok((resolved.permissions, resolved.cache_hit))
     }
 
     pub async fn assign_role_permissions(
@@ -743,6 +720,32 @@ impl AuthService {
 
 struct SeaOrmRelationPermissionStore<'a> {
     db: &'a DatabaseConnection,
+}
+
+struct MokaPermissionCache;
+
+#[async_trait]
+impl PermissionCache for MokaPermissionCache {
+    async fn get(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) -> Option<Vec<Permission>> {
+        USER_PERMISSION_CACHE.get(&(*tenant_id, *user_id)).await
+    }
+
+    async fn insert(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        permissions: Vec<Permission>,
+    ) {
+        USER_PERMISSION_CACHE
+            .insert((*tenant_id, *user_id), permissions)
+            .await;
+    }
+
+    async fn invalidate(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        USER_PERMISSION_CACHE
+            .invalidate(&(*tenant_id, *user_id))
+            .await;
+    }
 }
 
 #[async_trait]

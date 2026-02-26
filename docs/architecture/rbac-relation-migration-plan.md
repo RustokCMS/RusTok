@@ -40,9 +40,11 @@
   - В `rustok-rbac` добавлен `permission_evaluator` (единый API итоговой policy-оценки allow/deny + missing permissions + denied reason), а `AuthService` теперь использует его как модульный policy-source вместо локальной сборки outcome.
   - В `rustok-rbac` добавлен контракт `PermissionResolver` + `PermissionResolution`; в `apps/server` введён тонкий `ServerPermissionResolver` adapter, который делегирует use-cases в текущий `AuthService` (инкрементальный шаг strangler-переноса).
   - В `PermissionResolver` добавлены default use-case методы `has_permission/has_any_permission/has_all_permissions`, использующие модульный evaluator; server adapter реализует только wiring (`resolve_permissions` + role assignment use-cases), а детализация cache hit инкапсулирована внутри `AuthService::resolve_permissions`.
+  - Кэшируемый relation-resolve унифицирован в `rustok-rbac` через `resolve_permissions_with_cache` и контракт `PermissionCache`; `apps/server` использует `MokaPermissionCache` как инфраструктурный адаптер, а логика определения cache hit/miss перенесена в модульный оркестратор.
   - В `rustok-rbac` добавлен модульный use-case слой `permission_authorizer` (authorize single/any/all), который собирает decision (`allowed/missing/denied_reason/cache_hit`) поверх `PermissionResolver`; `AuthService` использует этот API вместо локальной сборки policy-решения.
   - Алгоритм relation-resolve (цепочка `user_roles -> roles(tenant) -> permissions`) вынесен в `rustok-rbac::resolve_permissions_from_relations` через контракт `RelationPermissionStore`; в `apps/server` оставлен SeaORM adapter к этому контракту.
   - Реализованы tenant-scoping и deduplication; сохранена семантика `resource:manage` как wildcard.
+  - Для cache-path в модульном resolver сохранён инвариант стабильного normalized output (dedup + сортировка), чтобы format результата не зависел от источника (cache или relation DB).
   - Переведена часть GraphQL-checks (users CRUD/read/list, alloy, content mutation/query) и RBAC extractors на relation-проверки.
   - RBAC extractors перестали держать локальную wildcard-логику и используют общий helper `rustok_rbac::has_effective_permission_in_set` (снижение дублирования policy-семантики).
   - `GraphQL update_user` теперь синхронно обновляет relation-модель (`user_roles`) через `replace_user_role`, чтобы legacy-role и relation RBAC не расходились.

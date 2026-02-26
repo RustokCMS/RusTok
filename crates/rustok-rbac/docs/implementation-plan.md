@@ -30,11 +30,11 @@ compatibility with platform-level contracts.
 - [x] Introduce shared permission-policy helpers (`permission_policy`) and start consuming them from `apps/server` extractors/service wiring to reduce server-owned policy logic.
 - [x] Introduce shared permission evaluation API (`permission_evaluator`) and move allow/deny + missing-permissions outcome assembly from `apps/server::AuthService` into `rustok-rbac`.
 - [ ] Align error/validation conventions with platform guidance.
-- [ ] Expand automated tests around core invariants and boundary behavior.
+- [ ] Expand automated tests around core invariants and boundary behavior (including stable normalized permission payload from both relation and cache paths).
 
 ### Phase 2 — Domain expansion (planned)
 
-- [ ] Implement prioritized domain capabilities for `rustok-rbac` (module now owns `permission_authorizer` use-case evaluation and relation-resolve orchestration via `RelationPermissionStore`; next: move full runtime resolver implementation from server adapter into module runtime service).
+- [ ] Implement prioritized domain capabilities for `rustok-rbac` (module now owns `permission_authorizer` use-case evaluation and relation-resolve orchestration via `RelationPermissionStore`, plus shared cache-aware resolver path (`resolve_permissions_with_cache` + `PermissionCache` contract with explicit invalidation helper) consumed by server adapter; next: move full runtime resolver implementation from server adapter into module runtime service).
 - [ ] Standardize cross-module integration points and events.
 - [ ] Document ownership and release gates for new capabilities.
 
