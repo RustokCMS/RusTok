@@ -7,6 +7,22 @@
 
 ---
 
+## 0.1 Корректировка курса (module-first update)
+
+На момент выполнения фаз 2–5 значимая часть runtime RBAC была реализована в `apps/server::AuthService` как самый быстрый путь к безопасному rollout (`relation resolver`, `dual-read`, cache, observability).
+
+Это позволило закрыть критичные migration-задачи, но создало архитектурный перекос: policy/use-case логика размазана по server-слою, а `crates/rustok-rbac` пока используется не как фактический центр RBAC-доменной логики.
+
+С этого шага план официально корректируется:
+
+1. **Rollout safety не останавливаем**: фазы data-migration/cutover (4–6) продолжаются по графику.
+2. **Новые RBAC изменения делаем module-first**: policy/use-case ядро переносится в `crates/rustok-rbac`, а `apps/server` остаётся transport/infra adapter-слоем.
+3. **Перенос инкрементальный (strangler pattern)**: без big-bang переписывания и без деградации текущего продового контроля доступа.
+
+Критерий этой корректировки: после завершения migration-фаз RBAC policy-source находится в `crates/rustok-rbac`, а server не содержит дублирующей policy-логики.
+
+---
+
 
 ## 0. Статус выполнения (progress tracker)
 
@@ -52,6 +68,7 @@
 
 1. Расширить backfill для service-аккаунтов/исключений и согласовать rollback-процедуру (Фаза 4).
 2. Подготовить и согласовать ADR по final cutover (`relation-only`).
+3. Зафиксировать module-first extraction backlog: выделить policy/use-case API в `crates/rustok-rbac` и описать server-adapter границы.
 
 ### Итоговая проверка перед переходом к Фазе 4
 
@@ -146,10 +163,10 @@
 
 ## Фаза 2 — Единый Permission Resolver
 
-**Цель:** отделить authorization policy от transport-слоёв (REST/GraphQL/extractors).
+**Цель:** отделить authorization policy от transport-слоёв (REST/GraphQL/extractors) и закрепить модуль `rustok-rbac` как целевой policy-host.
 
 Шаги:
-1. Ввести общий сервис/компонент `PermissionResolver` (или расширить `AuthService`) с tenant-aware API.
+1. Ввести общий сервис/компонент `PermissionResolver` с tenant-aware API; переходно допускается реализация в `AuthService`, но с обязательным планом переноса policy-ядра в `crates/rustok-rbac`.
 2. Реализовать в нём:
    - чтение прав через relation-таблицы,
    - дедупликацию разрешений,
@@ -221,19 +238,21 @@
 
 ---
 
-## Фаза 6 — Cleanup legacy-модели
+## Фаза 6 — Cleanup legacy-модели и финализация module boundaries
 
-**Цель:** убрать технический долг после стабилизации.
+**Цель:** убрать технический долг после стабилизации и закрыть архитектурный перенос RBAC в модуль.
 
 Шаги:
 1. Удалить из runtime-кода все legacy-пути авторизации по `users.role`.
 2. Перевести `users.role` в read-only/derived статус на переходный релиз.
 3. Подготовить миграцию на удаление `users.role` (или оставить как строго денормализованное отображаемое поле, если это обосновано).
-4. Обновить документацию, API-контракты и onboarding.
+4. Завершить перенос policy/use-case RBAC из `apps/server` в `crates/rustok-rbac`; в server оставить только adapter/integration слой (DB, cache, transport, wiring).
+5. Обновить документацию, API-контракты и onboarding.
 
 Критерии завершения:
 - В коде отсутствуют decision-ветки по legacy-role.
-- Документация описывает только relation RBAC.
+- RBAC policy-source и публичный доменный API расположены в `crates/rustok-rbac`.
+- Документация описывает только relation RBAC и актуальные module boundaries.
 
 ---
 
