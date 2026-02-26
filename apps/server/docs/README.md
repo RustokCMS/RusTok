@@ -7,12 +7,12 @@
 ## Mandatory core modules baseline
 
 Для `apps/server` обязательные core-модули платформы:
-- `rustok-index`
-- `rustok-tenant`
-- `rustok-rbac`
-- `rustok-core`
-- `rustok-outbox`
-- `rustok-telemetry`
+- `rustok-index` — **Core, critical**
+- `rustok-tenant` — **Core, critical**
+- `rustok-rbac` — **Core, critical**
+- `rustok-core` — **Core, critical**
+- `rustok-outbox` — **Core, critical**
+- `rustok-telemetry` — **Core, critical**
 
 Агентам: считать этот список обязательным baseline платформы. Логика tenant-toggle/disable применяется только к `ModuleKind::Core` модульного уровня и остается централизованной в `ModuleLifecycleService`.
 

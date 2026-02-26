@@ -26,9 +26,9 @@ RusToK — модульный монолит: модули компилирую�
 
 | Slug | Crate | Назначение |
 | --- | --- | --- |
-| `index` | `rustok-index` | CQRS/read-model индексатор |
-| `tenant` | `rustok-tenant` | Tenant lifecycle и метаданные |
-| `rbac` | `rustok-rbac` | RBAC lifecycle и health |
+| `index` | `rustok-index` | **Core (critical)**: CQRS/read-model индексатор |
+| `tenant` | `rustok-tenant` | **Core (critical)**: Tenant lifecycle и метаданные |
+| `rbac` | `rustok-rbac` | **Core (critical)**: RBAC lifecycle и health |
 
 Эти три модуля считаются **критичными для корректной работы платформы** и являются базовым contract-first минимумом для `apps/server`.
 
@@ -48,9 +48,9 @@ RusToK — модульный монолит: модули компилирую�
 
 | Crate | Статус | Примечание |
 | --- | --- | --- |
-| `rustok-core` | Core | Контракты, базовые типы и инфраструктура |
-| `rustok-outbox` | Core | Транзакционная доставка событий (required в `modules.toml`) |
-| `rustok-telemetry` | Core infra | Сквозная observability |
+| `rustok-core` | **Core (critical)** | Контракты, базовые типы и инфраструктура |
+| `rustok-outbox` | **Core (critical)** | Транзакционная доставка событий (required в `modules.toml`) |
+| `rustok-telemetry` | **Core (critical)** | Сквозная observability |
 
 Итого обязательные core-модули платформы: `index`, `tenant`, `rbac`, `rustok-core`, `rustok-outbox`, `rustok-telemetry`.
 

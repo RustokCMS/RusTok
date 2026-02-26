@@ -29,13 +29,13 @@ RusToK реализован как **Modular Monolith**: все модули к�
 
 | Crate | Slug | Назначение |
 |-------|------|-----------|
-| `rustok-index` | `index` | CQRS read-model, индексатор для storefront |
-| `rustok-tenant` | `tenant` | Tenant metadata, lifecycle hooks |
-| `rustok-rbac` | `rbac` | RBAC helpers, lifecycle hooks |
+| `rustok-index` | `index` | **Core (critical)**: CQRS read-model, индексатор для storefront |
+| `rustok-tenant` | `tenant` | **Core (critical)**: Tenant metadata, lifecycle hooks |
+| `rustok-rbac` | `rbac` | **Core (critical)**: RBAC helpers, lifecycle hooks |
 
 Итоговые обязательные core-модули платформы (`ModuleKind::Core`): `rustok-index`, `rustok-tenant`, `rustok-rbac`.
 
-`rustok-core`, `rustok-outbox`, `rustok-telemetry` — обязательные core-модули инфраструктурного уровня (инициализируются вне `ModuleRegistry`).
+`rustok-core`, `rustok-outbox`, `rustok-telemetry` — обязательные **core (critical)** модули инфраструктурного уровня (инициализируются вне `ModuleRegistry`).
 
 ## Категория C — Optional Domain Modules (`ModuleKind::Optional`)
 
