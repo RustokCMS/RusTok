@@ -17,3 +17,5 @@
 - `permission_policy` and `permission_evaluator` remain canonical policy/evaluation helpers for allow/deny semantics.
 - `RuntimePermissionResolver` composes relation-store/cache/role-assignment adapters and supports unified resolver error mapping (`Into<E>`) so integration layers can keep their own adapter-specific error types.
 - `RbacAuthzMode` defines shared rollout-mode parsing for relation-only/dual-read authorization execution (`RUSTOK_RBAC_AUTHZ_MODE`).
+
+- `shadow_decision` exports legacy-vs-relation shadow comparison helpers (`compare_single_permission/compare_any_permissions/compare_all_permissions`) to keep dual-read decision semantics in the RBAC module.

@@ -23,6 +23,9 @@ pub use services::relation_permission_resolver::{
     resolve_permissions_with_cache, PermissionCache, RelationPermissionStore,
 };
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
+pub use services::shadow_decision::{
+    compare_all_permissions, compare_any_permissions, compare_single_permission, ShadowDecision,
+};
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
