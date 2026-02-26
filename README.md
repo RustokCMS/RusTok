@@ -29,7 +29,7 @@
 **RusToK** is an event-driven, modular highload platform for any product with data. Each module is isolated and microservice-ready, while still shipping as a single, secure Rust binary. It combines the developer experience of Laravel/Rails with the performance of Rust, using a "Tank" strategy for stability and a "CQRS-lite" approach for fast reads.
 
 Modules in RusToK are compiled into a binary for maximum performance and security, but follow a standardized layout (Entities/DTO/Services) for easy maintainability. •
-Rustok can become the foundation of anything that has any data. !!! .
+Rustok can become the foundation of anything that has any data.
 
 From an alarm clock with a personal blog to NASA's terabyte storage.
 
