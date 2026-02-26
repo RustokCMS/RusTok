@@ -160,6 +160,7 @@ impl From<ScriptTrigger> for GqlScriptTrigger {
 #[derive(SimpleObject)]
 pub struct GqlScript {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub name: String,
     pub description: Option<String>,
     pub code: String,
@@ -179,6 +180,7 @@ impl From<Script> for GqlScript {
     fn from(script: Script) -> Self {
         Self {
             id: script.id,
+            tenant_id: script.tenant_id,
             name: script.name,
             description: script.description,
             code: script.code,

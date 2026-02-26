@@ -75,6 +75,7 @@ impl ScriptRegistry for InMemoryStorage {
                 .filter(|script| script.status == status)
                 .cloned()
                 .collect(),
+            ScriptQuery::All => guard.values().cloned().collect(),
         };
 
         Ok(result)

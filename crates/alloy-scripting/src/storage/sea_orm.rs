@@ -14,6 +14,7 @@ use crate::storage::{ScriptQuery, ScriptRegistry};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub name: String,
     pub description: Option<String>,
     pub code: String,
@@ -141,6 +142,7 @@ impl SeaOrmStorage {
 
         Ok(Script {
             id: model.id,
+            tenant_id: model.tenant_id,
             name: model.name,
             description: model.description,
             code: model.code,
@@ -209,6 +211,7 @@ impl ScriptRegistry for SeaOrmStorage {
             ScriptQuery::ByStatus(status) => {
                 select = select.filter(Column::Status.eq(status.as_str()));
             }
+            ScriptQuery::All => {}
         }
 
         let models = select
@@ -286,6 +289,7 @@ impl ScriptRegistry for SeaOrmStorage {
 
         let model = ActiveModel {
             id: ActiveValue::Set(script.id),
+            tenant_id: ActiveValue::Set(script.tenant_id),
             name: ActiveValue::Set(script.name.clone()),
             description: ActiveValue::Set(script.description.clone()),
             code: ActiveValue::Set(script.code.clone()),

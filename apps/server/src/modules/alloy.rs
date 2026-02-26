@@ -3,9 +3,22 @@ use rustok_core::{
     module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule},
     permissions::{Action, Permission, Resource},
 };
+use sea_orm::{DatabaseConnection, EntityTrait};
 use sea_orm_migration::MigrationTrait;
 
-pub struct AlloyModule;
+pub struct AlloyModule {
+    db: Option<DatabaseConnection>,
+}
+
+impl AlloyModule {
+    pub fn new() -> Self {
+        Self { db: None }
+    }
+
+    pub fn with_db(db: DatabaseConnection) -> Self {
+        Self { db: Some(db) }
+    }
+}
 
 impl MigrationSource for AlloyModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
@@ -47,6 +60,15 @@ impl RusToKModule for AlloyModule {
     }
 
     async fn health(&self) -> HealthStatus {
+        if let Some(ref db) = self.db {
+            if alloy_scripting::storage::ScriptsEntity::find()
+                .one(db)
+                .await
+                .is_err()
+            {
+                return HealthStatus::Unhealthy;
+            }
+        }
         HealthStatus::Healthy
     }
 }
@@ -57,7 +79,7 @@ mod tests {
 
     #[test]
     fn module_metadata() {
-        let module = AlloyModule;
+        let module = AlloyModule::new();
         assert_eq!(module.slug(), "alloy");
         assert_eq!(module.name(), "Alloy Scripting");
         assert_eq!(module.kind(), ModuleKind::Optional);
@@ -65,7 +87,7 @@ mod tests {
 
     #[test]
     fn module_permissions() {
-        let module = AlloyModule;
+        let module = AlloyModule::new();
         let permissions = module.permissions();
         assert!(permissions
             .iter()
@@ -77,7 +99,7 @@ mod tests {
 
     #[test]
     fn module_has_migrations() {
-        let module = AlloyModule;
+        let module = AlloyModule::new();
         assert!(!module.migrations().is_empty());
     }
 }

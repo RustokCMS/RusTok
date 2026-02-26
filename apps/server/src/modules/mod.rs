@@ -25,7 +25,7 @@ pub fn build_registry() -> ModuleRegistry {
         .register(BlogModule)
         .register(ForumModule)
         .register(PagesModule)
-        .register(AlloyModule)
+        .register(AlloyModule::new())
 }
 
 pub use manifest::validate_registry_vs_manifest;

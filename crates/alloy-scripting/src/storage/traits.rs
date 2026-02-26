@@ -13,6 +13,7 @@ pub enum ScriptQuery {
     ByApiPath(String),
     Scheduled,
     ByStatus(ScriptStatus),
+    All,
 }
 
 #[async_trait]

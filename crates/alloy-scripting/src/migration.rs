@@ -13,10 +13,14 @@ impl MigrationTrait for ScriptsMigration {
                     .if_not_exists()
                     .col(ColumnDef::new(Scripts::Id).uuid().not_null().primary_key())
                     .col(
+                        ColumnDef::new(Scripts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
                         ColumnDef::new(Scripts::Name)
                             .string_len(255)
-                            .not_null()
-                            .unique_key(),
+                            .not_null(),
                     )
                     .col(ColumnDef::new(Scripts::Description).text())
                     .col(ColumnDef::new(Scripts::Code).text().not_null())
@@ -71,6 +75,13 @@ impl MigrationTrait for ScriptsMigration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
+                    .index(
+                        Index::create()
+                            .unique()
+                            .name("uidx_scripts_tenant_name")
+                            .col(Scripts::TenantId)
+                            .col(Scripts::Name),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -78,8 +89,9 @@ impl MigrationTrait for ScriptsMigration {
         manager
             .create_index(
                 Index::create()
-                    .name("idx_scripts_trigger_status")
+                    .name("idx_scripts_tenant_trigger_status")
                     .table(Scripts::Table)
+                    .col(Scripts::TenantId)
                     .col(Scripts::TriggerType)
                     .col(Scripts::Status)
                     .to_owned(),
@@ -98,6 +110,7 @@ impl MigrationTrait for ScriptsMigration {
 enum Scripts {
     Table,
     Id,
+    TenantId,
     Name,
     Description,
     Code,

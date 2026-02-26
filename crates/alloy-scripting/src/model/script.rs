@@ -21,6 +21,7 @@ pub enum ScriptStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Script {
     pub id: ScriptId,
+    pub tenant_id: Uuid,
     pub name: String,
     pub description: Option<String>,
     pub code: String,
@@ -41,6 +42,7 @@ impl Script {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
+            tenant_id: Uuid::nil(),
             name: name.into(),
             description: None,
             code: code.into(),

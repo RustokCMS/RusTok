@@ -70,7 +70,8 @@ impl EntityProxy {
     }
 
     pub fn take_changes(&self) -> HashMap<String, Dynamic> {
-        self.changes()
+        let mut state = self.state.write();
+        std::mem::take(&mut state.changes)
     }
 
     pub fn original(&self) -> HashMap<String, Dynamic> {

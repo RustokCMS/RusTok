@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 use crate::model::{Script, ScriptId, ScriptStatus, ScriptTrigger};
 
@@ -15,6 +16,7 @@ pub struct CreateScriptRequest {
     pub permissions: Vec<String>,
     #[serde(default)]
     pub run_as_system: bool,
+    pub tenant_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]

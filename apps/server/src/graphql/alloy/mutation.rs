@@ -5,13 +5,25 @@ use uuid::Uuid;
 
 use alloy_scripting::model::Script;
 use alloy_scripting::runner::ExecutionOutcome;
+use alloy_scripting::utils::validate_cron_expression;
 use alloy_scripting::ScriptRegistry;
 use rhai::Dynamic;
 
 use super::types::{
-    CreateScriptInput, GqlExecutionResult, GqlScript, RunScriptInput, UpdateScriptInput,
+    CreateScriptInput, GqlExecutionResult, GqlScript, RunScriptInput, ScriptTriggerInput,
+    UpdateScriptInput,
 };
+use crate::context::TenantContext;
+
 use super::{dynamic_to_json, json_to_dynamic, require_admin, AlloyState};
+
+fn validate_cron_trigger(trigger: &ScriptTriggerInput) -> Result<()> {
+    if let ScriptTriggerInput::Cron(cron) = trigger {
+        validate_cron_expression(&cron.expression)
+            .map_err(|err| async_graphql::Error::new(format!("Invalid cron expression: {err}")))?;
+    }
+    Ok(())
+}
 
 #[derive(Default)]
 pub struct AlloyMutation;
@@ -24,6 +36,7 @@ impl AlloyMutation {
         input: CreateScriptInput,
     ) -> Result<GqlScript> {
         require_admin(ctx)?;
+        validate_cron_trigger(&input.trigger)?;
         let state = ctx.data::<AlloyState>()?;
         let mut scope = rhai::Scope::new();
         state
@@ -31,7 +44,13 @@ impl AlloyMutation {
             .compile(&input.name, &input.code, &mut scope)
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
+        let tenant_id = ctx
+            .data::<TenantContext>()
+            .map(|t| t.id)
+            .unwrap_or_default();
+
         let mut script = Script::new(input.name, input.code, input.trigger.into());
+        script.tenant_id = tenant_id;
         script.description = input.description;
         script.run_as_system = input.run_as_system;
         script.permissions = input.permissions;
@@ -78,6 +97,9 @@ impl AlloyMutation {
                 .compile(&script.name, &code, &mut scope)
                 .map_err(|err| async_graphql::Error::new(err.to_string()))?;
             script.code = code;
+        }
+        if let Some(ref trigger) = input.trigger {
+            validate_cron_trigger(trigger)?;
         }
         if let Some(trigger) = input.trigger {
             script.trigger = trigger.into();

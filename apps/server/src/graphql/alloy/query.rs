@@ -24,7 +24,7 @@ impl AlloyQuery {
         let state = ctx.data::<AlloyState>()?;
         let query = match status {
             Some(status) => ScriptQuery::ByStatus(status.into()),
-            None => ScriptQuery::ByStatus(alloy_scripting::model::ScriptStatus::Active),
+            None => ScriptQuery::All,
         };
 
         let scripts = state

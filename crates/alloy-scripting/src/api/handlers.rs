@@ -14,6 +14,7 @@ use crate::error::ScriptError;
 use crate::model::{EntityProxy, ScriptStatus};
 use crate::runner::ScriptOrchestrator;
 use crate::storage::{ScriptQuery, ScriptRegistry};
+use crate::utils::{dynamic_to_json, json_to_dynamic};
 
 use super::dto::*;
 
@@ -125,6 +126,9 @@ pub async fn create_script<S: ScriptRegistry>(
     }
 
     let mut script = crate::model::Script::new(req.name, req.code, req.trigger);
+    if let Some(tenant_id) = req.tenant_id {
+        script.tenant_id = tenant_id;
+    }
     script.description = req.description;
     script.permissions = req.permissions;
     script.run_as_system = req.run_as_system;
@@ -337,9 +341,8 @@ pub async fn validate_script<S: ScriptRegistry>(
     State(state): State<Arc<AppState<S>>>,
     Json(req): Json<CreateScriptRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let ctx = crate::context::ExecutionContext::new(crate::context::ExecutionPhase::Manual);
-
-    match state.engine.execute("__validation__", &req.code, &ctx) {
+    let mut scope = rhai::Scope::new();
+    match state.engine.compile("__validation__", &req.code, &mut scope) {
         Ok(_) => Ok(Json(serde_json::json!({
             "valid": true,
             "message": "Script compiles successfully"
@@ -352,60 +355,6 @@ pub async fn validate_script<S: ScriptRegistry>(
 }
 
 // ============ Helpers ============
-
-fn json_to_dynamic(v: serde_json::Value) -> rhai::Dynamic {
-    match v {
-        serde_json::Value::Null => rhai::Dynamic::UNIT,
-        serde_json::Value::Bool(b) => rhai::Dynamic::from(b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                rhai::Dynamic::from(i)
-            } else if let Some(f) = n.as_f64() {
-                rhai::Dynamic::from(f)
-            } else {
-                rhai::Dynamic::UNIT
-            }
-        }
-        serde_json::Value::String(s) => rhai::Dynamic::from(s),
-        serde_json::Value::Array(arr) => {
-            let vec: Vec<rhai::Dynamic> = arr.into_iter().map(json_to_dynamic).collect();
-            rhai::Dynamic::from(vec)
-        }
-        serde_json::Value::Object(map) => {
-            let mut rhai_map = rhai::Map::new();
-            for (k, v) in map {
-                rhai_map.insert(k.into(), json_to_dynamic(v));
-            }
-            rhai::Dynamic::from(rhai_map)
-        }
-    }
-}
-
-fn dynamic_to_json(d: rhai::Dynamic) -> serde_json::Value {
-    if d.is_unit() {
-        serde_json::Value::Null
-    } else if let Some(b) = d.clone().try_cast::<bool>() {
-        serde_json::Value::Bool(b)
-    } else if let Some(i) = d.clone().try_cast::<i64>() {
-        serde_json::Value::Number(i.into())
-    } else if let Some(f) = d.clone().try_cast::<f64>() {
-        serde_json::Number::from_f64(f)
-            .map(serde_json::Value::Number)
-            .unwrap_or(serde_json::Value::Null)
-    } else if let Some(s) = d.clone().try_cast::<String>() {
-        serde_json::Value::String(s)
-    } else if let Some(arr) = d.clone().try_cast::<rhai::Array>() {
-        serde_json::Value::Array(arr.into_iter().map(dynamic_to_json).collect())
-    } else if let Some(map) = d.clone().try_cast::<rhai::Map>() {
-        let mut json_map = serde_json::Map::new();
-        for (k, v) in map {
-            json_map.insert(k.to_string(), dynamic_to_json(v));
-        }
-        serde_json::Value::Object(json_map)
-    } else {
-        serde_json::Value::String(d.to_string())
-    }
-}
 
 fn convert_map(map: HashMap<String, rhai::Dynamic>) -> HashMap<String, serde_json::Value> {
     map.into_iter()

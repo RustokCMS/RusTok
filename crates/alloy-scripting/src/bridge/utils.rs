@@ -6,6 +6,25 @@ pub fn register_utils(engine: &mut Engine) {
     engine.register_fn("log_warn", log_warn);
     engine.register_fn("log_error", log_error);
 
+    engine.register_fn(
+        "log",
+        |script_name: &str, message: &str| {
+            info!(target: "script", script = script_name, "{}", message);
+        },
+    );
+    engine.register_fn(
+        "log_warn",
+        |script_name: &str, message: &str| {
+            warn!(target: "script", script = script_name, "{}", message);
+        },
+    );
+    engine.register_fn(
+        "log_error",
+        |script_name: &str, message: &str| {
+            error!(target: "script", script = script_name, "{}", message);
+        },
+    );
+
     engine.register_fn("now", now_timestamp);
     engine.register_fn("now_unix", now_unix);
 

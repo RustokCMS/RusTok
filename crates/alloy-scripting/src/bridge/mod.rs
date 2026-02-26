@@ -31,7 +31,18 @@ impl Bridge {
 
     fn register_validation_helpers(engine: &mut Engine) {
         engine.register_fn("validate_email", |email: &str| -> bool {
-            email.contains('@') && email.contains('.')
+            let parts: Vec<&str> = email.splitn(2, '@').collect();
+            if parts.len() != 2 {
+                return false;
+            }
+            let local = parts[0];
+            let domain = parts[1];
+            !local.is_empty()
+                && !domain.is_empty()
+                && domain.contains('.')
+                && !domain.starts_with('.')
+                && !domain.ends_with('.')
+                && domain.len() > 2
         });
 
         engine.register_fn("validate_required", |value: &str| -> bool {

@@ -9,6 +9,7 @@ pub mod model;
 pub mod runner;
 pub mod scheduler;
 pub mod storage;
+pub mod utils;
 
 pub use api::{create_router, AppState};
 pub use bridge::Bridge;
@@ -21,7 +22,7 @@ pub use model::{
     register_entity_proxy, EntityProxy, EventType, HttpMethod, Script, ScriptId, ScriptStatus,
     ScriptTrigger,
 };
-pub use runner::{ExecutionOutcome, ExecutionResult, HookOutcome, ScriptOrchestrator};
+pub use runner::{ExecutionOutcome, ExecutionResult, HookOutcome, ScriptExecutor, ScriptOrchestrator};
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptQuery, ScriptRegistry, SeaOrmStorage};
 

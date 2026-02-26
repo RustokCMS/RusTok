@@ -63,6 +63,12 @@ impl<R: ScriptRegistry> ScriptOrchestrator<R> {
                 };
             }
 
+            if let ExecutionOutcome::Failed { ref error } = result.outcome {
+                return HookOutcome::Error {
+                    error: error.clone(),
+                };
+            }
+
             if let ExecutionOutcome::Success {
                 ref entity_changes, ..
             } = result.outcome

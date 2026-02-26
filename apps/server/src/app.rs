@@ -81,7 +81,16 @@ impl Hooks for App {
             engine.clone(),
             storage.clone(),
         ));
-        let alloy_state = crate::graphql::alloy::AlloyState::new(engine, storage, orchestrator);
+        let alloy_state = crate::graphql::alloy::AlloyState::new(engine.clone(), storage.clone(), orchestrator);
+
+        let executor = alloy_scripting::ScriptExecutor::new(engine, storage.clone());
+        let scheduler = Arc::new(alloy_scripting::Scheduler::new(executor, storage));
+        tokio::spawn(async move {
+            if let Err(err) = scheduler.load_jobs().await {
+                tracing::warn!("Failed to load scheduler jobs: {}", err);
+            }
+            scheduler.start().await;
+        });
 
         Ok(router
             .layer(Extension(registry))
