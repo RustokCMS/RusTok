@@ -6,12 +6,15 @@ use sea_orm::{
     EntityTrait, QueryFilter,
 };
 use std::collections::HashSet;
-use std::fmt::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
+use rustok_rbac::services::permission_policy::{
+    denied_reason_for_denial, has_effective_permission_in_set, missing_permissions,
+    DeniedReasonKind,
+};
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
 
@@ -70,13 +73,6 @@ pub struct RbacResolverMetricsSnapshot {
     pub claim_role_mismatch_total: u64,
     pub decision_mismatch_total: u64,
     pub shadow_compare_failures_total: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DeniedReasonKind {
-    NoPermissionsResolved,
-    MissingPermissions,
-    Unknown,
 }
 
 static RBAC_PERMISSION_CACHE_HITS: AtomicU64 = AtomicU64::new(0);
@@ -227,56 +223,6 @@ impl AuthService {
         Ok(())
     }
 
-    pub fn has_effective_permission_in_set(
-        user_permissions: &[Permission],
-        required_permission: &Permission,
-    ) -> bool {
-        user_permissions.contains(required_permission)
-            || user_permissions.contains(&Permission::new(
-                required_permission.resource,
-                Action::Manage,
-            ))
-    }
-
-    fn missing_permissions(
-        user_permissions: &[Permission],
-        required_permissions: &[Permission],
-    ) -> Vec<Permission> {
-        required_permissions
-            .iter()
-            .copied()
-            .filter(|permission| {
-                !Self::has_effective_permission_in_set(user_permissions, permission)
-            })
-            .collect()
-    }
-
-    fn denied_reason_for_denial(
-        user_permissions: &[Permission],
-        missing_permissions: &[Permission],
-    ) -> (DeniedReasonKind, String) {
-        if user_permissions.is_empty() {
-            return (
-                DeniedReasonKind::NoPermissionsResolved,
-                "no_permissions_resolved".to_string(),
-            );
-        }
-
-        if missing_permissions.is_empty() {
-            return (DeniedReasonKind::Unknown, "unknown".to_string());
-        }
-
-        let mut reason = String::from("missing_permissions:");
-        for (index, permission) in missing_permissions.iter().enumerate() {
-            if index > 0 {
-                reason.push(',');
-            }
-            let _ = write!(&mut reason, "{}", permission);
-        }
-
-        (DeniedReasonKind::MissingPermissions, reason)
-    }
-
     fn denied_reason_bucket(denied_reason_kind: DeniedReasonKind) {
         match denied_reason_kind {
             DeniedReasonKind::NoPermissionsResolved => {
@@ -370,7 +316,7 @@ impl AuthService {
     ) -> Result<bool> {
         let started_at = Instant::now();
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        let allowed = Self::has_effective_permission_in_set(&user_permissions, required_permission);
+        let allowed = has_effective_permission_in_set(&user_permissions, required_permission);
         let missing_permissions = if allowed {
             Vec::new()
         } else {
@@ -379,7 +325,7 @@ impl AuthService {
         let denied = if allowed {
             None
         } else {
-            Some(Self::denied_reason_for_denial(
+            Some(denied_reason_for_denial(
                 &user_permissions,
                 &missing_permissions,
             ))
@@ -447,7 +393,7 @@ impl AuthService {
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
         let allowed = required_permissions
             .iter()
-            .any(|permission| Self::has_effective_permission_in_set(&user_permissions, permission));
+            .any(|permission| has_effective_permission_in_set(&user_permissions, permission));
         let missing_permissions = if allowed {
             Vec::new()
         } else {
@@ -456,7 +402,7 @@ impl AuthService {
         let denied = if allowed {
             None
         } else {
-            Some(Self::denied_reason_for_denial(
+            Some(denied_reason_for_denial(
                 &user_permissions,
                 &missing_permissions,
             ))
@@ -522,13 +468,12 @@ impl AuthService {
         }
 
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        let missing_permissions =
-            Self::missing_permissions(&user_permissions, required_permissions);
+        let missing_permissions = missing_permissions(&user_permissions, required_permissions);
         let allowed = missing_permissions.is_empty();
         let denied = if allowed {
             None
         } else {
-            Some(Self::denied_reason_for_denial(
+            Some(denied_reason_for_denial(
                 &user_permissions,
                 &missing_permissions,
             ))
@@ -889,7 +834,7 @@ mod tests {
     #[test]
     fn denied_reason_reports_no_permissions_resolved() {
         let (denied_reason_kind, denied_reason) =
-            AuthService::denied_reason_for_denial(&[], &[Permission::USERS_READ]);
+            denied_reason_for_denial(&[], &[Permission::USERS_READ]);
         assert_eq!(denied_reason_kind, DeniedReasonKind::NoPermissionsResolved);
         assert_eq!(denied_reason, "no_permissions_resolved");
     }
@@ -899,18 +844,15 @@ mod tests {
         let user_permissions = vec![Permission::new(Resource::Users, Action::Manage)];
         let required_permissions = vec![Permission::USERS_READ, Permission::USERS_UPDATE];
 
-        let missing_permissions =
-            AuthService::missing_permissions(&user_permissions, &required_permissions);
+        let missing_permissions = missing_permissions(&user_permissions, &required_permissions);
 
         assert!(missing_permissions.is_empty());
     }
 
     #[test]
     fn denied_reason_classifies_missing_permissions() {
-        let (denied_reason_kind, denied_reason) = AuthService::denied_reason_for_denial(
-            &[Permission::USERS_READ],
-            &[Permission::USERS_UPDATE],
-        );
+        let (denied_reason_kind, denied_reason) =
+            denied_reason_for_denial(&[Permission::USERS_READ], &[Permission::USERS_UPDATE]);
         assert_eq!(denied_reason_kind, DeniedReasonKind::MissingPermissions);
         assert!(denied_reason.starts_with("missing_permissions:"));
     }

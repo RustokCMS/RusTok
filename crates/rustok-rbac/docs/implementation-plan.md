@@ -27,6 +27,7 @@ compatibility with platform-level contracts.
 ### Phase 1 — Contract hardening (in progress)
 
 - [ ] Freeze public API expectations for the current module surface.
+- [x] Introduce shared permission-policy helpers (`permission_policy`) and start consuming them from `apps/server` extractors/service wiring to reduce server-owned policy logic.
 - [ ] Align error/validation conventions with platform guidance.
 - [ ] Expand automated tests around core invariants and boundary behavior.
 

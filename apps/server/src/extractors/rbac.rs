@@ -2,10 +2,12 @@ use axum::http::StatusCode;
 use rustok_core::{Action, Permission};
 
 use crate::extractors::auth::CurrentUser;
-use crate::services::auth::AuthService;
 
 fn has_effective_permission(user: &CurrentUser, permission: &Permission) -> bool {
-    AuthService::has_effective_permission_in_set(&user.permissions, permission)
+    rustok_rbac::services::permission_policy::has_effective_permission_in_set(
+        &user.permissions,
+        permission,
+    )
 }
 
 /// Extractor that enforces a specific permission
