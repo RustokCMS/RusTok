@@ -212,16 +212,17 @@ Gate перед выкладкой:
 
 Шаблон фиксации результатов gate (заполняется перед релизом):
 
-| Gate | Артефакт | Статус | Evidence | Owner | Дата |
+| Гейт | Артефакт | Статус | Подтверждение | Ответственный | Дата |
 | --- | --- | --- | --- | --- | --- |
-| Integration | `cargo test -p rustok-server auth_lifecycle` + auth integration suite | Pending | TBD | Platform foundation | TBD |
-| REST/GraphQL parity | staging scenario report (`create_user`, `confirm_reset`/`reset_password`, `change_password`) | Pending | TBD | Platform foundation | TBD |
-| Security review | checklist по reset/change-password + inactive-user bypass | Pending | TBD | Platform foundation + security reviewer | TBD |
+| Integration | `cargo test -p rustok-server auth_lifecycle` + auth integration suite | Pending | Ссылка на job/лог прогона | Platform foundation | YYYY-MM-DD |
+| REST/GraphQL parity | staging report (`create_user`, `confirm_reset`/`reset_password`, `change_password`) | Pending | Ссылка на parity report | Platform foundation | YYYY-MM-DD |
+| Security review | checklist по reset/change-password + inactive-user bypass | Pending | Ссылка на checklist/sign-off | Platform foundation + security reviewer | YYYY-MM-DD |
 
-Текущий статус исполнения gate в ветке:
+Порядок заполнения gate-артефактов:
 
-- Integration run attempted, but environment cannot resolve crates.io index (`CONNECT tunnel failed, response 403`), поэтому результат зафиксировать пока нельзя.
-- Staging parity и security review остаются pending до запуска полного pre-release прогона.
+1. Перед релизом обновить таблицу фактическими статусами и ссылками на evidence.
+2. Для каждого gate зафиксировать owner и дату завершения проверки.
+3. Если хотя бы один gate не закрыт, релиз блокируется до устранения причины.
 
 Текущий прогресс по gate:
 
