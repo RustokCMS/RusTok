@@ -269,16 +269,10 @@ impl RootMutation {
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let can_manage_modules = AuthService::has_permission(
-            &app_ctx.db,
-            &tenant.id,
-            &auth.user_id,
-            &Permission::new(Resource::Modules, Action::Manage),
-        )
-        .await
-        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let required_permission = Permission::new(Resource::Modules, Action::Manage);
+        let has_manage_modules = auth.permissions.contains(&required_permission);
 
-        if !can_manage_modules {
+        if !has_manage_modules {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "Permission denied: modules:manage required",
             ));

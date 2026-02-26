@@ -47,7 +47,7 @@ fn has_effective_permission(auth: &AuthContext, required_permission: Permission)
         ))
 }
 
-pub(crate) async fn require_admin(ctx: &Context<'_>) -> Result<AuthContext> {
+pub(crate) fn require_admin(ctx: &Context<'_>) -> Result<AuthContext> {
     let auth = ctx
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
