@@ -874,11 +874,47 @@ impl RoleAssignmentStore for ServerRoleAssignmentStore {
 #[cfg(test)]
 mod tests {
     use super::AuthService;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
 
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(())).lock().expect("env lock")
+    const AUTHZ_MODE_ENV: &str = "RUSTOK_RBAC_AUTHZ_MODE";
+
+    struct EnvVarGuard {
+        _lock: MutexGuard<'static, ()>,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn lock(name: &str) -> Self {
+            static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+            let lock = LOCK.get_or_init(|| Mutex::new(())).lock().expect("env lock");
+            let previous = std::env::var(name).ok();
+            Self {
+                _lock: lock,
+                previous,
+            }
+        }
+
+        fn set(&self, name: &str, value: &str) {
+            std::env::set_var(name, value);
+        }
+
+        fn remove(&self, name: &str) {
+            std::env::remove_var(name);
+        }
+
+        fn restore(&self, name: &str) {
+            if let Some(previous) = self.previous.as_ref() {
+                std::env::set_var(name, previous);
+            } else {
+                std::env::remove_var(name);
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            self.restore(AUTHZ_MODE_ENV);
+        }
     }
 
     #[test]
@@ -892,20 +928,26 @@ mod tests {
 
     #[test]
     fn authz_mode_defaults_to_relation_only_when_env_missing() {
-        let _guard = env_lock();
-        std::env::remove_var("RUSTOK_RBAC_AUTHZ_MODE");
+        let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
+        env.remove(AUTHZ_MODE_ENV);
 
         assert!(!AuthService::is_dual_read_enabled());
     }
 
     #[test]
     fn authz_mode_enables_dual_read_from_env() {
-        let _guard = env_lock();
-        std::env::set_var("RUSTOK_RBAC_AUTHZ_MODE", "dual_read");
+        let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
+        env.set(AUTHZ_MODE_ENV, "dual_read");
 
         assert!(AuthService::is_dual_read_enabled());
+    }
 
-        std::env::remove_var("RUSTOK_RBAC_AUTHZ_MODE");
+    #[test]
+    fn authz_mode_handles_trimmed_and_uppercase_env_value() {
+        let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
+        env.set(AUTHZ_MODE_ENV, "  DUAL_READ  ");
+
+        assert!(AuthService::is_dual_read_enabled());
     }
 
     #[test]
