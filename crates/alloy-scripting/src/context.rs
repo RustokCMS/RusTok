@@ -80,6 +80,12 @@ impl ExecutionContext {
         }
     }
 
+    pub fn to_scope_for_script(&self, script_name: &str) -> Scope<'static> {
+        let mut scope = self.to_scope();
+        scope.push_constant("SCRIPT_NAME", script_name.to_string());
+        scope
+    }
+
     pub fn to_scope(&self) -> Scope<'static> {
         let mut scope = Scope::new();
 

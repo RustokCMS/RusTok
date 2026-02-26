@@ -115,7 +115,7 @@ impl ScriptEngine {
         source: &str,
         ctx: &ExecutionContext,
     ) -> ScriptResult<Dynamic> {
-        let mut scope = ctx.to_scope();
+        let mut scope = ctx.to_scope_for_script(name);
         let compiled = self.compile(name, source, &mut scope)?;
         self.execute_compiled_with_timeout(&compiled, scope)
     }

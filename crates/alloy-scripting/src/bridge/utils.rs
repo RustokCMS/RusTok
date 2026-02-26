@@ -36,15 +36,15 @@ pub fn register_utils(engine: &mut Engine) {
 }
 
 fn log_info(message: &str) {
-    info!(target: "script", "{}", message);
+    info!(target: "alloy_script", "{}", message);
 }
 
 fn log_warn(message: &str) {
-    warn!(target: "script", "{}", message);
+    warn!(target: "alloy_script", "{}", message);
 }
 
 fn log_error(message: &str) {
-    error!(target: "script", "{}", message);
+    error!(target: "alloy_script", "{}", message);
 }
 
 fn now_timestamp() -> String {

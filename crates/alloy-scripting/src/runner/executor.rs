@@ -2,7 +2,7 @@ use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::{debug, warn};
+use tracing::{debug, warn, Instrument};
 
 use crate::context::ExecutionContext;
 use crate::engine::ScriptEngine;
@@ -33,6 +33,22 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
     }
 
     pub async fn execute(
+        &self,
+        script: &Script,
+        ctx: &ExecutionContext,
+        entity: Option<EntityProxy>,
+    ) -> ExecutionResult {
+        let span = tracing::info_span!(
+            "script_execute",
+            script_name = %script.name,
+            script_id = %script.id,
+            execution_id = %ctx.execution_id,
+            phase = ?ctx.phase,
+        );
+        self.execute_inner(script, ctx, entity).instrument(span).await
+    }
+
+    async fn execute_inner(
         &self,
         script: &Script,
         ctx: &ExecutionContext,

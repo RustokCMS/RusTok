@@ -1,3 +1,4 @@
+use cron::Schedule;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -16,6 +17,16 @@ pub enum ScriptTrigger {
         path: String,
         method: HttpMethod,
     },
+}
+
+impl ScriptTrigger {
+    pub fn validate(&self) -> Result<(), String> {
+        if let ScriptTrigger::Cron { expression } = self {
+            Schedule::from_str(expression)
+                .map_err(|e| format!("Invalid cron expression '{}': {}", expression, e))?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

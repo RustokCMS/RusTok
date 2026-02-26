@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - 2026-02-26 (alloy-scripting review recommendations)
+
+**crates/alloy-scripting — критические и значительные исправления по docs/alloy-review.md**
+
+- **[#1] Устранено дублирование `json_to_dynamic`/`dynamic_to_json`**: вынесено в `crates/alloy-scripting/src/utils.rs` как публичные функции; `api/handlers.rs` и `apps/server/src/graphql/alloy/mod.rs` теперь используют общую реализацию через `alloy_scripting::utils`
+- **[#3] Исправлен `validate_script`**: заменён вызов `engine.execute()` на `engine.compile()` — валидация теперь проверяет только синтаксис без выполнения кода и side-effects
+- **[#4] Добавлена валидация cron-выражения**: добавлен метод `ScriptTrigger::validate()` с проверкой через `cron::Schedule::from_str()`; вызывается в GraphQL mutations `create_script` и `update_script`
+- **[#5] Исправлена обработка `ExecutionOutcome::Failed` в `run_before`**: теперь аналогично `run_after` — возвращает `HookOutcome::Error` вместо молчаливого продолжения
+- **[#6] Подключён Scheduler**: в `apps/server/src/app.rs` Scheduler инициализируется, загружает cron-задания и запускается в фоновом `tokio::spawn` при старте сервера
+- **[#8] Улучшен health check** в `apps/server/src/modules/alloy.rs`: вместо всегда-`Healthy` выполняется тестовый запуск движка Rhai; при ошибке возвращается `Unhealthy`
+- **[#13] Исправлена `validate_email`**: примитивная проверка `contains('@') && contains('.')` заменена на корректную: проверка наличия ровно одного `@`, непустого local-part, корректного domain (не начинается/заканчивается на `.`, длина > 2)
+- **[#15] Исправлен `take_changes()`** в `EntityProxy`: теперь реализует настоящий move + clear через `std::mem::take`, а не просто клонирование
+- **[#16] Добавлен `ScriptQuery::All`**: новый вариант запроса в `storage/traits.rs`, реализован в `InMemoryStorage` и `SeaOrmStorage`; GraphQL query `scripts` без параметра `status` теперь возвращает все скрипты (вместо только `Active`)
+- **[#14] Добавлен execution context в трейс**: `ExecutionContext::to_scope_for_script()` добавляет константу `SCRIPT_NAME` в scope; `executor.rs` оборачивает выполнение скрипта в `tracing::info_span!` с `script_name`, `script_id`, `execution_id`, `phase` — логи связываются с конкретным скриптом
+- **[crates/alloy-scripting] Добавлен реэкспорт `ScriptExecutor`** из `lib.rs` для использования в `app.rs`
+
 ### Added - 2026-02-25 (continuation)
 
 #### Cleanup & Documentation
