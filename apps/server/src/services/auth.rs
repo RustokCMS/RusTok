@@ -880,40 +880,49 @@ mod tests {
 
     struct EnvVarGuard {
         _lock: MutexGuard<'static, ()>,
+        name: &'static str,
         previous: Option<String>,
     }
 
     impl EnvVarGuard {
-        fn lock(name: &str) -> Self {
+        fn lock(name: &'static str) -> Self {
             static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-            let lock = LOCK.get_or_init(|| Mutex::new(())).lock().expect("env lock");
+            let lock = LOCK
+                .get_or_init(|| Mutex::new(()))
+                .lock()
+                .expect("env lock");
             let previous = std::env::var(name).ok();
             Self {
                 _lock: lock,
+                name,
                 previous,
             }
         }
 
-        fn set(&self, name: &str, value: &str) {
-            std::env::set_var(name, value);
+        fn set(&self, value: &str) {
+            std::env::set_var(self.name, value);
         }
 
-        fn remove(&self, name: &str) {
-            std::env::remove_var(name);
+        fn remove(&self) {
+            std::env::remove_var(self.name);
         }
 
-        fn restore(&self, name: &str) {
+        fn previous(&self) -> Option<&str> {
+            self.previous.as_deref()
+        }
+
+        fn restore(&self) {
             if let Some(previous) = self.previous.as_ref() {
-                std::env::set_var(name, previous);
+                std::env::set_var(self.name, previous);
             } else {
-                std::env::remove_var(name);
+                std::env::remove_var(self.name);
             }
         }
     }
 
     impl Drop for EnvVarGuard {
         fn drop(&mut self) {
-            self.restore(AUTHZ_MODE_ENV);
+            self.restore();
         }
     }
 
@@ -929,7 +938,7 @@ mod tests {
     #[test]
     fn authz_mode_defaults_to_relation_only_when_env_missing() {
         let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
-        env.remove(AUTHZ_MODE_ENV);
+        env.remove();
 
         assert!(!AuthService::is_dual_read_enabled());
     }
@@ -937,7 +946,7 @@ mod tests {
     #[test]
     fn authz_mode_enables_dual_read_from_env() {
         let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
-        env.set(AUTHZ_MODE_ENV, "dual_read");
+        env.set("dual_read");
 
         assert!(AuthService::is_dual_read_enabled());
     }
@@ -945,9 +954,22 @@ mod tests {
     #[test]
     fn authz_mode_handles_trimmed_and_uppercase_env_value() {
         let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
-        env.set(AUTHZ_MODE_ENV, "  DUAL_READ  ");
+        env.set("  DUAL_READ  ");
 
         assert!(AuthService::is_dual_read_enabled());
+    }
+
+    #[test]
+    fn authz_mode_guard_restores_previous_env_value() {
+        let previous = {
+            let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
+            let previous = env.previous().map(ToOwned::to_owned);
+            env.set("dual_read");
+            assert!(AuthService::is_dual_read_enabled());
+            previous
+        };
+
+        assert_eq!(std::env::var(AUTHZ_MODE_ENV).ok(), previous);
     }
 
     #[test]
