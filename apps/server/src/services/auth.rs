@@ -13,7 +13,29 @@ use tracing::{debug, warn};
 
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 
-use crate::models::_entities::{permissions, role_permissions, roles, user_roles};
+use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RbacAuthzMode {
+    RelationOnly,
+    DualRead,
+}
+
+impl RbacAuthzMode {
+    fn parse(value: &str) -> Self {
+        if value.trim().eq_ignore_ascii_case("dual_read") {
+            return Self::DualRead;
+        }
+
+        Self::RelationOnly
+    }
+
+    fn from_env() -> Self {
+        std::env::var("RUSTOK_RBAC_AUTHZ_MODE")
+            .map(|raw| Self::parse(&raw))
+            .unwrap_or(Self::RelationOnly)
+    }
+}
 
 pub struct AuthService;
 
@@ -24,6 +46,13 @@ static USER_PERMISSION_CACHE: Lazy<Cache<(uuid::Uuid, uuid::Uuid), Vec<Permissio
             .time_to_live(Duration::from_secs(60))
             .build()
     });
+
+static USER_LEGACY_ROLE_CACHE: Lazy<Cache<(uuid::Uuid, uuid::Uuid), UserRole>> = Lazy::new(|| {
+    Cache::builder()
+        .max_capacity(20_000)
+        .time_to_live(Duration::from_secs(60))
+        .build()
+});
 
 #[derive(Debug, Clone, Copy)]
 pub struct RbacResolverMetricsSnapshot {
@@ -40,6 +69,7 @@ pub struct RbacResolverMetricsSnapshot {
     pub denied_unknown: u64,
     pub claim_role_mismatch_total: u64,
     pub decision_mismatch_total: u64,
+    pub shadow_compare_failures_total: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,8 +92,141 @@ static RBAC_DENIED_MISSING_PERMISSIONS: AtomicU64 = AtomicU64::new(0);
 static RBAC_DENIED_UNKNOWN: AtomicU64 = AtomicU64::new(0);
 static RBAC_CLAIM_ROLE_MISMATCH_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_DECISION_MISMATCH_TOTAL: AtomicU64 = AtomicU64::new(0);
+static RBAC_SHADOW_COMPARE_FAILURES_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 impl AuthService {
+    fn authz_mode() -> RbacAuthzMode {
+        RbacAuthzMode::from_env()
+    }
+
+    fn is_dual_read_enabled() -> bool {
+        Self::authz_mode() == RbacAuthzMode::DualRead
+    }
+
+    async fn load_legacy_role(
+        db: &DatabaseConnection,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<Option<UserRole>> {
+        let cache_key = Self::cache_key(tenant_id, user_id);
+        if let Some(cached_role) = USER_LEGACY_ROLE_CACHE.get(&cache_key).await {
+            return Ok(Some(cached_role));
+        }
+
+        let user = users::Entity::find_by_id(*user_id)
+            .filter(users::Column::TenantId.eq(*tenant_id))
+            .one(db)
+            .await?;
+
+        if let Some(user) = user {
+            USER_LEGACY_ROLE_CACHE.insert(cache_key, user.role).await;
+            return Ok(Some(user.role));
+        }
+
+        Ok(None)
+    }
+
+    async fn shadow_compare_permission_decision(
+        db: &DatabaseConnection,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        required_permission: &Permission,
+        relation_allowed: bool,
+    ) -> Result<()> {
+        if !Self::is_dual_read_enabled() {
+            return Ok(());
+        }
+
+        let Some(legacy_role) = Self::load_legacy_role(db, tenant_id, user_id).await? else {
+            debug!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                "rbac dual-read skipped: user not found for legacy role"
+            );
+            return Ok(());
+        };
+
+        let legacy_allowed = Rbac::has_permission(&legacy_role, required_permission);
+        if legacy_allowed != relation_allowed {
+            Self::record_decision_mismatch();
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permission = %required_permission,
+                legacy_role = %legacy_role,
+                relation_allowed,
+                legacy_allowed,
+                "rbac_decision_mismatch"
+            );
+        }
+
+        Ok(())
+    }
+
+    async fn shadow_compare_any_permission_decision(
+        db: &DatabaseConnection,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        required_permissions: &[Permission],
+        relation_allowed: bool,
+    ) -> Result<()> {
+        if !Self::is_dual_read_enabled() {
+            return Ok(());
+        }
+
+        let Some(legacy_role) = Self::load_legacy_role(db, tenant_id, user_id).await? else {
+            return Ok(());
+        };
+
+        let legacy_allowed = Rbac::has_any_permission(&legacy_role, required_permissions);
+        if legacy_allowed != relation_allowed {
+            Self::record_decision_mismatch();
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                legacy_role = %legacy_role,
+                relation_allowed,
+                legacy_allowed,
+                "rbac_decision_mismatch"
+            );
+        }
+
+        Ok(())
+    }
+
+    async fn shadow_compare_all_permission_decision(
+        db: &DatabaseConnection,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        required_permissions: &[Permission],
+        relation_allowed: bool,
+    ) -> Result<()> {
+        if !Self::is_dual_read_enabled() {
+            return Ok(());
+        }
+
+        let Some(legacy_role) = Self::load_legacy_role(db, tenant_id, user_id).await? else {
+            return Ok(());
+        };
+
+        let legacy_allowed = Rbac::has_all_permissions(&legacy_role, required_permissions);
+        if legacy_allowed != relation_allowed {
+            Self::record_decision_mismatch();
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                legacy_role = %legacy_role,
+                relation_allowed,
+                legacy_allowed,
+                "rbac_decision_mismatch"
+            );
+        }
+
+        Ok(())
+    }
+
     pub fn has_effective_permission_in_set(
         user_permissions: &[Permission],
         required_permission: &Permission,
@@ -138,6 +301,12 @@ impl AuthService {
             .await;
     }
 
+    pub async fn invalidate_user_rbac_caches(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        let cache_key = Self::cache_key(tenant_id, user_id);
+        USER_PERMISSION_CACHE.invalidate(&cache_key).await;
+        USER_LEGACY_ROLE_CACHE.invalidate(&cache_key).await;
+    }
+
     fn record_permission_check_result(allowed: bool) {
         if allowed {
             RBAC_PERMISSION_CHECKS_ALLOWED.fetch_add(1, Ordering::Relaxed);
@@ -164,6 +333,10 @@ impl AuthService {
         RBAC_DECISION_MISMATCH_TOTAL.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub fn record_shadow_compare_failure() {
+        RBAC_SHADOW_COMPARE_FAILURES_TOTAL.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn metrics_snapshot() -> RbacResolverMetricsSnapshot {
         RbacResolverMetricsSnapshot {
             permission_cache_hits: RBAC_PERMISSION_CACHE_HITS.load(Ordering::Relaxed),
@@ -184,6 +357,8 @@ impl AuthService {
             denied_unknown: RBAC_DENIED_UNKNOWN.load(Ordering::Relaxed),
             claim_role_mismatch_total: RBAC_CLAIM_ROLE_MISMATCH_TOTAL.load(Ordering::Relaxed),
             decision_mismatch_total: RBAC_DECISION_MISMATCH_TOTAL.load(Ordering::Relaxed),
+            shadow_compare_failures_total: RBAC_SHADOW_COMPARE_FAILURES_TOTAL
+                .load(Ordering::Relaxed),
         }
     }
 
@@ -235,6 +410,24 @@ impl AuthService {
 
         Self::record_permission_check_result(allowed);
         Self::record_permission_check_latency(latency_ms);
+        if let Err(error) = Self::shadow_compare_permission_decision(
+            db,
+            tenant_id,
+            user_id,
+            required_permission,
+            allowed,
+        )
+        .await
+        {
+            Self::record_shadow_compare_failure();
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permission = %required_permission,
+                error = %error,
+                "rbac dual-read shadow compare failed"
+            );
+        }
 
         Ok(allowed)
     }
@@ -294,6 +487,24 @@ impl AuthService {
 
         Self::record_permission_check_result(allowed);
         Self::record_permission_check_latency(latency_ms);
+        if let Err(error) = Self::shadow_compare_any_permission_decision(
+            db,
+            tenant_id,
+            user_id,
+            required_permissions,
+            allowed,
+        )
+        .await
+        {
+            Self::record_shadow_compare_failure();
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                error = %error,
+                "rbac dual-read shadow compare failed"
+            );
+        }
 
         Ok(allowed)
     }
@@ -350,6 +561,24 @@ impl AuthService {
 
         Self::record_permission_check_result(allowed);
         Self::record_permission_check_latency(latency_ms);
+        if let Err(error) = Self::shadow_compare_all_permission_decision(
+            db,
+            tenant_id,
+            user_id,
+            required_permissions,
+            allowed,
+        )
+        .await
+        {
+            Self::record_shadow_compare_failure();
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                error = %error,
+                "rbac dual-read shadow compare failed"
+            );
+        }
 
         Ok(allowed)
     }
@@ -510,7 +739,7 @@ impl AuthService {
             .await?;
         }
 
-        Self::invalidate_user_permissions_cache(tenant_id, user_id).await;
+        Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
 
         Ok(())
     }
@@ -539,7 +768,7 @@ impl AuthService {
                 .await?;
         }
 
-        Self::invalidate_user_permissions_cache(tenant_id, user_id).await;
+        Self::invalidate_user_rbac_caches(tenant_id, user_id).await;
 
         Self::assign_role_permissions(db, user_id, tenant_id, role).await
     }
@@ -649,6 +878,15 @@ mod tests {
     }
 
     #[test]
+    fn shadow_compare_failure_counter_increments() {
+        let before = AuthService::metrics_snapshot().shadow_compare_failures_total;
+        AuthService::record_shadow_compare_failure();
+        let after = AuthService::metrics_snapshot().shadow_compare_failures_total;
+
+        assert_eq!(after, before + 1);
+    }
+
+    #[test]
     fn denied_reason_reports_no_permissions_resolved() {
         let (denied_reason_kind, denied_reason) =
             AuthService::denied_reason_for_denial(&[], &[Permission::USERS_READ]);
@@ -675,5 +913,32 @@ mod tests {
         );
         assert_eq!(denied_reason_kind, DeniedReasonKind::MissingPermissions);
         assert!(denied_reason.starts_with("missing_permissions:"));
+    }
+
+    #[test]
+    fn rbac_authz_mode_parse_defaults_to_relation_only() {
+        assert_eq!(RbacAuthzMode::parse(""), RbacAuthzMode::RelationOnly);
+        assert_eq!(
+            RbacAuthzMode::parse("relation_only"),
+            RbacAuthzMode::RelationOnly
+        );
+        assert_eq!(
+            RbacAuthzMode::parse("unexpected"),
+            RbacAuthzMode::RelationOnly
+        );
+    }
+
+    #[test]
+    fn rbac_authz_mode_parse_supports_dual_read() {
+        assert_eq!(RbacAuthzMode::parse("dual_read"), RbacAuthzMode::DualRead);
+        assert_eq!(RbacAuthzMode::parse("DUAL_READ"), RbacAuthzMode::DualRead);
+    }
+
+    #[test]
+    fn rbac_authz_mode_parse_trims_value() {
+        assert_eq!(
+            RbacAuthzMode::parse("  dual_read  "),
+            RbacAuthzMode::DualRead
+        );
     }
 }

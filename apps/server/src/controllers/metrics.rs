@@ -150,6 +150,7 @@ rustok_rbac_permission_denied_reason_missing_permissions {denied_missing_permiss
 rustok_rbac_permission_denied_reason_unknown {denied_unknown}\n\
 rustok_rbac_claim_role_mismatch_total {claim_role_mismatch_total}\n\
 rustok_rbac_decision_mismatch_total {decision_mismatch_total}\n\
+rustok_rbac_shadow_compare_failures_total {shadow_compare_failures_total}\n\
 rustok_rbac_users_without_roles_total {users_without_roles_total}\n\
 rustok_rbac_orphan_user_roles_total {orphan_user_roles_total}\n\
 rustok_rbac_orphan_role_permissions_total {orphan_role_permissions_total}\n\
@@ -169,6 +170,7 @@ rustok_rbac_consistency_query_latency_samples {consistency_query_latency_samples
         denied_unknown = stats.denied_unknown,
         claim_role_mismatch_total = stats.claim_role_mismatch_total,
         decision_mismatch_total = stats.decision_mismatch_total,
+        shadow_compare_failures_total = stats.shadow_compare_failures_total,
         users_without_roles_total = users_without_roles_total,
         orphan_user_roles_total = orphan_user_roles_total,
         orphan_role_permissions_total = orphan_role_permissions_total,
@@ -193,6 +195,12 @@ mod tests {
     fn rbac_metrics_include_decision_mismatch_counter() {
         let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 0, 0, 0);
         assert!(payload.contains("rustok_rbac_decision_mismatch_total"));
+    }
+
+    #[test]
+    fn rbac_metrics_include_shadow_compare_failures_counter() {
+        let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 0, 0, 0);
+        assert!(payload.contains("rustok_rbac_shadow_compare_failures_total"));
     }
 
     #[test]
