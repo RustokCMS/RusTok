@@ -1,9 +1,39 @@
 # План миграции RBAC на relation-модель (source of truth)
 
 - Дата: 2026-02-26
-- Статус: Draft (execution plan)
+- Статус: In progress (execution in phases)
 - Область: `apps/server`, `crates/rustok-core`, `crates/rustok-rbac`, миграции `apps/server/migration`
 - Цель: перейти на модель, где права доступа вычисляются **только** через таблицы связей (`roles`, `permissions`, `user_roles`, `role_permissions`), и убрать зависимость авторизации от денормализованного `users.role`.
+
+---
+
+
+## 0. Статус выполнения (progress tracker)
+
+> Обновляется по мере мерджей в `apps/server`/`crates/*`.
+
+- [x] **Фаза 0 — Архитектурное решение и подготовка (частично):**
+  - План и архитектурные ссылки зафиксированы в `docs/architecture/*` и `docs/index.md`.
+  - ADR про RBAC source-of-truth в relation-модели — **в работе** (не закрыт этим шагом).
+- [x] **Фаза 1 — Быстрые исправления консистентности (базовые пункты):**
+  - user creation flows для `register/sign_up/create_user` уже заведены через назначение relation RBAC (`assign_role_permissions`).
+  - parity reset-password/session invalidation ведётся отдельным remediation-потоком и ADR (см. cross-link ниже).
+- [~] **Фаза 2 — Единый Permission Resolver (начато):**
+  - В `AuthService` добавлены tenant-aware методы `get_user_permissions / has_permission / has_any_permission / has_all_permissions`.
+  - Реализованы tenant-scoping и deduplication; сохранена семантика `resource:manage` как wildcard.
+  - Переведена часть GraphQL-checks (users CRUD/read/list) и RBAC extractors на relation-проверки.
+- [~] **Фаза 3 — AuthContext и токены (начато):**
+  - `CurrentUser.permissions` теперь резолвятся из relation-модели, а не из `users.role`.
+  - Полный отказ от role-claim в policy-решениях ещё не завершён (есть оставшиеся role-based места).
+- [ ] **Фаза 4 — Миграция данных и защитные инварианты:** не начато.
+- [ ] **Фаза 5 — Dual-read и cutover:** не начато.
+- [ ] **Фаза 6 — Cleanup legacy-модели:** не начато.
+
+### Что осталось приоритетно на ближайший шаг
+
+1. Добрать оставшиеся runtime-проверки, где ещё используется `auth.role` для доступа.
+2. Добавить observability для resolver-решений (latency/cache/deny reasons).
+3. Подготовить и согласовать ADR по final cutover (`relation-only`).
 
 ---
 
