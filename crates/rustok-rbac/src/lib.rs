@@ -18,8 +18,8 @@ pub use services::permission_policy::{
 
 pub use services::permission_resolver::{PermissionResolution, PermissionResolver};
 pub use services::relation_permission_resolver::{
-    resolve_permissions_from_relations, resolve_permissions_with_cache, PermissionCache,
-    RelationPermissionStore,
+    invalidate_cached_permissions, resolve_permissions_from_relations,
+    resolve_permissions_with_cache, PermissionCache, RelationPermissionStore,
 };
 
 use async_trait::async_trait;

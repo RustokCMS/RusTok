@@ -13,8 +13,8 @@ use tracing::{debug, warn};
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 use rustok_rbac::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,
-    resolve_permissions_with_cache, DeniedReasonKind, PermissionCache, PermissionResolution,
-    PermissionResolver, RelationPermissionStore,
+    invalidate_cached_permissions, resolve_permissions_with_cache, DeniedReasonKind,
+    PermissionCache, PermissionResolution, PermissionResolver, RelationPermissionStore,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -243,14 +243,15 @@ impl AuthService {
     }
 
     pub async fn invalidate_user_permissions_cache(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
-        USER_PERMISSION_CACHE
-            .invalidate(&Self::cache_key(tenant_id, user_id))
-            .await;
+        let cache = MokaPermissionCache;
+        invalidate_cached_permissions(&cache, tenant_id, user_id).await;
     }
 
     pub async fn invalidate_user_rbac_caches(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        let cache = MokaPermissionCache;
+        invalidate_cached_permissions(&cache, tenant_id, user_id).await;
+
         let cache_key = Self::cache_key(tenant_id, user_id);
-        USER_PERMISSION_CACHE.invalidate(&cache_key).await;
         USER_LEGACY_ROLE_CACHE.invalidate(&cache_key).await;
     }
 
@@ -737,6 +738,12 @@ impl PermissionCache for MokaPermissionCache {
     ) {
         USER_PERMISSION_CACHE
             .insert((*tenant_id, *user_id), permissions)
+            .await;
+    }
+
+    async fn invalidate(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+        USER_PERMISSION_CACHE
+            .invalidate(&(*tenant_id, *user_id))
             .await;
     }
 }

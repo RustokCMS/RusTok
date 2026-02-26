@@ -43,6 +43,8 @@ pub trait PermissionCache {
         user_id: &uuid::Uuid,
         permissions: Vec<Permission>,
     );
+
+    async fn invalidate(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid);
 }
 
 pub async fn resolve_permissions_from_relations<S: RelationPermissionStore>(
@@ -98,6 +100,14 @@ where
     })
 }
 
+pub async fn invalidate_cached_permissions<C: PermissionCache>(
+    cache: &C,
+    tenant_id: &uuid::Uuid,
+    user_id: &uuid::Uuid,
+) {
+    cache.invalidate(tenant_id, user_id).await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -145,6 +155,10 @@ mod tests {
                 .lock()
                 .await
                 .insert((*tenant_id, *user_id), permissions);
+        }
+
+        async fn invalidate(&self, tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
+            self.values.lock().await.remove(&(*tenant_id, *user_id));
         }
     }
 
@@ -268,5 +282,20 @@ mod tests {
         assert!(!first.cache_hit);
         assert!(second.cache_hit);
         assert_eq!(second.permissions, vec![Permission::USERS_READ]);
+    }
+    #[tokio::test]
+    async fn invalidate_cached_permissions_evicts_entry() {
+        let tenant_id = uuid::Uuid::new_v4();
+        let user_id = uuid::Uuid::new_v4();
+        let cache = StubCache::default();
+
+        cache
+            .insert(&tenant_id, &user_id, vec![Permission::USERS_READ])
+            .await;
+
+        super::invalidate_cached_permissions(&cache, &tenant_id, &user_id).await;
+
+        let cached = cache.get(&tenant_id, &user_id).await;
+        assert!(cached.is_none());
     }
 }
