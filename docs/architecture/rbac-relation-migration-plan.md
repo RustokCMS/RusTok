@@ -39,7 +39,8 @@
   - Role claim в JWT используется как display/debug claim и для shadow-observability, но не как policy source-of-truth.
 - [~] **Фаза 4 — Миграция данных и защитные инварианты (в работе):**
   - Добавлена maintenance-задача `cleanup --args "rbac-report"` для отчёта по инвариантам (`users_without_roles`, `orphan_user_roles`, `orphan_role_permissions`).
-  - Добавлена maintenance-задача `cleanup --args "rbac-backfill"` для idempotent backfill relation-RBAC по `users.role` в пределах tenant c повторной проверкой инвариантов после выполнения.
+  - Добавлена maintenance-задача `cleanup --args "target=rbac-backfill"` для idempotent backfill relation-RBAC по `users.role` в пределах tenant c повторной проверкой инвариантов после выполнения.
+  - Для staged rollout в backfill добавлены safety-controls: `dry_run=true` (без изменений данных) и `limit=<N>` (батчевый прогон).
 - [ ] **Фаза 5 — Dual-read и cutover:** не начато.
 - [ ] **Фаза 6 — Cleanup legacy-модели:** не начато.
 

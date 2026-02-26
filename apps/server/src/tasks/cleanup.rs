@@ -58,6 +58,9 @@ impl Task for CleanupTask {
                 );
             }
             "rbac-backfill" => {
+                let dry_run = is_flag_enabled(&vars.cli, "dry_run");
+                let limit = parse_limit(&vars.cli)?;
+
                 let before = load_rbac_consistency_stats(ctx).await?;
                 tracing::info!(
                     users_without_roles_total = before.users_without_roles_total,
@@ -66,20 +69,38 @@ impl Task for CleanupTask {
                     "RBAC consistency before backfill"
                 );
 
-                let users_without_tenant_roles = load_users_without_tenant_roles(ctx).await?;
-                for user in &users_without_tenant_roles {
-                    crate::services::auth::AuthService::assign_role_permissions(
-                        &ctx.db,
-                        &user.id,
-                        &user.tenant_id,
-                        user.role.clone(),
-                    )
-                    .await?;
+                let mut users_without_tenant_roles = load_users_without_tenant_roles(ctx).await?;
+                if let Some(limit) = limit {
+                    users_without_tenant_roles.truncate(limit);
+                }
+
+                if dry_run {
+                    tracing::info!(
+                        candidates = users_without_tenant_roles.len(),
+                        limit = limit,
+                        "RBAC backfill dry-run: no relation changes applied"
+                    );
+                } else {
+                    for user in &users_without_tenant_roles {
+                        crate::services::auth::AuthService::assign_role_permissions(
+                            &ctx.db,
+                            &user.id,
+                            &user.tenant_id,
+                            user.role.clone(),
+                        )
+                        .await?;
+                    }
                 }
 
                 let after = load_rbac_consistency_stats(ctx).await?;
                 tracing::info!(
-                    fixed_users = users_without_tenant_roles.len(),
+                    fixed_users = if dry_run {
+                        0
+                    } else {
+                        users_without_tenant_roles.len()
+                    },
+                    candidates = users_without_tenant_roles.len(),
+                    dry_run,
                     users_without_roles_total = after.users_without_roles_total,
                     orphan_user_roles_total = after.orphan_user_roles_total,
                     orphan_role_permissions_total = after.orphan_role_permissions_total,
@@ -105,5 +126,49 @@ impl Task for CleanupTask {
         }
 
         Ok(())
+    }
+}
+
+fn is_flag_enabled(cli: &std::collections::HashMap<String, String>, key: &str) -> bool {
+    matches!(
+        cli.get(key).map(String::as_str),
+        Some("1") | Some("true") | Some("yes")
+    )
+}
+
+fn parse_limit(cli: &std::collections::HashMap<String, String>) -> Result<Option<usize>> {
+    match cli.get("limit") {
+        None => Ok(None),
+        Some(raw) => raw
+            .parse::<usize>()
+            .map(Some)
+            .map_err(|_| loco_rs::Error::string(format!("invalid limit value: {raw}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_flag_enabled, parse_limit};
+    use std::collections::HashMap;
+
+    #[test]
+    fn parse_limit_returns_value() {
+        let cli = HashMap::from([(String::from("limit"), String::from("42"))]);
+
+        assert_eq!(parse_limit(&cli).unwrap(), Some(42));
+    }
+
+    #[test]
+    fn parse_limit_rejects_invalid_input() {
+        let cli = HashMap::from([(String::from("limit"), String::from("oops"))]);
+
+        assert!(parse_limit(&cli).is_err());
+    }
+
+    #[test]
+    fn dry_run_flag_accepts_true_aliases() {
+        let cli = HashMap::from([(String::from("dry_run"), String::from("yes"))]);
+
+        assert!(is_flag_enabled(&cli, "dry_run"));
     }
 }
