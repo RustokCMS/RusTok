@@ -9,6 +9,7 @@ use std::path::Path;
 
 use crate::auth::hash_password;
 use crate::models::{tenants, users};
+use crate::services::auth::AuthService;
 
 const DEFAULT_DEV_SEED_PASSWORD: &str = "dev-password-123";
 
@@ -92,8 +93,10 @@ async fn seed_user(
     let password_hash = hash_password(&seed_password)?;
     let mut user = users::ActiveModel::new(tenant_id, email, &password_hash);
     user.name = Set(Some(name.to_string()));
-    user.role = Set(role);
-    user.insert(&ctx.db).await?;
+    user.role = Set(role.clone());
+    let user = user.insert(&ctx.db).await?;
+
+    AuthService::assign_role_permissions(&ctx.db, &user.id, &tenant_id, role).await?;
 
     Ok(())
 }

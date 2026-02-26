@@ -16,7 +16,8 @@
   - План и архитектурные ссылки зафиксированы в `docs/architecture/*` и `docs/index.md`.
   - ADR про RBAC source-of-truth в relation-модели — **в работе** (не закрыт этим шагом).
 - [x] **Фаза 1 — Быстрые исправления консистентности (базовые пункты):**
-  - user creation flows для `register/sign_up/create_user` уже заведены через назначение relation RBAC (`assign_role_permissions`).
+  - user creation flows для `register/sign_up/create_user/accept_invite` уже заведены через назначение relation RBAC (`assign_role_permissions`).
+  - `seed_user` (dev/test seed bootstrap) теперь также вызывает `assign_role_permissions` после создания пользователя.
   - parity reset-password/session invalidation ведётся отдельным remediation-потоком и ADR (см. cross-link ниже).
 - [~] **Фаза 2 — Единый Permission Resolver (начато):**
   - В `AuthService` добавлены tenant-aware методы `get_user_permissions / has_permission / has_any_permission / has_all_permissions`.
@@ -320,13 +321,13 @@
 
 ### 9.2 Фаза 1 — Консистентность flow
 
-- [ ] Проверены все entrypoints создания пользователя:
-  - [ ] REST register
-  - [ ] GraphQL sign_up
-  - [ ] GraphQL create_user
-  - [ ] invite accept
-  - [ ] seed / sync / system bootstrap
-- [~] В каждом flow гарантированно формируются `user_roles` (добавлена синхронизация для `GraphQL update_user`; остаются invite/sync edge-cases).
+- [x] Проверены все entrypoints создания пользователя:
+  - [x] REST register
+  - [x] GraphQL sign_up
+  - [x] GraphQL create_user
+  - [x] invite accept
+  - [x] seed / sync / system bootstrap (seed_user)
+- [x] В каждом flow гарантированно формируются `user_roles` (все публичные entrypoints покрыты; `GraphQL update_user` синхронизирует через `replace_user_role`).
 - [ ] В каждом flow роль и tenant валидируются до записи.
 - [ ] Reset password в REST и GraphQL имеет одинаковую policy отзыва сессий.
 - [ ] Добавлены интеграционные тесты на каждый flow.
