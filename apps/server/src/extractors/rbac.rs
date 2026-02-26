@@ -1,7 +1,14 @@
 use axum::http::StatusCode;
-use rustok_core::Permission;
+use rustok_core::{Action, Permission};
 
 use crate::extractors::auth::CurrentUser;
+
+fn has_effective_permission(user: &CurrentUser, permission: &Permission) -> bool {
+    user.permissions.contains(permission)
+        || user
+            .permissions
+            .contains(&Permission::new(permission.resource, Action::Manage))
+}
 
 /// Extractor that enforces a specific permission
 ///
@@ -57,7 +64,7 @@ macro_rules! define_permission_extractor {
                     .await
                     .map_err(|(code, msg)| (code, msg.to_string()))?;
 
-                if !user.permissions.contains(&$permission) {
+                if !has_effective_permission(&user, &$permission) {
                     return Err((
                         axum::http::StatusCode::FORBIDDEN,
                         format!("Insufficient permissions. Required: {}", $permission),
@@ -141,7 +148,7 @@ pub fn check_permission(
     user: &CurrentUser,
     permission: Permission,
 ) -> Result<(), (StatusCode, String)> {
-    if !user.permissions.contains(&permission) {
+    if !has_effective_permission(user, &permission) {
         return Err((
             StatusCode::FORBIDDEN,
             format!("Insufficient permissions. Required: {}", permission),
@@ -157,7 +164,7 @@ pub fn check_any_permission(
 ) -> Result<(), (StatusCode, String)> {
     if !permissions
         .iter()
-        .any(|permission| user.permissions.contains(permission))
+        .any(|permission| has_effective_permission(user, permission))
     {
         let perms_str = permissions
             .iter()
@@ -179,7 +186,7 @@ pub fn check_all_permissions(
 ) -> Result<(), (StatusCode, String)> {
     if !permissions
         .iter()
-        .all(|permission| user.permissions.contains(permission))
+        .all(|permission| has_effective_permission(user, permission))
     {
         let perms_str = permissions
             .iter()

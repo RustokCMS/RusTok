@@ -11,6 +11,17 @@ use crate::models::_entities::{permissions, role_permissions, roles, user_roles}
 pub struct AuthService;
 
 impl AuthService {
+    fn has_effective_permission(
+        user_permissions: &[Permission],
+        required_permission: &Permission,
+    ) -> bool {
+        user_permissions.contains(required_permission)
+            || user_permissions.contains(&Permission::new(
+                required_permission.resource,
+                Action::Manage,
+            ))
+    }
+
     pub async fn has_permission(
         db: &DatabaseConnection,
         tenant_id: &uuid::Uuid,
@@ -18,7 +29,10 @@ impl AuthService {
         required_permission: &Permission,
     ) -> Result<bool> {
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        Ok(user_permissions.contains(required_permission))
+        Ok(Self::has_effective_permission(
+            &user_permissions,
+            required_permission,
+        ))
     }
 
     pub async fn has_any_permission(
@@ -34,7 +48,7 @@ impl AuthService {
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
         Ok(required_permissions
             .iter()
-            .any(|permission| user_permissions.contains(permission)))
+            .any(|permission| Self::has_effective_permission(&user_permissions, permission)))
     }
 
     pub async fn has_all_permissions(
@@ -50,7 +64,7 @@ impl AuthService {
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
         Ok(required_permissions
             .iter()
-            .all(|permission| user_permissions.contains(permission)))
+            .all(|permission| Self::has_effective_permission(&user_permissions, permission)))
     }
 
     pub async fn get_user_permissions(
@@ -100,6 +114,7 @@ impl AuthService {
             .collect();
 
         let permission_models = permissions::Entity::find()
+            .filter(permissions::Column::TenantId.eq(*tenant_id))
             .filter(permissions::Column::Id.is_in(permission_ids))
             .all(db)
             .await?;
