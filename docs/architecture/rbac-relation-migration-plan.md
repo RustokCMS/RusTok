@@ -39,7 +39,7 @@
   - В `AuthService` добавлены tenant-aware методы `get_user_permissions / has_permission / has_any_permission / has_all_permissions`.
   - В `rustok-rbac` добавлен `permission_evaluator` (единый API итоговой policy-оценки allow/deny + missing permissions + denied reason), а `AuthService` теперь использует его как модульный policy-source вместо локальной сборки outcome.
   - В `rustok-rbac` добавлен контракт `PermissionResolver` + `PermissionResolution`; в `apps/server` введён тонкий `ServerPermissionResolver` adapter, который делегирует use-cases в текущий `AuthService` (инкрементальный шаг strangler-переноса).
-  - В `PermissionResolver` добавлены default use-case методы `has_permission/has_any_permission/has_all_permissions`, использующие модульный evaluator; server adapter реализует только wiring (`resolve_permissions` + role assignment use-cases).
+  - В `PermissionResolver` добавлены default use-case методы `has_permission/has_any_permission/has_all_permissions`, использующие модульный evaluator; server adapter реализует только wiring (`resolve_permissions` + role assignment use-cases), а детализация cache hit инкапсулирована внутри `AuthService::resolve_permissions`.
   - Реализованы tenant-scoping и deduplication; сохранена семантика `resource:manage` как wildcard.
   - Переведена часть GraphQL-checks (users CRUD/read/list, alloy, content mutation/query) и RBAC extractors на relation-проверки.
   - RBAC extractors перестали держать локальную wildcard-логику и используют общий helper `rustok_rbac::has_effective_permission_in_set` (снижение дублирования policy-семантики).

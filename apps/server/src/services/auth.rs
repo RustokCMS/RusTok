@@ -491,11 +491,34 @@ impl AuthService {
         Ok(allowed)
     }
 
+    pub async fn resolve_permissions(
+        db: &DatabaseConnection,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<PermissionResolution> {
+        let (permissions, cache_hit) = Self::load_user_permissions(db, tenant_id, user_id).await?;
+
+        Ok(PermissionResolution {
+            permissions,
+            cache_hit,
+        })
+    }
+
     pub async fn get_user_permissions(
         db: &DatabaseConnection,
         tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
     ) -> Result<Vec<Permission>> {
+        let (permissions, _cache_hit) = Self::load_user_permissions(db, tenant_id, user_id).await?;
+
+        Ok(permissions)
+    }
+
+    async fn load_user_permissions(
+        db: &DatabaseConnection,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<(Vec<Permission>, bool)> {
         let started_at = Instant::now();
         let cache_key = Self::cache_key(tenant_id, user_id);
 
@@ -512,7 +535,7 @@ impl AuthService {
 
             Self::record_permission_lookup_latency(started_at.elapsed().as_millis() as u64);
 
-            return Ok(cached_permissions);
+            return Ok((cached_permissions, true));
         }
 
         RBAC_PERMISSION_CACHE_MISSES.fetch_add(1, Ordering::Relaxed);
@@ -534,7 +557,7 @@ impl AuthService {
 
         Self::record_permission_lookup_latency(started_at.elapsed().as_millis() as u64);
 
-        Ok(resolved_permissions)
+        Ok((resolved_permissions, false))
     }
 
     async fn load_user_permissions_from_db(
@@ -791,14 +814,7 @@ impl PermissionResolver for ServerPermissionResolver {
         tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
     ) -> Result<PermissionResolution> {
-        let cache_key = AuthService::cache_key(tenant_id, user_id);
-        let cache_hit = USER_PERMISSION_CACHE.get(&cache_key).await.is_some();
-        let permissions = AuthService::get_user_permissions(&self.db, tenant_id, user_id).await?;
-
-        Ok(PermissionResolution {
-            permissions,
-            cache_hit,
-        })
+        AuthService::resolve_permissions(&self.db, tenant_id, user_id).await
     }
 
     async fn assign_role_permissions(
