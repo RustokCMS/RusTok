@@ -166,11 +166,24 @@ impl Task for CleanupTask {
                     .get("source")
                     .ok_or_else(|| loco_rs::Error::string("missing source=<rollback_file>"))?;
                 let entries = read_rollback_file(source)?;
+                let dry_run = is_flag_enabled(&vars.cli, "dry_run");
                 let mut reverted = 0usize;
                 let mut failed = 0usize;
                 let continue_on_error = is_flag_enabled(&vars.cli, "continue_on_error");
 
+                if dry_run {
+                    tracing::info!(
+                        source = %source,
+                        entries = entries.len(),
+                        "RBAC backfill rollback dry-run: no relation changes applied"
+                    );
+                }
+
                 for entry in &entries {
+                    if dry_run {
+                        continue;
+                    }
+
                     let result =
                         crate::services::auth::AuthService::remove_tenant_role_assignments(
                             &ctx.db,
@@ -201,6 +214,7 @@ impl Task for CleanupTask {
                     source = %source,
                     reverted,
                     failed,
+                    dry_run,
                     users_without_roles_total = after.users_without_roles_total,
                     orphan_user_roles_total = after.orphan_user_roles_total,
                     orphan_role_permissions_total = after.orphan_role_permissions_total,

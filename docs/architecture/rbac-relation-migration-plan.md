@@ -78,7 +78,7 @@
 
 ### Что осталось приоритетно на ближайший шаг
 
-1. Расширить backfill для service-аккаунтов/исключений и согласовать rollback-процедуру (Фаза 4).
+1. Провести staged dry-run/backfill/rollback в staging и приложить отчёт по инвариантам (Фаза 4).
 2. Подготовить и согласовать ADR по final cutover (`relation-only`).
 3. Зафиксировать module-first extraction backlog: выделить policy/use-case API в `crates/rustok-rbac` и описать server-adapter границы.
 
