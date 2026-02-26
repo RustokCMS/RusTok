@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use loco_rs::prelude::*;
 use moka::future::Cache;
 use once_cell::sync::Lazy;
@@ -12,7 +13,8 @@ use tracing::{debug, warn};
 
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 use rustok_rbac::{
-    evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission, DeniedReasonKind,
+    evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission,
+    DeniedReasonKind, PermissionResolution, PermissionResolver,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -766,6 +768,82 @@ impl AuthService {
             .one(db)
             .await?
             .ok_or_else(|| Error::InternalServerError("permission upsert failed".to_string()))
+    }
+}
+
+#[derive(Clone)]
+pub struct ServerPermissionResolver {
+    db: DatabaseConnection,
+}
+
+impl ServerPermissionResolver {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+}
+
+#[async_trait]
+impl PermissionResolver for ServerPermissionResolver {
+    type Error = Error;
+
+    async fn resolve_permissions(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<PermissionResolution> {
+        let cache_key = AuthService::cache_key(tenant_id, user_id);
+        let cache_hit = USER_PERMISSION_CACHE.get(&cache_key).await.is_some();
+        let permissions = AuthService::get_user_permissions(&self.db, tenant_id, user_id).await?;
+
+        Ok(PermissionResolution {
+            permissions,
+            cache_hit,
+        })
+    }
+
+    async fn has_permission(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        required_permission: &Permission,
+    ) -> Result<bool> {
+        AuthService::has_permission(&self.db, tenant_id, user_id, required_permission).await
+    }
+
+    async fn has_any_permission(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        required_permissions: &[Permission],
+    ) -> Result<bool> {
+        AuthService::has_any_permission(&self.db, tenant_id, user_id, required_permissions).await
+    }
+
+    async fn has_all_permissions(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        required_permissions: &[Permission],
+    ) -> Result<bool> {
+        AuthService::has_all_permissions(&self.db, tenant_id, user_id, required_permissions).await
+    }
+
+    async fn assign_role_permissions(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        role: UserRole,
+    ) -> Result<()> {
+        AuthService::assign_role_permissions(&self.db, user_id, tenant_id, role).await
+    }
+
+    async fn replace_user_role(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        role: UserRole,
+    ) -> Result<()> {
+        AuthService::replace_user_role(&self.db, user_id, tenant_id, role).await
     }
 }
 
