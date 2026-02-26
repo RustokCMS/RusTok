@@ -12,6 +12,8 @@ pub use services::permission_policy::{
     has_effective_permission_in_set, missing_permissions, DeniedReasonKind, PermissionCheckOutcome,
 };
 
+pub use services::permission_resolver::{PermissionResolution, PermissionResolver};
+
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;

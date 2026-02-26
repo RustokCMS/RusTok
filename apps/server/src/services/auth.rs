@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use loco_rs::prelude::*;
 use moka::future::Cache;
 use once_cell::sync::Lazy;
@@ -12,7 +13,8 @@ use tracing::{debug, warn};
 
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 use rustok_rbac::{
-    evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission, DeniedReasonKind,
+    evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission,
+    DeniedReasonKind, PermissionResolution, PermissionResolver,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -489,11 +491,34 @@ impl AuthService {
         Ok(allowed)
     }
 
+    pub async fn resolve_permissions(
+        db: &DatabaseConnection,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<PermissionResolution> {
+        let (permissions, cache_hit) = Self::load_user_permissions(db, tenant_id, user_id).await?;
+
+        Ok(PermissionResolution {
+            permissions,
+            cache_hit,
+        })
+    }
+
     pub async fn get_user_permissions(
         db: &DatabaseConnection,
         tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
     ) -> Result<Vec<Permission>> {
+        let (permissions, _cache_hit) = Self::load_user_permissions(db, tenant_id, user_id).await?;
+
+        Ok(permissions)
+    }
+
+    async fn load_user_permissions(
+        db: &DatabaseConnection,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<(Vec<Permission>, bool)> {
         let started_at = Instant::now();
         let cache_key = Self::cache_key(tenant_id, user_id);
 
@@ -510,7 +535,7 @@ impl AuthService {
 
             Self::record_permission_lookup_latency(started_at.elapsed().as_millis() as u64);
 
-            return Ok(cached_permissions);
+            return Ok((cached_permissions, true));
         }
 
         RBAC_PERMISSION_CACHE_MISSES.fetch_add(1, Ordering::Relaxed);
@@ -532,7 +557,7 @@ impl AuthService {
 
         Self::record_permission_lookup_latency(started_at.elapsed().as_millis() as u64);
 
-        Ok(resolved_permissions)
+        Ok((resolved_permissions, false))
     }
 
     async fn load_user_permissions_from_db(
@@ -766,6 +791,48 @@ impl AuthService {
             .one(db)
             .await?
             .ok_or_else(|| Error::InternalServerError("permission upsert failed".to_string()))
+    }
+}
+
+#[derive(Clone)]
+pub struct ServerPermissionResolver {
+    db: DatabaseConnection,
+}
+
+impl ServerPermissionResolver {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+}
+
+#[async_trait]
+impl PermissionResolver for ServerPermissionResolver {
+    type Error = Error;
+
+    async fn resolve_permissions(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+    ) -> Result<PermissionResolution> {
+        AuthService::resolve_permissions(&self.db, tenant_id, user_id).await
+    }
+
+    async fn assign_role_permissions(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        role: UserRole,
+    ) -> Result<()> {
+        AuthService::assign_role_permissions(&self.db, user_id, tenant_id, role).await
+    }
+
+    async fn replace_user_role(
+        &self,
+        tenant_id: &uuid::Uuid,
+        user_id: &uuid::Uuid,
+        role: UserRole,
+    ) -> Result<()> {
+        AuthService::replace_user_role(&self.db, user_id, tenant_id, role).await
     }
 }
 

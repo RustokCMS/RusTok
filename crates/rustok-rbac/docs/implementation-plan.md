@@ -26,7 +26,7 @@ compatibility with platform-level contracts.
 
 ### Phase 1 — Contract hardening (in progress)
 
-- [ ] Freeze public API expectations for the current module surface.
+- [x] Freeze initial public RBAC runtime API: exported `permission_policy`/`permission_evaluator` + trait contract `PermissionResolver`/`PermissionResolution` with default use-case methods (`has_*`) for adapter-driven integrations.
 - [x] Introduce shared permission-policy helpers (`permission_policy`) and start consuming them from `apps/server` extractors/service wiring to reduce server-owned policy logic.
 - [x] Introduce shared permission evaluation API (`permission_evaluator`) and move allow/deny + missing-permissions outcome assembly from `apps/server::AuthService` into `rustok-rbac`.
 - [ ] Align error/validation conventions with platform guidance.
@@ -34,7 +34,7 @@ compatibility with platform-level contracts.
 
 ### Phase 2 — Domain expansion (planned)
 
-- [ ] Implement prioritized domain capabilities for `rustok-rbac`.
+- [ ] Implement prioritized domain capabilities for `rustok-rbac` (next: move relation resolver/use-case implementation from server adapter into module runtime service).
 - [ ] Standardize cross-module integration points and events.
 - [ ] Document ownership and release gates for new capabilities.
 
