@@ -4,6 +4,8 @@ use sea_orm::{
     EntityTrait, QueryFilter,
 };
 use std::collections::HashSet;
+use std::time::Instant;
+use tracing::{debug, warn};
 
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 
@@ -29,11 +31,30 @@ impl AuthService {
         user_id: &uuid::Uuid,
         required_permission: &Permission,
     ) -> Result<bool> {
+        let started_at = Instant::now();
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        Ok(Self::has_effective_permission(
-            &user_permissions,
-            required_permission,
-        ))
+        let allowed = Self::has_effective_permission(&user_permissions, required_permission);
+
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            required_permission = %required_permission,
+            permissions_count = user_permissions.len(),
+            allowed,
+            latency_ms = started_at.elapsed().as_millis(),
+            "rbac resolver decision (single permission check)"
+        );
+
+        if !allowed {
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permission = %required_permission,
+                "rbac deny: missing required permission"
+            );
+        }
+
+        Ok(allowed)
     }
 
     pub async fn has_any_permission(
@@ -42,14 +63,37 @@ impl AuthService {
         user_id: &uuid::Uuid,
         required_permissions: &[Permission],
     ) -> Result<bool> {
+        let started_at = Instant::now();
+
         if required_permissions.is_empty() {
             return Ok(true);
         }
 
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        Ok(required_permissions
+        let allowed = required_permissions
             .iter()
-            .any(|permission| Self::has_effective_permission(&user_permissions, permission)))
+            .any(|permission| Self::has_effective_permission(&user_permissions, permission));
+
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            required_permissions = ?required_permissions,
+            permissions_count = user_permissions.len(),
+            allowed,
+            latency_ms = started_at.elapsed().as_millis(),
+            "rbac resolver decision (any-permission check)"
+        );
+
+        if !allowed {
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                "rbac deny: none of required permissions granted"
+            );
+        }
+
+        Ok(allowed)
     }
 
     pub async fn has_all_permissions(
@@ -58,14 +102,37 @@ impl AuthService {
         user_id: &uuid::Uuid,
         required_permissions: &[Permission],
     ) -> Result<bool> {
+        let started_at = Instant::now();
+
         if required_permissions.is_empty() {
             return Ok(true);
         }
 
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        Ok(required_permissions
+        let allowed = required_permissions
             .iter()
-            .all(|permission| Self::has_effective_permission(&user_permissions, permission)))
+            .all(|permission| Self::has_effective_permission(&user_permissions, permission));
+
+        debug!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            required_permissions = ?required_permissions,
+            permissions_count = user_permissions.len(),
+            allowed,
+            latency_ms = started_at.elapsed().as_millis(),
+            "rbac resolver decision (all-permissions check)"
+        );
+
+        if !allowed {
+            warn!(
+                tenant_id = %tenant_id,
+                user_id = %user_id,
+                required_permissions = ?required_permissions,
+                "rbac deny: not all required permissions granted"
+            );
+        }
+
+        Ok(allowed)
     }
 
     pub async fn get_user_permissions(
