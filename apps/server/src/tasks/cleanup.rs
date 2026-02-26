@@ -59,6 +59,7 @@ impl Task for CleanupTask {
             }
             "rbac-backfill" => {
                 let dry_run = is_flag_enabled(&vars.cli, "dry_run");
+                let continue_on_error = is_flag_enabled(&vars.cli, "continue_on_error");
                 let limit = parse_limit(&vars.cli)?;
 
                 let before = load_rbac_consistency_stats(ctx).await?;
@@ -74,6 +75,9 @@ impl Task for CleanupTask {
                     users_without_tenant_roles.truncate(limit);
                 }
 
+                let mut fixed_users = 0usize;
+                let mut failed_users = 0usize;
+
                 if dry_run {
                     tracing::info!(
                         candidates = users_without_tenant_roles.len(),
@@ -82,25 +86,43 @@ impl Task for CleanupTask {
                     );
                 } else {
                     for user in &users_without_tenant_roles {
-                        crate::services::auth::AuthService::assign_role_permissions(
-                            &ctx.db,
-                            &user.id,
-                            &user.tenant_id,
-                            user.role.clone(),
-                        )
-                        .await?;
+                        let assign_result =
+                            crate::services::auth::AuthService::assign_role_permissions(
+                                &ctx.db,
+                                &user.id,
+                                &user.tenant_id,
+                                user.role.clone(),
+                            )
+                            .await;
+
+                        match assign_result {
+                            Ok(()) => {
+                                fixed_users += 1;
+                            }
+                            Err(error) => {
+                                failed_users += 1;
+                                tracing::error!(
+                                    user_id = %user.id,
+                                    tenant_id = %user.tenant_id,
+                                    error = %error,
+                                    "RBAC backfill failed for user"
+                                );
+
+                                if !continue_on_error {
+                                    return Err(error);
+                                }
+                            }
+                        }
                     }
                 }
 
                 let after = load_rbac_consistency_stats(ctx).await?;
                 tracing::info!(
-                    fixed_users = if dry_run {
-                        0
-                    } else {
-                        users_without_tenant_roles.len()
-                    },
+                    fixed_users,
+                    failed_users,
                     candidates = users_without_tenant_roles.len(),
                     dry_run,
+                    continue_on_error,
                     users_without_roles_total = after.users_without_roles_total,
                     orphan_user_roles_total = after.orphan_user_roles_total,
                     orphan_role_permissions_total = after.orphan_role_permissions_total,
@@ -170,5 +192,12 @@ mod tests {
         let cli = HashMap::from([(String::from("dry_run"), String::from("yes"))]);
 
         assert!(is_flag_enabled(&cli, "dry_run"));
+    }
+
+    #[test]
+    fn continue_on_error_flag_defaults_to_false() {
+        let cli = HashMap::new();
+
+        assert!(!is_flag_enabled(&cli, "continue_on_error"));
     }
 }

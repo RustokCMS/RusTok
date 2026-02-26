@@ -40,7 +40,7 @@
 - [~] **Фаза 4 — Миграция данных и защитные инварианты (в работе):**
   - Добавлена maintenance-задача `cleanup --args "rbac-report"` для отчёта по инвариантам (`users_without_roles`, `orphan_user_roles`, `orphan_role_permissions`).
   - Добавлена maintenance-задача `cleanup --args "target=rbac-backfill"` для idempotent backfill relation-RBAC по `users.role` в пределах tenant c повторной проверкой инвариантов после выполнения.
-  - Для staged rollout в backfill добавлены safety-controls: `dry_run=true` (без изменений данных) и `limit=<N>` (батчевый прогон).
+  - Для staged rollout в backfill добавлены safety-controls: `dry_run=true` (без изменений данных), `limit=<N>` (батчевый прогон) и `continue_on_error=true` (best-effort режим при частичных ошибках).
 - [ ] **Фаза 5 — Dual-read и cutover:** не начато.
 - [ ] **Фаза 6 — Cleanup legacy-модели:** не начато.
 
