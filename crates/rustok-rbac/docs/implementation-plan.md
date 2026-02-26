@@ -34,7 +34,7 @@ compatibility with platform-level contracts.
 
 ### Phase 2 — Domain expansion (planned)
 
-- [ ] Implement prioritized domain capabilities for `rustok-rbac` (next: move relation resolver/use-case implementation from server adapter into module runtime service).
+- [ ] Implement prioritized domain capabilities for `rustok-rbac` (module now owns `permission_authorizer` use-case evaluation and relation-resolve orchestration via `RelationPermissionStore`; next: move full runtime resolver implementation from server adapter into module runtime service).
 - [ ] Standardize cross-module integration points and events.
 - [ ] Document ownership and release gates for new capabilities.
 

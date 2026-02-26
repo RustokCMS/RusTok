@@ -6,15 +6,15 @@ use sea_orm::{
     sea_query::OnConflict, ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection,
     EntityTrait, QueryFilter,
 };
-use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 use rustok_rbac::{
-    evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission,
-    DeniedReasonKind, PermissionResolution, PermissionResolver,
+    authorize_all_permissions, authorize_any_permission, authorize_permission,
+    resolve_permissions_from_relations, DeniedReasonKind, PermissionResolution, PermissionResolver,
+    RelationPermissionStore,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -316,17 +316,19 @@ impl AuthService {
         required_permission: &Permission,
     ) -> Result<bool> {
         let started_at = Instant::now();
-        let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        let evaluation = evaluate_single_permission(&user_permissions, required_permission);
-        let allowed = evaluation.allowed;
-        let denied = evaluation.denied_reason;
+        let resolver = ServerPermissionResolver::new(db.clone());
+        let decision =
+            authorize_permission(&resolver, tenant_id, user_id, required_permission).await?;
+        let allowed = decision.allowed;
+        let denied = decision.denied_reason;
         let latency_ms = started_at.elapsed().as_millis() as u64;
 
         debug!(
             tenant_id = %tenant_id,
             user_id = %user_id,
             required_permission = %required_permission,
-            permissions_count = user_permissions.len(),
+            permissions_count = decision.permissions_count,
+            cache_hit = decision.cache_hit,
             denied_reason = denied.as_ref().map(|(_, reason)| reason.as_str()),
             allowed,
             latency_ms,
@@ -376,17 +378,19 @@ impl AuthService {
     ) -> Result<bool> {
         let started_at = Instant::now();
 
-        let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        let evaluation = evaluate_any_permission(&user_permissions, required_permissions);
-        let allowed = evaluation.allowed;
-        let denied = evaluation.denied_reason;
+        let resolver = ServerPermissionResolver::new(db.clone());
+        let decision =
+            authorize_any_permission(&resolver, tenant_id, user_id, required_permissions).await?;
+        let allowed = decision.allowed;
+        let denied = decision.denied_reason;
         let latency_ms = started_at.elapsed().as_millis() as u64;
 
         debug!(
             tenant_id = %tenant_id,
             user_id = %user_id,
             required_permissions = ?required_permissions,
-            permissions_count = user_permissions.len(),
+            permissions_count = decision.permissions_count,
+            cache_hit = decision.cache_hit,
             denied_reason = denied.as_ref().map(|(_, reason)| reason.as_str()),
             allowed,
             latency_ms,
@@ -436,18 +440,20 @@ impl AuthService {
     ) -> Result<bool> {
         let started_at = Instant::now();
 
-        let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        let evaluation = evaluate_all_permissions(&user_permissions, required_permissions);
-        let allowed = evaluation.allowed;
-        let denied = evaluation.denied_reason;
-        let missing_permissions = evaluation.missing_permissions;
+        let resolver = ServerPermissionResolver::new(db.clone());
+        let decision =
+            authorize_all_permissions(&resolver, tenant_id, user_id, required_permissions).await?;
+        let allowed = decision.allowed;
+        let denied = decision.denied_reason;
+        let missing_permissions = decision.missing_permissions;
         let latency_ms = started_at.elapsed().as_millis() as u64;
 
         debug!(
             tenant_id = %tenant_id,
             user_id = %user_id,
             required_permissions = ?required_permissions,
-            permissions_count = user_permissions.len(),
+            permissions_count = decision.permissions_count,
+            cache_hit = decision.cache_hit,
             denied_reason = denied.as_ref().map(|(_, reason)| reason.as_str()),
             missing_permissions = ?missing_permissions,
             allowed,
@@ -565,67 +571,8 @@ impl AuthService {
         tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
     ) -> Result<Vec<Permission>> {
-        let user_role_models = user_roles::Entity::find()
-            .filter(user_roles::Column::UserId.eq(*user_id))
-            .all(db)
-            .await?;
-
-        if user_role_models.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let role_ids: Vec<uuid::Uuid> = user_role_models
-            .into_iter()
-            .map(|user_role| user_role.role_id)
-            .collect();
-
-        let tenant_role_models = roles::Entity::find()
-            .filter(roles::Column::TenantId.eq(*tenant_id))
-            .filter(roles::Column::Id.is_in(role_ids))
-            .all(db)
-            .await?;
-
-        if tenant_role_models.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let tenant_role_ids: Vec<uuid::Uuid> =
-            tenant_role_models.into_iter().map(|role| role.id).collect();
-
-        let role_permission_models = role_permissions::Entity::find()
-            .filter(role_permissions::Column::RoleId.is_in(tenant_role_ids))
-            .all(db)
-            .await?;
-
-        if role_permission_models.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let permission_ids: Vec<uuid::Uuid> = role_permission_models
-            .into_iter()
-            .map(|role_permission| role_permission.permission_id)
-            .collect();
-
-        let permission_models = permissions::Entity::find()
-            .filter(permissions::Column::TenantId.eq(*tenant_id))
-            .filter(permissions::Column::Id.is_in(permission_ids))
-            .all(db)
-            .await?;
-
-        let mut result = HashSet::new();
-        for permission in permission_models {
-            let resource = permission
-                .resource
-                .parse::<Resource>()
-                .map_err(Error::BadRequest)?;
-            let action = permission
-                .action
-                .parse::<Action>()
-                .map_err(Error::BadRequest)?;
-            result.insert(Permission::new(resource, action));
-        }
-
-        Ok(result.into_iter().collect())
+        let store = SeaOrmRelationPermissionStore { db };
+        resolve_permissions_from_relations(&store, tenant_id, user_id).await
     }
 
     pub async fn assign_role_permissions(
@@ -791,6 +738,82 @@ impl AuthService {
             .one(db)
             .await?
             .ok_or_else(|| Error::InternalServerError("permission upsert failed".to_string()))
+    }
+}
+
+struct SeaOrmRelationPermissionStore<'a> {
+    db: &'a DatabaseConnection,
+}
+
+#[async_trait]
+impl RelationPermissionStore for SeaOrmRelationPermissionStore<'_> {
+    type Error = Error;
+
+    async fn load_user_role_ids(&self, user_id: &uuid::Uuid) -> Result<Vec<uuid::Uuid>> {
+        let user_role_models = user_roles::Entity::find()
+            .filter(user_roles::Column::UserId.eq(*user_id))
+            .all(self.db)
+            .await?;
+
+        Ok(user_role_models
+            .into_iter()
+            .map(|user_role| user_role.role_id)
+            .collect())
+    }
+
+    async fn load_tenant_role_ids(
+        &self,
+        tenant_id: &uuid::Uuid,
+        role_ids: &[uuid::Uuid],
+    ) -> Result<Vec<uuid::Uuid>> {
+        let tenant_role_models = roles::Entity::find()
+            .filter(roles::Column::TenantId.eq(*tenant_id))
+            .filter(roles::Column::Id.is_in(role_ids.iter().copied()))
+            .all(self.db)
+            .await?;
+
+        Ok(tenant_role_models.into_iter().map(|role| role.id).collect())
+    }
+
+    async fn load_permissions_for_roles(
+        &self,
+        tenant_id: &uuid::Uuid,
+        role_ids: &[uuid::Uuid],
+    ) -> Result<Vec<Permission>> {
+        let role_permission_models = role_permissions::Entity::find()
+            .filter(role_permissions::Column::RoleId.is_in(role_ids.iter().copied()))
+            .all(self.db)
+            .await?;
+
+        if role_permission_models.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let permission_ids: Vec<uuid::Uuid> = role_permission_models
+            .into_iter()
+            .map(|role_permission| role_permission.permission_id)
+            .collect();
+
+        let permission_models = permissions::Entity::find()
+            .filter(permissions::Column::TenantId.eq(*tenant_id))
+            .filter(permissions::Column::Id.is_in(permission_ids))
+            .all(self.db)
+            .await?;
+
+        let mut result = Vec::with_capacity(permission_models.len());
+        for permission in permission_models {
+            let resource = permission
+                .resource
+                .parse::<Resource>()
+                .map_err(Error::BadRequest)?;
+            let action = permission
+                .action
+                .parse::<Action>()
+                .map_err(Error::BadRequest)?;
+            result.push(Permission::new(resource, action));
+        }
+
+        Ok(result)
     }
 }
 

@@ -3,6 +3,10 @@ pub mod entities;
 pub mod error;
 pub mod services;
 
+pub use services::permission_authorizer::{
+    authorize_all_permissions, authorize_any_permission, authorize_permission,
+    AuthorizationDecision,
+};
 pub use services::permission_evaluator::{
     evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission,
     PermissionEvaluation,
@@ -13,6 +17,9 @@ pub use services::permission_policy::{
 };
 
 pub use services::permission_resolver::{PermissionResolution, PermissionResolver};
+pub use services::relation_permission_resolver::{
+    resolve_permissions_from_relations, RelationPermissionStore,
+};
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
