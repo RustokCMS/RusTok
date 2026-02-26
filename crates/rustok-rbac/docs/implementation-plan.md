@@ -37,7 +37,7 @@ compatibility with platform-level contracts.
 - [x] Implement prioritized domain capabilities for `rustok-rbac` (module now owns `permission_authorizer` use-case evaluation, relation-resolve orchestration via `RelationPermissionStore`, shared cache-aware resolver path (`resolve_permissions_with_cache` + `PermissionCache`) and runtime resolver service `RuntimePermissionResolver` with assignment contract `RoleAssignmentStore`; `apps/server` consumes module runtime resolver instead of local `ServerPermissionResolver`).
 - [x] Move authz rollout mode contract (`RbacAuthzMode` for `relation_only`/`dual_read`) into `rustok-rbac` to reduce server-owned RBAC control-plane logic.
 - [x] Move dual-read legacy-vs-relation comparison logic (`shadow_decision`) into `rustok-rbac` so `apps/server` keeps only transport/observability concerns for shadow-check execution.
-- [x] Add module-level dual-read orchestrator (`shadow_dual_read::evaluate_dual_read`) so `apps/server` does not keep local branching for `disabled/skipped/matched/mismatch` outcomes.
+- [x] Add module-level dual-read orchestrator (`shadow_dual_read::evaluate_dual_read`) so `apps/server` does not keep local branching for `skip/compare` dual-read outcomes.
 - [ ] Standardize cross-module integration points and events.
 - [ ] Document ownership and release gates for new capabilities.
 

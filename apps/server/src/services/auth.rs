@@ -12,10 +12,10 @@ use tracing::{debug, warn};
 
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 use rustok_rbac::{
-    authorize_all_permissions, authorize_any_permission, authorize_permission,
-    compare_shadow_decision, evaluate_dual_read, invalidate_cached_permissions, DeniedReasonKind,
-    DualReadOutcome, PermissionCache, PermissionResolver, RbacAuthzMode, RelationPermissionStore,
-    RoleAssignmentStore, RuntimePermissionResolver, ShadowCheck,
+    authorize_all_permissions, authorize_any_permission, authorize_permission, evaluate_dual_read,
+    invalidate_cached_permissions, DeniedReasonKind, DualReadOutcome, PermissionCache,
+    PermissionResolver, RbacAuthzMode, RelationPermissionStore, RoleAssignmentStore,
+    RuntimePermissionResolver, ShadowCheck,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -116,15 +116,13 @@ impl AuthService {
         shadow_check: ShadowCheck<'_>,
         relation_allowed: bool,
     ) -> Result<()> {
+        if !Self::is_dual_read_enabled() {
+            return Ok(());
+        }
+
         let legacy_role = Self::load_legacy_role(db, tenant_id, user_id).await?;
 
-        match evaluate_dual_read(
-            Self::is_dual_read_enabled(),
-            legacy_role.as_ref(),
-            shadow_check,
-            relation_allowed,
-        ) {
-            DualReadOutcome::Disabled => Ok(()),
+        match evaluate_dual_read(legacy_role.as_ref(), shadow_check, relation_allowed) {
             DualReadOutcome::Skipped => {
                 debug!(
                     tenant_id = %tenant_id,
@@ -133,19 +131,19 @@ impl AuthService {
                 );
                 Ok(())
             }
-            DualReadOutcome::Matched => Ok(()),
-            DualReadOutcome::Mismatch => {
-                if let Some(legacy_role) = legacy_role.as_ref() {
-                    Self::record_decision_mismatch();
-                    Self::log_shadow_mismatch(
-                        tenant_id,
-                        user_id,
-                        shadow_check,
-                        legacy_role,
-                        relation_allowed,
-                        compare_shadow_decision(legacy_role, shadow_check, relation_allowed)
-                            .legacy_allowed,
-                    );
+            DualReadOutcome::Compared(shadow_decision) => {
+                if shadow_decision.mismatch() {
+                    if let Some(legacy_role) = legacy_role.as_ref() {
+                        Self::record_decision_mismatch();
+                        Self::log_shadow_mismatch(
+                            tenant_id,
+                            user_id,
+                            shadow_check,
+                            legacy_role,
+                            shadow_decision.relation_allowed,
+                            shadow_decision.legacy_allowed,
+                        );
+                    }
                 }
                 Ok(())
             }

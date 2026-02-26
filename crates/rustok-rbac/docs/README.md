@@ -19,4 +19,4 @@
 - `RbacAuthzMode` defines shared rollout-mode parsing for relation-only/dual-read authorization execution (`RUSTOK_RBAC_AUTHZ_MODE`).
 
 - `shadow_decision` exports legacy-vs-relation shadow comparison helpers (`ShadowCheck` + `compare_shadow_decision`, as well as `compare_single_permission/compare_any_permissions/compare_all_permissions`) to keep dual-read decision semantics in the RBAC module; `ShadowCheck::as_str()` provides a stable mode label (`single|any|all`) for adapter-level observability tags.
-- `shadow_dual_read` exports `evaluate_dual_read` + `DualReadOutcome` to centralize dual-read orchestration (`disabled/skipped/matched/mismatch`) and keep transport layers adapter-only.
+- `shadow_dual_read` exports `evaluate_dual_read` + `DualReadOutcome` to centralize dual-read orchestration (`skipped` + compared decision with match/mismatch semantics) and keep transport layers adapter-only.
