@@ -37,6 +37,7 @@
   - parity reset-password/session invalidation ведётся отдельным remediation-потоком и ADR (см. cross-link ниже).
 - [x] **Фаза 2 — Единый Permission Resolver (завершено):**
   - В `AuthService` добавлены tenant-aware методы `get_user_permissions / has_permission / has_any_permission / has_all_permissions`.
+  - В `rustok-rbac` добавлен `permission_evaluator` (единый API итоговой policy-оценки allow/deny + missing permissions + denied reason), а `AuthService` теперь использует его как модульный policy-source вместо локальной сборки outcome.
   - Реализованы tenant-scoping и deduplication; сохранена семантика `resource:manage` как wildcard.
   - Переведена часть GraphQL-checks (users CRUD/read/list, alloy, content mutation/query) и RBAC extractors на relation-проверки.
   - RBAC extractors перестали держать локальную wildcard-логику и используют общий helper `rustok_rbac::has_effective_permission_in_set` (снижение дублирования policy-семантики).

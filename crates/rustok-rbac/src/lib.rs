@@ -3,6 +3,10 @@ pub mod entities;
 pub mod error;
 pub mod services;
 
+pub use services::permission_evaluator::{
+    evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission,
+    PermissionEvaluation,
+};
 pub use services::permission_policy::{
     check_all_permissions, check_any_permission, check_permission, denied_reason_for_denial,
     has_effective_permission_in_set, missing_permissions, DeniedReasonKind, PermissionCheckOutcome,

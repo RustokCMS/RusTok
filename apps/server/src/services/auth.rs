@@ -12,7 +12,7 @@ use tracing::{debug, warn};
 
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 use rustok_rbac::{
-    check_all_permissions, check_any_permission, check_permission, DeniedReasonKind,
+    evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission, DeniedReasonKind,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -315,10 +315,10 @@ impl AuthService {
     ) -> Result<bool> {
         let started_at = Instant::now();
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        let outcome = check_permission(&user_permissions, required_permission);
-        let allowed = outcome.allowed;
-        let denied = outcome.denied_reason(&user_permissions);
-        let missing_permissions = outcome.missing_permissions;
+        let evaluation = evaluate_single_permission(&user_permissions, required_permission);
+        let allowed = evaluation.allowed;
+        let denied = evaluation.denied_reason;
+        let missing_permissions = evaluation.missing_permissions;
         let latency_ms = started_at.elapsed().as_millis() as u64;
 
         debug!(
@@ -376,10 +376,10 @@ impl AuthService {
         let started_at = Instant::now();
 
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        let outcome = check_any_permission(&user_permissions, required_permissions);
-        let allowed = outcome.allowed;
-        let denied = outcome.denied_reason(&user_permissions);
-        let missing_permissions = outcome.missing_permissions;
+        let evaluation = evaluate_any_permission(&user_permissions, required_permissions);
+        let allowed = evaluation.allowed;
+        let denied = evaluation.denied_reason;
+        let missing_permissions = evaluation.missing_permissions;
         let latency_ms = started_at.elapsed().as_millis() as u64;
 
         debug!(
@@ -437,10 +437,10 @@ impl AuthService {
         let started_at = Instant::now();
 
         let user_permissions = Self::get_user_permissions(db, tenant_id, user_id).await?;
-        let outcome = check_all_permissions(&user_permissions, required_permissions);
-        let allowed = outcome.allowed;
-        let denied = outcome.denied_reason(&user_permissions);
-        let missing_permissions = outcome.missing_permissions;
+        let evaluation = evaluate_all_permissions(&user_permissions, required_permissions);
+        let allowed = evaluation.allowed;
+        let denied = evaluation.denied_reason;
+        let missing_permissions = evaluation.missing_permissions;
         let latency_ms = started_at.elapsed().as_millis() as u64;
 
         debug!(
@@ -798,7 +798,10 @@ mod tests {
     fn denied_reason_reports_no_permissions_resolved() {
         let (denied_reason_kind, denied_reason) =
             rustok_rbac::denied_reason_for_denial(&[], &[Permission::USERS_READ]);
-        assert_eq!(denied_reason_kind, DeniedReasonKind::NoPermissionsResolved);
+        assert_eq!(
+            denied_reason_kind,
+            rustok_rbac::DeniedReasonKind::NoPermissionsResolved
+        );
         assert_eq!(denied_reason, "no_permissions_resolved");
     }
 
@@ -807,7 +810,7 @@ mod tests {
         let user_permissions = vec![Permission::new(Resource::Users, Action::Manage)];
         let required_permissions = vec![Permission::USERS_READ, Permission::USERS_UPDATE];
 
-        let outcome = check_all_permissions(&user_permissions, &required_permissions);
+        let outcome = rustok_rbac::check_all_permissions(&user_permissions, &required_permissions);
 
         assert!(outcome.missing_permissions.is_empty());
     }
@@ -818,7 +821,10 @@ mod tests {
             &[Permission::USERS_READ],
             &[Permission::USERS_UPDATE],
         );
-        assert_eq!(denied_reason_kind, DeniedReasonKind::MissingPermissions);
+        assert_eq!(
+            denied_reason_kind,
+            rustok_rbac::DeniedReasonKind::MissingPermissions
+        );
         assert!(denied_reason.starts_with("missing_permissions:"));
     }
 
