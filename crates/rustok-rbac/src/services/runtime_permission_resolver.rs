@@ -4,30 +4,37 @@ use crate::{
 };
 use async_trait::async_trait;
 use rustok_core::UserRole;
+use std::marker::PhantomData;
 
 #[derive(Clone)]
-pub struct RuntimePermissionResolver<S, C, A>
+pub struct RuntimePermissionResolver<S, C, A, E>
 where
     S: RelationPermissionStore,
     C: PermissionCache,
-    A: RoleAssignmentStore<Error = S::Error>,
+    A: RoleAssignmentStore,
+    S::Error: Into<E>,
+    A::Error: Into<E>,
 {
     store: S,
     cache: C,
     assignment_store: A,
+    _error: PhantomData<E>,
 }
 
-impl<S, C, A> RuntimePermissionResolver<S, C, A>
+impl<S, C, A, E> RuntimePermissionResolver<S, C, A, E>
 where
     S: RelationPermissionStore,
     C: PermissionCache,
-    A: RoleAssignmentStore<Error = S::Error>,
+    A: RoleAssignmentStore,
+    S::Error: Into<E>,
+    A::Error: Into<E>,
 {
     pub fn new(store: S, cache: C, assignment_store: A) -> Self {
         Self {
             store,
             cache,
             assignment_store,
+            _error: PhantomData,
         }
     }
 }
@@ -52,21 +59,25 @@ pub trait RoleAssignmentStore {
 }
 
 #[async_trait]
-impl<S, C, A> PermissionResolver for RuntimePermissionResolver<S, C, A>
+impl<S, C, A, E> PermissionResolver for RuntimePermissionResolver<S, C, A, E>
 where
     S: RelationPermissionStore + Send + Sync,
     C: PermissionCache + Send + Sync,
-    A: RoleAssignmentStore<Error = S::Error> + Send + Sync,
-    S::Error: Send + Sync,
+    A: RoleAssignmentStore + Send + Sync,
+    S::Error: Into<E> + Send + Sync,
+    A::Error: Into<E> + Send + Sync,
+    E: Send + Sync,
 {
-    type Error = S::Error;
+    type Error = E;
 
     async fn resolve_permissions(
         &self,
         tenant_id: &uuid::Uuid,
         user_id: &uuid::Uuid,
     ) -> Result<PermissionResolution, Self::Error> {
-        resolve_permissions_with_cache(&self.store, &self.cache, tenant_id, user_id).await
+        resolve_permissions_with_cache(&self.store, &self.cache, tenant_id, user_id)
+            .await
+            .map_err(Into::into)
     }
 
     async fn assign_role_permissions(
@@ -78,6 +89,7 @@ where
         self.assignment_store
             .assign_role_permissions(tenant_id, user_id, role)
             .await
+            .map_err(Into::into)
     }
 
     async fn replace_user_role(
@@ -89,6 +101,7 @@ where
         self.assignment_store
             .replace_user_role(tenant_id, user_id, role)
             .await
+            .map_err(Into::into)
     }
 }
 
@@ -108,6 +121,34 @@ mod tests {
         permissions: Vec<Permission>,
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum StubStoreError {
+        Load,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum StubAssignmentError {
+        Assign,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum ResolverError {
+        Store(StubStoreError),
+        Assignment(StubAssignmentError),
+    }
+
+    impl From<StubStoreError> for ResolverError {
+        fn from(value: StubStoreError) -> Self {
+            Self::Store(value)
+        }
+    }
+
+    impl From<StubAssignmentError> for ResolverError {
+        fn from(value: StubAssignmentError) -> Self {
+            Self::Assignment(value)
+        }
+    }
+
     #[derive(Default)]
     struct StubCache {
         values: Arc<Mutex<HashMap<(uuid::Uuid, uuid::Uuid), Vec<Permission>>>>,
@@ -117,6 +158,7 @@ mod tests {
     struct StubAssignmentStore {
         assigned: Arc<Mutex<Vec<(uuid::Uuid, uuid::Uuid, UserRole)>>>,
         replaced: Arc<Mutex<Vec<(uuid::Uuid, uuid::Uuid, UserRole)>>>,
+        fail_assign: bool,
     }
 
     #[async_trait]
@@ -152,7 +194,7 @@ mod tests {
 
     #[async_trait]
     impl RelationPermissionStore for StubStore {
-        type Error = String;
+        type Error = StubStoreError;
 
         async fn load_user_role_ids(
             &self,
@@ -180,7 +222,7 @@ mod tests {
 
     #[async_trait]
     impl RoleAssignmentStore for StubAssignmentStore {
-        type Error = String;
+        type Error = StubAssignmentError;
 
         async fn assign_role_permissions(
             &self,
@@ -188,6 +230,9 @@ mod tests {
             user_id: &uuid::Uuid,
             role: UserRole,
         ) -> Result<(), Self::Error> {
+            if self.fail_assign {
+                return Err(StubAssignmentError::Assign);
+            }
             self.assigned
                 .lock()
                 .await
@@ -267,5 +312,35 @@ mod tests {
 
         assert_eq!(assigned, vec![(tenant_id, user_id, UserRole::Editor)]);
         assert_eq!(replaced, vec![(tenant_id, user_id, UserRole::Admin)]);
+    }
+
+    #[tokio::test]
+    async fn assignment_error_is_mapped_to_runtime_resolver_error_type() {
+        let resolver: RuntimePermissionResolver<_, _, _, ResolverError> =
+            RuntimePermissionResolver::new(
+                StubStore {
+                    role_ids: vec![],
+                    tenant_role_ids: vec![],
+                    permissions: vec![],
+                },
+                StubCache::default(),
+                StubAssignmentStore {
+                    fail_assign: true,
+                    ..StubAssignmentStore::default()
+                },
+            );
+
+        let result = resolver
+            .assign_role_permissions(
+                &uuid::Uuid::new_v4(),
+                &uuid::Uuid::new_v4(),
+                UserRole::Admin,
+            )
+            .await;
+
+        assert_eq!(
+            result.err(),
+            Some(ResolverError::Assignment(StubAssignmentError::Assign))
+        );
     }
 }

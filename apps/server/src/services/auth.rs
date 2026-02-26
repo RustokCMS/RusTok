@@ -47,6 +47,7 @@ type ServerRuntimePermissionResolver = RuntimePermissionResolver<
     SeaOrmRelationPermissionStore,
     MokaPermissionCache,
     ServerRoleAssignmentStore,
+    Error,
 >;
 
 static USER_PERMISSION_CACHE: Lazy<Cache<(uuid::Uuid, uuid::Uuid), Vec<Permission>>> =
