@@ -180,6 +180,110 @@ fn login_mutation(input) { /* другая логика */ }
 
 ---
 
+### 3.4 ЗАПРЕЩЕНО: Бизнес-логика в controllers/resolvers
+
+**SEVERITY: HIGH**
+
+```rust
+// ❌ ЗАПРЕЩЕНО — бизнес-логика в controller
+pub async fn create_product(input: CreateProductInput) -> Result<Json<Product>> {
+    input.validate()?;
+    let product = Product::new(input.name, input.price);
+    // 50 строк бизнес-логики прямо здесь...
+    product.save(&db).await?;
+    event_bus.publish(ProductCreated { id: product.id }).await?;
+    Ok(Json(product))
+}
+
+// ✅ ОБЯЗАТЕЛЬНО — controller вызывает service
+pub async fn create_product(
+    RequireProductsCreate(user): RequireProductsCreate,
+    State(ctx): State<AppContext>,
+    Json(input): Json<CreateProductInput>,
+) -> loco_rs::Result<Json<ProductResponse>> {
+    let product = ProductService::create(&ctx, &input).await?;
+    Ok(Json(product.into()))
+}
+```
+
+**Последствия:** Дублирование между REST и GraphQL. Невозможно тестировать бизнес-логику без HTTP.
+
+---
+
+### 3.5 ЗАПРЕЩЕНО: GraphQL resolvers без DataLoader для связанных данных
+
+**SEVERITY: HIGH**
+
+```rust
+// ❌ ЗАПРЕЩЕНО — N+1 запросов
+#[Object]
+impl ProductQuery {
+    async fn variants(&self, ctx: &Context<'_>) -> Result<Vec<Variant>> {
+        // Каждый product делает свой SQL запрос!
+        db.find_variants_by_product(self.id).await
+    }
+}
+
+// ✅ ОБЯЗАТЕЛЬНО — DataLoader
+#[Object]
+impl ProductQuery {
+    async fn variants(&self, ctx: &Context<'_>) -> Result<Vec<Variant>> {
+        let loader = ctx.data::<DataLoader<VariantLoader>>()?;
+        loader.load_one(self.id).await
+    }
+}
+```
+
+**Последствия:** 100 products × 1 query каждый = 101 SQL запрос вместо 2. Latency ×50, нагрузка на DB.
+
+---
+
+### 3.6 ЗАПРЕЩЕНО: List endpoints без пагинации
+
+**SEVERITY: HIGH**
+
+```rust
+// ❌ ЗАПРЕЩЕНО — загрузит всю таблицу
+async fn list_products() -> Result<Json<Vec<Product>>> {
+    let all = Product::find().all(&db).await?;
+    Ok(Json(all))
+}
+
+// ✅ ОБЯЗАТЕЛЬНО — пагинация
+async fn list_products(
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<PaginatedResponse<ProductResponse>>> {
+    let page = ProductService::list(&ctx, params.page, params.per_page).await?;
+    Ok(Json(page))
+}
+```
+
+**Последствия:** 100 000 записей в памяти. OOM, timeout, DoS.
+
+---
+
+### 3.7 ЗАПРЕЩЕНО: REST endpoints без OpenAPI annotations
+
+**SEVERITY: MEDIUM**
+
+```rust
+// ❌ ЗАПРЕЩЕНО — endpoint не виден в Swagger
+pub async fn create_product(...) -> Result<Json<Product>> { }
+
+// ✅ ОБЯЗАТЕЛЬНО
+#[utoipa::path(
+    post, path = "/api/products",
+    request_body = CreateProductInput,
+    responses((status = 201, body = ProductResponse)),
+    security(("bearer_auth" = []))
+)]
+pub async fn create_product(...) -> Result<Json<ProductResponse>> { }
+```
+
+**Последствия:** Swagger UI не показывает endpoint. Фронтенд-разработчики не знают о существовании API.
+
+---
+
 ## 4. Код и Runtime
 
 ### 4.1 ЗАПРЕЩЕНО: `unwrap()` / `expect()` в production коде
@@ -445,6 +549,11 @@ cargo clippy --workspace -- -D warnings
 - [ ] Нет endpoints без RBAC (кроме public)
 - [ ] Нет blocking ops в async
 - [ ] Нет логирования PII
+- [ ] Нет бизнес-логики в controllers/resolvers (только вызов services)
+- [ ] Нет N+1 queries в GraphQL (DataLoader для связанных данных)
+- [ ] Нет list endpoints без пагинации
+- [ ] REST endpoints имеют `#[utoipa::path]` annotations
+- [ ] REST и GraphQL auth logic идентичны (через AuthLifecycleService)
 - [ ] `cargo fmt` и `cargo clippy` пройдены
 - [ ] Документация обновлена при изменении кода
 

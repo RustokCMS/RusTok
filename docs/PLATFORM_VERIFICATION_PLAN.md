@@ -1330,6 +1330,45 @@
 - [ ] `rustok-test-utils` — только в `[dev-dependencies]`
 - [ ] Нет `path` dependencies на crates вне workspace
 
+### 19.12 API antipatterns — GraphQL
+
+- [ ] Нет N+1 queries в resolvers (все связанные данные через DataLoader)
+  - Искать: resolvers с прямыми DB-запросами внутри `async fn` для дочерних объектов
+- [ ] `MergedObject` используется для модульной schema (не монолитный Query/Mutation)
+- [ ] Нет `String` errors в GraphQL — используются structured error extensions
+  - `grep -rn "FieldError::new" apps/server/src/graphql/ --include="*.rs"`
+- [ ] Каждый mutation имеет permission check (не полагается на «auth достаточно»)
+- [ ] Каждый query с list возвращает paginated результат (не полную таблицу)
+- [ ] `context.data::<TenantContext>()` используется в каждом resolver (не пропущен)
+- [ ] Нет бизнес-логики в resolvers — только вызов domain services
+- [ ] Naming convention: queries — `camelCase`, mutations — `camelCase` с глаголом (`createProduct`, не `productCreate`)
+- [ ] Subscription (если есть) использует WebSocket, не polling
+
+### 19.13 API antipatterns — REST
+
+- [ ] Каждый endpoint имеет `#[utoipa::path(...)]` annotation для OpenAPI
+  - Искать: handlers без `#[utoipa::path]` в `apps/server/src/controllers/`
+- [ ] HTTP status codes корректны:
+  - 201 Created для POST (не 200)
+  - 204 No Content для DELETE (не 200)
+  - 404 Not Found для отсутствующих ресурсов (не 500)
+  - 422 Unprocessable Entity для validation errors (не 400)
+- [ ] Нет бизнес-логики в controllers — только вызов domain services
+- [ ] `loco_rs::Result` для error handling (не custom error types)
+- [ ] Все `CreateInput`/`UpdateInput` проходят через `validator::Validate`
+- [ ] Нет endpoints без пагинации в list-запросах
+- [ ] Rate limiting применён к auth endpoints (login, register, reset-password)
+- [ ] CORS middleware подключён с правильными origins
+
+### 19.14 REST ↔ GraphQL parity
+
+- [ ] Auth операции (login, register, refresh, change-password) доступны и через REST, и через GraphQL
+- [ ] Бизнес-логика **одна** — через `AuthLifecycleService` (не дублирована)
+- [ ] RBAC проверки **идентичны** в REST и GraphQL для одной и той же операции
+- [ ] Tenant isolation **идентичен** в обоих transport-слоях
+- [ ] Error responses маппятся одинаково (один domain error → одинаковый HTTP status и GraphQL error code)
+- [ ] Если CRUD операция доступна через REST — она доступна и через GraphQL (и наоборот, за исключением public storefront queries)
+
 ---
 
 ## Фаза 20: Правильность написания кода (Code Correctness)
