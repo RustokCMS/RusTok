@@ -8,10 +8,13 @@ use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
 };
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::middleware::tenant::tenant_cache_stats;
 use crate::services::auth::AuthService;
 use tracing::warn;
+
+static RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
     match rustok_telemetry::metrics_handle() {
@@ -118,15 +121,29 @@ async fn render_rbac_metrics(ctx: &AppContext) -> String {
 }
 
 fn parse_consistency_metric(row: &sea_orm::QueryResult, column: &str) -> i64 {
+            RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.fetch_add(1, Ordering::Relaxed);
+            RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.fetch_add(1, Ordering::Relaxed);
     match row.try_get::<i64>("", column) {
         Ok(value) => value,
         Err(error) => {
+            RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.fetch_add(1, Ordering::Relaxed);
             warn!(column, error = %error, "failed to parse RBAC consistency metric");
             0
         }
     }
 
-    let orphan_user_roles_total = ctx
+    let consistency_query_failures_total =
+        RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.load(Ordering::Relaxed);
+
+rustok_rbac_orphan_role_permissions_total {orphan_role_permissions_total}\n\
+rustok_rbac_consistency_query_failures_total {consistency_query_failures_total}\n",
+        consistency_query_failures_total = consistency_query_failures_total,
+    #[test]
+    fn rbac_metrics_include_consistency_query_failures_counter() {
+        let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 0, 0, 0);
+        assert!(payload.contains("rustok_rbac_consistency_query_failures_total"));
+    }
+
         .db
         .query_one(Statement::from_string(
             DbBackend::Postgres,

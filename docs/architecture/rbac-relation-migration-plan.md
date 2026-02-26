@@ -277,6 +277,7 @@
 - `users_without_roles_total` (consistency gauge).
 - `orphan_user_roles_total` (consistency gauge for `user_roles` without `roles`).
 - `orphan_role_permissions_total` (consistency gauge for `role_permissions` without `permissions`).
+- `consistency_query_failures_total` (операционный счётчик сбоев расчёта consistency-gauges).
 
 Оповещения:
 
