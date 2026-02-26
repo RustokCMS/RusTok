@@ -275,6 +275,10 @@
 - `rbac_decision_deny_total` с reason labels.
 - `rbac_decision_mismatch_total` (только в dual-read период).
 - `users_without_roles_total` (consistency gauge).
+- `orphan_user_roles_total` (consistency gauge for `user_roles` without `roles`).
+- `orphan_role_permissions_total` (consistency gauge for `role_permissions` without `permissions`).
+- `consistency_query_failures_total` (операционный счётчик сбоев расчёта consistency-gauges).
+- `consistency_query_latency_ms_total` / `consistency_query_latency_samples` (латентность SQL-расчёта consistency-gauges).
 
 Оповещения:
 

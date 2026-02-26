@@ -8,9 +8,16 @@ use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
 };
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
 use crate::middleware::tenant::tenant_cache_stats;
 use crate::services::auth::AuthService;
+use tracing::warn;
+
+static RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL: AtomicU64 = AtomicU64::new(0);
+static RBAC_CONSISTENCY_QUERY_LATENCY_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
+static RBAC_CONSISTENCY_QUERY_LATENCY_SAMPLES: AtomicU64 = AtomicU64::new(0);
 
 pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
     match rustok_telemetry::metrics_handle() {
@@ -19,7 +26,7 @@ pub async fn metrics(State(ctx): State<AppContext>) -> Result<Response> {
             payload.push('\n');
             payload.push_str(&render_tenant_cache_metrics(&ctx).await);
             payload.push_str(&render_outbox_metrics(&ctx).await);
-            payload.push_str(&render_rbac_metrics());
+            payload.push_str(&render_rbac_metrics(&ctx).await);
 
             Ok((
                 StatusCode::OK,
@@ -92,8 +99,118 @@ outbox_retries_total {retries_total}\n",
     )
 }
 
-fn render_rbac_metrics() -> String {
+async fn render_rbac_metrics(ctx: &AppContext) -> String {
     let stats = AuthService::metrics_snapshot();
+    let started_at = Instant::now();
+    let latency_ms = started_at.elapsed().as_millis() as u64;
+    RBAC_CONSISTENCY_QUERY_LATENCY_MS_TOTAL.fetch_add(latency_ms, Ordering::Relaxed);
+    RBAC_CONSISTENCY_QUERY_LATENCY_SAMPLES.fetch_add(1, Ordering::Relaxed);
+    match ctx
+        .db
+    {
+        Ok(Some(row)) => RbacConsistencyStats {
+            users_without_roles_total: parse_consistency_metric(&row, "users_without_roles_total"),
+            orphan_user_roles_total: parse_consistency_metric(&row, "orphan_user_roles_total"),
+            orphan_role_permissions_total: parse_consistency_metric(
+                &row,
+                "orphan_role_permissions_total",
+            ),
+        },
+        Ok(None) => {
+            warn!("rbac consistency stats query returned no rows");
+            RbacConsistencyStats::default()
+        }
+        Err(error) => {
+            warn!(error = %error, "failed to load RBAC consistency stats");
+            RbacConsistencyStats::default()
+        }
+    }
+}
+
+fn parse_consistency_metric(row: &sea_orm::QueryResult, column: &str) -> i64 {
+            RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.fetch_add(1, Ordering::Relaxed);
+            RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.fetch_add(1, Ordering::Relaxed);
+    match row.try_get::<i64>("", column) {
+        Ok(value) => value,
+        Err(error) => {
+            RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.fetch_add(1, Ordering::Relaxed);
+            warn!(column, error = %error, "failed to parse RBAC consistency metric");
+            0
+        }
+    }
+
+    let consistency_query_failures_total =
+        RBAC_CONSISTENCY_QUERY_FAILURES_TOTAL.load(Ordering::Relaxed);
+
+rustok_rbac_orphan_role_permissions_total {orphan_role_permissions_total}\n\
+rustok_rbac_consistency_query_failures_total {consistency_query_failures_total}\n",
+        consistency_query_failures_total = consistency_query_failures_total,
+    #[test]
+    fn rbac_metrics_include_consistency_query_failures_counter() {
+        let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 0, 0, 0);
+        assert!(payload.contains("rustok_rbac_consistency_query_failures_total"));
+    }
+
+        .db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT COUNT(*)::BIGINT AS total
+             FROM user_roles ur
+             LEFT JOIN roles r ON r.id = ur.role_id
+             WHERE r.id IS NULL"
+                .to_string(),
+    let consistency_query_latency_ms_total =
+        RBAC_CONSISTENCY_QUERY_LATENCY_MS_TOTAL.load(Ordering::Relaxed);
+    let consistency_query_latency_samples =
+        RBAC_CONSISTENCY_QUERY_LATENCY_SAMPLES.load(Ordering::Relaxed);
+rustok_rbac_consistency_query_failures_total {consistency_query_failures_total}\n\
+rustok_rbac_consistency_query_latency_ms_total {consistency_query_latency_ms_total}\n\
+rustok_rbac_consistency_query_latency_samples {consistency_query_latency_samples}\n",
+        consistency_query_latency_ms_total = consistency_query_latency_ms_total,
+        consistency_query_latency_samples = consistency_query_latency_samples,
+    #[test]
+    fn rbac_metrics_include_consistency_query_latency_counters() {
+        let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 0, 0, 0);
+        assert!(payload.contains("rustok_rbac_consistency_query_latency_ms_total"));
+        assert!(payload.contains("rustok_rbac_consistency_query_latency_samples"));
+    }
+
+        .await
+        .ok()
+        .flatten()
+        .and_then(|row| row.try_get::<i64>("", "total").ok())
+        .unwrap_or(0);
+
+    let orphan_role_permissions_total = ctx
+        .db
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            "SELECT COUNT(*)::BIGINT AS total
+             FROM role_permissions rp
+             LEFT JOIN permissions p ON p.id = rp.permission_id
+             WHERE p.id IS NULL"
+                .to_string(),
+        ))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|row| row.try_get::<i64>("", "total").ok())
+        .unwrap_or(0);
+
+    format_rbac_metrics(
+        stats,
+        users_without_roles_total,
+        orphan_user_roles_total,
+        orphan_role_permissions_total,
+    )
+}
+
+fn format_rbac_metrics(
+    stats: crate::services::auth::RbacResolverMetricsSnapshot,
+    users_without_roles_total: i64,
+    orphan_user_roles_total: i64,
+    orphan_role_permissions_total: i64,
+) -> String {
     format!(
         "rustok_rbac_permission_cache_hits {cache_hits}\n\
 rustok_rbac_permission_cache_misses {cache_misses}\n\
@@ -106,7 +223,10 @@ rustok_rbac_permission_lookup_latency_samples {lookup_latency_samples}\n\
 rustok_rbac_permission_denied_reason_no_permissions_resolved {denied_no_permissions_resolved}\n\
 rustok_rbac_permission_denied_reason_missing_permissions {denied_missing_permissions}\n\
 rustok_rbac_permission_denied_reason_unknown {denied_unknown}\n\
-rustok_rbac_claim_role_mismatch_total {claim_role_mismatch_total}\n",
+rustok_rbac_claim_role_mismatch_total {claim_role_mismatch_total}\n\
+rustok_rbac_users_without_roles_total {users_without_roles_total}\n\
+rustok_rbac_orphan_user_roles_total {orphan_user_roles_total}\n\
+rustok_rbac_orphan_role_permissions_total {orphan_role_permissions_total}\n",
         cache_hits = stats.permission_cache_hits,
         cache_misses = stats.permission_cache_misses,
         checks_allowed = stats.permission_checks_allowed,
@@ -119,16 +239,46 @@ rustok_rbac_claim_role_mismatch_total {claim_role_mismatch_total}\n",
         denied_missing_permissions = stats.denied_missing_permissions,
         denied_unknown = stats.denied_unknown,
         claim_role_mismatch_total = stats.claim_role_mismatch_total,
+        users_without_roles_total = users_without_roles_total,
+        orphan_user_roles_total = orphan_user_roles_total,
+        orphan_role_permissions_total = orphan_role_permissions_total,
     )
 }
 
+
+    #[test]
+    fn rbac_metrics_render_consistency_values() {
+        let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 7, 3, 1);
+        assert!(payload.contains("rustok_rbac_users_without_roles_total 7"));
+        assert!(payload.contains("rustok_rbac_orphan_user_roles_total 3"));
+        assert!(payload.contains("rustok_rbac_orphan_role_permissions_total 1"));
+    }
 #[cfg(test)]
 mod tests {
-    use super::render_rbac_metrics;
+    use super::format_rbac_metrics;
+    use crate::services::auth::AuthService;
 
     #[test]
     fn rbac_metrics_include_claim_role_mismatch_counter() {
-        let payload = render_rbac_metrics();
+        let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 0, 0, 0);
         assert!(payload.contains("rustok_rbac_claim_role_mismatch_total"));
+    }
+
+    #[test]
+    fn rbac_metrics_include_users_without_roles_counter() {
+        let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 0, 0, 0);
+        assert!(payload.contains("rustok_rbac_users_without_roles_total"));
+    }
+
+    #[test]
+    fn rbac_metrics_include_orphan_user_roles_counter() {
+        let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 0, 0, 0);
+        assert!(payload.contains("rustok_rbac_orphan_user_roles_total"));
+    }
+
+    #[test]
+    fn rbac_metrics_include_orphan_role_permissions_counter() {
+        let payload = format_rbac_metrics(AuthService::metrics_snapshot(), 0, 0, 0);
+        assert!(payload.contains("rustok_rbac_orphan_role_permissions_total"));
     }
 }
