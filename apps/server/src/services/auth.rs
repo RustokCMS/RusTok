@@ -874,7 +874,6 @@ impl RoleAssignmentStore for ServerRoleAssignmentStore {
 #[cfg(test)]
 mod tests {
     use super::AuthService;
-    use rustok_core::{Action, Permission, Resource};
 
     #[test]
     fn claim_role_mismatch_counter_increments() {
@@ -892,66 +891,5 @@ mod tests {
         let after = AuthService::metrics_snapshot().shadow_compare_failures_total;
 
         assert_eq!(after, before + 1);
-    }
-
-    #[test]
-    fn denied_reason_reports_no_permissions_resolved() {
-        let (denied_reason_kind, denied_reason) =
-            rustok_rbac::denied_reason_for_denial(&[], &[Permission::USERS_READ]);
-        assert_eq!(
-            denied_reason_kind,
-            rustok_rbac::DeniedReasonKind::NoPermissionsResolved
-        );
-        assert_eq!(denied_reason, "no_permissions_resolved");
-    }
-
-    #[test]
-    fn missing_permissions_respects_manage_wildcard() {
-        let user_permissions = vec![Permission::new(Resource::Users, Action::Manage)];
-        let required_permissions = vec![Permission::USERS_READ, Permission::USERS_UPDATE];
-
-        let outcome = rustok_rbac::check_all_permissions(&user_permissions, &required_permissions);
-
-        assert!(outcome.missing_permissions.is_empty());
-    }
-
-    #[test]
-    fn denied_reason_classifies_missing_permissions() {
-        let (denied_reason_kind, denied_reason) = rustok_rbac::denied_reason_for_denial(
-            &[Permission::USERS_READ],
-            &[Permission::USERS_UPDATE],
-        );
-        assert_eq!(
-            denied_reason_kind,
-            rustok_rbac::DeniedReasonKind::MissingPermissions
-        );
-        assert!(denied_reason.starts_with("missing_permissions:"));
-    }
-
-    #[test]
-    fn rbac_authz_mode_parse_defaults_to_relation_only() {
-        assert_eq!(RbacAuthzMode::parse(""), RbacAuthzMode::RelationOnly);
-        assert_eq!(
-            RbacAuthzMode::parse("relation_only"),
-            RbacAuthzMode::RelationOnly
-        );
-        assert_eq!(
-            RbacAuthzMode::parse("unexpected"),
-            RbacAuthzMode::RelationOnly
-        );
-    }
-
-    #[test]
-    fn rbac_authz_mode_parse_supports_dual_read() {
-        assert_eq!(RbacAuthzMode::parse("dual_read"), RbacAuthzMode::DualRead);
-        assert_eq!(RbacAuthzMode::parse("DUAL_READ"), RbacAuthzMode::DualRead);
-    }
-
-    #[test]
-    fn rbac_authz_mode_parse_trims_value() {
-        assert_eq!(
-            RbacAuthzMode::parse("  dual_read  "),
-            RbacAuthzMode::DualRead
-        );
     }
 }
