@@ -83,7 +83,7 @@ where
 {
     if let Some(cached_permissions) = cache.get(tenant_id, user_id).await {
         return Ok(crate::PermissionResolution {
-            permissions: cached_permissions,
+            permissions: normalize_permissions(cached_permissions),
             cache_hit: true,
         });
     }
@@ -297,5 +297,38 @@ mod tests {
 
         let cached = cache.get(&tenant_id, &user_id).await;
         assert!(cached.is_none());
+    }
+    #[tokio::test]
+    async fn resolve_permissions_with_cache_normalizes_cached_permissions() {
+        let tenant_id = uuid::Uuid::new_v4();
+        let user_id = uuid::Uuid::new_v4();
+        let store = StubStore {
+            role_ids: vec![],
+            tenant_role_ids: vec![],
+            permissions: vec![],
+        };
+        let cache = StubCache::default();
+
+        cache
+            .insert(
+                &tenant_id,
+                &user_id,
+                vec![
+                    Permission::USERS_READ,
+                    Permission::USERS_MANAGE,
+                    Permission::USERS_READ,
+                ],
+            )
+            .await;
+
+        let resolved = resolve_permissions_with_cache(&store, &cache, &tenant_id, &user_id)
+            .await
+            .unwrap();
+
+        assert!(resolved.cache_hit);
+        assert_eq!(
+            resolved.permissions,
+            vec![Permission::USERS_MANAGE, Permission::USERS_READ]
+        );
     }
 }
