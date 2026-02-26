@@ -108,6 +108,8 @@ PRECHECK_JSON="$ARTIFACTS_DIR/rbac_report_pre_${TS}.json"
 DRYRUN_JSON="$ARTIFACTS_DIR/rbac_backfill_dry_run_${TS}.json"
 POST_APPLY_JSON="$ARTIFACTS_DIR/rbac_report_post_apply_${TS}.json"
 POST_APPLY_BACKFILL_JSON="$ARTIFACTS_DIR/rbac_backfill_apply_${TS}.json"
+ROLLBACK_DRYRUN_JSON="$ARTIFACTS_DIR/rbac_backfill_rollback_dry_run_${TS}.json"
+ROLLBACK_APPLY_JSON="$ARTIFACTS_DIR/rbac_backfill_rollback_apply_${TS}.json"
 POST_ROLLBACK_JSON="$ARTIFACTS_DIR/rbac_report_post_rollback_${TS}.json"
 
 build_args() {
@@ -287,13 +289,13 @@ fi
 # 4) Rollback dry-run (optional)
 if [[ "$RUN_ROLLBACK_DRY" == "true" ]]; then
   require_rollback_source "rollback dry-run"
-  run_step "05_rollback_dry_run" "target=rbac-backfill-rollback source=${ROLLBACK_FILE} dry_run=true"
+  run_step "05_rollback_dry_run" "target=rbac-backfill-rollback source=${ROLLBACK_FILE} dry_run=true report_file=${ROLLBACK_DRYRUN_JSON}"
 fi
 
 # 5) Rollback apply (optional, explicit)
 if [[ "$RUN_ROLLBACK_APPLY" == "true" ]]; then
   require_rollback_source "rollback apply"
-  run_step "06_rollback_apply" "target=rbac-backfill-rollback source=${ROLLBACK_FILE} continue_on_error=${CONTINUE_ON_ERROR}"
+  run_step "06_rollback_apply" "target=rbac-backfill-rollback source=${ROLLBACK_FILE} continue_on_error=${CONTINUE_ON_ERROR} report_file=${ROLLBACK_APPLY_JSON}"
   run_step "07_post_rollback_report" "target=rbac-report output=${POST_ROLLBACK_JSON}"
   if [[ "$REQUIRE_ZERO_POST_ROLLBACK" == "true" ]]; then
     enforce_zero_invariants "$POST_ROLLBACK_JSON" "post-rollback"
@@ -311,6 +313,8 @@ cat > "$REPORT_FILE" <<REPORT
 - Dry-run backfill JSON report: ${DRYRUN_JSON}
 - Post-apply JSON report: ${POST_APPLY_JSON}
 - Post-apply backfill JSON report: ${POST_APPLY_BACKFILL_JSON}
+- Rollback dry-run JSON report: ${ROLLBACK_DRYRUN_JSON}
+- Rollback apply JSON report: ${ROLLBACK_APPLY_JSON}
 - Post-rollback JSON report: ${POST_ROLLBACK_JSON}
 - Effective rollback source: ${ROLLBACK_FILE}
 - Apply step enabled: ${RUN_APPLY}
@@ -334,6 +338,8 @@ REPORT
 
 append_backfill_summary "Backfill dry-run summary" "$DRYRUN_JSON"
 append_backfill_summary "Backfill apply summary" "$POST_APPLY_BACKFILL_JSON"
+append_backfill_summary "Rollback dry-run summary" "$ROLLBACK_DRYRUN_JSON"
+append_backfill_summary "Rollback apply summary" "$ROLLBACK_APPLY_JSON"
 append_invariant_summary "Invariant diff: pre-check vs post-apply" "$PRECHECK_JSON" "$POST_APPLY_JSON"
 append_invariant_summary "Invariant diff: pre-check vs post-rollback" "$PRECHECK_JSON" "$POST_ROLLBACK_JSON"
 

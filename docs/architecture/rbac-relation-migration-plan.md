@@ -418,6 +418,7 @@
 - [x] Подготовлен idempotent backfill-script (cleanup `target=rbac-backfill` + helper `scripts/rbac_relation_staging.sh`).
 - [ ] Выполнен dry-run с отчётом расхождений.
   - [x] Автоматизирована генерация dry-run отчёта (`cleanup target=rbac-backfill report_file=...` + `scripts/rbac_relation_staging.sh` сохраняет `rbac_backfill_dry_run_*.json` и summary в stage-report).
+  - [x] Автоматизирована генерация rollback dry-run/apply отчётов (`cleanup target=rbac-backfill-rollback report_file=...` + `scripts/rbac_relation_staging.sh` сохраняет `rbac_backfill_rollback_*.json` и summary в stage-report).
 - [ ] Выполнен backfill на staging.
 - [ ] Выполнен post-check целостности.
 - [~] Подготовлен rollback-план (CLI rollback target + snapshot-файл), проверка на staging в работе.

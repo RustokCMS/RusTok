@@ -198,6 +198,7 @@ impl Task for CleanupTask {
                 let mut reverted = 0usize;
                 let mut failed = 0usize;
                 let continue_on_error = is_flag_enabled(&vars.cli, "continue_on_error");
+                let before = load_rbac_consistency_stats(ctx).await?;
 
                 if dry_run {
                     tracing::info!(
@@ -238,6 +239,28 @@ impl Task for CleanupTask {
                 }
 
                 let after = load_rbac_consistency_stats(ctx).await?;
+
+                if let Some(path) = vars.cli.get("report_file") {
+                    write_backfill_rollback_report_file(
+                        path,
+                        BackfillRollbackExecutionReport {
+                            dry_run,
+                            entries_total: entries.len(),
+                            reverted,
+                            failed,
+                            users_without_roles_total_before: before.users_without_roles_total,
+                            orphan_user_roles_total_before: before.orphan_user_roles_total,
+                            orphan_role_permissions_total_before: before
+                                .orphan_role_permissions_total,
+                            users_without_roles_total_after: after.users_without_roles_total,
+                            orphan_user_roles_total_after: after.orphan_user_roles_total,
+                            orphan_role_permissions_total_after: after
+                                .orphan_role_permissions_total,
+                        },
+                    )?;
+                    tracing::info!(report_file = %path, "RBAC rollback report file saved");
+                }
+
                 tracing::info!(
                     source = %source,
                     reverted,
@@ -277,6 +300,20 @@ struct BackfillExecutionReport {
     candidates_total: usize,
     fixed_users: usize,
     failed_users: usize,
+    users_without_roles_total_before: i64,
+    orphan_user_roles_total_before: i64,
+    orphan_role_permissions_total_before: i64,
+    users_without_roles_total_after: i64,
+    orphan_user_roles_total_after: i64,
+    orphan_role_permissions_total_after: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BackfillRollbackExecutionReport {
+    dry_run: bool,
+    entries_total: usize,
+    reverted: usize,
+    failed: usize,
     users_without_roles_total_before: i64,
     orphan_user_roles_total_before: i64,
     orphan_role_permissions_total_before: i64,
@@ -333,6 +370,23 @@ fn write_backfill_report_file(path: &str, report: BackfillExecutionReport) -> Re
     })?;
     std::fs::write(path, payload).map_err(|error| {
         loco_rs::Error::string(format!("rbac backfill report write failed: {error}"))
+    })?;
+    Ok(())
+}
+
+fn write_backfill_rollback_report_file(
+    path: &str,
+    report: BackfillRollbackExecutionReport,
+) -> Result<()> {
+    let payload = serde_json::to_vec_pretty(&report).map_err(|error| {
+        loco_rs::Error::string(format!(
+            "rbac backfill rollback report serialization failed: {error}"
+        ))
+    })?;
+    std::fs::write(path, payload).map_err(|error| {
+        loco_rs::Error::string(format!(
+            "rbac backfill rollback report write failed: {error}"
+        ))
     })?;
     Ok(())
 }
@@ -398,8 +452,9 @@ fn parse_role_set(cli: &HashMap<String, String>, key: &str) -> Result<HashSet<Us
 mod tests {
     use super::{
         is_flag_enabled, parse_limit, parse_role_set, parse_uuid_set, read_rollback_file,
-        write_backfill_report_file, write_rbac_report_file, write_rollback_file,
-        BackfillExecutionReport, BackfillRollbackEntry,
+        write_backfill_report_file, write_backfill_rollback_report_file, write_rbac_report_file,
+        write_rollback_file, BackfillExecutionReport, BackfillRollbackEntry,
+        BackfillRollbackExecutionReport,
     };
     use rustok_core::UserRole;
     use std::collections::HashMap;
@@ -529,5 +584,37 @@ mod tests {
         assert_eq!(loaded[0].user_id, payload[0].user_id);
         assert_eq!(loaded[0].tenant_id, payload[0].tenant_id);
         assert_eq!(loaded[0].role, UserRole::Manager);
+    }
+
+    #[test]
+    fn backfill_rollback_report_file_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rbac_backfill_rollback_report.json");
+        let path_str = path.to_string_lossy().to_string();
+
+        write_backfill_rollback_report_file(
+            &path_str,
+            BackfillRollbackExecutionReport {
+                dry_run: false,
+                entries_total: 3,
+                reverted: 2,
+                failed: 1,
+                users_without_roles_total_before: 8,
+                orphan_user_roles_total_before: 3,
+                orphan_role_permissions_total_before: 2,
+                users_without_roles_total_after: 6,
+                orphan_user_roles_total_after: 2,
+                orphan_role_permissions_total_after: 2,
+            },
+        )
+        .unwrap();
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(payload["entries_total"], 3);
+        assert_eq!(payload["reverted"], 2);
+        assert_eq!(payload["failed"], 1);
+        assert_eq!(payload["users_without_roles_total_before"], 8);
+        assert_eq!(payload["users_without_roles_total_after"], 6);
     }
 }
