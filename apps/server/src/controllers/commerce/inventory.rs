@@ -1,17 +1,17 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     Json,
 };
+use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use rustok_commerce::InventoryService;
 
-use crate::common::{ApiErrorResponse, ApiResponse, RequestContext};
+use crate::context::TenantContext;
+use crate::extractors::rbac::{RequireInventoryList, RequireInventoryRead, RequireInventoryUpdate};
 use crate::services::event_bus::transactional_event_bus_from_context;
-use loco_rs::app::AppContext;
 
 /// Get variant inventory info
 #[utoipa::path(
@@ -24,43 +24,32 @@ use loco_rs::app::AppContext;
     responses(
         (status = 200, description = "Inventory details", body = InventoryResponse),
         (status = 404, description = "Variant not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub(super) async fn get_inventory(
     State(ctx): State<AppContext>,
-    request: RequestContext,
+    tenant: TenantContext,
+    _user: RequireInventoryRead,
     Path(variant_id): Path<Uuid>,
-) -> Result<Json<ApiResponse<InventoryResponse>>, ApiErrorResponse> {
+) -> Result<Json<InventoryResponse>> {
     use rustok_commerce::entities::product_variant;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
     let variant = product_variant::Entity::find_by_id(variant_id)
-        .filter(product_variant::Column::TenantId.eq(request.tenant_id))
+        .filter(product_variant::Column::TenantId.eq(tenant.id))
         .one(&ctx.db)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?
-        .ok_or_else(|| {
-            ApiErrorResponse::from((
-                StatusCode::NOT_FOUND,
-                Json(ApiResponse::<()>::error(
-                    "VARIANT_NOT_FOUND",
-                    "Variant not found",
-                )),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .ok_or(Error::NotFound)?;
 
-    Ok(Json(ApiResponse::success(InventoryResponse {
+    Ok(Json(InventoryResponse {
         variant_id,
         quantity: variant.inventory_quantity,
         policy: variant.inventory_policy.clone(),
         in_stock: variant.inventory_quantity > 0 || variant.inventory_policy == "continue",
-    })))
+    }))
 }
 
 /// Adjust variant inventory quantity
@@ -76,22 +65,22 @@ pub(super) async fn get_inventory(
         (status = 200, description = "Inventory adjusted successfully", body = InventoryResponse),
         (status = 400, description = "Insufficient inventory or invalid input"),
         (status = 404, description = "Variant not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub(super) async fn adjust_inventory(
     State(ctx): State<AppContext>,
-    request: RequestContext,
+    tenant: TenantContext,
+    RequireInventoryUpdate(user): RequireInventoryUpdate,
     Path(variant_id): Path<Uuid>,
     Json(input): Json<AdjustInput>,
-) -> Result<Json<ApiResponse<InventoryResponse>>, ApiErrorResponse> {
-    let user_id = request.require_user()?;
-
+) -> Result<Json<InventoryResponse>> {
     let service = InventoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .adjust_inventory(
-            request.tenant_id,
-            user_id,
+            tenant.id,
+            user.user.id,
             rustok_commerce::dto::AdjustInventoryInput {
                 variant_id,
                 adjustment: input.adjustment,
@@ -99,20 +88,15 @@ pub(super) async fn adjust_inventory(
             },
         )
         .await
-        .map_err(|err| {
-            let code = match &err {
-                rustok_commerce::CommerceError::InsufficientInventory { .. } => {
-                    "INSUFFICIENT_INVENTORY"
-                }
-                _ => "INVENTORY_ERROR",
-            };
-            ApiErrorResponse::from((
-                StatusCode::BAD_REQUEST,
-                Json(ApiResponse::<()>::error(code, err.to_string())),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    get_inventory(State(ctx), request, Path(variant_id)).await
+    get_inventory(
+        State(ctx),
+        tenant,
+        RequireInventoryRead(user),
+        Path(variant_id),
+    )
+    .await
 }
 
 /// Set absolute inventory quantity
@@ -127,29 +111,30 @@ pub(super) async fn adjust_inventory(
     responses(
         (status = 200, description = "Inventory set successfully", body = InventoryResponse),
         (status = 404, description = "Variant not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub(super) async fn set_inventory(
     State(ctx): State<AppContext>,
-    request: RequestContext,
+    tenant: TenantContext,
+    RequireInventoryUpdate(user): RequireInventoryUpdate,
     Path(variant_id): Path<Uuid>,
     Json(input): Json<SetInventoryInput>,
-) -> Result<Json<ApiResponse<InventoryResponse>>, ApiErrorResponse> {
-    let user_id = request.require_user()?;
-
+) -> Result<Json<InventoryResponse>> {
     let service = InventoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
-        .set_inventory(request.tenant_id, user_id, variant_id, input.quantity)
+        .set_inventory(tenant.id, user.user.id, variant_id, input.quantity)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::BAD_REQUEST,
-                Json(ApiResponse::<()>::error("INVENTORY_ERROR", err.to_string())),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    get_inventory(State(ctx), request, Path(variant_id)).await
+    get_inventory(
+        State(ctx),
+        tenant,
+        RequireInventoryRead(user),
+        Path(variant_id),
+    )
+    .await
 }
 
 /// Batch check inventory availability
@@ -160,20 +145,22 @@ pub(super) async fn set_inventory(
     request_body = CheckAvailabilityInput,
     responses(
         (status = 200, description = "Availability results", body = Vec<AvailabilityResult>),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub(super) async fn check_availability(
     State(ctx): State<AppContext>,
-    request: RequestContext,
+    tenant: TenantContext,
+    _user: RequireInventoryList,
     Json(input): Json<CheckAvailabilityInput>,
-) -> Result<Json<ApiResponse<Vec<AvailabilityResult>>>, ApiErrorResponse> {
+) -> Result<Json<Vec<AvailabilityResult>>> {
     let service = InventoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let mut results = Vec::new();
 
     for item in input.items {
         let available = service
-            .check_availability(request.tenant_id, item.variant_id, item.quantity)
+            .check_availability(tenant.id, item.variant_id, item.quantity)
             .await
             .unwrap_or(false);
 
@@ -184,7 +171,7 @@ pub(super) async fn check_availability(
         });
     }
 
-    Ok(Json(ApiResponse::success(results)))
+    Ok(Json(results))
 }
 
 #[derive(Debug, Serialize, ToSchema)]

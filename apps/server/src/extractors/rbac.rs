@@ -214,6 +214,19 @@ define_permission_extractor!(RequirePagesRead, rustok_core::Permission::PAGES_RE
 define_permission_extractor!(RequirePagesUpdate, rustok_core::Permission::PAGES_UPDATE);
 define_permission_extractor!(RequirePagesDelete, rustok_core::Permission::PAGES_DELETE);
 
+define_permission_extractor!(
+    RequireInventoryRead,
+    rustok_core::Permission::INVENTORY_READ
+);
+define_permission_extractor!(
+    RequireInventoryUpdate,
+    rustok_core::Permission::INVENTORY_UPDATE
+);
+define_permission_extractor!(
+    RequireInventoryList,
+    rustok_core::Permission::INVENTORY_LIST
+);
+
 define_permission_extractor!(RequireScriptsCreate, rustok_core::Permission::SCRIPTS_CREATE);
 define_permission_extractor!(RequireScriptsRead, rustok_core::Permission::SCRIPTS_READ);
 define_permission_extractor!(RequireScriptsList, rustok_core::Permission::SCRIPTS_LIST);

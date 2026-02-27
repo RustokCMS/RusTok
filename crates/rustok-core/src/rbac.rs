@@ -202,6 +202,9 @@ static CUSTOMER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::new(Resource::ForumReplies, Action::List));
     permissions.insert(Permission::new(Resource::ForumReplies, Action::Create));
 
+    permissions.insert(Permission::INVENTORY_READ);
+    permissions.insert(Permission::INVENTORY_LIST);
+
     permissions
 });
 

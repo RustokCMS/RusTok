@@ -76,6 +76,10 @@ impl RateLimiter {
         }
     }
 
+    pub fn window_secs(&self) -> u64 {
+        self.config.window.as_secs()
+    }
+
     pub async fn check_rate_limit(&self, key: &str) -> Result<RateLimitInfo, StatusCode> {
         if !self.config.enabled {
             return Ok(RateLimitInfo::unlimited());
@@ -230,6 +234,10 @@ fn extract_client_id(headers: &HeaderMap) -> String {
     "ip:unknown".to_string()
 }
 
+pub fn extract_client_id_pub(headers: &HeaderMap) -> String {
+    extract_client_id(headers)
+}
+
 fn insert_header_if_valid(headers: &mut axum::http::HeaderMap, key: &'static str, value: String) {
     match axum::http::HeaderValue::from_str(&value) {
         Ok(header_value) => {
@@ -250,6 +258,57 @@ pub async fn rate_limit_middleware(
     let client_id = extract_client_id(&headers);
 
     debug!(client_id = %client_id, "Checking rate limit");
+
+    match limiter.check_rate_limit(&client_id).await {
+        Ok(info) => {
+            let mut response = next.run(request).await;
+
+            let headers = response.headers_mut();
+            insert_header_if_valid(headers, "x-ratelimit-limit", info.limit.to_string());
+            insert_header_if_valid(headers, "x-ratelimit-remaining", info.remaining.to_string());
+            insert_header_if_valid(headers, "x-ratelimit-reset", info.reset.to_string());
+
+            Ok(response)
+        }
+        Err(status) => {
+            let mut response = Response::new(Body::from("Rate limit exceeded"));
+            *response.status_mut() = status;
+
+            let headers = response.headers_mut();
+            insert_header_if_valid(
+                headers,
+                "retry-after",
+                limiter.config.window.as_secs().to_string(),
+            );
+
+            Err(response)
+        }
+    }
+}
+
+/// Path-aware rate limiting middleware.
+///
+/// Applies rate limiting only to requests whose URI path starts with one of the
+/// provided `prefixes`. All other requests are passed through unchanged.
+///
+/// This is useful to protect specific endpoint groups (e.g. `/api/auth`) without
+/// creating separate Axum sub-routers for each group.
+pub async fn rate_limit_for_paths(
+    State((limiter, prefixes)): State<(Arc<RateLimiter>, Arc<Vec<&'static str>>)>,
+    headers: HeaderMap,
+    request: Request,
+    next: Next,
+) -> Result<Response, impl IntoResponse> {
+    let path = request.uri().path().to_owned();
+    let should_limit = prefixes.iter().any(|prefix| path.starts_with(prefix));
+
+    if !should_limit {
+        return Ok(next.run(request).await);
+    }
+
+    let client_id = extract_client_id(&headers);
+
+    debug!(client_id = %client_id, path = %path, "Checking rate limit for auth path");
 
     match limiter.check_rate_limit(&client_id).await {
         Ok(info) => {

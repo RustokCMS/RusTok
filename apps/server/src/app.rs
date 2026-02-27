@@ -18,6 +18,7 @@ use sea_orm::EntityTrait;
 use crate::controllers;
 use crate::initializers;
 use crate::middleware;
+use crate::middleware::rate_limit::{cleanup_task, RateLimitConfig, RateLimiter};
 use crate::modules;
 use crate::seeds;
 use crate::services::event_transport_factory::{
@@ -105,10 +106,63 @@ impl Hooks for App {
         });
         let alloy_rest_router = controllers::alloy::router(alloy_app_state);
 
+        let auth_limiter = Arc::new(RateLimiter::new(RateLimitConfig::new(20, 60)));
+        let auth_limiter_for_cleanup = auth_limiter.clone();
+        tokio::spawn(async move {
+            cleanup_task(auth_limiter_for_cleanup).await;
+        });
+
+        let auth_limiter_for_middleware = auth_limiter.clone();
+        let auth_rate_limit_middleware =
+            axum_middleware::from_fn(move |request: axum::extract::Request, next: axum_middleware::Next| {
+                let limiter = auth_limiter_for_middleware.clone();
+                async move {
+                    use axum::body::Body;
+
+                    let path = request.uri().path().to_owned();
+                    let is_auth_path = path.starts_with("/api/auth/login")
+                        || path.starts_with("/api/auth/register")
+                        || path.starts_with("/api/auth/reset");
+
+                    if !is_auth_path {
+                        return next.run(request).await;
+                    }
+
+                    let headers = request.headers().clone();
+                    let client_id = crate::middleware::rate_limit::extract_client_id_pub(&headers);
+
+                    match limiter.check_rate_limit(&client_id).await {
+                        Ok(info) => {
+                            let mut response = next.run(request).await;
+                            let resp_headers = response.headers_mut();
+                            if let Ok(v) = axum::http::HeaderValue::from_str(&info.limit.to_string()) {
+                                resp_headers.insert("x-ratelimit-limit", v);
+                            }
+                            if let Ok(v) = axum::http::HeaderValue::from_str(&info.remaining.to_string()) {
+                                resp_headers.insert("x-ratelimit-remaining", v);
+                            }
+                            if let Ok(v) = axum::http::HeaderValue::from_str(&info.reset.to_string()) {
+                                resp_headers.insert("x-ratelimit-reset", v);
+                            }
+                            response
+                        }
+                        Err(status) => {
+                            let mut response = axum::response::Response::new(Body::from("Rate limit exceeded"));
+                            *response.status_mut() = status;
+                            if let Ok(v) = axum::http::HeaderValue::from_str(&limiter.window_secs().to_string()) {
+                                response.headers_mut().insert("retry-after", v);
+                            }
+                            response
+                        }
+                    }
+                }
+            });
+
         Ok(router
             .nest("/api/alloy", alloy_rest_router)
             .layer(Extension(registry))
             .layer(Extension(alloy_state))
+            .layer(auth_rate_limit_middleware)
             .layer(axum_middleware::from_fn_with_state(
                 ctx.clone(),
                 middleware::tenant::resolve,

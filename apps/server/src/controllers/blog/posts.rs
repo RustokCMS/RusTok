@@ -1,5 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     Json,
 };
 use loco_rs::prelude::*;
@@ -89,13 +90,13 @@ pub async fn create_post(
     tenant: TenantContext,
     RequireBlogPostsCreate(user): RequireBlogPostsCreate,
     Json(input): Json<CreatePostInput>,
-) -> Result<Json<Uuid>> {
+) -> Result<(StatusCode, Json<Uuid>)> {
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let post_id = service
         .create_post(tenant.id, user.security_context(), input)
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
-    Ok(Json(post_id))
+    Ok((StatusCode::CREATED, Json(post_id)))
 }
 
 /// Update an existing blog post
@@ -149,13 +150,13 @@ pub async fn delete_post(
     tenant: TenantContext,
     RequireBlogPostsDelete(user): RequireBlogPostsDelete,
     Path(id): Path<Uuid>,
-) -> Result<()> {
+) -> Result<StatusCode> {
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .delete_post(tenant.id, id, user.security_context())
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
-    Ok(())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Publish a blog post

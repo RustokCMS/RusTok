@@ -1,5 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     Json,
 };
 use loco_rs::prelude::*;
@@ -88,13 +89,13 @@ pub async fn create_node(
     tenant: TenantContext,
     RequireNodesCreate(user): RequireNodesCreate,
     Json(input): Json<CreateNodeInput>,
-) -> Result<Json<NodeResponse>> {
+) -> Result<(StatusCode, Json<NodeResponse>)> {
     let service = NodeService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let node = service
         .create_node(tenant.id, user.security_context(), input)
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
-    Ok(Json(node))
+    Ok((StatusCode::CREATED, Json(node)))
 }
 
 /// Update an existing content node
@@ -148,11 +149,11 @@ pub async fn delete_node(
     tenant: TenantContext,
     RequireNodesDelete(user): RequireNodesDelete,
     Path(id): Path<Uuid>,
-) -> Result<()> {
+) -> Result<StatusCode> {
     let service = NodeService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .delete_node(tenant.id, id, user.security_context())
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
-    Ok(())
+    Ok(StatusCode::NO_CONTENT)
 }

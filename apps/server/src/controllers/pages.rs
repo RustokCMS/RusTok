@@ -1,5 +1,6 @@
 use axum::{
     extract::{Query, State},
+    http::StatusCode,
     Json,
 };
 use loco_rs::prelude::*;
@@ -70,13 +71,13 @@ pub async fn create_page(
     tenant: TenantContext,
     RequirePagesCreate(user): RequirePagesCreate,
     Json(input): Json<CreatePageInput>,
-) -> Result<Json<PageResponse>> {
+) -> Result<(StatusCode, Json<PageResponse>)> {
     let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let page = service
         .create(tenant.id, user.security_context(), input)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
-    Ok(Json(page))
+    Ok((StatusCode::CREATED, Json(page)))
 }
 
 pub fn routes() -> Routes {

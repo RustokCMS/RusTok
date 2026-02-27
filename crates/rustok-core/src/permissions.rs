@@ -269,6 +269,13 @@ impl Permission {
     pub const FORUM_REPLIES_MODERATE: Self = Self::new(Resource::ForumReplies, Action::Moderate);
     pub const FORUM_REPLIES_MANAGE: Self = Self::new(Resource::ForumReplies, Action::Manage);
 
+    pub const INVENTORY_CREATE: Self = Self::new(Resource::Inventory, Action::Create);
+    pub const INVENTORY_READ: Self = Self::new(Resource::Inventory, Action::Read);
+    pub const INVENTORY_UPDATE: Self = Self::new(Resource::Inventory, Action::Update);
+    pub const INVENTORY_DELETE: Self = Self::new(Resource::Inventory, Action::Delete);
+    pub const INVENTORY_LIST: Self = Self::new(Resource::Inventory, Action::List);
+    pub const INVENTORY_MANAGE: Self = Self::new(Resource::Inventory, Action::Manage);
+
     pub const SCRIPTS_CREATE: Self = Self::new(Resource::Scripts, Action::Create);
     pub const SCRIPTS_READ: Self = Self::new(Resource::Scripts, Action::Read);
     pub const SCRIPTS_UPDATE: Self = Self::new(Resource::Scripts, Action::Update);

@@ -1,5 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     Json,
 };
 use loco_rs::prelude::*;
@@ -96,13 +97,13 @@ pub async fn create_reply(
     RequireForumRepliesCreate(user): RequireForumRepliesCreate,
     Path(topic_id): Path<Uuid>,
     Json(input): Json<CreateReplyInput>,
-) -> Result<Json<ReplyResponse>> {
+) -> Result<(StatusCode, Json<ReplyResponse>)> {
     let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let reply = service
         .create(tenant.id, user.security_context(), topic_id, input)
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
-    Ok(Json(reply))
+    Ok((StatusCode::CREATED, Json(reply)))
 }
 
 #[utoipa::path(
@@ -154,11 +155,11 @@ pub async fn delete_reply(
     tenant: TenantContext,
     RequireForumTopicsModerate(user): RequireForumTopicsModerate,
     Path(id): Path<Uuid>,
-) -> Result<()> {
+) -> Result<StatusCode> {
     let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .delete(tenant.id, id, user.security_context())
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
-    Ok(())
+    Ok(StatusCode::NO_CONTENT)
 }

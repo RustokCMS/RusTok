@@ -3,15 +3,18 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use loco_rs::prelude::*;
 use uuid::Uuid;
 
 use rustok_commerce::dto::{CreateVariantInput, PriceInput, UpdateVariantInput, VariantResponse};
 use rustok_commerce::{entities, PricingService};
 use rustok_core::{generate_id, DomainEvent};
 
-use crate::common::{ApiErrorResponse, ApiResponse, RequestContext};
-use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};
-use loco_rs::app::AppContext;
+use crate::context::TenantContext;
+use crate::extractors::rbac::{
+    RequireProductsCreate, RequireProductsDelete, RequireProductsRead, RequireProductsUpdate,
+};
+use crate::services::event_bus::transactional_event_bus_from_context;
 
 /// List product variants
 #[utoipa::path(
@@ -24,60 +27,39 @@ use loco_rs::app::AppContext;
     responses(
         (status = 200, description = "List of variants", body = Vec<VariantResponse>),
         (status = 404, description = "Product not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub(super) async fn list_variants(
     State(ctx): State<AppContext>,
-    request: RequestContext,
+    tenant: TenantContext,
+    _user: RequireProductsRead,
     Path(product_id): Path<Uuid>,
-) -> Result<Json<ApiResponse<Vec<VariantResponse>>>, ApiErrorResponse> {
+) -> Result<Json<Vec<VariantResponse>>> {
     use rustok_commerce::entities::{price, product_variant};
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
     let product = entities::product::Entity::find_by_id(product_id)
-        .filter(entities::product::Column::TenantId.eq(request.tenant_id))
+        .filter(entities::product::Column::TenantId.eq(tenant.id))
         .one(&ctx.db)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?
-        .ok_or_else(|| {
-            ApiErrorResponse::from((
-                StatusCode::NOT_FOUND,
-                Json(ApiResponse::<()>::error(
-                    "PRODUCT_NOT_FOUND",
-                    "Product not found",
-                )),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .ok_or(Error::NotFound)?;
 
     let variants = product_variant::Entity::find()
         .filter(product_variant::Column::ProductId.eq(product.id))
         .order_by_asc(product_variant::Column::Position)
         .all(&ctx.db)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let variant_ids: Vec<Uuid> = variants.iter().map(|variant| variant.id).collect();
     let prices = price::Entity::find()
         .filter(price::Column::VariantId.is_in(variant_ids))
         .all(&ctx.db)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let mut prices_map: std::collections::HashMap<Uuid, Vec<_>> = std::collections::HashMap::new();
     for price in prices {
@@ -92,7 +74,7 @@ pub(super) async fn list_variants(
         })
         .collect();
 
-    Ok(Json(ApiResponse::success(response)))
+    Ok(Json(response))
 }
 
 /// Create a new product variant
@@ -107,15 +89,17 @@ pub(super) async fn list_variants(
     responses(
         (status = 201, description = "Variant created successfully", body = VariantResponse),
         (status = 404, description = "Product not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub(super) async fn create_variant(
     State(ctx): State<AppContext>,
-    request: RequestContext,
+    tenant: TenantContext,
+    RequireProductsCreate(user): RequireProductsCreate,
     Path(product_id): Path<Uuid>,
     Json(input): Json<CreateVariantInput>,
-) -> Result<(StatusCode, Json<ApiResponse<VariantResponse>>), ApiErrorResponse> {
+) -> Result<(StatusCode, Json<VariantResponse>)> {
     use chrono::Utc;
     use rustok_commerce::entities::{price, product_variant};
     use sea_orm::{
@@ -123,45 +107,24 @@ pub(super) async fn create_variant(
         TransactionTrait,
     };
 
-    let user_id = request.require_user()?;
-
     let product = entities::product::Entity::find_by_id(product_id)
-        .filter(entities::product::Column::TenantId.eq(request.tenant_id))
+        .filter(entities::product::Column::TenantId.eq(tenant.id))
         .one(&ctx.db)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?
-        .ok_or_else(|| {
-            ApiErrorResponse::from((
-                StatusCode::NOT_FOUND,
-                Json(ApiResponse::<()>::error(
-                    "PRODUCT_NOT_FOUND",
-                    "Product not found",
-                )),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .ok_or(Error::NotFound)?;
 
-    let txn = ctx.db.begin().await.map_err(|err| {
-        ApiErrorResponse::from((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-        ))
-    })?;
+    let txn = ctx
+        .db
+        .begin()
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let max_position = product_variant::Entity::find()
         .filter(product_variant::Column::ProductId.eq(product.id))
         .count(&txn)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let variant_id = generate_id();
     let now = Utc::now();
@@ -169,7 +132,7 @@ pub(super) async fn create_variant(
     let variant = product_variant::ActiveModel {
         id: Set(variant_id),
         product_id: Set(product.id),
-        tenant_id: Set(request.tenant_id),
+        tenant_id: Set(tenant.id),
         sku: Set(input.sku.clone()),
         barcode: Set(input.barcode.clone()),
         ean: Set(None),
@@ -187,12 +150,10 @@ pub(super) async fn create_variant(
         updated_at: Set(now.into()),
     };
 
-    let variant = variant.insert(&txn).await.map_err(|err| {
-        ApiErrorResponse::from((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-        ))
-    })?;
+    let variant = variant
+        .insert(&txn)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let mut created_prices = Vec::new();
     for price_input in &input.prices {
@@ -203,38 +164,31 @@ pub(super) async fn create_variant(
             amount: Set(price_input.amount),
             compare_at_amount: Set(price_input.compare_at_amount),
         };
-        let price = price_model.insert(&txn).await.map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?;
+        let price = price_model
+            .insert(&txn)
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?;
         created_prices.push(price);
     }
 
-    txn.commit().await.map_err(|err| {
-        ApiErrorResponse::from((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-        ))
-    })?;
+    transactional_event_bus_from_context(&ctx)
+        .publish_in_tx(
+            &txn,
+            tenant.id,
+            Some(user.user.id),
+            DomainEvent::VariantCreated {
+                variant_id,
+                product_id,
+            },
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let _ = event_bus_from_context(&ctx).publish(
-        request.tenant_id,
-        Some(user_id),
-        DomainEvent::VariantCreated {
-            variant_id,
-            product_id,
-        },
-    );
+    txn.commit()
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiResponse::success(build_variant_response(
-            variant,
-            created_prices,
-        ))),
-    ))
+    Ok((StatusCode::CREATED, Json(build_variant_response(variant, created_prices))))
 }
 
 /// Get variant details
@@ -248,51 +202,33 @@ pub(super) async fn create_variant(
     responses(
         (status = 200, description = "Variant details", body = VariantResponse),
         (status = 404, description = "Variant not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub(super) async fn show_variant(
     State(ctx): State<AppContext>,
-    request: RequestContext,
+    tenant: TenantContext,
+    _user: RequireProductsRead,
     Path(id): Path<Uuid>,
-) -> Result<Json<ApiResponse<VariantResponse>>, ApiErrorResponse> {
+) -> Result<Json<VariantResponse>> {
     use rustok_commerce::entities::{price, product_variant};
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
     let variant = product_variant::Entity::find_by_id(id)
-        .filter(product_variant::Column::TenantId.eq(request.tenant_id))
+        .filter(product_variant::Column::TenantId.eq(tenant.id))
         .one(&ctx.db)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?
-        .ok_or_else(|| {
-            ApiErrorResponse::from((
-                StatusCode::NOT_FOUND,
-                Json(ApiResponse::<()>::error(
-                    "VARIANT_NOT_FOUND",
-                    "Variant not found",
-                )),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .ok_or(Error::NotFound)?;
 
     let prices = price::Entity::find()
         .filter(price::Column::VariantId.eq(id))
         .all(&ctx.db)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    Ok(Json(ApiResponse::success(build_variant_response(
-        variant, prices,
-    ))))
+    Ok(Json(build_variant_response(variant, prices)))
 }
 
 /// Update an existing variant
@@ -307,42 +243,36 @@ pub(super) async fn show_variant(
     responses(
         (status = 200, description = "Variant updated successfully", body = VariantResponse),
         (status = 404, description = "Variant not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub(super) async fn update_variant(
     State(ctx): State<AppContext>,
-    request: RequestContext,
+    tenant: TenantContext,
+    RequireProductsUpdate(user): RequireProductsUpdate,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateVariantInput>,
-) -> Result<Json<ApiResponse<VariantResponse>>, ApiErrorResponse> {
+) -> Result<Json<VariantResponse>> {
     use chrono::Utc;
     use rustok_commerce::entities::{price, product_variant};
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
-
-    let user_id = request.require_user()?;
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 
     let variant = product_variant::Entity::find_by_id(id)
-        .filter(product_variant::Column::TenantId.eq(request.tenant_id))
+        .filter(product_variant::Column::TenantId.eq(tenant.id))
         .one(&ctx.db)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?
-        .ok_or_else(|| {
-            ApiErrorResponse::from((
-                StatusCode::NOT_FOUND,
-                Json(ApiResponse::<()>::error(
-                    "VARIANT_NOT_FOUND",
-                    "Variant not found",
-                )),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .ok_or(Error::NotFound)?;
 
     let product_id = variant.product_id;
+
+    let txn = ctx
+        .db
+        .begin()
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
     let mut variant_active: product_variant::ActiveModel = variant.into();
     variant_active.updated_at = Set(Utc::now().into());
 
@@ -365,36 +295,35 @@ pub(super) async fn update_variant(
         variant_active.weight_unit = Set(Some(weight_unit));
     }
 
-    let variant = variant_active.update(&ctx.db).await.map_err(|err| {
-        ApiErrorResponse::from((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-        ))
-    })?;
+    let variant = variant_active
+        .update(&txn)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let _ = event_bus_from_context(&ctx).publish(
-        request.tenant_id,
-        Some(user_id),
-        DomainEvent::VariantUpdated {
-            variant_id: id,
-            product_id,
-        },
-    );
+    transactional_event_bus_from_context(&ctx)
+        .publish_in_tx(
+            &txn,
+            tenant.id,
+            Some(user.user.id),
+            DomainEvent::VariantUpdated {
+                variant_id: id,
+                product_id,
+            },
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    txn.commit()
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let prices = price::Entity::find()
         .filter(price::Column::VariantId.eq(id))
         .all(&ctx.db)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    Ok(Json(ApiResponse::success(build_variant_response(
-        variant, prices,
-    ))))
+    Ok(Json(build_variant_response(variant, prices)))
 }
 
 /// Delete a variant
@@ -408,55 +337,55 @@ pub(super) async fn update_variant(
     responses(
         (status = 204, description = "Variant deleted successfully"),
         (status = 404, description = "Variant not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub(super) async fn delete_variant(
     State(ctx): State<AppContext>,
-    request: RequestContext,
+    tenant: TenantContext,
+    RequireProductsDelete(user): RequireProductsDelete,
     Path(id): Path<Uuid>,
-) -> Result<StatusCode, ApiErrorResponse> {
+) -> Result<StatusCode> {
     use rustok_commerce::entities::product_variant;
-    use sea_orm::{ColumnTrait, EntityTrait, ModelTrait, QueryFilter};
-
-    let user_id = request.require_user()?;
+    use sea_orm::{ColumnTrait, EntityTrait, ModelTrait, QueryFilter, TransactionTrait};
 
     let variant = product_variant::Entity::find_by_id(id)
-        .filter(product_variant::Column::TenantId.eq(request.tenant_id))
+        .filter(product_variant::Column::TenantId.eq(tenant.id))
         .one(&ctx.db)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-            ))
-        })?
-        .ok_or_else(|| {
-            ApiErrorResponse::from((
-                StatusCode::NOT_FOUND,
-                Json(ApiResponse::<()>::error(
-                    "VARIANT_NOT_FOUND",
-                    "Variant not found",
-                )),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .ok_or(Error::NotFound)?;
 
     let product_id = variant.product_id;
-    variant.delete(&ctx.db).await.map_err(|err| {
-        ApiErrorResponse::from((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::<()>::error("DB_ERROR", err.to_string())),
-        ))
-    })?;
 
-    let _ = event_bus_from_context(&ctx).publish(
-        request.tenant_id,
-        Some(user_id),
-        DomainEvent::VariantDeleted {
-            variant_id: id,
-            product_id,
-        },
-    );
+    let txn = ctx
+        .db
+        .begin()
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    variant
+        .delete(&txn)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    transactional_event_bus_from_context(&ctx)
+        .publish_in_tx(
+            &txn,
+            tenant.id,
+            Some(user.user.id),
+            DomainEvent::VariantDeleted {
+                variant_id: id,
+                product_id,
+            },
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    txn.commit()
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -473,29 +402,30 @@ pub(super) async fn delete_variant(
     responses(
         (status = 200, description = "Prices updated successfully", body = VariantResponse),
         (status = 404, description = "Variant not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub(super) async fn update_prices(
     State(ctx): State<AppContext>,
-    request: RequestContext,
+    tenant: TenantContext,
+    RequireProductsUpdate(user): RequireProductsUpdate,
     Path(id): Path<Uuid>,
     Json(prices): Json<Vec<PriceInput>>,
-) -> Result<Json<ApiResponse<VariantResponse>>, ApiErrorResponse> {
-    let user_id = request.require_user()?;
-
+) -> Result<Json<VariantResponse>> {
     let pricing = PricingService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     pricing
-        .set_prices(request.tenant_id, user_id, id, prices)
+        .set_prices(tenant.id, user.user.id, id, prices)
         .await
-        .map_err(|err| {
-            ApiErrorResponse::from((
-                StatusCode::BAD_REQUEST,
-                Json(ApiResponse::<()>::error("PRICE_ERROR", err.to_string())),
-            ))
-        })?;
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    show_variant(State(ctx), request, Path(id)).await
+    show_variant(
+        State(ctx),
+        tenant,
+        RequireProductsRead(user),
+        Path(id),
+    )
+    .await
 }
 
 fn build_variant_response(

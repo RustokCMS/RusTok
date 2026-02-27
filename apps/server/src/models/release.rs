@@ -110,7 +110,7 @@ impl Model {
             admin_artifact_url: None,
             storefront_artifact_url: None,
             manifest_hash,
-            modules: serde_json::to_value(modules).unwrap(),
+            modules: serde_json::to_value(modules).expect("Vec<String> is always valid JSON"),
             previous_release_id: None,
             deployed_at: None,
             rolled_back_at: None,

@@ -1,5 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     Json,
 };
 use loco_rs::prelude::*;
@@ -96,13 +97,13 @@ pub async fn create_category(
     tenant: TenantContext,
     RequireForumCategoriesCreate(user): RequireForumCategoriesCreate,
     Json(input): Json<CreateCategoryInput>,
-) -> Result<Json<CategoryResponse>> {
+) -> Result<(StatusCode, Json<CategoryResponse>)> {
     let service = CategoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let category = service
         .create(tenant.id, user.security_context(), input)
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
-    Ok(Json(category))
+    Ok((StatusCode::CREATED, Json(category)))
 }
 
 #[utoipa::path(
@@ -154,11 +155,11 @@ pub async fn delete_category(
     tenant: TenantContext,
     RequireForumCategoriesDelete(user): RequireForumCategoriesDelete,
     Path(id): Path<Uuid>,
-) -> Result<()> {
+) -> Result<StatusCode> {
     let service = CategoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     service
         .delete(tenant.id, id, user.security_context())
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
-    Ok(())
+    Ok(StatusCode::NO_CONTENT)
 }
