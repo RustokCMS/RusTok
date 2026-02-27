@@ -374,9 +374,9 @@
 ### 5.3 Tenant Isolation в данных
 
 - [ ] **Все** domain-таблицы имеют поле `tenant_id`
-- [ ] **Все** SELECT-запросы в сервисах фильтруют по `tenant_id`
-- [ ] **Все** INSERT-запросы проставляют `tenant_id`
-- [ ] Нет cross-tenant data leaks (запрос одного tenant не видит данные другого)
+- [x] **Все** SELECT-запросы в сервисах фильтруют по `tenant_id` — NodeService.find_node добавляет .filter(TenantId.eq(tenant_id)), tenant_id передаётся во все методы content/blog/forum/pages
+- [x] **Все** INSERT-запросы проставляют `tenant_id` — create_node, create_post, create_topic принимают tenant_id первым параметром
+- [x] Нет cross-tenant data leaks — исправлено в NodeService, PostService, TopicService, ReplyService, CategoryService, PageService, BlockService, MenuService, ModerationService
 
 ### 5.4 Tenant Modules
 
