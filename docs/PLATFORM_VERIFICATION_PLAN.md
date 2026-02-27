@@ -363,13 +363,13 @@
 
 ### 5.2 Tenant Cache
 
-- [ ] `TenantCacheInfrastructure` хранится в `AppContext.shared_store`
-- [ ] Positive cache: TTL 5 мин, capacity 1000
-- [ ] Negative cache: TTL 60 сек, capacity 1000
-- [ ] Versioned keys: `v1:<type>:<value>`
-- [ ] Redis backend выбирается при наличии `RUSTOK_REDIS_URL`
-- [ ] Fallback на InMemory при отсутствии Redis
-- [ ] Stampede protection: singleflight pattern работает
+- [x] `TenantCacheInfrastructure` хранится в `AppContext.shared_store` — через `ctx.shared_store.insert(infra.clone())` в `init_tenant_cache_infrastructure()`
+- [x] Positive cache: TTL 5 мин (`TENANT_CACHE_TTL = 300s`), capacity 1000 (`TENANT_CACHE_MAX_CAPACITY = 1_000`)
+- [x] Negative cache: TTL 60 сек (`TENANT_NEGATIVE_CACHE_TTL = 60s`), capacity 1000
+- [x] Versioned keys: `v1:<type>:<value>` — через `TenantCacheKeyBuilder::new(TENANT_CACHE_VERSION)` где `TENANT_CACHE_VERSION = "v1"`
+- [x] Redis backend выбирается при наличии `RUSTOK_REDIS_URL` или `REDIS_URL` (feature = "redis-cache")
+- [x] Fallback на InMemory при отсутствии Redis — `build_tenant_cache_backend()` возвращает `InMemoryCacheBackend` по умолчанию
+- [x] Stampede protection: singleflight pattern реализован через `get_or_load_with_coalescing()` с `Arc<Notify>`
 
 ### 5.3 Tenant Isolation в данных
 
@@ -389,9 +389,9 @@
 
 ### 5.5 Cross-instance Cache Invalidation (Redis mode)
 
-- [ ] При обновлении tenant → PUBLISH в `tenant.cache.invalidate`
-- [ ] Все инстансы подписаны и инвалидируют matching ключи
-- [ ] Метрики cache hit/miss экспортируются через Redis INCR
+- [x] При обновлении tenant → PUBLISH в `tenant.cache.invalidate` — через `TenantInvalidationPublisher::publish()` с Redis PUBLISH команд
+- [x] Все инстансы подписаны и инвалидируют matching ключи — через `spawn_invalidation_listener()` с Redis PubSub
+- [x] Метрики cache hit/miss экспортируются через Redis INCR — через `TenantCacheMetricsStore::incr()`
 
 ---
 
@@ -602,21 +602,25 @@
 **Путь:** `crates/rustok-index/`
 
 - [x] `IndexModule` зарегистрирован как `ModuleKind::Core` (в `crates/rustok-index/src/lib.rs`)
-- [ ] Content indexer: слушает content events → пишет в `index_content`
-- [ ] Product indexer: слушает commerce events → пишет в `index_products`
-- [ ] Denormalized models для fast reads
-- [ ] Поисковые сервисы (search)
-- [ ] Engine trait (`engine.rs`, `pg_engine.rs`)
-- [ ] Listener pattern (`listener.rs`)
+- [x] `IndexListener` определён в `listener.rs` — слушает NodeCreated/NodeUpdated/NodePublished/NodeDeleted, вызывает `reindex_node()`/`engine.delete()`
+- [x] Engine trait определён в `engine.rs` — trait `SearchEngine` с методами `index()`, `delete()`, `search()`
+- [x] `PgSearchEngine` реализован в `pg_engine.rs` — PostgreSQL full-text search
+- [x] Denormalized models в `models.rs`
+- [x] Search services в `services/`
+- [~] Product indexer: обрабатывает commerce events через EventHandler (реализован stub, не полноценный продуктовый индекс)
+- [~] Content indexer: `reindex_node()` возвращает Ok(()) — stub, полная реализация не завершена
 
 ### 7.8 rustok-rbac
 
 **Путь:** `crates/rustok-rbac/`
 
 - [x] `RbacModule` зарегистрирован как `ModuleKind::Core` (в `crates/rustok-rbac/src/lib.rs`)
-- [ ] Entities, DTOs, Services
-- [ ] Health check работает
-- [ ] Миграции
+- [x] Entities в `entities/` — role, permission, user_role сущности
+- [x] DTOs в `dto/`
+- [x] Services: `permission_resolver`, `permission_authorizer`, `permission_evaluator`, `permission_policy`, `relation_permission_resolver`, `runtime_permission_resolver`, `shadow_decision`, `shadow_dual_read`, `authz_mode`
+- [x] Health check работает — `health()` возвращает `HealthStatus::Healthy`
+- [x] Integration events: `RbacRoleAssignmentEvent` для cross-module RBAC notifications
+- [~] Миграции: `migrations()` возвращает `Vec::new()` — таблицы управляются через главный migration сервер
 
 ### 7.9 rustok-tenant
 
@@ -807,9 +811,11 @@
 
 **Файл:** `apps/server/src/middleware/rate_limit.rs`
 
-- [ ] Rate limiting middleware подключён
-- [ ] Корректные лимиты для auth endpoints (login/register)
-- [ ] Корректные лимиты для API endpoints
+- [x] Rate limiting middleware подключён — в `app.rs::after_routes()` через `axum_middleware::from_fn` с per-IP sliding window limiter
+- [x] Корректные лимиты для auth endpoints (login/register/reset): 20 req/60 сек per IP для `/api/auth/login`, `/api/auth/register`, `/api/auth/reset/*`
+  - Cleanup task запускается через `tokio::spawn` каждые 5 мин
+  - Response headers: `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-reset`; при 429 — `retry-after`
+- [ ] Корректные лимиты для API endpoints (глобальный rate limit не реализован — только auth endpoints)
 
 ---
 
@@ -1225,22 +1231,25 @@
 
 ### 18.1 Authentication Security
 
-- [ ] Пароли хэшируются Argon2 (не plain text, не MD5/SHA)
-- [ ] JWT secret хранится в конфигурации (не в коде)
-- [ ] Token expiry разумный (access: 15-60 мин, refresh: дни)
-- [ ] Refresh token rotation (старый инвалидируется при использовании)
+- [x] Пароли хэшируются Argon2 (`argon2` crate) — в `crates/rustok-core/src/auth/password.rs`
+- [x] JWT secret хранится в конфигурации (не в коде) — из env vars / Loco config
+- [x] Token expiry разумный — access: 15 мин, refresh: 7 дней (через `Claims::exp`)
+- [x] Refresh token rotation — старый инвалидируется через `Sessions::revoke()` в `AuthLifecycleService`
+- [x] Rate limiting для auth endpoints — 20 req/60 сек per IP (исправлено, Issue #15)
 
 ### 18.2 Authorization Security
 
-- [ ] Нет endpoint'ов без auth (кроме public)
-- [ ] RBAC extractors используются последовательно (не пропущены)
-- [ ] SuperAdmin endpoints недоступны обычным пользователям
+- [x] Нет endpoint'ов без auth (кроме public: health, login, register, public storefront queries)
+  - Все REST controllers защищены RBAC extractors (Issues #4, #5, #6 исправлены)
+  - GraphQL mutations защищены через `AuthService::has_any_permission()` (Issues #7-12 исправлены)
+- [x] RBAC extractors используются последовательно — все controllers, проверено через grep
+- [x] SuperAdmin endpoints недоступны обычным пользователям — через Role-Permission матрицу
 
 ### 18.3 Tenant Isolation Security
 
-- [ ] Нет SQL-запросов без `WHERE tenant_id = ?`
-- [ ] Нет GraphQL resolvers, возвращающих данные без tenant filter
-- [ ] Тест на cross-tenant access существует и проходит
+- [x] Нет SQL-запросов без `WHERE tenant_id = ?` — все SELECT с tenant_id filter (Phase 19.1 audit подтвердил)
+- [x] Нет GraphQL resolvers, возвращающих данные без tenant filter — все resolvers передают tenant_id в services
+- [ ] Тест на cross-tenant access существует и проходит — тест не реализован
 
 ### 18.4 Input Validation
 
@@ -1251,9 +1260,9 @@
 
 ### 18.5 Secrets Management
 
-- [ ] `.env.dev.example` не содержит реальных secrets
-- [ ] `.gitignore` исключает `.env`, credentials, keys
-- [ ] JWT secret, DB password, Redis password — через env vars
+- [x] `.env.dev.example` не содержит реальных secrets — только placeholder значения
+- [x] `.gitignore` исключает `.env`, credentials, keys — проверено: только `.env.dev.example` в git
+- [x] JWT secret, DB password, Redis password — через env vars (не хардкод в коде)
 
 ### 18.6 Dependency Security
 
@@ -1299,8 +1308,11 @@
   - `serde_json::to_value(Vec<String>).unwrap()` — заменено на `.expect("Vec<String> is always valid JSON")`
   - `state_machine.rs` — внутри `#[cfg(test)]` блоков
   - `async_utils::retry` — `last_error.unwrap()` внутри итерации (инвариант: последняя ошибка всегда Some)
-- [ ] Поиск `expect()` в production коде (проверить каждый: оправдан или нет)
-  - `grep -rn "\.expect(" crates/rustok-*/src/ apps/server/src/ --include="*.rs" | grep -v test`
+- [x] Поиск `expect()` в production коде — проверены все случаи:
+  - `rustok-rbac/src/integration.rs`: только в `#[test]` функциях — безопасно
+  - `rustok-rbac/src/services/authz_mode.rs`: только в `#[cfg(test)]` блоке — безопасно
+  - `rustok-telemetry/src/{lib,metrics}.rs`: инициализация Prometheus метрик при старте — стандартный паттерн, panic при дублировании регистрации (правильное поведение)
+  - `apps/server/src/models/release.rs`: заменено на `.expect("Vec<String> is always valid JSON")`
 - [x] Поиск `panic!` в production коде — нарушений нет
   - `rustok-test-utils/src/helpers.rs` — только в test helper функциях (assert helpers)
   - `apps/server/src/services/auth_lifecycle.rs` — только внутри `#[test]` функций
@@ -1499,6 +1511,8 @@
 | 11 | 🟡 Высокий | ✅ Исправлено | GraphQL Pages mutations — без RBAC, использовали SecurityContext::system(). Добавлены PAGES_CREATE/UPDATE/DELETE через `AuthService::has_any_permission()`. | `apps/server/src/graphql/pages/mutation.rs` | 4.3, 8.7 |
 | 12 | 🟡 Высокий | ✅ Исправлено | RBAC extractors RequirePagesCreate/Read/Update/Delete использовали NODES_* permissions вместо PAGES_*. Исправлено. Добавлены константы PAGES_* и permissions для Manager/Customer. | `extractors/rbac.rs`, `permissions.rs`, `rbac.rs` | 4.1, 4.4 |
 | 13 | 🔴 Критический | ✅ Исправлено | REST контроллер `variants.rs`: `create_variant`, `update_variant`, `delete_variant` публиковали события `VariantCreated/Updated/Deleted` через `event_bus_from_context().publish()` **после** коммита транзакции. При сбое между commit и publish событие терялось. Исправлено: все три операции переведены на `publish_in_tx()` внутри транзакции до `commit()`. Update/Delete-операции получили обёртку в транзакцию. | `apps/server/src/controllers/commerce/variants.rs` | 6.2, 19.1 |
+| 14 | 🟡 Высокий | ✅ Исправлено | Миграция таблицы `sys_events` (outbox pattern) не была зарегистрирована в главном сервере. Создан файл `m20260211_000002_create_sys_events.rs` и добавлен в `apps/server/migration/src/lib.rs`. | `apps/server/migration/src/` | 2.2 |
+| 15 | 🟡 Высокий | ✅ Исправлено | Rate limiting middleware существовал в `middleware/rate_limit.rs` но **не был подключён** к роутеру. Все auth endpoints были уязвимы к брутфорс-атакам. Исправлено: добавлен `axum_middleware::from_fn` с per-IP sliding window limiter (20 req/60 сек) для `/api/auth/login`, `/api/auth/register`, `/api/auth/reset/*` в `app.rs::after_routes()`. | `apps/server/src/app.rs`, `apps/server/src/middleware/rate_limit.rs` | 9.10, 18.1 |
 
 ### 21.1 Детали: Проблема #2 — Небезопасная публикация событий в blog/forum
 
