@@ -37,6 +37,7 @@ fn http_get_with_headers(url: &str, headers: Map) -> Map {
 
     debug!(target: "alloy::script", "HTTP GET {}", url);
 
+    let url_for_error = url.clone();
     let result = run_blocking(async move {
         let client = reqwest::Client::new();
         let mut request = client.get(&url);
@@ -61,7 +62,7 @@ fn http_get_with_headers(url: &str, headers: Map) -> Map {
     match result {
         Ok((status, body)) => build_http_response(status, body),
         Err(err) => {
-            warn!(target: "alloy::script", "HTTP GET {} failed: {}", url, err);
+            warn!(target: "alloy::script", "HTTP GET {} failed: {}", url_for_error, err);
             let mut map = Map::new();
             map.insert("status".into(), Dynamic::from(0_i64));
             map.insert("ok".into(), Dynamic::from(false));
@@ -82,6 +83,7 @@ fn http_post_json_with_headers(url: &str, body: Dynamic, headers: Map) -> Map {
 
     debug!(target: "alloy::script", "HTTP POST {}", url);
 
+    let url_for_error = url.clone();
     let result = run_blocking(async move {
         let client = reqwest::Client::new();
         let mut request = client
@@ -109,7 +111,7 @@ fn http_post_json_with_headers(url: &str, body: Dynamic, headers: Map) -> Map {
     match result {
         Ok((status, resp_body)) => build_http_response(status, resp_body),
         Err(err) => {
-            warn!(target: "alloy::script", "HTTP POST {} failed: {}", url, err);
+            warn!(target: "alloy::script", "HTTP POST {} failed: {}", url_for_error, err);
             let mut map = Map::new();
             map.insert("status".into(), Dynamic::from(0_i64));
             map.insert("ok".into(), Dynamic::from(false));
@@ -127,6 +129,8 @@ fn http_request(method: &str, url: &str, body: Dynamic, headers: Map) -> Map {
 
     debug!(target: "alloy::script", "HTTP {} {}", method, url);
 
+    let method_for_error = method.clone();
+    let url_for_error = url.clone();
     let result = run_blocking(async move {
         let client = reqwest::Client::new();
         let req_method =
@@ -157,7 +161,7 @@ fn http_request(method: &str, url: &str, body: Dynamic, headers: Map) -> Map {
     match result {
         Ok((status, resp_body)) => build_http_response(status, resp_body),
         Err(err) => {
-            warn!(target: "alloy::script", "HTTP {} {} failed: {}", method, url, err);
+            warn!(target: "alloy::script", "HTTP {} {} failed: {}", method_for_error, url_for_error, err);
             let mut map = Map::new();
             map.insert("status".into(), Dynamic::from(0_i64));
             map.insert("ok".into(), Dynamic::from(false));

@@ -379,12 +379,12 @@ fn write_backfill_rollback_report_file(
     report: BackfillRollbackExecutionReport,
 ) -> Result<()> {
     let payload = serde_json::to_vec_pretty(&report).map_err(|error| {
-        loco_rs::Error::string(format!(
+        loco_rs::Error::string(&format!(
             "rbac backfill rollback report serialization failed: {error}"
         ))
     })?;
     std::fs::write(path, payload).map_err(|error| {
-        loco_rs::Error::string(format!(
+        loco_rs::Error::string(&format!(
             "rbac backfill rollback report write failed: {error}"
         ))
     })?;
@@ -404,7 +404,7 @@ fn parse_limit(cli: &HashMap<String, String>) -> Result<Option<usize>> {
         Some(raw) => raw
             .parse::<usize>()
             .map(Some)
-            .map_err(|_| loco_rs::Error::string(format!("invalid limit value: {raw}"))),
+            .map_err(|_| loco_rs::Error::string(&format!("invalid limit value: {raw}"))),
     }
 }
 
@@ -420,7 +420,7 @@ fn parse_uuid_set(cli: &HashMap<String, String>, key: &str) -> Result<HashSet<uu
         .filter(|value| !value.is_empty())
     {
         let parsed = value.parse::<uuid::Uuid>().map_err(|error| {
-            loco_rs::Error::string(format!("invalid UUID in {key}: {value} ({error})"))
+            loco_rs::Error::string(&format!("invalid UUID in {key}: {value} ({error})"))
         })?;
         result.insert(parsed);
     }
@@ -440,7 +440,7 @@ fn parse_role_set(cli: &HashMap<String, String>, key: &str) -> Result<HashSet<Us
         .filter(|value| !value.is_empty())
     {
         let parsed = value.parse::<UserRole>().map_err(|error| {
-            loco_rs::Error::string(format!("invalid role in {key}: {value} ({error})"))
+            loco_rs::Error::string(&format!("invalid role in {key}: {value} ({error})"))
         })?;
         result.insert(parsed);
     }
