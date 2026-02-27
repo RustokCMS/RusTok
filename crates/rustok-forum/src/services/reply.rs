@@ -1,4 +1,4 @@
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, TransactionTrait};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -14,6 +14,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::locale::resolve_body;
 
 pub struct ReplyService {
+    db: DatabaseConnection,
     nodes: NodeService,
     event_bus: TransactionalEventBus,
 }
@@ -21,7 +22,8 @@ pub struct ReplyService {
 impl ReplyService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            nodes: NodeService::new(db, event_bus.clone()),
+            nodes: NodeService::new(db.clone(), event_bus.clone()),
+            db,
             event_bus,
         }
     }
@@ -66,9 +68,12 @@ impl ReplyService {
             "reply_status": reply_status::APPROVED,
         });
 
-        let node = self
+        let txn = self.db.begin().await?;
+
+        let reply_id = self
             .nodes
-            .create_node(
+            .create_node_in_tx(
+                &txn,
                 tenant_id,
                 security.clone(),
                 CreateNodeInput {
@@ -91,11 +96,9 @@ impl ReplyService {
             )
             .await?;
 
-        let reply_id = node.id;
-        let response = Self::node_to_reply(node, topic_id, &locale);
-
         self.event_bus
-            .publish(
+            .publish_in_tx(
+                &txn,
                 tenant_id,
                 security.user_id,
                 DomainEvent::ForumTopicReplied {
@@ -106,7 +109,10 @@ impl ReplyService {
             )
             .await?;
 
-        Ok(response)
+        txn.commit().await?;
+
+        let node = self.nodes.get_node(reply_id).await?;
+        Ok(Self::node_to_reply(node, topic_id, &locale))
     }
 
     #[instrument(skip(self))]

@@ -50,7 +50,7 @@ graph TD
 
 ## Platform Verification
 
-- [Platform Verification Plan](./PLATFORM_VERIFICATION_PLAN.md) — Глобальный чеклист верификации всей платформы (18 фаз, 300+ проверок).
+- [Platform Verification Plan](./PLATFORM_VERIFICATION_PLAN.md) — Глобальный чеклист верификации всей платформы (21 фаза, 400+ проверок). Включает реестр найденных проблем (Фаза 21).
 
 ## Root Documents
 
