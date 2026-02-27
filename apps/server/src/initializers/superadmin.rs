@@ -1,19 +1,48 @@
 //! Default SuperAdmin Initializer
 //!
 //! Automatically ensures a default SuperAdmin user exists on every startup.
-//! Runs before the server accepts requests, so it's safe for all environments.
+//! Runs before the server accepts requests — safe for all environments.
 //!
-//! ## Configuration (env vars, in priority order)
+//! ## Security: how to supply the password
 //!
-//! | Variable                | Fallback             | Default           |
-//! |-------------------------|----------------------|-------------------|
-//! | `SUPERADMIN_EMAIL`      | `SEED_ADMIN_EMAIL`   | *(required)*      |
-//! | `SUPERADMIN_PASSWORD`   | `SEED_ADMIN_PASSWORD`| *(required)*      |
-//! | `SUPERADMIN_TENANT_SLUG`| `SEED_TENANT_SLUG`   | `"default"`       |
-//! | `SUPERADMIN_TENANT_NAME`| `SEED_TENANT_NAME`   | `"Default"`       |
+//! Passwords should **never** live in plain text files that end up in source
+//! control or on disk longer than needed.  Three safe patterns are supported:
 //!
-//! If neither primary nor fallback env var is set for email/password,
-//! the initializer skips silently (no superadmin will be created).
+//! ### 1. Docker / Kubernetes secrets (recommended for production)
+//! Mount the secret as a file and point to it with `_FILE` suffix:
+//! ```
+//! SUPERADMIN_PASSWORD_FILE=/run/secrets/superadmin_password
+//! ```
+//! Docker Swarm: `docker secret create superadmin_password <(echo -n "s3cr3t")`
+//! Kubernetes:   use a `Secret` mounted at the path above.
+//!
+//! ### 2. Runtime env injection (CI/CD, cloud providers)
+//! Pass the variable directly at runtime — never store it in a committed file:
+//! ```
+//! SUPERADMIN_EMAIL=admin@example.com SUPERADMIN_PASSWORD=s3cr3t ./server start
+//! ```
+//! GitHub Actions: use `secrets.*` context.
+//! AWS ECS / GCP Cloud Run / Fly.io: inject via their secret/env UI.
+//!
+//! ### 3. Plain env var (dev only)
+//! Acceptable for local development, **not** for production.
+//! ```
+//! SUPERADMIN_PASSWORD=dev-only-password
+//! ```
+//!
+//! ## Variable resolution order (each variable)
+//!
+//! 1. `SUPERADMIN_*_FILE`  — read contents of the pointed file
+//! 2. `SUPERADMIN_*`       — direct env value
+//! 3. `SEED_ADMIN_*_FILE`  — legacy file fallback
+//! 4. `SEED_ADMIN_*`       — legacy direct fallback
+//!
+//! If `SUPERADMIN_EMAIL` cannot be resolved, the initializer skips silently.
+//!
+//! ## After first boot
+//! Once the superadmin row exists the initializer does nothing (idempotent).
+//! You can safely unset `SUPERADMIN_PASSWORD` / `SUPERADMIN_PASSWORD_FILE`
+//! after the first successful start.
 
 use async_trait::async_trait;
 use loco_rs::{
@@ -29,15 +58,35 @@ use crate::services::auth::AuthService;
 
 pub struct SuperAdminInitializer;
 
-fn env_first(primary: &str, fallback: &str) -> Option<String> {
-    std::env::var(primary)
+/// Read a secret: check `<key>_FILE` first (Docker secrets), then `<key>` directly.
+fn read_secret(key: &str) -> Option<String> {
+    let file_key = format!("{key}_FILE");
+    if let Ok(path) = std::env::var(&file_key) {
+        let path = path.trim().to_string();
+        if !path.is_empty() {
+            match std::fs::read_to_string(&path) {
+                Ok(contents) => {
+                    let secret = contents.trim().to_string();
+                    if !secret.is_empty() {
+                        return Some(secret);
+                    }
+                    tracing::warn!(file = %path, "{file_key} points to an empty file");
+                }
+                Err(err) => {
+                    tracing::warn!(file = %path, error = %err, "{file_key} could not be read");
+                }
+            }
+        }
+    }
+    std::env::var(key)
         .ok()
-        .filter(|v| !v.trim().is_empty())
-        .or_else(|| {
-            std::env::var(fallback)
-                .ok()
-                .filter(|v| !v.trim().is_empty())
-        })
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// Try primary key pair, then legacy fallback pair.
+fn resolve_secret(primary: &str, legacy: &str) -> Option<String> {
+    read_secret(primary).or_else(|| read_secret(legacy))
 }
 
 #[async_trait]
@@ -47,22 +96,23 @@ impl Initializer for SuperAdminInitializer {
     }
 
     async fn before_run(&self, ctx: &AppContext) -> Result<()> {
-        let Some(email) = env_first("SUPERADMIN_EMAIL", "SEED_ADMIN_EMAIL") else {
+        let Some(email) = resolve_secret("SUPERADMIN_EMAIL", "SEED_ADMIN_EMAIL") else {
             tracing::debug!("SUPERADMIN_EMAIL not set — skipping default superadmin setup");
             return Ok(());
         };
 
-        let Some(password) = env_first("SUPERADMIN_PASSWORD", "SEED_ADMIN_PASSWORD") else {
+        let Some(password) = resolve_secret("SUPERADMIN_PASSWORD", "SEED_ADMIN_PASSWORD") else {
             tracing::warn!(
-                "SUPERADMIN_EMAIL is set but SUPERADMIN_PASSWORD is missing — skipping"
+                "SUPERADMIN_EMAIL is set but SUPERADMIN_PASSWORD (or SUPERADMIN_PASSWORD_FILE) \
+                 is missing — skipping superadmin setup"
             );
             return Ok(());
         };
 
-        let tenant_slug = env_first("SUPERADMIN_TENANT_SLUG", "SEED_TENANT_SLUG")
+        let tenant_slug = resolve_secret("SUPERADMIN_TENANT_SLUG", "SEED_TENANT_SLUG")
             .unwrap_or_else(|| "default".to_string());
 
-        let tenant_name = env_first("SUPERADMIN_TENANT_NAME", "SEED_TENANT_NAME")
+        let tenant_name = resolve_secret("SUPERADMIN_TENANT_NAME", "SEED_TENANT_NAME")
             .unwrap_or_else(|| "Default".to_string());
 
         let tenant =
@@ -81,6 +131,9 @@ impl Initializer for SuperAdminInitializer {
         }
 
         let password_hash = hash_password(&password)?;
+        // Drop the plain-text password from memory as soon as we have the hash.
+        drop(password);
+
         let mut user = users::ActiveModel::new(tenant.id, &email, &password_hash);
         user.role = Set(rustok_core::UserRole::SuperAdmin);
         user.name = Set(Some("Super Admin".to_string()));
@@ -100,6 +153,17 @@ impl Initializer for SuperAdminInitializer {
             user_id = %user.id,
             "Default superadmin created"
         );
+
+        // Remind operators to clean up credentials from the environment.
+        if std::env::var("SUPERADMIN_PASSWORD").is_ok()
+            || std::env::var("SEED_ADMIN_PASSWORD").is_ok()
+        {
+            tracing::warn!(
+                "SUPERADMIN_PASSWORD is set as a plain env var. \
+                 Consider switching to SUPERADMIN_PASSWORD_FILE (Docker/K8s secrets) \
+                 or removing the variable now that the superadmin has been created."
+            );
+        }
 
         Ok(())
     }

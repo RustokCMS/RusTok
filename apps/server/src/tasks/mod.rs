@@ -6,9 +6,10 @@
 use loco_rs::task::Tasks;
 
 mod cleanup;
+mod create_superadmin;
 
 /// Register all available tasks
 pub fn register(tasks: &mut Tasks) {
-    // Maintenance tasks
     tasks.register(cleanup::CleanupTask);
+    tasks.register(create_superadmin::CreateSuperAdminTask);
 }
