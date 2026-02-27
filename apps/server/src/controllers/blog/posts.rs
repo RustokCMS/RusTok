@@ -7,7 +7,10 @@ use rustok_blog::{CreatePostInput, PostListQuery, PostResponse, PostService, Upd
 use uuid::Uuid;
 
 use crate::context::TenantContext;
-use crate::extractors::auth::CurrentUser;
+use crate::extractors::rbac::{
+    RequireBlogPostsCreate, RequireBlogPostsDelete, RequireBlogPostsList, RequireBlogPostsPublish,
+    RequireBlogPostsRead, RequireBlogPostsUpdate,
+};
 use crate::services::event_bus::transactional_event_bus_from_context;
 
 /// List blog posts
@@ -18,13 +21,14 @@ use crate::services::event_bus::transactional_event_bus_from_context;
     params(PostListQuery),
     responses(
         (status = 200, description = "List of posts", body = rustok_blog::PostListResponse),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_posts(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequireBlogPostsList(user): RequireBlogPostsList,
     Query(query): Query<PostListQuery>,
 ) -> Result<Json<rustok_blog::PostListResponse>> {
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -47,13 +51,14 @@ pub async fn list_posts(
     responses(
         (status = 200, description = "Post details", body = PostResponse),
         (status = 404, description = "Post not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn get_post(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    _user: CurrentUser,
+    _user: RequireBlogPostsRead,
     Path(id): Path<Uuid>,
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<PostResponse>> {
@@ -75,13 +80,14 @@ pub async fn get_post(
     responses(
         (status = 201, description = "Post created", body = Uuid),
         (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn create_post(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequireBlogPostsCreate(user): RequireBlogPostsCreate,
     Json(input): Json<CreatePostInput>,
 ) -> Result<Json<Uuid>> {
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -104,13 +110,14 @@ pub async fn create_post(
     responses(
         (status = 200, description = "Post updated"),
         (status = 404, description = "Post not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn update_post(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    user: CurrentUser,
+    RequireBlogPostsUpdate(user): RequireBlogPostsUpdate,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdatePostInput>,
 ) -> Result<()> {
@@ -133,13 +140,14 @@ pub async fn update_post(
     responses(
         (status = 204, description = "Post deleted"),
         (status = 404, description = "Post not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn delete_post(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    user: CurrentUser,
+    RequireBlogPostsDelete(user): RequireBlogPostsDelete,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -161,13 +169,14 @@ pub async fn delete_post(
     responses(
         (status = 200, description = "Post published"),
         (status = 404, description = "Post not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn publish_post(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    user: CurrentUser,
+    RequireBlogPostsPublish(user): RequireBlogPostsPublish,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -189,13 +198,14 @@ pub async fn publish_post(
     responses(
         (status = 200, description = "Post unpublished"),
         (status = 404, description = "Post not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn unpublish_post(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    user: CurrentUser,
+    RequireBlogPostsPublish(user): RequireBlogPostsPublish,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));

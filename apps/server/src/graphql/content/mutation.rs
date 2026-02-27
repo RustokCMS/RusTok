@@ -1,9 +1,12 @@
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::context::AuthContext;
+use crate::graphql::errors::GraphQLError;
+use crate::services::auth::AuthService;
 use rustok_content::NodeService;
+use rustok_core::Permission;
 use rustok_outbox::TransactionalEventBus;
 
 use super::types::*;
@@ -22,9 +25,26 @@ impl ContentMutation {
     ) -> Result<GqlNode> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = ctx.data::<AuthContext>().map_err(|_| "Unauthorized")?;
-        let security = auth.security_context();
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::NODES_CREATE, Permission::NODES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: nodes:create required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = NodeService::new(db.clone(), event_bus.clone());
         let domain_input = rustok_content::dto::CreateNodeInput {
             parent_id: input.parent_id,
@@ -68,14 +88,32 @@ impl ContentMutation {
         &self,
         ctx: &Context<'_>,
         id: Uuid,
+        tenant_id: Uuid,
         author_id: Option<Uuid>,
         input: UpdateNodeInput,
     ) -> Result<GqlNode> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = ctx.data::<AuthContext>().map_err(|_| "Unauthorized")?;
-        let security = auth.security_context();
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::NODES_UPDATE, Permission::NODES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: nodes:update required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = NodeService::new(db.clone(), event_bus.clone());
         let resolved_author_id = input.author_id.or(author_id);
         let domain_input = rustok_content::dto::UpdateNodeInput {
@@ -119,13 +157,31 @@ impl ContentMutation {
         &self,
         ctx: &Context<'_>,
         id: Uuid,
+        tenant_id: Uuid,
         _author_id: Option<Uuid>,
     ) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = ctx.data::<AuthContext>().map_err(|_| "Unauthorized")?;
-        let security = auth.security_context();
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::NODES_DELETE, Permission::NODES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: nodes:delete required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = NodeService::new(db.clone(), event_bus.clone());
         service.delete_node(id, security).await?;
 

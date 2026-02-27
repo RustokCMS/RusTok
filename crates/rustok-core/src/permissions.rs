@@ -224,6 +224,13 @@ impl Permission {
     pub const NODES_LIST: Self = Self::new(Resource::Nodes, Action::List);
     pub const NODES_MANAGE: Self = Self::new(Resource::Nodes, Action::Manage);
 
+    pub const PAGES_CREATE: Self = Self::new(Resource::Pages, Action::Create);
+    pub const PAGES_READ: Self = Self::new(Resource::Pages, Action::Read);
+    pub const PAGES_UPDATE: Self = Self::new(Resource::Pages, Action::Update);
+    pub const PAGES_DELETE: Self = Self::new(Resource::Pages, Action::Delete);
+    pub const PAGES_LIST: Self = Self::new(Resource::Pages, Action::List);
+    pub const PAGES_MANAGE: Self = Self::new(Resource::Pages, Action::Manage);
+
     pub const SETTINGS_READ: Self = Self::new(Resource::Settings, Action::Read);
     pub const SETTINGS_UPDATE: Self = Self::new(Resource::Settings, Action::Update);
     pub const SETTINGS_MANAGE: Self = Self::new(Resource::Settings, Action::Manage);

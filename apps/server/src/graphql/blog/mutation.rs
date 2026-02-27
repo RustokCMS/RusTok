@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::context::AuthContext;
 use crate::graphql::errors::GraphQLError;
+use crate::services::auth::AuthService;
 use rustok_blog::{PostService, UpdatePostInput as DomainUpdatePostInput};
+use rustok_core::Permission;
 use rustok_outbox::TransactionalEventBus;
 
 use super::types::*;
@@ -25,8 +27,23 @@ impl BlogMutation {
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let security = auth.security_context();
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::BLOG_POSTS_CREATE, Permission::BLOG_POSTS_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: blog_posts:create required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PostService::new(db.clone(), event_bus.clone());
         let post_id = service
             .create_post(tenant_id, security, input.into())
@@ -39,6 +56,7 @@ impl BlogMutation {
         &self,
         ctx: &Context<'_>,
         id: Uuid,
+        tenant_id: Uuid,
         input: UpdatePostInput,
     ) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
@@ -46,8 +64,23 @@ impl BlogMutation {
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let security = auth.security_context();
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::BLOG_POSTS_UPDATE, Permission::BLOG_POSTS_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: blog_posts:update required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PostService::new(db.clone(), event_bus.clone());
 
         let domain_input = DomainUpdatePostInput {
@@ -70,42 +103,87 @@ impl BlogMutation {
         Ok(true)
     }
 
-    async fn delete_post(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
+    async fn delete_post(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let security = auth.security_context();
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::BLOG_POSTS_DELETE, Permission::BLOG_POSTS_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: blog_posts:delete required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PostService::new(db.clone(), event_bus.clone());
         service.delete_post(id, security).await?;
 
         Ok(true)
     }
 
-    async fn publish_post(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
+    async fn publish_post(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let security = auth.security_context();
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::BLOG_POSTS_PUBLISH, Permission::BLOG_POSTS_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: blog_posts:publish required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PostService::new(db.clone(), event_bus.clone());
         service.publish_post(id, security).await?;
 
         Ok(true)
     }
 
-    async fn unpublish_post(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
+    async fn unpublish_post(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let security = auth.security_context();
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::BLOG_POSTS_PUBLISH, Permission::BLOG_POSTS_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: blog_posts:publish required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PostService::new(db.clone(), event_bus.clone());
         service.unpublish_post(id, security).await?;
 
@@ -116,6 +194,7 @@ impl BlogMutation {
         &self,
         ctx: &Context<'_>,
         id: Uuid,
+        tenant_id: Uuid,
         reason: Option<String>,
     ) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
@@ -123,8 +202,23 @@ impl BlogMutation {
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-        let security = auth.security_context();
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::BLOG_POSTS_UPDATE, Permission::BLOG_POSTS_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: blog_posts:update required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PostService::new(db.clone(), event_bus.clone());
         service.archive_post(id, security, reason).await?;
 

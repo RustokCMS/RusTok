@@ -1,10 +1,14 @@
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result};
 use rust_decimal::Decimal;
 use sea_orm::DatabaseConnection;
 use std::str::FromStr;
 use uuid::Uuid;
 
+use crate::context::AuthContext;
+use crate::graphql::errors::GraphQLError;
+use crate::services::auth::AuthService;
 use rustok_commerce::CatalogService;
+use rustok_core::Permission;
 use rustok_outbox::TransactionalEventBus;
 
 use super::types::*;
@@ -23,6 +27,27 @@ impl CommerceMutation {
     ) -> Result<GqlProduct> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[
+                Permission::PRODUCTS_CREATE,
+                Permission::PRODUCTS_MANAGE,
+            ],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: products:create required",
+            ));
+        }
 
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
         let domain_input = convert_create_product_input(input)?;
@@ -43,6 +68,27 @@ impl CommerceMutation {
     ) -> Result<GqlProduct> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[
+                Permission::PRODUCTS_UPDATE,
+                Permission::PRODUCTS_MANAGE,
+            ],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: products:update required",
+            ));
+        }
 
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
         let domain_input = rustok_commerce::dto::UpdateProductInput {
@@ -83,6 +129,27 @@ impl CommerceMutation {
     ) -> Result<GqlProduct> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[
+                Permission::PRODUCTS_UPDATE,
+                Permission::PRODUCTS_MANAGE,
+            ],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: products:update required",
+            ));
+        }
 
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
         let product = catalog.publish_product(tenant_id, user_id, id).await?;
@@ -99,6 +166,27 @@ impl CommerceMutation {
     ) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[
+                Permission::PRODUCTS_DELETE,
+                Permission::PRODUCTS_MANAGE,
+            ],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: products:delete required",
+            ));
+        }
 
         let catalog = CatalogService::new(db.clone(), event_bus.clone());
         catalog.delete_product(tenant_id, user_id, id).await?;

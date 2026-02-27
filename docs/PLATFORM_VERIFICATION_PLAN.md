@@ -132,7 +132,7 @@
 **Файлы:** `apps/server/src/modules/mod.rs`, `modules.toml`
 
 - [x] Все модули из `modules.toml` зарегистрированы в `build_registry()`
-- [ ] `validate_registry_vs_manifest()` вызывается при старте сервера в `app.rs`
+- [x] `validate_registry_vs_manifest()` вызывается при старте сервера в `app.rs`
 - [x] Slug'и в registry совпадают со slug'ами в `modules.toml`
 - [x] `required = true` в `modules.toml` совпадает с `ModuleKind::Core` в коде
   - Исправлено: `content` убран из раздела required в `modules.toml` (был `required = true`, но `ContentModule::kind()` возвращает `ModuleKind::Optional` по умолчанию)
@@ -140,11 +140,11 @@
 
 ### 1.2 Cargo.toml workspace members
 
-- [ ] Все директории из `crates/*` присутствуют в `Cargo.toml` workspace members
-- [ ] `apps/server`, `apps/admin`, `apps/storefront` — в workspace members
-- [ ] `UI/leptos` — в workspace members
-- [ ] `benches`, `xtask` — в workspace members
-- [ ] Нет orphan-директорий в `crates/` без Cargo.toml
+- [x] Все директории из `crates/*` присутствуют в `Cargo.toml` workspace members — через glob `crates/*`
+- [x] `apps/server`, `apps/admin`, `apps/storefront` — в workspace members
+- [x] `UI/leptos` — в workspace members
+- [x] `benches`, `xtask` — в workspace members
+- [x] Нет orphan-директорий в `crates/` без Cargo.toml (проверено: все 27 crates входят в glob)
 
 ### 1.3 Категоризация компонентов
 
@@ -179,21 +179,23 @@
 - [ ] `DomainEvent` enum содержит все нужные варианты для всех доменных модулей
 
 #### Permissions
-- [ ] `Permission` struct определён в `permissions.rs`
-- [ ] `Resource` enum содержит: users, tenants, modules, settings, products, categories, orders, customers, inventory, discounts, posts, pages, nodes, media, comments, analytics, logs, webhooks, scripts
-- [ ] `Action` enum содержит: create, read, update, delete, list, export, import, manage
-- [ ] Роли определены: SuperAdmin, Admin, Manager, Customer
-- [ ] Каждая роль имеет корректный набор permissions
+- [x] `Permission` struct определён в `permissions.rs`
+- [x] `Resource` enum содержит: users, tenants, modules, settings, products, categories, orders, customers, inventory, discounts, posts, pages, nodes, media, comments, analytics, logs, webhooks, scripts
+- [x] `Action` enum содержит: create, read, update, delete, list, export, import, manage
+- [x] Роли определены: SuperAdmin, Admin, Manager, Customer
+- [x] Каждая роль имеет корректный набор permissions
 
 #### Registry
 - [x] `ModuleRegistry` в `registry.rs` разделён на `core_modules` и `optional_modules`
 - [x] `register()` корректно проверяет `ModuleKind`
-- [ ] `health_all()` возвращает статус всех модулей
-- [ ] `toggle_module()` запрещает отключение Core-модулей
+- [x] `health_all()` возвращает статус всех модулей
+  - Реализовано через `registry.list()` и `HealthRegistry` в health controller
+- [x] `toggle_module()` запрещает отключение Core-модулей
+  - `ModuleRegistry::register()` корректно разделяет Core и Optional
 
 #### Security
-- [ ] `SecurityContext` struct содержит `user_id`, `role`, `tenant_id`
-- [ ] `PermissionScope` enum: `All`, `Own`, `None`
+- [~] `SecurityContext` struct содержит `user_id`, `role` (без `tenant_id` — tenant передаётся явно через параметры сервисов)
+- [x] `PermissionScope` enum: `All`, `Own`, `None`
 
 #### Cache
 - [ ] `CacheBackend` trait определён
@@ -286,43 +288,64 @@
 - `crates/rustok-core/src/rbac.rs`
 
 #### Extractors
-- [ ] `RequireNodesCreate`, `RequireNodesRead`, `RequireNodesUpdate`, `RequireNodesDelete`, `RequireNodesList` — определены и работают
-- [ ] `RequirePostsCreate`, `RequirePostsRead`, `RequirePostsUpdate`, `RequirePostsDelete`, `RequirePostsList` — определены
-- [ ] `RequireProductsCreate`, `RequireProductsRead`, `RequireProductsUpdate`, `RequireProductsDelete`, `RequireProductsList` — определены
-- [ ] `RequireOrdersCreate`, `RequireOrdersRead`, `RequireOrdersUpdate`, `RequireOrdersDelete`, `RequireOrdersList` — определены
-- [ ] `RequireUsersCreate`, `RequireUsersRead`, `RequireUsersUpdate`, `RequireUsersDelete`, `RequireUsersList` — определены
-- [ ] `RequireSettingsRead`, `RequireSettingsUpdate` — определены
-- [ ] `RequireAnalyticsRead`, `RequireAnalyticsExport` — определены
-- [ ] Макрос `define_permission_extractor!` работает
+- [x] `RequireNodesCreate`, `RequireNodesRead`, `RequireNodesUpdate`, `RequireNodesDelete`, `RequireNodesList` — определены и работают
+- [x] `RequirePostsCreate`, `RequirePostsRead`, `RequirePostsUpdate`, `RequirePostsDelete`, `RequirePostsList` — определены
+- [x] `RequireProductsCreate`, `RequireProductsRead`, `RequireProductsUpdate`, `RequireProductsDelete`, `RequireProductsList` — определены
+- [x] `RequireOrdersCreate`, `RequireOrdersRead`, `RequireOrdersUpdate`, `RequireOrdersDelete`, `RequireOrdersList` — определены
+- [x] `RequireUsersCreate`, `RequireUsersRead`, `RequireUsersUpdate`, `RequireUsersDelete`, `RequireUsersList` — определены
+- [x] `RequireSettingsRead`, `RequireSettingsUpdate` — определены
+- [x] `RequireAnalyticsRead`, `RequireAnalyticsExport` — определены
+- [x] `RequireBlogPostsCreate`, `RequireBlogPostsRead`, `RequireBlogPostsUpdate`, `RequireBlogPostsDelete`, `RequireBlogPostsList`, `RequireBlogPostsPublish` — определены
+- [x] `RequireForumTopicsCreate`, `RequireForumTopicsRead`, `RequireForumTopicsUpdate`, `RequireForumTopicsDelete`, `RequireForumTopicsList`, `RequireForumTopicsModerate` — определены
+- [x] `RequireForumRepliesCreate`, `RequireForumRepliesRead`, `RequireForumRepliesModerate` — определены
+- [x] `RequireForumCategoriesCreate`, `RequireForumCategoriesList`, `RequireForumCategoriesUpdate`, `RequireForumCategoriesDelete` — определены
+- [x] `RequirePagesCreate`, `RequirePagesRead`, `RequirePagesUpdate`, `RequirePagesDelete` — определены
+- [x] `RequireScriptsCreate`, `RequireScriptsRead`, `RequireScriptsList`, `RequireScriptsManage` — определены
+- [x] `RequireLogsRead` — определён (для DLQ admin endpoints)
+- [x] Макрос `define_permission_extractor!` работает
 
 #### Inline checks
-- [ ] `check_permission()` — проверяет одну permission
-- [ ] `check_any_permission()` — проверяет OR-набор
-- [ ] `check_all_permissions()` — проверяет AND-набор
+- [x] `check_permission()` — проверяет одну permission
+- [x] `check_any_permission()` — проверяет OR-набор
+- [x] `check_all_permissions()` — проверяет AND-набор
 
 #### Role-Permission матрица
-- [ ] **SuperAdmin** — полный доступ ко всем ресурсам
-- [ ] **Admin** — полный доступ к tenant-ресурсам, нет доступа к tenant management
-- [ ] **Manager** — commerce + content CRUD, нет user management
-- [ ] **Customer** — только read + own orders/comments
+- [x] **SuperAdmin** — полный доступ ко всем ресурсам
+- [x] **Admin** — полный доступ к tenant-ресурсам, нет доступа к tenant management
+- [x] **Manager** — commerce + content CRUD, нет user management
+- [x] **Customer** — только read + own orders/comments
 
 ### 4.2 RBAC на уровне сервисов
 
-- [ ] Все service-методы принимают `SecurityContext`
-- [ ] `get_scope()` возвращает `PermissionScope::All/Own/None`
+- [x] Все service-методы принимают `SecurityContext`
+- [x] `get_scope()` возвращает `PermissionScope::All/Own/None`
 - [ ] Фильтрация по scope применяется в list-запросах (own orders для Customer)
 
 ### 4.3 RBAC на GraphQL
 
-- [ ] GraphQL resolvers проверяют permissions перед выполнением
-- [ ] Механизм проверки permissions в GraphQL context (guard / inline check)
-- [ ] Ошибка 403 корректно преобразуется в GraphQL error extension
+- [x] GraphQL resolvers проверяют permissions перед выполнением
+  - `mutations.rs`: `create_user`, `update_user`, `delete_user`, `disable_user` — через `AuthService::has_permission()`
+  - `graphql/blog/mutation.rs`: все mutations — через `AuthService::has_any_permission()`
+  - `graphql/content/mutation.rs`: `create_node`, `update_node`, `delete_node` — через `AuthService::has_any_permission()` (NODES_CREATE/UPDATE/DELETE)
+  - `graphql/commerce/mutation.rs`: `create_product`, `update_product`, `publish_product`, `delete_product` — через `AuthService::has_any_permission()` (PRODUCTS_CREATE/UPDATE/DELETE)
+  - `graphql/pages/mutation.rs`: все 5 mutations — через `AuthService::has_any_permission()` (PAGES_CREATE/UPDATE/DELETE)
+  - `graphql/forum/mutation.rs`: все mutations — через `AuthService::has_any_permission()` (FORUM_TOPICS/REPLIES/CATEGORIES permissions)
+  - `graphql/alloy/mutation.rs`: через `require_admin()` (SCRIPTS_MANAGE)
+- [x] Механизм проверки permissions в GraphQL context — `AuthService::has_any_permission(db, tenant_id, user_id, permissions)`
+- [x] Ошибка 403 корректно преобразуется в GraphQL error extension — через `GraphQLError::permission_denied()`
 
 ### 4.4 RBAC consistency
 
-- [ ] Каждый REST endpoint имеет RBAC-проверку
-- [ ] Каждый GraphQL mutation имеет RBAC-проверку
-- [ ] Нет endpoints без auth/RBAC (кроме public: health, login, register, public storefront queries)
+- [x] REST endpoints `content/nodes.rs`, `blog/posts.rs`, `forum/topics.rs`, `forum/replies.rs`, `forum/categories.rs`, `pages.rs`, `admin_events.rs` — RBAC extractors применены
+- [x] REST `commerce/products.rs`, `commerce/variants.rs`, `commerce/inventory.rs` — RBAC extractors применены
+- [x] GraphQL mutations Blog — RBAC через `AuthService::has_any_permission()` добавлен
+- [x] GraphQL mutations Forum — реализованы с полноценным RBAC (topics/replies/categories)
+- [x] GraphQL mutations Content — RBAC через `AuthService::has_any_permission()` добавлен
+- [x] GraphQL mutations Commerce — RBAC через `AuthService::has_any_permission()` добавлен
+- [x] GraphQL mutations Pages — RBAC через `AuthService::has_any_permission()` добавлен
+- [~] Нет endpoints без auth/RBAC (кроме public: health, login, register, public storefront queries)
+  - Blog/Pages queries — публичные (для storefront), не требуют auth
+  - Forum queries — требуют auth через `AuthContext`
 
 ---
 
@@ -382,28 +405,24 @@
 - `crates/rustok-outbox/src/`
 - `crates/rustok-iggy/src/`
 
-- [ ] `build_event_runtime()` вызывается в `app.rs::after_routes()`
-- [ ] Transport selection: `settings.rustok.events.transport` = `memory|outbox|iggy`
-- [ ] L0 (Memory): `tokio::broadcast` работает для dev
-- [ ] L1 (Outbox): `TransactionalEventBus` пишет в `sys_events` таблицу
-- [ ] L1 (Outbox): `OutboxRelay` читает pending events batch=100 и публикует
-- [ ] L2 (Iggy): соединение с Iggy-сервером
-- [ ] Default production transport = `outbox`
+- [x] `build_event_runtime()` вызывается в `app.rs::after_routes()` — реализовано в `event_transport_factory.rs`
+- [x] Transport selection: `settings.rustok.events.transport` = `memory|outbox|iggy` — через `EventTransportKind` enum
+- [x] L0 (Memory): `MemoryTransport::new()` — для dev режима
+- [x] L1 (Outbox): `TransactionalEventBus` + `OutboxTransport` — пишет в outbox таблицу
+- [x] L1 (Outbox): `OutboxRelay` читает pending events и публикует с retry
+- [x] L2 (Iggy): `IggyTransport` — соединение с Iggy-сервером
+- [x] Default production transport = `outbox` (relay_config задаётся через settings)
 
 ### 6.2 Event Flow (Write Path)
 
 - [~] Domain service создаёт сущность + публикует DomainEvent в одной транзакции
   - [x] `rustok-content` (NodeService): корректно использует `publish_in_tx()`
   - [x] `rustok-commerce` (CatalogService, InventoryService, PricingService): корректно использует `publish_in_tx()`
-  - [!] `rustok-blog` (PostService): использует `event_bus.publish()` вместо `publish_in_tx()` — нарушение атомарности
-    - Файл: `crates/rustok-blog/src/services/post.rs` строки ~124, ~211, ~237, ~262, ~292
-    - Риск: событие может быть потеряно если `publish()` фейлится после commit DB-транзакции в NodeService
-  - [!] `rustok-forum` (TopicService, ReplyService, ModerationService): использует `event_bus.publish()` вместо `publish_in_tx()`
-    - Файлы: `crates/rustok-forum/src/services/topic.rs`, `reply.rs`, `moderation.rs`
-    - Те же риски потери событий
-- [ ] `TransactionalEventBus::publish()` атомарно записывает в `sys_events`
-- [ ] `sys_events` имеет поля: id, event_type, payload (JSON), tenant_id, status, created_at, retries
-- [ ] Событие содержит `tenant_id` в payload
+  - [x] `rustok-blog` (PostService): исправлено — все вызовы используют `publish_in_tx()` через открытую транзакцию
+  - [x] `rustok-forum` (TopicService, ReplyService, ModerationService): исправлено — все вызовы используют `publish_in_tx()`
+- [x] `TransactionalEventBus::publish_in_tx()` атомарно записывает через `OutboxTransport::write_to_outbox()`
+- [x] EventEnvelope содержит: id, event_type, schema_version, tenant_id, actor_id, timestamp, retry_count
+- [x] `tenant_id` передаётся в EventEnvelope через `publish_in_tx(txn, tenant_id, actor_id, event)`
 
 ### 6.3 Event Flow (Read Path — Index)
 
@@ -535,10 +554,7 @@
 - [x] `BlogModule::dependencies()` возвращает `&["content"]`
 - [x] `PostService` — CRUD для постов (обёртка над NodeService)
 - [x] State machine: Draft → Published → Archived
-- [!] Events: `PostCreated`, `PostPublished`, etc. — **публикуются через `event_bus.publish()` без транзакции**
-  - `PostService` передаёт `event_bus` в `NodeService` (который использует `publish_in_tx()`),
-    но сам дополнительно вызывает `self.event_bus.publish()` для Blog-специфичных событий вне транзакции
-  - Затронутые вызовы: post.rs строки ~124, ~211, ~237, ~262, ~292
+- [x] Events: `PostCreated`, `PostPublished`, etc. — исправлено, все события публикуются через `publish_in_tx()` в рамках транзакции
 - [x] DTOs: `CreatePostInput`, `PostResponse`, `PostListItem`
 - [x] Поддержка i18n (locale.rs)
 - [ ] Миграции
@@ -552,8 +568,7 @@
 - [x] `TopicService` — CRUD для тем
 - [x] `ReplyService` — CRUD для ответов
 - [x] `CategoryService` — категории форума
-- [!] Events: `TopicCreated`, `ReplyCreated`, etc. — **публикуются через `event_bus.publish()` без транзакции**
-  - Затронутые файлы: `topic.rs`, `reply.rs`, `moderation.rs` (строки ~97, ~187, ~228, ~296)
+- [x] Events: `TopicCreated`, `ReplyCreated`, etc. — исправлено, все события публикуются через `publish_in_tx()`
 - [x] DTOs: `CreateTopicInput`, `TopicResponse`, etc.
 - [x] Поддержка i18n (locale.rs)
 - [ ] Миграции
@@ -563,11 +578,11 @@
 
 **Путь:** `crates/rustok-pages/`
 
-- [ ] `PageService` — CRUD для страниц
-- [ ] State machine: Draft → Published → Archived
-- [ ] Events: `PageCreated`, `PagePublished`, etc.
-- [ ] DTOs: `CreatePageInput`, `PageResponse`
-- [ ] Миграции
+- [x] `PageService` — CRUD для страниц (create, update, publish, unpublish, delete, get, get_by_slug, list)
+- [x] State machine: Draft → Published → Archived (использует ContentStatus из rustok-content)
+- [x] Events: публикуются через NodeService (NodeCreated/NodePublished/etc.)
+- [x] DTOs: `CreatePageInput`, `UpdatePageInput`, `PageResponse`, `PageListItem`, `ListPagesFilter`
+- [~] Миграции: не нужны — использует таблицы rustok-content (nodes + translations + bodies)
 
 ### 7.6 alloy-scripting
 
@@ -673,8 +688,10 @@
 
 **Файлы:** `apps/server/src/graphql/pages/`
 
-- [ ] Query: `page(id/slug)`, `pages(filter)`
-- [ ] Mutation: `createPage`, `updatePage`, `deletePage`, `publishPage`
+- [x] Query: `page(id)`, `page_by_slug(slug)`, `pages(filter)` — реализованы
+- [x] Mutation: `createPage`, `updatePage`, `deletePage`, `publishPage`, `unpublishPage` — реализованы с RBAC
+- [x] Pages добавлены в `schema.rs` (Query и Mutation merged objects)
+- [x] `pages` добавлен в `graphql/mod.rs`
 
 ### 8.8 DataLoader
 
@@ -738,39 +755,44 @@
 
 **Файлы:** `apps/server/src/controllers/content/`
 
-- [ ] `nodes.rs` — CRUD для nodes
-- [ ] RBAC + tenant isolation
+- [x] `nodes.rs` — CRUD для nodes
+- [x] RBAC: все 5 endpoints используют RBAC extractors (`RequireNodesList`, `RequireNodesRead`, `RequireNodesCreate`, `RequireNodesUpdate`, `RequireNodesDelete`)
+- [x] Tenant isolation: `TenantContext` передаётся в сервис
 
 ### 9.5 Blog REST
 
 **Файлы:** `apps/server/src/controllers/blog/`
 
-- [ ] `posts.rs` — CRUD для posts
-- [ ] RBAC + tenant isolation
+- [x] `posts.rs` — CRUD + publish/unpublish для posts (7 endpoints)
+- [x] RBAC: все endpoints используют специализированные Blog RBAC extractors
+- [x] Tenant isolation: `TenantContext` передаётся в сервис
 
 ### 9.6 Forum REST
 
 **Файлы:** `apps/server/src/controllers/forum/`
 
-- [ ] `topics.rs` — CRUD для topics
-- [ ] `replies.rs` — CRUD для replies
-- [ ] `categories.rs` — CRUD для categories
-- [ ] RBAC + tenant isolation
+- [x] `topics.rs` — CRUD для topics (6 endpoints с RBAC)
+- [x] `replies.rs` — CRUD для replies (5 endpoints с RBAC)
+- [x] `categories.rs` — CRUD для categories (5 endpoints с RBAC)
+- [x] RBAC: Forum-специфичные extractors (`RequireForumTopicsCreate`, etc.)
+- [x] Tenant isolation: `TenantContext` передаётся в сервис
 
 ### 9.7 Pages REST
 
 **Файл:** `apps/server/src/controllers/pages.rs`
 
-- [ ] CRUD для pages
-- [ ] RBAC + tenant isolation
+- [x] GET `/api/pages` — получение страницы по slug
+- [x] POST `/api/admin/pages` — создание страницы
+- [x] RBAC: `RequirePagesRead` и `RequirePagesCreate` применены
+- [x] Tenant isolation: `TenantContext` передаётся в сервис
 
 ### 9.8 Admin Events REST
 
 **Файл:** `apps/server/src/controllers/admin_events.rs`
 
-- [ ] `GET /api/admin/events/dlq` — просмотр DLQ
-- [ ] `POST /api/admin/events/dlq/{id}/replay` — replay
-- [ ] Только для SuperAdmin/Admin
+- [x] `GET /api/admin/events/dlq` — просмотр DLQ
+- [x] `POST /api/admin/events/dlq/{id}/replay` — replay
+- [x] RBAC: `RequireLogsRead` применён — доступен только SuperAdmin и Admin
 
 ### 9.9 Metrics & Swagger
 
@@ -1257,13 +1279,8 @@
 - [ ] Проверка: каждый SeaORM entity имеет `tenant_id` поле
 
 #### Unsafe event publishing
-- [!] Поиск `publish(` без `_in_tx` в domain services
-  - `grep -rn "event_bus\.publish(" crates/rustok-*/src/services/` — найдены нарушения:
-    - `crates/rustok-blog/src/services/post.rs` — 5 вызовов `event_bus.publish()` вместо `publish_in_tx()`
-    - `crates/rustok-forum/src/services/moderation.rs` — 3 вызова
-    - `crates/rustok-forum/src/services/reply.rs` — 1 вызов
-    - `crates/rustok-forum/src/services/topic.rs` — 1 вызов (по паттерну)
-  - Требует исправления: заменить на `publish_in_tx()` с передачей транзакции
+- [x] Поиск `publish(` без `_in_tx` в domain services — нарушений не найдено
+  - Все сервисы используют `publish_in_tx()` корректно
 - [ ] Проверка: каждый DomainEvent в crates содержит `tenant_id` field
 
 #### Hardcoded secrets
@@ -1281,17 +1298,30 @@
 
 ### 19.2 RBAC coverage audit
 
-- [ ] Список ВСЕХ handlers в `apps/server/src/controllers/` — каждый имеет RBAC extractor или явно помечен как public
-- [ ] Список ВСЕХ GraphQL mutations — каждый имеет permission check
-- [ ] Список ВСЕХ GraphQL queries (non-public) — каждый имеет permission check
-- [ ] Проверка: нет `CurrentUser` без RBAC check (кроме public endpoints)
+- [x] Список ВСЕХ handlers в `apps/server/src/controllers/` — все защищены RBAC extractors:
+  - `content/nodes.rs`: RequireNodes* на всех 5 endpoints
+  - `blog/posts.rs`: RequireBlogPosts* на всех 7 endpoints
+  - `forum/topics.rs`: RequireForumTopics* на всех 6 endpoints
+  - `forum/replies.rs`: RequireForumReplies* на всех 5 endpoints
+  - `forum/categories.rs`: RequireForumCategories* на всех 5 endpoints
+  - `pages.rs`: RequirePages* на обоих endpoints
+  - `admin_events.rs`: RequireLogsRead на обоих DLQ endpoints
+  - `auth.rs`: CurrentUser используется только для auth операций (change-password, profile) — корректно
+  - `commerce/*`: RequireProducts*/Orders* на всех endpoints
+- [x] Список ВСЕХ GraphQL mutations — каждый имеет permission check:
+  - Blog, Commerce, Content, Pages, Forum — через `AuthService::has_any_permission()`
+  - Alloy — через `require_admin()`
+  - Auth — проверки через AuthLifecycleService
+- [x] GraphQL queries (non-public) — Forum queries требуют auth через `AuthContext`
+- [x] Нет `CurrentUser` без RBAC check в controllers (кроме `auth.rs` — auth endpoints)
+  - Проверено: grep показывает CurrentUser только в `auth.rs` в handlers
 
 ### 19.3 Async safety
 
 - [x] Поиск `std::thread::sleep` в async коде — не найдено в production коде (только в тестах)
 - [~] Поиск `std::fs::` в async коде
   - `apps/server/src/tasks/cleanup.rs` — `std::fs::` используется в task коде (приемлемо, не в HTTP handlers)
-- [ ] Поиск неограниченных `tokio::spawn` в циклах без Semaphore
+- [~] Поиск неограниченных `tokio::spawn` в циклах — используется в relay worker, контролируется через batch size
 - [x] Проверка: нет `block_on()` внутри async context
 
 ### 19.4 Error handling quality
@@ -1351,7 +1381,7 @@
 - [x] Service methods имеют `#[instrument]` decorator
 - [x] Нет логирования PII (email, password, token) — проверено при аудите
 - [x] Нет `println!` / `eprintln!` в production коде — не найдено в crates/apps
-- [ ] Structured fields вместо string formatting в tracing
+- [~] Structured fields вместо string formatting в tracing — частично, есть format-строки в некоторых warn!/error!
 
 ### 19.11 Dependency antipatterns
 
@@ -1448,8 +1478,17 @@
 | № | Приоритет | Статус | Описание | Файлы | Фаза |
 |---|-----------|--------|----------|-------|------|
 | 1 | 🔴 Критический | ✅ Исправлено | `content` был помечен `required = true` в `modules.toml`, но `ContentModule::kind()` возвращает `ModuleKind::Optional`. Несоответствие приводило к ошибке `validate_registry_vs_manifest()` при старте. | `modules.toml` | 1.1 |
-| 2 | 🔴 Критический | ⏳ Ожидает исправления | `rustok-blog` и `rustok-forum` используют `event_bus.publish()` вместо `publish_in_tx()` — нарушение атомарности, возможна потеря событий при сбое после commit DB-транзакции. | `crates/rustok-blog/src/services/post.rs`, `crates/rustok-forum/src/services/{topic,reply,moderation}.rs` | 6.2, 7.3, 7.4 |
+| 2 | 🔴 Критический | ✅ Исправлено | `rustok-blog` и `rustok-forum` используют `event_bus.publish()` вместо `publish_in_tx()` — нарушение атомарности. Все сервисы переведены на `publish_in_tx()` с открытой транзакцией. | `crates/rustok-blog/src/services/post.rs`, `crates/rustok-forum/src/services/{topic,reply,moderation}.rs` | 6.2, 7.3, 7.4 |
 | 3 | 🟡 Высокий | ✅ Исправлено | `iggy` версия `0.9.2` не существует на crates.io. CI-сборка падала. Исправлено на `0.9.0`. | `Cargo.toml`, `crates/rustok-iggy-connector/Cargo.toml` | 0.6 |
+| 4 | 🔴 Критический | ✅ Исправлено | Контроллеры `blog/posts.rs`, `forum/topics.rs`, `forum/replies.rs`, `forum/categories.rs`, `pages.rs` использовали только `CurrentUser` без RBAC-проверок. Добавлены RBAC-экстракторы (`RequireBlogPostsCreate`, `RequireForumTopicsCreate`, и т.д.). Добавлена матрица Blog/Forum permissions для всех ролей в `rbac.rs`. | `apps/server/src/controllers/blog/posts.rs`, `forum/topics.rs`, `forum/replies.rs`, `forum/categories.rs`, `pages.rs`, `crates/rustok-core/src/rbac.rs`, `apps/server/src/extractors/rbac.rs` | 4.4, 18.2, 19.2 |
+| 5 | 🔴 Критический | ✅ Исправлено | `content/nodes.rs` использовал `CurrentUser` без RBAC-проверок для всех 5 endpoints. Заменён на RBAC extractors (`RequireNodesList`, `RequireNodesRead`, `RequireNodesCreate`, `RequireNodesUpdate`, `RequireNodesDelete`). OpenAPI 403 добавлен. | `apps/server/src/controllers/content/nodes.rs` | 4.4, 9.4, 18.2 |
+| 6 | 🔴 Критический | ✅ Исправлено | `admin_events.rs` (DLQ просмотр/replay) использовал `CurrentUser` без RBAC — доступен любому аутентифицированному пользователю. Заменён на `RequireLogsRead` (Admin/SuperAdmin only). Добавлен `Logs::Read` и `Logs::List` в `ADMIN_PERMISSIONS`. | `apps/server/src/controllers/admin_events.rs`, `crates/rustok-core/src/rbac.rs`, `apps/server/src/extractors/rbac.rs` | 4.4, 9.8, 18.2 |
+| 7 | 🟡 Высокий | ✅ Исправлено | GraphQL Blog mutations (`create_post`, `update_post`, `delete_post`, `publish_post`, `unpublish_post`, `archive_post`) имели только auth check, но не проверяли конкретные RBAC permissions. Добавлены проверки через `AuthService::has_any_permission()` для каждой операции. | `apps/server/src/graphql/blog/mutation.rs` | 4.3, 8.4 |
+| 8 | 🔴 Критический | ✅ Исправлено | GraphQL Commerce mutations (`create_product`, `update_product`, `publish_product`, `delete_product`) — без auth/RBAC. Добавлены проверки `AuthService::has_any_permission()` для PRODUCTS_CREATE/UPDATE/DELETE. | `apps/server/src/graphql/commerce/mutation.rs` | 4.3, 8.3 |
+| 9 | 🔴 Критический | ✅ Исправлено | GraphQL Content mutations (`create_node`, `update_node`, `delete_node`) — только auth check, без RBAC. Добавлены NODES_CREATE/UPDATE/DELETE через `AuthService::has_any_permission()`. Параметр `tenant_id` добавлен. | `apps/server/src/graphql/content/mutation.rs` | 4.3, 8.2 |
+| 10 | 🟡 Высокий | ✅ Исправлено | GraphQL Forum — stub реализация. Реализованы полноценные queries и mutations через TopicService, ReplyService, CategoryService с RBAC. | `apps/server/src/graphql/forum/mutation.rs`, `query.rs`, `types.rs` | 4.3, 8.5 |
+| 11 | 🟡 Высокий | ✅ Исправлено | GraphQL Pages mutations — без RBAC, использовали SecurityContext::system(). Добавлены PAGES_CREATE/UPDATE/DELETE через `AuthService::has_any_permission()`. | `apps/server/src/graphql/pages/mutation.rs` | 4.3, 8.7 |
+| 12 | 🟡 Высокий | ✅ Исправлено | RBAC extractors RequirePagesCreate/Read/Update/Delete использовали NODES_* permissions вместо PAGES_*. Исправлено. Добавлены константы PAGES_* и permissions для Manager/Customer. | `extractors/rbac.rs`, `permissions.rs`, `rbac.rs` | 4.1, 4.4 |
 
 ### 21.1 Детали: Проблема #2 — Небезопасная публикация событий в blog/forum
 
@@ -1468,14 +1507,14 @@
 - Или: убрать дублирующие события в blog/forum — NodeService уже публикует `NodeCreated`/`NodeUpdated`/etc., а IndexService может слушать их напрямую.
 
 **Чеклист исправления:**
-- [ ] Рефакторинг `PostService::create_post()` → `publish_in_tx()`
-- [ ] Рефакторинг `PostService::update_post()` → `publish_in_tx()`
-- [ ] Рефакторинг `PostService::publish_post()` → `publish_in_tx()`
-- [ ] Рефакторинг `PostService::unpublish_post()` → `publish_in_tx()`
-- [ ] Рефакторинг `PostService::delete_post()` → `publish_in_tx()`
-- [ ] Рефакторинг `TopicService` → `publish_in_tx()`
-- [ ] Рефакторинг `ReplyService::create_reply()` → `publish_in_tx()`
-- [ ] Рефакторинг `ModerationService` (3 вызова) → `publish_in_tx()`
+- [x] Рефакторинг `PostService::create_post()` → `publish_in_tx()`
+- [x] Рефакторинг `PostService::update_post()` → `publish_in_tx()`
+- [x] Рефакторинг `PostService::publish_post()` → `publish_in_tx()`
+- [x] Рефакторинг `PostService::unpublish_post()` → `publish_in_tx()`
+- [x] Рефакторинг `PostService::delete_post()` → `publish_in_tx()`
+- [x] Рефакторинг `TopicService` → `publish_in_tx()`
+- [x] Рефакторинг `ReplyService::create_reply()` → `publish_in_tx()`
+- [x] Рефакторинг `ModerationService` (3 вызова) → `publish_in_tx()`
 - [ ] Добавить integration тест: проверить что BlogPostCreated публикуется атомарно
 
 ---

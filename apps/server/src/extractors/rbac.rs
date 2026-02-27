@@ -129,6 +129,104 @@ define_permission_extractor!(
     rustok_core::Permission::ANALYTICS_EXPORT
 );
 
+define_permission_extractor!(
+    RequireBlogPostsCreate,
+    rustok_core::Permission::BLOG_POSTS_CREATE
+);
+define_permission_extractor!(
+    RequireBlogPostsRead,
+    rustok_core::Permission::BLOG_POSTS_READ
+);
+define_permission_extractor!(
+    RequireBlogPostsUpdate,
+    rustok_core::Permission::BLOG_POSTS_UPDATE
+);
+define_permission_extractor!(
+    RequireBlogPostsDelete,
+    rustok_core::Permission::BLOG_POSTS_DELETE
+);
+define_permission_extractor!(
+    RequireBlogPostsList,
+    rustok_core::Permission::BLOG_POSTS_LIST
+);
+define_permission_extractor!(
+    RequireBlogPostsPublish,
+    rustok_core::Permission::BLOG_POSTS_PUBLISH
+);
+
+define_permission_extractor!(
+    RequireForumTopicsCreate,
+    rustok_core::Permission::FORUM_TOPICS_CREATE
+);
+define_permission_extractor!(
+    RequireForumTopicsRead,
+    rustok_core::Permission::FORUM_TOPICS_READ
+);
+define_permission_extractor!(
+    RequireForumTopicsUpdate,
+    rustok_core::Permission::FORUM_TOPICS_UPDATE
+);
+define_permission_extractor!(
+    RequireForumTopicsDelete,
+    rustok_core::Permission::FORUM_TOPICS_DELETE
+);
+define_permission_extractor!(
+    RequireForumTopicsList,
+    rustok_core::Permission::FORUM_TOPICS_LIST
+);
+define_permission_extractor!(
+    RequireForumTopicsModerate,
+    rustok_core::Permission::FORUM_TOPICS_MODERATE
+);
+
+define_permission_extractor!(
+    RequireForumRepliesCreate,
+    rustok_core::Permission::FORUM_REPLIES_CREATE
+);
+define_permission_extractor!(
+    RequireForumRepliesRead,
+    rustok_core::Permission::FORUM_REPLIES_READ
+);
+define_permission_extractor!(
+    RequireForumRepliesModerate,
+    rustok_core::Permission::FORUM_REPLIES_MODERATE
+);
+
+define_permission_extractor!(
+    RequireForumCategoriesCreate,
+    rustok_core::Permission::FORUM_CATEGORIES_CREATE
+);
+define_permission_extractor!(
+    RequireForumCategoriesList,
+    rustok_core::Permission::FORUM_CATEGORIES_LIST
+);
+define_permission_extractor!(
+    RequireForumCategoriesUpdate,
+    rustok_core::Permission::FORUM_CATEGORIES_UPDATE
+);
+define_permission_extractor!(
+    RequireForumCategoriesDelete,
+    rustok_core::Permission::FORUM_CATEGORIES_DELETE
+);
+
+define_permission_extractor!(RequirePagesCreate, rustok_core::Permission::PAGES_CREATE);
+define_permission_extractor!(RequirePagesRead, rustok_core::Permission::PAGES_READ);
+define_permission_extractor!(RequirePagesUpdate, rustok_core::Permission::PAGES_UPDATE);
+define_permission_extractor!(RequirePagesDelete, rustok_core::Permission::PAGES_DELETE);
+
+define_permission_extractor!(RequireScriptsCreate, rustok_core::Permission::SCRIPTS_CREATE);
+define_permission_extractor!(RequireScriptsRead, rustok_core::Permission::SCRIPTS_READ);
+define_permission_extractor!(RequireScriptsList, rustok_core::Permission::SCRIPTS_LIST);
+define_permission_extractor!(RequireScriptsManage, rustok_core::Permission::SCRIPTS_MANAGE);
+
+define_permission_extractor!(
+    RequireLogsRead,
+    rustok_core::Permission::new(
+        rustok_core::Resource::Logs,
+        rustok_core::Action::Read
+    )
+);
+
 /// Helper to check permission inline without extractor
 ///
 /// # Example

@@ -11,7 +11,10 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::context::TenantContext;
-use crate::extractors::auth::CurrentUser;
+use crate::extractors::rbac::{
+    RequireForumCategoriesCreate, RequireForumCategoriesDelete, RequireForumCategoriesList,
+    RequireForumCategoriesUpdate,
+};
 use crate::services::event_bus::transactional_event_bus_from_context;
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -26,13 +29,14 @@ pub struct CategoryListParams {
     params(CategoryListParams),
     responses(
         (status = 200, description = "List of categories", body = Vec<CategoryListItem>),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_categories(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumCategoriesList(user): RequireForumCategoriesList,
     Query(params): Query<CategoryListParams>,
 ) -> Result<Json<Vec<CategoryListItem>>> {
     let locale = params.locale.unwrap_or_else(|| "en".to_string());
@@ -55,13 +59,14 @@ pub async fn list_categories(
     responses(
         (status = 200, description = "Category details", body = CategoryResponse),
         (status = 404, description = "Category not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn get_category(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    _user: CurrentUser,
+    RequireForumCategoriesList(user): RequireForumCategoriesList,
     Path(id): Path<Uuid>,
     Query(params): Query<CategoryListParams>,
 ) -> Result<Json<CategoryResponse>> {
@@ -82,13 +87,14 @@ pub async fn get_category(
     responses(
         (status = 201, description = "Category created", body = CategoryResponse),
         (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn create_category(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumCategoriesCreate(user): RequireForumCategoriesCreate,
     Json(input): Json<CreateCategoryInput>,
 ) -> Result<Json<CategoryResponse>> {
     let service = CategoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -110,13 +116,14 @@ pub async fn create_category(
     responses(
         (status = 200, description = "Category updated", body = CategoryResponse),
         (status = 404, description = "Category not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn update_category(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumCategoriesUpdate(user): RequireForumCategoriesUpdate,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateCategoryInput>,
 ) -> Result<Json<CategoryResponse>> {
@@ -138,13 +145,14 @@ pub async fn update_category(
     responses(
         (status = 204, description = "Category deleted"),
         (status = 404, description = "Category not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn delete_category(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumCategoriesDelete(user): RequireForumCategoriesDelete,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
     let service = CategoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));

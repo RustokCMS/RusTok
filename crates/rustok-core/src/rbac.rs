@@ -28,6 +28,10 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Logs,
         Resource::Webhooks,
         Resource::Scripts,
+        Resource::BlogPosts,
+        Resource::ForumCategories,
+        Resource::ForumTopics,
+        Resource::ForumReplies,
     ]
     .into_iter()
     .map(|resource| Permission::new(resource, Action::Manage))
@@ -62,6 +66,13 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::new(Resource::Modules, Action::Read));
     permissions.insert(Permission::new(Resource::Modules, Action::List));
     permissions.insert(Permission::new(Resource::Scripts, Action::Manage));
+    permissions.insert(Permission::new(Resource::Logs, Action::Read));
+    permissions.insert(Permission::new(Resource::Logs, Action::List));
+
+    permissions.insert(Permission::new(Resource::BlogPosts, Action::Manage));
+    permissions.insert(Permission::new(Resource::ForumCategories, Action::Manage));
+    permissions.insert(Permission::new(Resource::ForumTopics, Action::Manage));
+    permissions.insert(Permission::new(Resource::ForumReplies, Action::Manage));
 
     permissions
 });
@@ -121,6 +132,34 @@ static MANAGER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
 
     permissions.insert(Permission::ANALYTICS_READ);
 
+    permissions.insert(Permission::PAGES_CREATE);
+    permissions.insert(Permission::PAGES_READ);
+    permissions.insert(Permission::PAGES_UPDATE);
+    permissions.insert(Permission::PAGES_DELETE);
+    permissions.insert(Permission::PAGES_LIST);
+
+    permissions.insert(Permission::BLOG_POSTS_CREATE);
+    permissions.insert(Permission::BLOG_POSTS_READ);
+    permissions.insert(Permission::BLOG_POSTS_UPDATE);
+    permissions.insert(Permission::BLOG_POSTS_DELETE);
+    permissions.insert(Permission::BLOG_POSTS_LIST);
+    permissions.insert(Permission::BLOG_POSTS_PUBLISH);
+
+    for action in [Action::Create, Action::Read, Action::Update, Action::List] {
+        permissions.insert(Permission::new(Resource::ForumCategories, action));
+    }
+    for action in [
+        Action::Create,
+        Action::Read,
+        Action::Update,
+        Action::Delete,
+        Action::List,
+        Action::Moderate,
+    ] {
+        permissions.insert(Permission::new(Resource::ForumTopics, action));
+        permissions.insert(Permission::new(Resource::ForumReplies, action));
+    }
+
     permissions
 });
 
@@ -144,9 +183,24 @@ static CUSTOMER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::NODES_READ);
     permissions.insert(Permission::NODES_LIST);
 
+    permissions.insert(Permission::PAGES_READ);
+    permissions.insert(Permission::PAGES_LIST);
+
     permissions.insert(Permission::new(Resource::Comments, Action::Create));
     permissions.insert(Permission::new(Resource::Comments, Action::Read));
     permissions.insert(Permission::new(Resource::Comments, Action::List));
+
+    permissions.insert(Permission::BLOG_POSTS_READ);
+    permissions.insert(Permission::BLOG_POSTS_LIST);
+
+    permissions.insert(Permission::new(Resource::ForumCategories, Action::Read));
+    permissions.insert(Permission::new(Resource::ForumCategories, Action::List));
+    permissions.insert(Permission::new(Resource::ForumTopics, Action::Read));
+    permissions.insert(Permission::new(Resource::ForumTopics, Action::List));
+    permissions.insert(Permission::new(Resource::ForumTopics, Action::Create));
+    permissions.insert(Permission::new(Resource::ForumReplies, Action::Read));
+    permissions.insert(Permission::new(Resource::ForumReplies, Action::List));
+    permissions.insert(Permission::new(Resource::ForumReplies, Action::Create));
 
     permissions
 });

@@ -1,4 +1,4 @@
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -8,7 +8,9 @@ use rustok_pages::{
 };
 
 use crate::context::AuthContext;
-use rustok_core::SecurityContext;
+use crate::graphql::errors::GraphQLError;
+use crate::services::auth::AuthService;
+use rustok_core::Permission;
 
 use super::types::*;
 
@@ -25,8 +27,26 @@ impl PagesMutation {
     ) -> Result<GqlPage> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = auth_context_to_security(ctx);
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::PAGES_CREATE, Permission::PAGES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: pages:create required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
             .create(
@@ -69,8 +89,26 @@ impl PagesMutation {
     ) -> Result<GqlPage> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = auth_context_to_security(ctx);
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::PAGES_UPDATE, Permission::PAGES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: pages:update required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
             .update(
@@ -113,8 +151,26 @@ impl PagesMutation {
     ) -> Result<GqlPage> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = auth_context_to_security(ctx);
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::PAGES_UPDATE, Permission::PAGES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: pages:update required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
             .publish(tenant_id, security, id)
@@ -132,8 +188,26 @@ impl PagesMutation {
     ) -> Result<GqlPage> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = auth_context_to_security(ctx);
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::PAGES_UPDATE, Permission::PAGES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: pages:update required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PageService::new(db.clone(), event_bus.clone());
         let page = service
             .unpublish(tenant_id, security, id)
@@ -151,8 +225,26 @@ impl PagesMutation {
     ) -> Result<bool> {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let security = auth_context_to_security(ctx);
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
+        let has_perm = AuthService::has_any_permission(
+            db,
+            &tenant_id,
+            &auth.user_id,
+            &[Permission::PAGES_DELETE, Permission::PAGES_MANAGE],
+        )
+        .await
+        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+        if !has_perm {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "Permission denied: pages:delete required",
+            ));
+        }
+
+        let security = auth.security_context();
         let service = PageService::new(db.clone(), event_bus.clone());
         service
             .delete(tenant_id, security, id)
@@ -161,10 +253,4 @@ impl PagesMutation {
 
         Ok(true)
     }
-}
-
-fn auth_context_to_security(ctx: &Context<'_>) -> SecurityContext {
-    ctx.data::<AuthContext>()
-        .map(|a| a.security_context())
-        .unwrap_or_else(|_| SecurityContext::system())
 }
