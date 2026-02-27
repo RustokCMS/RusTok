@@ -1,3 +1,4 @@
+use sea_orm::{DatabaseConnection, TransactionTrait};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -6,7 +7,6 @@ use rustok_content::{
 };
 use rustok_core::{DomainEvent, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::DatabaseConnection;
 use serde_json::Value;
 
 use crate::dto::{
@@ -19,6 +19,7 @@ use crate::state_machine::BlogPostStatus;
 const KIND_POST: &str = "post";
 
 pub struct PostService {
+    db: DatabaseConnection,
     nodes: NodeService,
     event_bus: TransactionalEventBus,
 }
@@ -26,7 +27,8 @@ pub struct PostService {
 impl PostService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            nodes: NodeService::new(db, event_bus.clone()),
+            nodes: NodeService::new(db.clone(), event_bus.clone()),
+            db,
             event_bus,
         }
     }
@@ -88,9 +90,12 @@ impl PostService {
             rustok_content::entities::node::ContentStatus::Draft
         };
 
-        let node = self
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+
+        let post_id = self
             .nodes
-            .create_node(
+            .create_node_in_tx(
+                &txn,
                 tenant_id,
                 security.clone(),
                 CreateNodeInput {
@@ -119,10 +124,9 @@ impl PostService {
             .await
             .map_err(BlogError::from)?;
 
-        let post_id = node.id;
-
         self.event_bus
-            .publish(
+            .publish_in_tx(
+                &txn,
                 tenant_id,
                 security.user_id,
                 DomainEvent::BlogPostCreated {
@@ -133,6 +137,8 @@ impl PostService {
             )
             .await
             .map_err(BlogError::from)?;
+
+        txn.commit().await.map_err(BlogError::from)?;
 
         Ok(post_id)
     }
@@ -203,19 +209,24 @@ impl PostService {
             .map_err(BlogError::from)?;
         let tenant_id = node.tenant_id;
 
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+
         self.nodes
-            .update_node(post_id, security.clone(), update)
+            .update_node_in_tx(&txn, post_id, security.clone(), update)
             .await
             .map_err(BlogError::from)?;
 
         self.event_bus
-            .publish(
+            .publish_in_tx(
+                &txn,
                 tenant_id,
                 security.user_id,
                 DomainEvent::BlogPostUpdated { post_id, locale },
             )
             .await
             .map_err(BlogError::from)?;
+
+        txn.commit().await.map_err(BlogError::from)?;
 
         Ok(())
     }
@@ -228,20 +239,26 @@ impl PostService {
             .await
             .map_err(BlogError::from)?;
         let author_id = node.author_id;
+        let tenant_id = node.tenant_id;
+
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
 
         self.nodes
-            .publish_node(post_id, security.clone())
+            .publish_node_in_tx(&txn, post_id, security.clone())
             .await
             .map_err(BlogError::from)?;
 
         self.event_bus
-            .publish(
-                node.tenant_id,
+            .publish_in_tx(
+                &txn,
+                tenant_id,
                 security.user_id,
                 DomainEvent::BlogPostPublished { post_id, author_id },
             )
             .await
             .map_err(BlogError::from)?;
+
+        txn.commit().await.map_err(BlogError::from)?;
 
         Ok(())
     }
@@ -253,20 +270,26 @@ impl PostService {
             .get_node(post_id)
             .await
             .map_err(BlogError::from)?;
+        let tenant_id = node.tenant_id;
+
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
 
         self.nodes
-            .unpublish_node(post_id, security.clone())
+            .unpublish_node_in_tx(&txn, post_id, security.clone())
             .await
             .map_err(BlogError::from)?;
 
         self.event_bus
-            .publish(
-                node.tenant_id,
+            .publish_in_tx(
+                &txn,
+                tenant_id,
                 security.user_id,
                 DomainEvent::BlogPostUnpublished { post_id },
             )
             .await
             .map_err(BlogError::from)?;
+
+        txn.commit().await.map_err(BlogError::from)?;
 
         Ok(())
     }
@@ -283,15 +306,19 @@ impl PostService {
             .get_node(post_id)
             .await
             .map_err(BlogError::from)?;
+        let tenant_id = node.tenant_id;
+
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
 
         self.nodes
-            .archive_node(post_id, security.clone())
+            .archive_node_in_tx(&txn, post_id, security.clone())
             .await
             .map_err(BlogError::from)?;
 
         self.event_bus
-            .publish(
-                node.tenant_id,
+            .publish_in_tx(
+                &txn,
+                tenant_id,
                 security.user_id,
                 DomainEvent::BlogPostArchived {
                     post_id,
@@ -300,6 +327,8 @@ impl PostService {
             )
             .await
             .map_err(BlogError::from)?;
+
+        txn.commit().await.map_err(BlogError::from)?;
 
         Ok(())
     }
@@ -318,19 +347,24 @@ impl PostService {
 
         let tenant_id = node.tenant_id;
 
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+
         self.nodes
-            .delete_node(post_id, security.clone())
+            .delete_node_in_tx(&txn, post_id, security.clone())
             .await
             .map_err(BlogError::from)?;
 
         self.event_bus
-            .publish(
+            .publish_in_tx(
+                &txn,
                 tenant_id,
                 security.user_id,
                 DomainEvent::BlogPostDeleted { post_id },
             )
             .await
             .map_err(BlogError::from)?;
+
+        txn.commit().await.map_err(BlogError::from)?;
 
         Ok(())
     }

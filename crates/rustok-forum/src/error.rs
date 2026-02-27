@@ -3,6 +3,9 @@ use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum ForumError {
+    #[error("Database error: {0}")]
+    Database(#[from] sea_orm::DbErr),
+
     #[error("Content error: {0}")]
     Content(#[from] rustok_content::ContentError),
 

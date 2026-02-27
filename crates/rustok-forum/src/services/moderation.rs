@@ -1,4 +1,4 @@
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, TransactionTrait};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -10,6 +10,7 @@ use crate::constants::{reply_status, topic_status, KIND_TOPIC};
 use crate::error::{ForumError, ForumResult};
 
 pub struct ModerationService {
+    db: DatabaseConnection,
     nodes: NodeService,
     event_bus: TransactionalEventBus,
 }
@@ -17,7 +18,8 @@ pub struct ModerationService {
 impl ModerationService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            nodes: NodeService::new(db, event_bus.clone()),
+            nodes: NodeService::new(db.clone(), event_bus.clone()),
+            db,
             event_bus,
         }
     }
@@ -173,8 +175,11 @@ impl ModerationService {
         let mut metadata = node.metadata;
         metadata["reply_status"] = serde_json::json!(new_status);
 
+        let txn = self.db.begin().await?;
+
         self.nodes
-            .update_node(
+            .update_node_in_tx(
+                &txn,
                 reply_id,
                 security.clone(),
                 rustok_content::UpdateNodeInput {
@@ -185,7 +190,8 @@ impl ModerationService {
             .await?;
 
         self.event_bus
-            .publish(
+            .publish_in_tx(
+                &txn,
                 tenant_id,
                 security.user_id,
                 DomainEvent::ForumReplyStatusChanged {
@@ -196,6 +202,8 @@ impl ModerationService {
                 },
             )
             .await?;
+
+        txn.commit().await?;
 
         Ok(())
     }
@@ -214,8 +222,11 @@ impl ModerationService {
         let mut metadata = node.metadata;
         metadata["is_pinned"] = serde_json::json!(is_pinned);
 
+        let txn = self.db.begin().await?;
+
         self.nodes
-            .update_node(
+            .update_node_in_tx(
+                &txn,
                 topic_id,
                 security.clone(),
                 rustok_content::UpdateNodeInput {
@@ -226,7 +237,8 @@ impl ModerationService {
             .await?;
 
         self.event_bus
-            .publish(
+            .publish_in_tx(
+                &txn,
                 tenant_id,
                 security.user_id,
                 DomainEvent::ForumTopicPinned {
@@ -236,6 +248,8 @@ impl ModerationService {
                 },
             )
             .await?;
+
+        txn.commit().await?;
 
         Ok(())
     }
@@ -282,8 +296,11 @@ impl ModerationService {
         let mut metadata = node.metadata;
         metadata["forum_status"] = serde_json::json!(new_status);
 
+        let txn = self.db.begin().await?;
+
         self.nodes
-            .update_node(
+            .update_node_in_tx(
+                &txn,
                 topic_id,
                 security.clone(),
                 rustok_content::UpdateNodeInput {
@@ -294,7 +311,8 @@ impl ModerationService {
             .await?;
 
         self.event_bus
-            .publish(
+            .publish_in_tx(
+                &txn,
                 tenant_id,
                 security.user_id,
                 DomainEvent::ForumTopicStatusChanged {
@@ -305,6 +323,8 @@ impl ModerationService {
                 },
             )
             .await?;
+
+        txn.commit().await?;
 
         Ok(())
     }

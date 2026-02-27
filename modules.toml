@@ -12,11 +12,11 @@ deployment_profile = "monolith" # monolith | headless
 
 [modules]
 # Core modules (required)
-content = { crate = "rustok-content", source = "path", path = "crates/rustok-content", required = true }
 index = { crate = "rustok-index", source = "path", path = "crates/rustok-index", required = true }
 outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbox", required = true }
 
 # Domain modules (optional)
+content = { crate = "rustok-content", source = "path", path = "crates/rustok-content" }
 commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce" }
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content"] }

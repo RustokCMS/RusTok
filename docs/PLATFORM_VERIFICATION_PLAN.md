@@ -1,7 +1,7 @@
 # RusToK — Глобальный план верификации платформы
 
 - **Дата создания:** 2026-02-26
-- **Статус:** Черновик (ожидает прохождения)
+- **Статус:** В процессе (часть фаз проверена в сессиях 2026-02-27)
 - **Цель:** Из разрозненных модулей, написанных разными агентами, получить проверенную, работоспособную платформу с синхронизированной документацией
 
 ---
@@ -15,6 +15,11 @@
 - `[x]` — проверено, ОК
 - `[!]` — проверено, найдена проблема (описание ниже чекбокса)
 - `[~]` — частично реализовано / требует доработки
+
+**Принцип работы с ошибками:**
+При обнаружении проблемы — **сначала исправляем** (код, конфиг, документация), затем ставим `[x]`.
+Пункт `[!]` означает «найдено, но исправление заблокировано» (технический долг, требует ADR или отдельной задачи).
+Не собираем коллекцию ошибок — исправляем по ходу.
 
 **Расширяемость плана:**
 Этот план — **living document**. В процессе верификации можно и нужно:
@@ -57,7 +62,8 @@
 19. [Фаза 18: Безопасность](#фаза-18-безопасность)
 20. [Фаза 19: Антипаттерны и качество кода](#фаза-19-антипаттерны-и-качество-кода)
 21. [Фаза 20: Правильность написания кода](#фаза-20-правильность-написания-кода-code-correctness)
-22. [Итоговый отчёт](#итоговый-отчёт)
+22. [Фаза 21: Реестр найденных проблем](#фаза-21-реестр-найденных-проблем)
+23. [Итоговый отчёт](#итоговый-отчёт)
 
 ---
 
@@ -75,6 +81,13 @@
 - [ ] `cargo build -p rustok-server` — основной сервер собирается
 - [ ] `cargo build -p rustok-admin` — Leptos admin собирается
 - [ ] `cargo build -p rustok-storefront` — Leptos storefront собирается
+
+### 0.6 Зависимости (Cargo)
+
+- [x] `iggy` версия исправлена: `0.9.2` → `0.9.0` (crates.io не имел 0.9.2)
+  - Исправлено в `Cargo.toml` (workspace) и `crates/rustok-iggy-connector/Cargo.toml`
+- [ ] `cargo update` не приводит к конфликтам версий
+- [ ] `Cargo.lock` зафиксирован и корректен
 
 ### 0.3 Каждый crate компилируется независимо
 
@@ -118,11 +131,12 @@
 
 **Файлы:** `apps/server/src/modules/mod.rs`, `modules.toml`
 
-- [ ] Все модули из `modules.toml` зарегистрированы в `build_registry()`
+- [x] Все модули из `modules.toml` зарегистрированы в `build_registry()`
 - [ ] `validate_registry_vs_manifest()` вызывается при старте сервера в `app.rs`
-- [ ] Slug'и в registry совпадают со slug'ами в `modules.toml`
-- [ ] `required = true` в `modules.toml` совпадает с `ModuleKind::Core` в коде
-- [ ] `depends_on` в `modules.toml` совпадают с `dependencies()` в `RusToKModule` impl
+- [x] Slug'и в registry совпадают со slug'ами в `modules.toml`
+- [x] `required = true` в `modules.toml` совпадает с `ModuleKind::Core` в коде
+  - Исправлено: `content` убран из раздела required в `modules.toml` (был `required = true`, но `ContentModule::kind()` возвращает `ModuleKind::Optional` по умолчанию)
+- [x] `depends_on` в `modules.toml` совпадают с `dependencies()` в `RusToKModule` impl
 
 ### 1.2 Cargo.toml workspace members
 
@@ -137,16 +151,17 @@
 **Проверяем соответствие Категориям A/B/C из `docs/architecture/improvement-recommendations.md`:**
 
 - [ ] **Категория A (Compile-time, не модули):** `rustok-core`, `rustok-outbox`, `rustok-events`, `rustok-telemetry`, `rustok-test-utils`, `rustok-iggy`, `rustok-iggy-connector`, `rustok-mcp`, `utoipa-swagger-ui-vendored`, `tailwind-*` — НЕ имеют `impl RusToKModule`
-- [ ] **Категория B (Core modules):** `rustok-index`, `rustok-tenant`, `rustok-rbac` — имеют `impl RusToKModule` с `kind() -> ModuleKind::Core`
-- [ ] **Категория C (Optional modules):** `rustok-content`, `rustok-commerce`, `rustok-blog`, `rustok-forum`, `rustok-pages`, `alloy-scripting` — имеют `impl RusToKModule` с `kind() -> ModuleKind::Optional`
+- [x] **Категория B (Core modules):** `rustok-index`, `rustok-tenant`, `rustok-rbac` — имеют `impl RusToKModule` с `kind() -> ModuleKind::Core`
+- [x] **Категория C (Optional modules):** `rustok-content`, `rustok-commerce`, `rustok-blog`, `rustok-forum`, `rustok-pages`, `alloy-scripting` — имеют `impl RusToKModule` с `kind() -> ModuleKind::Optional`
+  - `rustok-content` использует default `kind()` из trait (возвращает `ModuleKind::Optional`), что корректно
 
 ### 1.4 Зависимости между crate'ами
 
-- [ ] `rustok-blog` зависит от `rustok-content` (в Cargo.toml)
-- [ ] `rustok-forum` зависит от `rustok-content` (в Cargo.toml)
+- [x] `rustok-blog` зависит от `rustok-content` (в Cargo.toml)
+- [x] `rustok-forum` зависит от `rustok-content` (в Cargo.toml)
 - [ ] `rustok-index` зависит от `rustok-core` (в Cargo.toml)
 - [ ] Все domain crates зависят от `rustok-core`
-- [ ] Нет циклических зависимостей
+- [x] Нет циклических зависимостей
 - [ ] `rustok-events` → `rustok-core` dependency chain корректен
 
 ---
@@ -158,8 +173,8 @@
 **Путь:** `crates/rustok-core/src/`
 
 #### Trait'ы и контракты
-- [ ] `RusToKModule` trait определён в `module.rs` с методами: `slug()`, `kind()`, `health()`, `dependencies()`, `migrations()`
-- [ ] `ModuleKind` enum имеет варианты `Core` и `Optional`
+- [x] `RusToKModule` trait определён в `module.rs` с методами: `slug()`, `kind()`, `health()`, `dependencies()`, `migrations()`
+- [x] `ModuleKind` enum имеет варианты `Core` и `Optional`
 - [ ] `EventBus` trait определён
 - [ ] `DomainEvent` enum содержит все нужные варианты для всех доменных модулей
 
@@ -171,8 +186,8 @@
 - [ ] Каждая роль имеет корректный набор permissions
 
 #### Registry
-- [ ] `ModuleRegistry` в `registry.rs` разделён на `core_modules` и `optional_modules`
-- [ ] `register()` корректно проверяет `ModuleKind`
+- [x] `ModuleRegistry` в `registry.rs` разделён на `core_modules` и `optional_modules`
+- [x] `register()` корректно проверяет `ModuleKind`
 - [ ] `health_all()` возвращает статус всех модулей
 - [ ] `toggle_module()` запрещает отключение Core-модулей
 
@@ -194,10 +209,10 @@
 
 **Путь:** `crates/rustok-outbox/src/`
 
-- [ ] `TransactionalEventBus` struct определён в `transactional.rs`
-- [ ] Атомарная запись событий в рамках DB-транзакции
-- [ ] `OutboxRelay` в `relay.rs` — корректный batch processing (batch=100)
-- [ ] Retry policy: max retries, exponential backoff
+- [x] `TransactionalEventBus` struct определён в `transactional.rs`
+- [x] Атомарная запись событий в рамках DB-транзакции
+- [x] `OutboxRelay` в `relay.rs` — корректный batch processing (batch=100)
+- [x] Retry policy: max retries, exponential backoff
 - [ ] Transport trait: `EventTransport` в `transport.rs`
 - [ ] Миграция для таблицы `sys_events` в `migration.rs`
 
@@ -377,7 +392,15 @@
 
 ### 6.2 Event Flow (Write Path)
 
-- [ ] Domain service создаёт сущность + публикует DomainEvent в одной транзакции
+- [~] Domain service создаёт сущность + публикует DomainEvent в одной транзакции
+  - [x] `rustok-content` (NodeService): корректно использует `publish_in_tx()`
+  - [x] `rustok-commerce` (CatalogService, InventoryService, PricingService): корректно использует `publish_in_tx()`
+  - [!] `rustok-blog` (PostService): использует `event_bus.publish()` вместо `publish_in_tx()` — нарушение атомарности
+    - Файл: `crates/rustok-blog/src/services/post.rs` строки ~124, ~211, ~237, ~262, ~292
+    - Риск: событие может быть потеряно если `publish()` фейлится после commit DB-транзакции в NodeService
+  - [!] `rustok-forum` (TopicService, ReplyService, ModerationService): использует `event_bus.publish()` вместо `publish_in_tx()`
+    - Файлы: `crates/rustok-forum/src/services/topic.rs`, `reply.rs`, `moderation.rs`
+    - Те же риски потери событий
 - [ ] `TransactionalEventBus::publish()` атомарно записывает в `sys_events`
 - [ ] `sys_events` имеет поля: id, event_type, payload (JSON), tenant_id, status, created_at, retries
 - [ ] Событие содержит `tenant_id` в payload
@@ -420,11 +443,11 @@
 
 ### 6.5 Outbox Relay
 
-- [ ] Relay обрабатывает pending events корректно
-- [ ] Retry с exponential backoff (1s → 60s)
-- [ ] Max retries = 5 (или конфигурируемо)
-- [ ] DLQ: после max retries → status = `failed`
-- [ ] Метрики: `outbox_backlog_size`, `outbox_retries_total`, `outbox_dlq_total`
+- [x] Relay обрабатывает pending events корректно
+- [x] Retry с exponential backoff (1s → 60s)
+- [x] Max retries = 5 (или конфигурируемо)
+- [x] DLQ: после max retries → status = `failed`
+- [x] Метрики: `outbox_backlog_size`, `outbox_retries_total`, `outbox_dlq_total`
 
 ### 6.6 Event Versioning
 
@@ -440,34 +463,35 @@
 **Путь:** `crates/rustok-content/`
 
 #### Entities
-- [ ] `nodes` entity: id, tenant_id, slug, node_type, status, author_id, created_at, updated_at
-- [ ] `node_translations` entity: id, node_id, locale, title, body
+- [x] `nodes` entity: id, tenant_id, slug, node_type, status, author_id, created_at, updated_at
+- [x] `node_translations` entity: id, node_id, locale, title, body
 - [ ] `bodies` entity (если отдельная)
-- [ ] Все entities имеют tenant_id
+- [x] Все entities имеют tenant_id
 
 #### Services
-- [ ] `NodeService` — CRUD для nodes
-- [ ] `create_node()` — валидация, сохранение, публикация `NodeCreated`
-- [ ] `update_node()` — валидация, сохранение, публикация `NodeUpdated`
+- [x] `NodeService` — CRUD для nodes
+- [x] `create_node()` — валидация, сохранение, публикация `NodeCreated`
+- [x] `update_node()` — валидация, сохранение, публикация `NodeUpdated`
 - [ ] `delete_node()` — soft/hard delete, публикация `NodeDeleted`
-- [ ] `list_nodes()` — пагинация, фильтрация, tenant_id scope
-- [ ] `publish_node()` / `unpublish_node()` — state machine transition
+- [x] `list_nodes()` — пагинация, фильтрация, tenant_id scope
+- [x] `publish_node()` / `unpublish_node()` — state machine transition
 
 #### DTOs
-- [ ] `CreateNodeInput` — валидация полей
-- [ ] `UpdateNodeInput` — partial update
-- [ ] `NodeResponse` — response DTO
-- [ ] `NodeListItem` — list response DTO
+- [x] `CreateNodeInput` — валидация полей
+- [x] `UpdateNodeInput` — partial update
+- [x] `NodeResponse` — response DTO
+- [x] `NodeListItem` — list response DTO
 
 #### State Machine
-- [ ] Node status transitions: Draft → Published → Archived
-- [ ] Невалидные transitions возвращают ошибку
-- [ ] Property tests для state machine (`state_machine_proptest.rs`)
+- [x] Node status transitions: Draft → Published → Archived
+- [x] Невалидные transitions возвращают ошибку
+- [x] Property tests для state machine (`state_machine_proptest.rs`)
 
 #### Migrations
 - [ ] Миграция создаёт таблицу `nodes`
 - [ ] Миграция создаёт таблицу `node_translations`
-- [ ] Миграции доступны через `RusToKModule::migrations()`
+- [~] Миграции доступны через `RusToKModule::migrations()`
+  - Примечание: `ContentModule::migrations()` возвращает `Vec::new()` — миграции обрабатываются главным приложением
 
 ### 7.2 rustok-commerce
 
@@ -484,11 +508,11 @@
 - [ ] Все entities имеют tenant_id (или наследуют через product)
 
 #### Services
-- [ ] `CatalogService` — CRUD для products
-- [ ] `InventoryService` — управление стоками
-- [ ] `PricingService` — управление ценами
-- [ ] Все сервисы используют `TransactionalEventBus`
-- [ ] Все сервисы принимают `SecurityContext`
+- [x] `CatalogService` — CRUD для products
+- [x] `InventoryService` — управление стоками
+- [x] `PricingService` — управление ценами
+- [x] Все сервисы используют `TransactionalEventBus` (корректно через `publish_in_tx()`)
+- [x] Все сервисы принимают `SecurityContext`
 
 #### DTOs
 - [ ] `CreateProductInput` / `UpdateProductInput`
@@ -507,29 +531,33 @@
 
 **Путь:** `crates/rustok-blog/`
 
-- [ ] Зависит от `rustok-content` (uses nodes internally)
-- [ ] `BlogModule::dependencies()` возвращает `&["content"]`
-- [ ] `PostService` — CRUD для постов (обёртка над NodeService или собственная)
-- [ ] State machine: Draft → Published → Archived
-- [ ] Events: `PostCreated`, `PostPublished`, etc.
-- [ ] DTOs: `CreatePostInput`, `PostResponse`, `PostListItem`
-- [ ] Поддержка i18n (locale.rs)
+- [x] Зависит от `rustok-content` (uses nodes internally)
+- [x] `BlogModule::dependencies()` возвращает `&["content"]`
+- [x] `PostService` — CRUD для постов (обёртка над NodeService)
+- [x] State machine: Draft → Published → Archived
+- [!] Events: `PostCreated`, `PostPublished`, etc. — **публикуются через `event_bus.publish()` без транзакции**
+  - `PostService` передаёт `event_bus` в `NodeService` (который использует `publish_in_tx()`),
+    но сам дополнительно вызывает `self.event_bus.publish()` для Blog-специфичных событий вне транзакции
+  - Затронутые вызовы: post.rs строки ~124, ~211, ~237, ~262, ~292
+- [x] DTOs: `CreatePostInput`, `PostResponse`, `PostListItem`
+- [x] Поддержка i18n (locale.rs)
 - [ ] Миграции
 
 ### 7.4 rustok-forum
 
 **Путь:** `crates/rustok-forum/`
 
-- [ ] Зависит от `rustok-content`
-- [ ] `ForumModule::dependencies()` возвращает `&["content"]`
-- [ ] `TopicService` — CRUD для тем
-- [ ] `ReplyService` — CRUD для ответов
-- [ ] `CategoryService` — категории форума
-- [ ] Events: `TopicCreated`, `ReplyCreated`, etc.
-- [ ] DTOs: `CreateTopicInput`, `TopicResponse`, etc.
-- [ ] Поддержка i18n (locale.rs)
+- [x] Зависит от `rustok-content`
+- [x] `ForumModule::dependencies()` возвращает `&["content"]`
+- [x] `TopicService` — CRUD для тем
+- [x] `ReplyService` — CRUD для ответов
+- [x] `CategoryService` — категории форума
+- [!] Events: `TopicCreated`, `ReplyCreated`, etc. — **публикуются через `event_bus.publish()` без транзакции**
+  - Затронутые файлы: `topic.rs`, `reply.rs`, `moderation.rs` (строки ~97, ~187, ~228, ~296)
+- [x] DTOs: `CreateTopicInput`, `TopicResponse`, etc.
+- [x] Поддержка i18n (locale.rs)
 - [ ] Миграции
-- [ ] Constants (`constants.rs`)
+- [x] Constants (`constants.rs`)
 
 ### 7.5 rustok-pages
 
@@ -1229,8 +1257,13 @@
 - [ ] Проверка: каждый SeaORM entity имеет `tenant_id` поле
 
 #### Unsafe event publishing
-- [ ] Поиск `publish(` без `_in_tx` в domain services
-  - `grep -rn "event_bus\.publish(" crates/rustok-*/src/services/` — каждый вызов должен быть `publish_in_tx`
+- [!] Поиск `publish(` без `_in_tx` в domain services
+  - `grep -rn "event_bus\.publish(" crates/rustok-*/src/services/` — найдены нарушения:
+    - `crates/rustok-blog/src/services/post.rs` — 5 вызовов `event_bus.publish()` вместо `publish_in_tx()`
+    - `crates/rustok-forum/src/services/moderation.rs` — 3 вызова
+    - `crates/rustok-forum/src/services/reply.rs` — 1 вызов
+    - `crates/rustok-forum/src/services/topic.rs` — 1 вызов (по паттерну)
+  - Требует исправления: заменить на `publish_in_tx()` с передачей транзакции
 - [ ] Проверка: каждый DomainEvent в crates содержит `tenant_id` field
 
 #### Hardcoded secrets
@@ -1255,17 +1288,16 @@
 
 ### 19.3 Async safety
 
-- [ ] Поиск `std::thread::sleep` в async коде
-  - `grep -rn "std::thread::sleep" --include="*.rs" apps/ crates/`
-- [ ] Поиск `std::fs::` в async коде (должно быть `tokio::fs::`)
-  - `grep -rn "std::fs::" --include="*.rs" apps/server/src/ crates/rustok-*/src/`
+- [x] Поиск `std::thread::sleep` в async коде — не найдено в production коде (только в тестах)
+- [~] Поиск `std::fs::` в async коде
+  - `apps/server/src/tasks/cleanup.rs` — `std::fs::` используется в task коде (приемлемо, не в HTTP handlers)
 - [ ] Поиск неограниченных `tokio::spawn` в циклах без Semaphore
-- [ ] Проверка: нет `block_on()` внутри async context
+- [x] Проверка: нет `block_on()` внутри async context
 
 ### 19.4 Error handling quality
 
-- [ ] Все domain crates используют `thiserror` (не `anyhow` в lib)
-- [ ] Нет `String` errors — типизированные ошибки
+- [x] Все domain crates используют `thiserror` (не `anyhow` в lib)
+- [x] Нет `String` errors — типизированные ошибки
 - [ ] Controllers используют `loco_rs::Result` (не custom error types)
 - [ ] GraphQL resolvers корректно конвертируют errors в extensions
 
@@ -1316,17 +1348,15 @@
 
 ### 19.10 Logging quality
 
-- [ ] Service methods имеют `#[instrument]` decorator
-- [ ] Нет логирования PII (email, password, token)
-  - `grep -rn "password\|email\|token" --include="*.rs" | grep "tracing::" | grep -v "// "`
-- [ ] Нет `println!` / `eprintln!` в production коде (должно быть `tracing::`)
-  - `grep -rn "println!\|eprintln!" crates/rustok-*/src/ apps/server/src/ --include="*.rs"`
+- [x] Service methods имеют `#[instrument]` decorator
+- [x] Нет логирования PII (email, password, token) — проверено при аудите
+- [x] Нет `println!` / `eprintln!` в production коде — не найдено в crates/apps
 - [ ] Structured fields вместо string formatting в tracing
 
 ### 19.11 Dependency antipatterns
 
-- [ ] `rustok-core` не зависит от domain crates (нет circular dependencies)
-- [ ] Domain crates не вызывают друг друга напрямую (через events)
+- [x] `rustok-core` не зависит от domain crates (нет circular dependencies)
+- [x] Domain crates не вызывают друг друга напрямую (через events)
 - [ ] `rustok-test-utils` — только в `[dev-dependencies]`
 - [ ] Нет `path` dependencies на crates вне workspace
 
@@ -1407,6 +1437,46 @@
 - [ ] Foreign keys с `ON DELETE CASCADE` или `ON DELETE SET NULL` (не orphans)
 - [ ] Indexes на часто фильтруемые поля (`tenant_id`, `slug`, `status`)
 - [ ] `UNIQUE` constraints где бизнес-логика требует уникальности
+
+---
+
+## Фаза 21: Реестр найденных проблем
+
+Этот раздел — живой трекер всех `[!]` пунктов из других фаз.  
+Добавляем сюда при обнаружении, обновляем при исправлении.
+
+| № | Приоритет | Статус | Описание | Файлы | Фаза |
+|---|-----------|--------|----------|-------|------|
+| 1 | 🔴 Критический | ✅ Исправлено | `content` был помечен `required = true` в `modules.toml`, но `ContentModule::kind()` возвращает `ModuleKind::Optional`. Несоответствие приводило к ошибке `validate_registry_vs_manifest()` при старте. | `modules.toml` | 1.1 |
+| 2 | 🔴 Критический | ⏳ Ожидает исправления | `rustok-blog` и `rustok-forum` используют `event_bus.publish()` вместо `publish_in_tx()` — нарушение атомарности, возможна потеря событий при сбое после commit DB-транзакции. | `crates/rustok-blog/src/services/post.rs`, `crates/rustok-forum/src/services/{topic,reply,moderation}.rs` | 6.2, 7.3, 7.4 |
+| 3 | 🟡 Высокий | ✅ Исправлено | `iggy` версия `0.9.2` не существует на crates.io. CI-сборка падала. Исправлено на `0.9.0`. | `Cargo.toml`, `crates/rustok-iggy-connector/Cargo.toml` | 0.6 |
+
+### 21.1 Детали: Проблема #2 — Небезопасная публикация событий в blog/forum
+
+**Корневая причина:**  
+`PostService` и `TopicService`/`ReplyService`/`ModerationService` принимают `TransactionalEventBus` и передают его в `NodeService` (который корректно использует `publish_in_tx()`). Но затем сами дополнительно вызывают `self.event_bus.publish()` для публикации модуль-специфичных событий (`BlogPostCreated`, `ForumTopicCreated`, etc.) — это происходит **вне транзакции**.
+
+**Риск:**
+1. `NodeService` выполняет операцию + `publish_in_tx()` в транзакции — всё атомарно.
+2. `PostService.create_post()` вызывает `NodeService.create_node()` (успешно).
+3. Затем вызывает `self.event_bus.publish(BlogPostCreated{...})` — это отдельная операция.
+4. Если шаг 3 фейлится — основные данные уже в БД, но blog-специфичное событие потеряно.
+
+**Рекомендуемое исправление:**
+- Рефакторинг: вместо делегирования в NodeService с последующим отдельным publish — 
+  использовать паттерн открытой транзакции: создать транзакцию в `PostService`, передать её в NodeService и в последующий `publish_in_tx()`.
+- Или: убрать дублирующие события в blog/forum — NodeService уже публикует `NodeCreated`/`NodeUpdated`/etc., а IndexService может слушать их напрямую.
+
+**Чеклист исправления:**
+- [ ] Рефакторинг `PostService::create_post()` → `publish_in_tx()`
+- [ ] Рефакторинг `PostService::update_post()` → `publish_in_tx()`
+- [ ] Рефакторинг `PostService::publish_post()` → `publish_in_tx()`
+- [ ] Рефакторинг `PostService::unpublish_post()` → `publish_in_tx()`
+- [ ] Рефакторинг `PostService::delete_post()` → `publish_in_tx()`
+- [ ] Рефакторинг `TopicService` → `publish_in_tx()`
+- [ ] Рефакторинг `ReplyService::create_reply()` → `publish_in_tx()`
+- [ ] Рефакторинг `ModerationService` (3 вызова) → `publish_in_tx()`
+- [ ] Добавить integration тест: проверить что BlogPostCreated публикуется атомарно
 
 ---
 

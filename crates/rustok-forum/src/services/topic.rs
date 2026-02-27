@@ -1,4 +1,4 @@
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, TransactionTrait};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -16,6 +16,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::locale::{available_locales, resolve_body, resolve_translation};
 
 pub struct TopicService {
+    db: DatabaseConnection,
     nodes: NodeService,
     event_bus: TransactionalEventBus,
 }
@@ -23,7 +24,8 @@ pub struct TopicService {
 impl TopicService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            nodes: NodeService::new(db, event_bus.clone()),
+            nodes: NodeService::new(db.clone(), event_bus.clone()),
+            db,
             event_bus,
         }
     }
@@ -58,9 +60,12 @@ impl TopicService {
             "forum_status": topic_status::OPEN
         });
 
-        let node = self
+        let txn = self.db.begin().await?;
+
+        let topic_id = self
             .nodes
-            .create_node(
+            .create_node_in_tx(
+                &txn,
                 tenant_id,
                 security.clone(),
                 CreateNodeInput {
@@ -88,23 +93,24 @@ impl TopicService {
             )
             .await?;
 
-        let topic_id = node.id;
-        let response = Self::node_to_topic(node, &locale);
-
         self.event_bus
-            .publish(
+            .publish_in_tx(
+                &txn,
                 tenant_id,
                 security.user_id,
                 DomainEvent::ForumTopicCreated {
                     topic_id,
                     category_id,
                     author_id,
-                    locale,
+                    locale: locale.clone(),
                 },
             )
             .await?;
 
-        Ok(response)
+        txn.commit().await?;
+
+        let node = self.nodes.get_node(topic_id).await?;
+        Ok(Self::node_to_topic(node, &locale))
     }
 
     #[instrument(skip(self))]

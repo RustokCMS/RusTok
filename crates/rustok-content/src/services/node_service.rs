@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, Set, TransactionTrait,
+    prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, Set, TransactionTrait,
 };
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
@@ -24,6 +24,10 @@ pub struct NodeService {
 impl NodeService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self { db, event_bus }
+    }
+
+    pub fn db(&self) -> &DatabaseConnection {
+        &self.db
     }
 
     fn kind_to_resource(kind: &str) -> Resource {
@@ -110,11 +114,28 @@ impl NodeService {
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        mut input: CreateNodeInput,
+        input: CreateNodeInput,
     ) -> ContentResult<NodeResponse> {
         info!("Creating node");
+        let txn = self.db.begin().await?;
+        let node_id = self
+            .create_node_in_tx(&txn, tenant_id, security, input)
+            .await?;
+        txn.commit().await?;
+        info!(node_id = %node_id, "Node created successfully");
+        let response = self.get_node(node_id).await?;
+        Ok(response)
+    }
 
-        // Scope Enforcement
+    /// Insert a node within an existing transaction. Does not begin or commit.
+    /// Returns the new node id. Callers must commit the transaction themselves.
+    pub async fn create_node_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        mut input: CreateNodeInput,
+    ) -> ContentResult<Uuid> {
         let resource = Self::kind_to_resource(&input.kind);
         let scope = security.get_scope(resource, Action::Create);
 
@@ -132,7 +153,7 @@ impl NodeService {
             }
         }
 
-        let now = Utc::now().into();
+        let now: DateTimeWithTimeZone = Utc::now().into();
         let node_id = rustok_core::generate_id();
         let status = input
             .status
@@ -149,19 +170,17 @@ impl NodeService {
         debug!(
             translations_count = input.translations.len(),
             bodies_count = input.bodies.len(),
-            "Starting transaction"
+            "Inserting node in transaction"
         );
-        let txn = self.db.begin().await?;
 
-        // Check slug uniqueness for all translations
         for translation in &input.translations {
             if let Some(ref slug) = translation.slug {
-                self.ensure_slug_unique(&txn, tenant_id, &translation.locale, slug, None)
+                self.ensure_slug_unique(txn, tenant_id, &translation.locale, slug, None)
                     .await?;
             }
         }
 
-        let node_model = node::ActiveModel {
+        node::ActiveModel {
             id: Set(node_id),
             tenant_id: Set(tenant_id),
             parent_id: Set(input.parent_id),
@@ -183,15 +202,14 @@ impl NodeService {
             deleted_at: Set(None),
             version: Set(1),
         }
-        .insert(&txn)
+        .insert(txn)
         .await?;
 
         for translation in input.translations {
             let slug = resolve_slug(translation.slug, translation.title.as_ref())?;
 
-            // Check uniqueness of resolved slug
             if let Some(ref s) = slug {
-                self.ensure_slug_unique(&txn, tenant_id, &translation.locale, s, None)
+                self.ensure_slug_unique(txn, tenant_id, &translation.locale, s, None)
                     .await?;
             }
 
@@ -205,17 +223,17 @@ impl NodeService {
                 created_at: Set(now),
                 updated_at: Set(now),
             }
-            .insert(&txn)
+            .insert(txn)
             .await?;
         }
 
         for body_input in input.bodies {
-            upsert_body(&txn, node_id, body_input, now).await?;
+            upsert_body(txn, node_id, body_input, now).await?;
         }
 
         self.event_bus
             .publish_in_tx(
-                &txn,
+                txn,
                 tenant_id,
                 security.user_id,
                 DomainEvent::NodeCreated {
@@ -226,11 +244,7 @@ impl NodeService {
             )
             .await?;
 
-        txn.commit().await?;
-
-        info!(node_id = %node_id, "Node created successfully");
-        let response = self.get_node(node_model.id).await?;
-        Ok(response)
+        Ok(node_id)
     }
 
     #[instrument(skip(self, security, update), fields(node_id = %node_id, user_id = ?security.user_id))]
@@ -241,24 +255,43 @@ impl NodeService {
         update: UpdateNodeInput,
     ) -> ContentResult<NodeResponse> {
         info!("Updating node");
+        let txn = self.db.begin().await?;
+        let updated = self.update_node_in_tx(&txn, node_id, security, update).await?;
+        txn.commit().await?;
+        let translations = node_translation::Entity::find()
+            .filter(node_translation::Column::NodeId.eq(node_id))
+            .all(&self.db)
+            .await?;
+        let bodies = body::Entity::find()
+            .filter(body::Column::NodeId.eq(node_id))
+            .all(&self.db)
+            .await?;
+        Ok(Self::to_response(updated, translations, bodies))
+    }
+
+    /// Update a node within an existing transaction. Does not begin or commit.
+    /// Returns the updated node model. Callers must commit the transaction themselves.
+    pub async fn update_node_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        node_id: Uuid,
+        security: SecurityContext,
+        update: UpdateNodeInput,
+    ) -> ContentResult<node::Model> {
         let node_model = self.find_node(node_id).await?;
 
-        // Check if node is soft-deleted
         if node_model.deleted_at.is_some() {
             return Err(ContentError::Validation(
                 "Cannot update deleted node".to_string(),
             ));
         }
 
-        // Optimistic locking check
         self.check_version(update.expected_version, node_model.version)?;
 
-        // Scope Enforcement
         let resource = Self::kind_to_resource(&node_model.kind);
         let scope = security.get_scope(resource, Action::Update);
         self.enforce_scope(scope, node_model.author_id, security.user_id)?;
 
-        // Additional check for author_id change with Own scope
         if matches!(scope, PermissionScope::Own) && update.author_id.is_some() {
             return Err(ContentError::Forbidden(
                 "Permission denied: cannot change author".into(),
@@ -266,7 +299,7 @@ impl NodeService {
         }
 
         let mut active: node::ActiveModel = node_model.clone().into();
-        let now = Utc::now().into();
+        let now: DateTimeWithTimeZone = Utc::now().into();
 
         if let Some(parent_id) = update.parent_id {
             active.parent_id = Set(parent_id);
@@ -279,7 +312,6 @@ impl NodeService {
         }
         if let Some(status) = update.status.clone() {
             active.status = Set(status.clone());
-            // Auto-manage published_at based on status
             match status {
                 crate::entities::node::ContentStatus::Published
                     if node_model.published_at.is_none() =>
@@ -306,16 +338,13 @@ impl NodeService {
         }
 
         active.updated_at = Set(now);
-        active.version = Set(node_model.version + 1); // Increment version
-
-        let txn = self.db.begin().await?;
+        active.version = Set(node_model.version + 1);
 
         if let Some(translations) = update.translations {
-            // Check slug uniqueness for new translations
             for translation in &translations {
                 if let Some(ref slug) = translation.slug {
                     self.ensure_slug_unique(
-                        &txn,
+                        txn,
                         node_model.tenant_id,
                         &translation.locale,
                         slug,
@@ -327,16 +356,15 @@ impl NodeService {
 
             node_translation::Entity::delete_many()
                 .filter(node_translation::Column::NodeId.eq(node_id))
-                .exec(&txn)
+                .exec(txn)
                 .await?;
 
             for translation in translations {
                 let slug = resolve_slug(translation.slug, translation.title.as_ref())?;
 
-                // Check uniqueness of resolved slug
                 if let Some(ref s) = slug {
                     self.ensure_slug_unique(
-                        &txn,
+                        txn,
                         node_model.tenant_id,
                         &translation.locale,
                         s,
@@ -355,7 +383,7 @@ impl NodeService {
                     created_at: Set(now),
                     updated_at: Set(now),
                 }
-                .insert(&txn)
+                .insert(txn)
                 .await?;
             }
         }
@@ -363,19 +391,19 @@ impl NodeService {
         if let Some(bodies) = update.bodies {
             body::Entity::delete_many()
                 .filter(body::Column::NodeId.eq(node_id))
-                .exec(&txn)
+                .exec(txn)
                 .await?;
 
             for body_input in bodies {
-                upsert_body(&txn, node_id, body_input, now).await?;
+                upsert_body(txn, node_id, body_input, now).await?;
             }
         }
 
-        let updated = active.update(&txn).await?;
+        let updated = active.update(txn).await?;
 
         self.event_bus
             .publish_in_tx(
-                &txn,
+                txn,
                 updated.tenant_id,
                 security.user_id,
                 DomainEvent::NodeUpdated {
@@ -385,6 +413,21 @@ impl NodeService {
             )
             .await?;
 
+        Ok(updated)
+    }
+
+    /// Common method for status transitions (publish/unpublish/archive)
+    async fn transition_status(
+        &self,
+        node_id: Uuid,
+        security: SecurityContext,
+        new_status: node::ContentStatus,
+        events: Vec<DomainEvent>,
+    ) -> ContentResult<NodeResponse> {
+        let txn = self.db.begin().await?;
+        let updated = self
+            .transition_status_in_tx(&txn, node_id, security, new_status, events)
+            .await?;
         txn.commit().await?;
 
         let translations = node_translation::Entity::find()
@@ -399,37 +442,34 @@ impl NodeService {
         Ok(Self::to_response(updated, translations, bodies))
     }
 
-    /// Common method for status transitions (publish/unpublish/archive)
-    #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
-    async fn transition_status(
+    /// Status transition within an existing transaction. Does not begin or commit.
+    pub async fn transition_status_in_tx(
         &self,
+        txn: &DatabaseTransaction,
         node_id: Uuid,
         security: SecurityContext,
         new_status: node::ContentStatus,
         events: Vec<DomainEvent>,
-    ) -> ContentResult<NodeResponse> {
+    ) -> ContentResult<node::Model> {
         let node_model = self.find_node(node_id).await?;
 
-        // Check if node is soft-deleted
         if node_model.deleted_at.is_some() {
             return Err(ContentError::Validation(
                 "Cannot change status of deleted node".to_string(),
             ));
         }
 
-        // Scope Enforcement
         let resource = Self::kind_to_resource(&node_model.kind);
         let scope = security.get_scope(resource, Action::Update);
         self.enforce_scope(scope, node_model.author_id, security.user_id)?;
 
-        let now = Utc::now().into();
+        let now: DateTimeWithTimeZone = Utc::now().into();
         let mut active: node::ActiveModel = node_model.clone().into();
 
         active.status = Set(new_status.clone());
         active.updated_at = Set(now);
         active.version = Set(node_model.version + 1);
 
-        // Manage published_at based on status
         match new_status {
             node::ContentStatus::Published => {
                 active.published_at = Set(Some(now));
@@ -439,28 +479,15 @@ impl NodeService {
             }
         }
 
-        let txn = self.db.begin().await?;
-
-        let updated = active.update(&txn).await?;
+        let updated = active.update(txn).await?;
 
         for event in events {
             self.event_bus
-                .publish_in_tx(&txn, updated.tenant_id, security.user_id, event)
+                .publish_in_tx(txn, updated.tenant_id, security.user_id, event)
                 .await?;
         }
 
-        txn.commit().await?;
-
-        let translations = node_translation::Entity::find()
-            .filter(node_translation::Column::NodeId.eq(node_id))
-            .all(&self.db)
-            .await?;
-        let bodies = body::Entity::find()
-            .filter(body::Column::NodeId.eq(node_id))
-            .all(&self.db)
-            .await?;
-
-        Ok(Self::to_response(updated, translations, bodies))
+        Ok(updated)
     }
 
     #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
@@ -532,29 +559,106 @@ impl NodeService {
         .await
     }
 
+    /// Publish a node within an existing transaction. Does not begin or commit.
+    pub async fn publish_node_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        node_id: Uuid,
+        security: SecurityContext,
+    ) -> ContentResult<node::Model> {
+        let kind = self.find_node(node_id).await?.kind;
+        self.transition_status_in_tx(
+            txn,
+            node_id,
+            security,
+            node::ContentStatus::Published,
+            vec![
+                DomainEvent::NodeUpdated {
+                    node_id,
+                    kind: kind.clone(),
+                },
+                DomainEvent::NodePublished { node_id, kind },
+            ],
+        )
+        .await
+    }
+
+    /// Unpublish a node within an existing transaction. Does not begin or commit.
+    pub async fn unpublish_node_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        node_id: Uuid,
+        security: SecurityContext,
+    ) -> ContentResult<node::Model> {
+        let kind = self.find_node(node_id).await?.kind;
+        self.transition_status_in_tx(
+            txn,
+            node_id,
+            security,
+            node::ContentStatus::Draft,
+            vec![
+                DomainEvent::NodeUpdated {
+                    node_id,
+                    kind: kind.clone(),
+                },
+                DomainEvent::NodeUnpublished { node_id, kind },
+            ],
+        )
+        .await
+    }
+
+    /// Archive a node within an existing transaction. Does not begin or commit.
+    pub async fn archive_node_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        node_id: Uuid,
+        security: SecurityContext,
+    ) -> ContentResult<node::Model> {
+        let kind = self.find_node(node_id).await?.kind;
+        self.transition_status_in_tx(
+            txn,
+            node_id,
+            security,
+            node::ContentStatus::Archived,
+            vec![DomainEvent::NodeUpdated { node_id, kind }],
+        )
+        .await
+    }
+
     /// Soft delete a node (can be restored)
     #[instrument(skip(self, security), fields(node_id = %node_id, user_id = ?security.user_id))]
     pub async fn delete_node(&self, node_id: Uuid, security: SecurityContext) -> ContentResult<()> {
         info!("Soft-deleting node");
+        let txn = self.db.begin().await?;
+        self.delete_node_in_tx(&txn, node_id, security).await?;
+        txn.commit().await?;
+        info!(node_id = %node_id, "Node soft-deleted successfully");
+        Ok(())
+    }
+
+    /// Soft-delete a node within an existing transaction. Does not begin or commit.
+    pub async fn delete_node_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        node_id: Uuid,
+        security: SecurityContext,
+    ) -> ContentResult<()> {
         let node_model = self.find_node(node_id).await?;
 
-        // Scope Enforcement
         let resource = Self::kind_to_resource(&node_model.kind);
         let scope = security.get_scope(resource, Action::Delete);
         self.enforce_scope(scope, node_model.author_id, security.user_id)?;
 
-        let now = Utc::now().into();
-        let txn = self.db.begin().await?;
-
+        let now: DateTimeWithTimeZone = Utc::now().into();
         let mut active: node::ActiveModel = node_model.clone().into();
         active.deleted_at = Set(Some(now));
         active.updated_at = Set(now);
         active.version = Set(node_model.version + 1);
-        active.update(&txn).await?;
+        active.update(txn).await?;
 
         self.event_bus
             .publish_in_tx(
-                &txn,
+                txn,
                 node_model.tenant_id,
                 security.user_id,
                 DomainEvent::NodeDeleted {
@@ -564,9 +668,6 @@ impl NodeService {
             )
             .await?;
 
-        txn.commit().await?;
-
-        info!(node_id = %node_id, "Node soft-deleted successfully");
         Ok(())
     }
 
