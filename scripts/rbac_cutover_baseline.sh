@@ -16,7 +16,6 @@ Options:
   --no-save-samples           Do not persist raw /metrics snapshots in artifacts
   --require-zero-mismatch     Exit non-zero if mismatch counter delta is not zero (default: enabled)
   --allow-mismatch            Disable strict mismatch gate
-  --require-zero-shadow-failures Exit non-zero if shadow compare failures delta is not zero (default: enabled)
   --allow-shadow-failures     Disable strict shadow-failures gate
   --help                      Show this message
 
@@ -36,7 +35,7 @@ ARTIFACTS_DIR="artifacts/rbac-cutover"
 MIN_DECISION_DELTA=1
 SAVE_SAMPLES="true"
 REQUIRE_ZERO_MISMATCH="true"
-REQUIRE_ZERO_SHADOW_FAILURES="true"
+ALLOW_SHADOW_FAILURES="false"
 CURL_BIN="${RUSTOK_CURL_BIN:-curl}"
 
 while [[ $# -gt 0 ]]; do
@@ -59,10 +58,8 @@ while [[ $# -gt 0 ]]; do
       REQUIRE_ZERO_MISMATCH="true"; shift ;;
     --allow-mismatch)
       REQUIRE_ZERO_MISMATCH="false"; shift ;;
-    --require-zero-shadow-failures)
-      REQUIRE_ZERO_SHADOW_FAILURES="true"; shift ;;
     --allow-shadow-failures)
-      REQUIRE_ZERO_SHADOW_FAILURES="false"; shift ;;
+      ALLOW_SHADOW_FAILURES="true"; shift ;;
     --help)
       usage; exit 0 ;;
     *)
@@ -200,7 +197,7 @@ if [[ "$REQUIRE_ZERO_MISMATCH" == "true" && "$mismatch_delta" -ne 0 ]]; then
   gate_message="Mismatch delta is ${mismatch_delta}; investigate before relation-only cutover."
 fi
 
-if [[ "$gate_status" == "pass" && "$REQUIRE_ZERO_SHADOW_FAILURES" == "true" && "$shadow_fail_delta" -ne 0 ]]; then
+if [[ "$gate_status" == "pass" && "$ALLOW_SHADOW_FAILURES" != "true" && "$shadow_fail_delta" -ne 0 ]]; then
   gate_status="fail"
   gate_message="Shadow compare failures delta is ${shadow_fail_delta}; stabilize shadow path before relation-only cutover."
 fi
@@ -232,7 +229,6 @@ fi
   echo "  \"counter_reset_detected\": ${counter_reset_detected},"
   echo "  \"min_decision_delta\": ${MIN_DECISION_DELTA},"
   echo "  \"require_zero_mismatch\": ${REQUIRE_ZERO_MISMATCH},"
-  echo "  \"require_zero_shadow_failures\": ${REQUIRE_ZERO_SHADOW_FAILURES},"
   echo "  \"save_samples\": ${SAVE_SAMPLES},"
   echo "  \"samples_dir\": \"${SAMPLES_DIR}\","
   echo "  \"gate_status\": \"${gate_status}\","

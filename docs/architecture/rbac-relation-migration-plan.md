@@ -23,6 +23,42 @@
 
 ---
 
+## 0.2 MVP-рамка (анти-разрастание)
+
+Чтобы migration не превратился в бесконечный рефакторинг, фиксируем **MVP cutover scope**.
+
+### Входит в MVP (обязательно до relation-only)
+
+1. **Data correctness:**
+   - staging dry-run/backfill/rollback прогон,
+   - инварианты `users_without_roles_total`, `orphan_user_roles_total`, `orphan_role_permissions_total` подтверждены отчётом.
+2. **Cutover safety:**
+   - dual-read baseline с `mismatch_delta == 0`,
+   - shadow path без деградации (ошибки shadow не растут в окне наблюдения),
+   - проверка decision-volume (`--min-decision-delta`) выполнена.
+3. **Controlled switch:**
+   - включение relation-only под feature-flag,
+   - пост-переключательный мониторинг 401/403/latency.
+
+### Не входит в MVP (post-MVP backlog)
+
+- Дальнейшее расширение helper-скриптов и флагов, если это не блокирует cutover.
+- Глубокий structural cleanup server-layer сверх необходимого для безопасного релиза.
+- Полная «косметическая» переработка документации/чеклистов вне критичных runbook-обновлений.
+
+Правило для следующих шагов: **один merge = один измеримый cutover-risk reduction**, без добавления новой платформенной сложности «на будущее».
+
+---
+
+## 0.3 Синхронизация с user/auth remediation plan
+
+Чтобы не дублировать статусы и задачи между двумя roadmap-документами:
+
+- `docs/architecture/user-auth-consistency-remediation-plan.md` является source-of-truth по user/auth parity (REST/GraphQL), reset-password session invalidation policy и rollout gate-верификации этих изменений.
+- В этом RBAC-плане фиксируются только RBAC migration/cutover задачи; auth parity упоминается только как зависимость/предусловие readiness.
+- Текущее согласование статуса: кодовые remediation-задачи user/auth закрыты (Phases A-C), открыты только environment-ready verification gates (Phase D).
+
+---
 
 ## 0. Статус выполнения (progress tracker)
 
@@ -34,7 +70,7 @@
 - [x] **Фаза 1 — Быстрые исправления консистентности (базовые пункты):**
   - user creation flows для `register/sign_up/create_user/accept_invite` уже заведены через назначение relation RBAC (`assign_role_permissions`).
   - `seed_user` (dev/test seed bootstrap) теперь также вызывает `assign_role_permissions` после создания пользователя.
-  - parity reset-password/session invalidation ведётся отдельным remediation-потоком и ADR (см. cross-link ниже).
+  - parity reset-password/session invalidation вынесен и закрыт по коду в отдельном плане `docs/architecture/user-auth-consistency-remediation-plan.md` (Phases A-C done, rollout verification gates Phase D остаются операционным хвостом).
 - [x] **Фаза 2 — Единый Permission Resolver (завершено):**
   - В `rustok-rbac` стандартизирован модульный cross-module integration event contract для role-assignment изменений: добавлены `RbacRoleAssignmentEvent`, `RbacIntegrationEventKind` и стабильные event-type ключи `rbac.*` для единообразной публикации/подписки между модулями.
   - В `AuthService` добавлены tenant-aware методы `get_user_permissions / has_permission / has_any_permission / has_all_permissions`.
@@ -84,15 +120,32 @@
   - Shadow-сравнение выполняется fail-open: ошибки shadow path логируются и не влияют на авторитативное relation-based allow/deny решение.
   - Добавлен cutover baseline helper `scripts/rbac_cutover_baseline.sh`: скрипт снимает серию `/metrics` snapshot'ов, считает deltas по `rustok_rbac_decision_mismatch_total`/`rustok_rbac_shadow_compare_failures_total`/`rustok_rbac_permission_checks_{allowed,denied}`, формирует markdown+json отчёт в `artifacts/rbac-cutover` и по умолчанию включает strict gate (`mismatch_delta == 0`) для dual-read окна наблюдения.
   - В baseline helper добавлены дополнительные stop-the-line guardrails: обязательный минимальный объём decision-трафика в окне (`--min-decision-delta`, default `1`) и fail-fast при обнаружении reset-а счётчиков (уменьшение counter-метрик между последовательными samples). Для аудита и post-mortem helper по умолчанию сохраняет raw `/metrics` snapshots по всем sample-точкам (`rbac_cutover_samples_*`), с опциональным отключением через `--no-save-samples`.
-  - Для более строгого dual-read gate baseline helper теперь также по умолчанию требует `shadow_compare_failures_delta == 0` (флаг `--allow-shadow-failures` отключает strict-проверку для controlled troubleshooting-окон); состояние строгих mismatch/shadow gate фиксируется в JSON/markdown baseline-артефактах.
+  - Для более строгого dual-read gate baseline helper теперь также по умолчанию требует `shadow_compare_failures_delta == 0`; для controlled troubleshooting-окон доступен явный override-флаг `--allow-shadow-failures`.
   - Добавлены тесты helper'а (`scripts/tests/rbac_cutover_baseline_test.sh` + smoke `scripts/test_rbac_cutover_baseline.sh`) с mocked curl-path (`RUSTOK_CURL_BIN`) для проверки mismatch-gate и генерации baseline артефактов.
 - [ ] **Фаза 6 — Cleanup legacy-модели:** не начато.
 
 ### Что осталось приоритетно на ближайший шаг
 
-1. Провести staged dry-run/backfill/rollback в staging и приложить отчёт по инвариантам (Фаза 4).
-2. Подготовить и согласовать ADR по final cutover (`relation-only`).
-3. Зафиксировать module-first extraction backlog: выделить policy/use-case API в `crates/rustok-rbac` и описать server-adapter границы.
+1. Провести staged dry-run/backfill/rollback в staging и приложить отчёт по инвариантам (MVP-блокер №1, Фаза 4).
+2. Подготовить и согласовать ADR по final cutover (`relation-only`) с чётким rollback-гейтом (MVP-блокер №2) и ссылкой на актуальные auth parity gate-артефакты из user/auth плана.
+3. Выполнить production dual-read окно наблюдения и зафиксировать baseline-отчёт без регрессий (MVP-блокер №3, Фаза 5).
+
+### Post-MVP (выполнять только после relation-only стабилизации)
+
+1. Зафиксировать module-first extraction backlog: выделить policy/use-case API в `crates/rustok-rbac` и описать server-adapter границы.
+2. Планово пройти Фазу 6 cleanup legacy-модели и удалить временные fallback/feature flags.
+
+### Исполнительный фокус (сейчас делаем только это)
+
+До следующего milestone команда выполняет **только MVP-блокеры** из этого плана:
+
+1. Staging rehearsal: dry-run/backfill/rollback + отчёт по инвариантам.
+2. ADR final cutover (`relation-only`) с явным rollback-gate.
+3. Production dual-read baseline window + решение go/no-go для relation-only.
+
+Что **не делаем сейчас**: новые helper-флаги, расширение scope cleanup, дополнительный platform-refactor вне MVP-блокеров.
+
+Критерий завершения текущего этапа: все три пункта выше закрыты и задокументированы артефактами (report/ADR/baseline).
 
 ### Итоговая проверка перед переходом к Фазе 4
 
@@ -401,7 +454,7 @@
 - [x] В каждом flow гарантированно формируются `user_roles` (все публичные entrypoints покрыты; `GraphQL update_user` синхронизирует через `replace_user_role`).
 - [x] В каждом flow роль и tenant валидируются до записи.
 - [x] Reset password в REST и GraphQL имеет одинаковую policy отзыва сессий (`AuthLifecycleService::confirm_password_reset` используется обоими каналами и всегда вызывает `revoke_user_sessions(..., None)`).
-- [ ] Добавлены интеграционные тесты на каждый flow.
+- [~] Интеграционные тесты по auth parity вынесены в `user-auth-consistency-remediation-plan.md` (Phase D gates pending staging/security evidence); RBAC-специфичные flow-инварианты отслеживаются в этом плане.
 
 ### 9.3 Фаза 2 — Resolver
 
@@ -474,6 +527,21 @@
 | 4 | Backfill script + dry-run report + post-check report |
 | 5 | Cutover runbook, mismatch trend report, production validation report |
 | 6 | Legacy cleanup PR, final architecture docs, deprecation note |
+
+---
+
+## 11.1 MVP execution board (оперативный, только текущий этап)
+
+Используется как короткий операционный статус до завершения relation-only cutover.
+
+- [ ] **MVP-блокер 1 (Фаза 4):** staged rehearsal завершён (dry-run/backfill/rollback) + приложен отчёт по инвариантам.
+  - Артефакты: `artifacts/rbac-staging/*`, stage-report markdown, pre/post JSON consistency reports.
+- [ ] **MVP-блокер 2 (Фаза 5 prep):** ADR final cutover согласован с явным rollback-gate и stop-the-line условиями.
+  - Артефакты: ADR в `DECISIONS/` + ссылка в этом плане.
+- [ ] **MVP-блокер 3 (Фаза 5):** production dual-read окно наблюдения завершено, baseline зафиксирован, принято go/no-go решение для relation-only.
+  - Артефакты: baseline report/json из `artifacts/rbac-cutover/*`, запись решения (go/no-go) в release-notes/runbook.
+
+Правило обновления: после каждого merge меняется только статус соответствующего блокера и ссылка на артефакт; scope этапа не расширяется.
 
 ---
 
