@@ -141,7 +141,7 @@ async fn test_node_update_triggers_event() {
         published_at: None,
     };
 
-    let result = service.update_node(node.id, security, update_input).await;
+    let result = service.update_node(tenant_id, node.id, security, update_input).await;
     assert!(result.is_ok());
 
     // Verify that a NodeUpdated event was published
@@ -204,7 +204,7 @@ async fn test_node_deletion_triggers_event() {
     event_bus.clear();
 
     // Delete the node
-    let result = service.delete_node(node.id, security).await;
+    let result = service.delete_node(tenant_id, node.id, security).await;
     assert!(result.is_ok());
 
     // Verify that a NodeDeleted event was published
