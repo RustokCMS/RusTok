@@ -101,16 +101,28 @@ impl AuthLifecycleService {
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL.store(0, Ordering::Relaxed);
     }
 
-    pub async fn register(
+    pub async fn create_user(
         ctx: &AppContext,
         tenant_id: uuid::Uuid,
         email: &str,
         password: &str,
         name: Option<String>,
-    ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        let config = AuthConfig::from_ctx(ctx).map_err(AuthLifecycleError::from)?;
+        role: rustok_core::UserRole,
+        status: Option<rustok_core::UserStatus>,
+    ) -> std::result::Result<users::Model, AuthLifecycleError> {
+        Self::create_user_db(&ctx.db, tenant_id, email, password, name, role, status).await
+    }
 
-        if users::Entity::find_by_email(&ctx.db, tenant_id, email)
+    async fn create_user_db(
+        db: &DatabaseConnection,
+        tenant_id: uuid::Uuid,
+        email: &str,
+        password: &str,
+        name: Option<String>,
+        role: rustok_core::UserRole,
+        status: Option<rustok_core::UserStatus>,
+    ) -> std::result::Result<users::Model, AuthLifecycleError> {
+        if users::Entity::find_by_email(db, tenant_id, email)
             .await
             .map_err(AuthLifecycleError::from)?
             .is_some()
@@ -119,17 +131,45 @@ impl AuthLifecycleService {
         }
 
         let password_hash = hash_password(password).map_err(AuthLifecycleError::from)?;
+
+        let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
+
         let mut user = users::ActiveModel::new(tenant_id, email, &password_hash);
         user.name = Set(name);
-        let user = user
-            .insert(&ctx.db)
+        user.role = Set(role.clone());
+        if let Some(status) = status {
+            user.status = Set(status);
+        }
+
+        let user = user.insert(&tx).await.map_err(AuthLifecycleError::from)?;
+
+        AuthService::replace_user_role(&tx, &user.id, &tenant_id, role)
             .await
             .map_err(AuthLifecycleError::from)?;
 
-        let user_role = user.role.clone();
-        AuthService::assign_role_permissions(&ctx.db, &user.id, &tenant_id, user_role)
-            .await
-            .map_err(AuthLifecycleError::from)?;
+        tx.commit().await.map_err(AuthLifecycleError::from)?;
+
+        Ok(user)
+    }
+
+    pub async fn register(
+        ctx: &AppContext,
+        tenant_id: uuid::Uuid,
+        email: &str,
+        password: &str,
+        name: Option<String>,
+    ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
+        let config = AuthConfig::from_ctx(ctx).map_err(AuthLifecycleError::from)?;
+        let user = Self::create_user(
+            ctx,
+            tenant_id,
+            email,
+            password,
+            name,
+            rustok_core::UserRole::Customer,
+            None,
+        )
+        .await?;
 
         let tokens =
             Self::create_session_and_tokens(ctx, tenant_id, &user, None, None, &config).await?;
@@ -383,7 +423,8 @@ mod tests {
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL, AUTH_FLOW_INCONSISTENCY_TOTAL,
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
     };
-    use crate::models::{sessions, tenants, users};
+    use crate::models::{sessions, tenants, user_roles, users};
+    use crate::services::auth::AuthService;
     use chrono::{Duration, Utc};
     use migration::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
@@ -550,6 +591,51 @@ mod tests {
         assert_eq!(
             metrics_after.password_reset_sessions_revoked_total,
             metrics_before.password_reset_sessions_revoked_total + 2
+        );
+    }
+
+    #[tokio::test]
+    async fn create_user_assigns_requested_role_relations() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Test tenant", "test-tenant")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        let user = AuthLifecycleService::create_user_db(
+            &db,
+            tenant.id,
+            "manager@example.com",
+            "password123",
+            Some("Manager".to_string()),
+            rustok_core::UserRole::Manager,
+            Some(rustok_core::UserStatus::Active),
+        )
+        .await
+        .expect("failed to create user via auth lifecycle");
+
+        let relations_count = user_roles::Entity::find()
+            .filter(user_roles::Column::UserId.eq(user.id))
+            .count(&db)
+            .await
+            .expect("failed to query user role relations");
+
+        assert!(
+            relations_count > 0,
+            "expected user_roles relation to be created"
+        );
+
+        let resolved_permissions = AuthService::get_user_permissions(&db, &tenant.id, &user.id)
+            .await
+            .expect("failed to resolve user permissions from rustok-rbac");
+
+        assert!(
+            resolved_permissions.contains(&rustok_core::Permission::PRODUCTS_CREATE),
+            "manager role permissions should be available"
+        );
+        assert!(
+            !resolved_permissions.contains(&rustok_core::Permission::USERS_MANAGE),
+            "manager role should not get admin-only permissions"
         );
     }
 

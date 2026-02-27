@@ -1,5 +1,4 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_core::auth::password::hash_password;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 
 use crate::context::{AuthContext, TenantContext};
@@ -10,11 +9,24 @@ use crate::graphql::types::{
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
 use crate::services::auth::AuthService;
+use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::module_lifecycle::{ModuleLifecycleService, ToggleModuleError};
 use rustok_core::{Action, ModuleRegistry, Permission, Resource};
 
 #[derive(Default)]
 pub struct RootMutation;
+
+fn map_create_user_error(err: AuthLifecycleError) -> FieldError {
+    match err {
+        AuthLifecycleError::EmailAlreadyExists => {
+            FieldError::new("User with this email already exists")
+        }
+        AuthLifecycleError::Internal(inner) => {
+            <FieldError as GraphQLError>::internal_error(&inner.to_string())
+        }
+        _ => <FieldError as GraphQLError>::internal_error("Failed to create user"),
+    }
+}
 
 #[Object]
 impl RootMutation {
@@ -43,53 +55,23 @@ impl RootMutation {
             ));
         }
 
-        let existing = users::Entity::find_by_email(&app_ctx.db, tenant.id, &input.email)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        if existing.is_some() {
-            return Err(FieldError::new("User with this email already exists"));
-        }
-
-        let password_hash = hash_password(&input.password)
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
         let requested_role = input
             .role
             .map(Into::into)
             .unwrap_or(rustok_core::UserRole::Customer);
 
-        let tx = app_ctx
-            .db
-            .begin()
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        let mut model = users::ActiveModel::new(tenant.id, &input.email, &password_hash);
-
-        if let Some(name) = input.name {
-            model.name = Set(Some(name));
-        }
-
-        model.role = Set(requested_role.clone());
-
-        if let Some(status) = input.status {
-            let status: rustok_core::UserStatus = status.into();
-            model.status = Set(status);
-        }
-
-        let user = model
-            .insert(&tx)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        AuthService::assign_role_permissions(&tx, &user.id, &tenant.id, requested_role)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-
-        tx.commit()
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let status = input.status.map(Into::into);
+        let user = AuthLifecycleService::create_user(
+            app_ctx,
+            tenant.id,
+            &input.email,
+            &input.password,
+            input.name,
+            requested_role,
+            status,
+        )
+        .await
+        .map_err(map_create_user_error)?;
 
         Ok(User::from(&user))
     }
@@ -336,5 +318,24 @@ impl RootMutation {
             enabled: module.enabled,
             settings: module.settings.to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{map_create_user_error, AuthLifecycleError};
+
+    #[test]
+    fn create_user_maps_email_exists() {
+        let err = map_create_user_error(AuthLifecycleError::EmailAlreadyExists);
+        assert!(err.to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn create_user_maps_internal_error() {
+        let err = map_create_user_error(AuthLifecycleError::Internal(
+            loco_rs::prelude::Error::InternalServerError,
+        ));
+        assert!(!err.to_string().is_empty());
     }
 }

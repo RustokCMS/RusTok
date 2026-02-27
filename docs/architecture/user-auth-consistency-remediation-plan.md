@@ -236,6 +236,7 @@ Gate перед выкладкой:
 - Метрики rollout-периода из раздела 7 (`auth_password_reset_sessions_revoked_total`, `auth_change_password_sessions_revoked_total`, `auth_flow_inconsistency_total`, `auth_login_inactive_user_attempt_total`) публикуются через `/metrics`.
 - Unit coverage для инварианта из раздела 6 (повторный reset на уже отозванных сессиях) расширено: повторный вызов не добавляет новых revoked session.
 - Добавлены unit-checks для transport error contracts `UserInactive` и `InvalidResetToken` (единый mapping в unauthorized), чтобы удерживать parity REST/GraphQL по негативным auth-сценариям.
+- `GraphQL create_user` переведён на общий `AuthLifecycleService::create_user` (единая транзакция создания пользователя + назначения RBAC-связей, без отдельной бизнес-ветки в transport-слое).
 - Phase D остаётся открытой до фиксации результатов integration/staging/security проверок.
 
 Stop-the-line условия:
@@ -263,6 +264,7 @@ Rollback-процедура (операционная):
 
 - Для user/auth parity, session invalidation policy и rollout gate-артефактов source-of-truth остаётся этот документ.
 - В RBAC-плане (`rbac-relation-migration-plan.md`) эти пункты учитываются как зависимость readiness, а не как отдельный параллельный backlog.
+- Для операций назначения/замены role-relations используется выделенный модуль `rustok-rbac` (`crates/rustok-rbac`); auth lifecycle слой должен опираться на его контракты, а не дублировать RBAC-логику локально.
 
 ---
 
