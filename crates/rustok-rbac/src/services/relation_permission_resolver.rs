@@ -1,15 +1,5 @@
+use crate::services::permission_normalization::normalize_permissions;
 use rustok_core::Permission;
-use std::collections::HashSet;
-
-fn normalize_permissions(permissions: Vec<Permission>) -> Vec<Permission> {
-    let mut unique = permissions
-        .into_iter()
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-    unique.sort_by_key(|permission| permission.to_string());
-    unique
-}
 
 #[async_trait::async_trait]
 pub trait RelationPermissionStore {

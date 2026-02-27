@@ -1,5 +1,6 @@
+use crate::services::permission_normalization::normalize_permissions;
 use rustok_core::{Action, Permission};
-use std::{collections::HashSet, fmt::Write};
+use std::fmt::Write;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeniedReasonKind {
@@ -30,16 +31,6 @@ impl PermissionCheckOutcome {
     }
 }
 
-fn normalize_permission_list(permissions: Vec<Permission>) -> Vec<Permission> {
-    let mut unique = permissions
-        .into_iter()
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-    unique.sort_by_key(|permission| permission.to_string());
-    unique
-}
-
 pub fn has_effective_permission_in_set(
     user_permissions: &[Permission],
     required_permission: &Permission,
@@ -55,7 +46,7 @@ pub fn missing_permissions(
     user_permissions: &[Permission],
     required_permissions: &[Permission],
 ) -> Vec<Permission> {
-    normalize_permission_list(
+    normalize_permissions(
         required_permissions
             .iter()
             .copied()
@@ -99,7 +90,7 @@ pub fn check_any_permission(
     let missing_permissions = if allowed {
         Vec::new()
     } else {
-        normalize_permission_list(required_permissions.to_vec())
+        normalize_permissions(required_permissions.to_vec())
     };
 
     PermissionCheckOutcome {
@@ -156,8 +147,7 @@ pub fn denied_reason_for_denial(
 mod tests {
     use super::{
         check_all_permissions, check_any_permission, check_permission, denied_reason_for_denial,
-        has_effective_permission_in_set, missing_permissions, normalize_permission_list,
-        DeniedReasonKind,
+        has_effective_permission_in_set, missing_permissions, DeniedReasonKind,
     };
     use rustok_core::{Action, Permission, Resource};
 
@@ -185,20 +175,6 @@ mod tests {
 
         assert!(!outcome.allowed);
         assert_eq!(outcome.missing_permissions, vec![Permission::USERS_UPDATE]);
-    }
-
-    #[test]
-    fn normalize_permission_list_deduplicates_and_sorts_permissions() {
-        let normalized = normalize_permission_list(vec![
-            Permission::USERS_UPDATE,
-            Permission::USERS_READ,
-            Permission::USERS_UPDATE,
-        ]);
-
-        assert_eq!(
-            normalized,
-            vec![Permission::USERS_READ, Permission::USERS_UPDATE]
-        );
     }
 
     #[test]
