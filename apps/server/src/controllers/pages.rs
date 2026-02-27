@@ -9,7 +9,7 @@ use utoipa::{IntoParams, ToSchema};
 use rustok_pages::{CreatePageInput, PageResponse, PageService};
 
 use crate::context::TenantContext;
-use crate::extractors::auth::CurrentUser;
+use crate::extractors::rbac::{RequirePagesCreate, RequirePagesRead};
 use crate::services::event_bus::transactional_event_bus_from_context;
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
@@ -27,13 +27,14 @@ pub struct GetPageParams {
     responses(
         (status = 200, description = "Page content", body = PageResponse),
         (status = 404, description = "Page not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn get_page(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequirePagesRead(user): RequirePagesRead,
     Query(params): Query<GetPageParams>,
 ) -> Result<Json<PageResponse>> {
     let slug = params.slug.unwrap_or_else(|| "home".to_string());
@@ -60,13 +61,14 @@ pub async fn get_page(
     responses(
         (status = 201, description = "Page created", body = PageResponse),
         (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn create_page(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequirePagesCreate(user): RequirePagesCreate,
     Json(input): Json<CreatePageInput>,
 ) -> Result<Json<PageResponse>> {
     let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -80,6 +82,6 @@ pub async fn create_page(
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("api")
-        .add("/pages", get(get_page))
-        .add("/admin/pages", post(create_page))
+        .add("/pages", axum::routing::get(get_page))
+        .add("/admin/pages", axum::routing::post(create_page))
 }

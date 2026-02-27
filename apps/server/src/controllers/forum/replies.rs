@@ -10,7 +10,9 @@ use rustok_forum::{
 use uuid::Uuid;
 
 use crate::context::TenantContext;
-use crate::extractors::auth::CurrentUser;
+use crate::extractors::rbac::{
+    RequireForumRepliesCreate, RequireForumRepliesRead, RequireForumTopicsModerate,
+};
 use crate::services::event_bus::transactional_event_bus_from_context;
 
 #[utoipa::path(
@@ -23,13 +25,14 @@ use crate::services::event_bus::transactional_event_bus_from_context;
     ),
     responses(
         (status = 200, description = "List of replies", body = Vec<ReplyListItem>),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_replies(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumRepliesRead(user): RequireForumRepliesRead,
     Path(topic_id): Path<Uuid>,
     Query(filter): Query<ListRepliesFilter>,
 ) -> Result<Json<Vec<ReplyListItem>>> {
@@ -52,13 +55,14 @@ pub async fn list_replies(
     responses(
         (status = 200, description = "Reply details", body = ReplyResponse),
         (status = 404, description = "Reply not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn get_reply(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    _user: CurrentUser,
+    _user: RequireForumRepliesRead,
     Path(id): Path<Uuid>,
     Query(filter): Query<ListRepliesFilter>,
 ) -> Result<Json<ReplyResponse>> {
@@ -82,13 +86,14 @@ pub async fn get_reply(
     responses(
         (status = 201, description = "Reply created", body = ReplyResponse),
         (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn create_reply(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumRepliesCreate(user): RequireForumRepliesCreate,
     Path(topic_id): Path<Uuid>,
     Json(input): Json<CreateReplyInput>,
 ) -> Result<Json<ReplyResponse>> {
@@ -111,13 +116,14 @@ pub async fn create_reply(
     responses(
         (status = 200, description = "Reply updated", body = ReplyResponse),
         (status = 404, description = "Reply not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn update_reply(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumTopicsModerate(user): RequireForumTopicsModerate,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateReplyInput>,
 ) -> Result<Json<ReplyResponse>> {
@@ -139,13 +145,14 @@ pub async fn update_reply(
     responses(
         (status = 204, description = "Reply deleted"),
         (status = 404, description = "Reply not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn delete_reply(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumTopicsModerate(user): RequireForumTopicsModerate,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
     let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));

@@ -10,7 +10,10 @@ use rustok_forum::{
 use uuid::Uuid;
 
 use crate::context::TenantContext;
-use crate::extractors::auth::CurrentUser;
+use crate::extractors::rbac::{
+    RequireForumTopicsCreate, RequireForumTopicsDelete, RequireForumTopicsList,
+    RequireForumTopicsRead, RequireForumTopicsUpdate,
+};
 use crate::services::event_bus::transactional_event_bus_from_context;
 
 #[utoipa::path(
@@ -20,13 +23,14 @@ use crate::services::event_bus::transactional_event_bus_from_context;
     params(ListTopicsFilter),
     responses(
         (status = 200, description = "List of topics", body = Vec<TopicListItem>),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn list_topics(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumTopicsList(user): RequireForumTopicsList,
     Query(filter): Query<ListTopicsFilter>,
 ) -> Result<Json<Vec<TopicListItem>>> {
     let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -48,13 +52,14 @@ pub async fn list_topics(
     responses(
         (status = 200, description = "Topic details", body = TopicResponse),
         (status = 404, description = "Topic not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn get_topic(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    _user: CurrentUser,
+    _user: RequireForumTopicsRead,
     Path(id): Path<Uuid>,
     Query(filter): Query<ListTopicsFilter>,
 ) -> Result<Json<TopicResponse>> {
@@ -75,13 +80,14 @@ pub async fn get_topic(
     responses(
         (status = 201, description = "Topic created", body = TopicResponse),
         (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn create_topic(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumTopicsCreate(user): RequireForumTopicsCreate,
     Json(input): Json<CreateTopicInput>,
 ) -> Result<Json<TopicResponse>> {
     let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -103,13 +109,14 @@ pub async fn create_topic(
     responses(
         (status = 200, description = "Topic updated", body = TopicResponse),
         (status = 404, description = "Topic not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn update_topic(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumTopicsUpdate(user): RequireForumTopicsUpdate,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateTopicInput>,
 ) -> Result<Json<TopicResponse>> {
@@ -131,13 +138,14 @@ pub async fn update_topic(
     responses(
         (status = 204, description = "Topic deleted"),
         (status = 404, description = "Topic not found"),
-        (status = 401, description = "Unauthorized")
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
     )
 )]
 pub async fn delete_topic(
     State(ctx): State<AppContext>,
     _tenant: TenantContext,
-    user: CurrentUser,
+    RequireForumTopicsDelete(user): RequireForumTopicsDelete,
     Path(id): Path<Uuid>,
 ) -> Result<()> {
     let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
