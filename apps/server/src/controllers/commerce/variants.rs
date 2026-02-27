@@ -14,7 +14,7 @@ use crate::context::TenantContext;
 use crate::extractors::rbac::{
     RequireProductsCreate, RequireProductsDelete, RequireProductsRead, RequireProductsUpdate,
 };
-use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};
+use crate::services::event_bus::transactional_event_bus_from_context;
 
 /// List product variants
 #[utoipa::path(
@@ -171,18 +171,22 @@ pub(super) async fn create_variant(
         created_prices.push(price);
     }
 
-    txn.commit()
+    transactional_event_bus_from_context(&ctx)
+        .publish_in_tx(
+            &txn,
+            tenant.id,
+            Some(user.user.id),
+            DomainEvent::VariantCreated {
+                variant_id,
+                product_id,
+            },
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let _ = event_bus_from_context(&ctx).publish(
-        tenant.id,
-        Some(user.user.id),
-        DomainEvent::VariantCreated {
-            variant_id,
-            product_id,
-        },
-    );
+    txn.commit()
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     Ok((StatusCode::CREATED, Json(build_variant_response(variant, created_prices))))
 }
@@ -252,7 +256,7 @@ pub(super) async fn update_variant(
 ) -> Result<Json<VariantResponse>> {
     use chrono::Utc;
     use rustok_commerce::entities::{price, product_variant};
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 
     let variant = product_variant::Entity::find_by_id(id)
         .filter(product_variant::Column::TenantId.eq(tenant.id))
@@ -262,6 +266,13 @@ pub(super) async fn update_variant(
         .ok_or(Error::NotFound)?;
 
     let product_id = variant.product_id;
+
+    let txn = ctx
+        .db
+        .begin()
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
     let mut variant_active: product_variant::ActiveModel = variant.into();
     variant_active.updated_at = Set(Utc::now().into());
 
@@ -285,18 +296,26 @@ pub(super) async fn update_variant(
     }
 
     let variant = variant_active
-        .update(&ctx.db)
+        .update(&txn)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let _ = event_bus_from_context(&ctx).publish(
-        tenant.id,
-        Some(user.user.id),
-        DomainEvent::VariantUpdated {
-            variant_id: id,
-            product_id,
-        },
-    );
+    transactional_event_bus_from_context(&ctx)
+        .publish_in_tx(
+            &txn,
+            tenant.id,
+            Some(user.user.id),
+            DomainEvent::VariantUpdated {
+                variant_id: id,
+                product_id,
+            },
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    txn.commit()
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let prices = price::Entity::find()
         .filter(price::Column::VariantId.eq(id))
@@ -329,7 +348,7 @@ pub(super) async fn delete_variant(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
     use rustok_commerce::entities::product_variant;
-    use sea_orm::{ColumnTrait, EntityTrait, ModelTrait, QueryFilter};
+    use sea_orm::{ColumnTrait, EntityTrait, ModelTrait, QueryFilter, TransactionTrait};
 
     let variant = product_variant::Entity::find_by_id(id)
         .filter(product_variant::Column::TenantId.eq(tenant.id))
@@ -339,19 +358,34 @@ pub(super) async fn delete_variant(
         .ok_or(Error::NotFound)?;
 
     let product_id = variant.product_id;
-    variant
-        .delete(&ctx.db)
+
+    let txn = ctx
+        .db
+        .begin()
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let _ = event_bus_from_context(&ctx).publish(
-        tenant.id,
-        Some(user.user.id),
-        DomainEvent::VariantDeleted {
-            variant_id: id,
-            product_id,
-        },
-    );
+    variant
+        .delete(&txn)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    transactional_event_bus_from_context(&ctx)
+        .publish_in_tx(
+            &txn,
+            tenant.id,
+            Some(user.user.id),
+            DomainEvent::VariantDeleted {
+                variant_id: id,
+                product_id,
+            },
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    txn.commit()
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
 }

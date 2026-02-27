@@ -415,11 +415,12 @@
 
 ### 6.2 Event Flow (Write Path)
 
-- [~] Domain service создаёт сущность + публикует DomainEvent в одной транзакции
+- [x] Domain service создаёт сущность + публикует DomainEvent в одной транзакции
   - [x] `rustok-content` (NodeService): корректно использует `publish_in_tx()`
   - [x] `rustok-commerce` (CatalogService, InventoryService, PricingService): корректно использует `publish_in_tx()`
   - [x] `rustok-blog` (PostService): исправлено — все вызовы используют `publish_in_tx()` через открытую транзакцию
   - [x] `rustok-forum` (TopicService, ReplyService, ModerationService): исправлено — все вызовы используют `publish_in_tx()`
+  - [x] REST `variants.rs` controller: исправлено — `create_variant`, `update_variant`, `delete_variant` переведены на `publish_in_tx()` внутри транзакции
 - [x] `TransactionalEventBus::publish_in_tx()` атомарно записывает через `OutboxTransport::write_to_outbox()`
 - [x] EventEnvelope содержит: id, event_type, schema_version, tenant_id, actor_id, timestamp, retry_count
 - [x] `tenant_id` передаётся в EventEnvelope через `publish_in_tx(txn, tenant_id, actor_id, event)`
@@ -436,29 +437,30 @@
 **Проверяем, что каждый модуль публикует нужные события:**
 
 #### Content Events
-- [ ] `NodeCreated` — при создании node
-- [ ] `NodeUpdated` — при обновлении node
-- [ ] `NodeDeleted` — при удалении node
-- [ ] `NodePublished` / `NodeUnpublished` — при смене статуса
+- [x] `NodeCreated` — при создании node (`node_service.rs:239`)
+- [x] `NodeUpdated` — при обновлении node (`node_service.rs:411,514,541,567,588,614`)
+- [~] `NodeDeleted` — при удалении node (soft delete через статус, NodeUpdated публикуется)
+- [x] `NodePublished` / `NodeUnpublished` — при смене статуса (`node_service.rs:518,545`)
 
 #### Commerce Events
-- [ ] `ProductCreated`, `ProductUpdated`, `ProductDeleted`
-- [ ] `VariantCreated`, `VariantUpdated`
-- [ ] `PriceUpdated`
-- [ ] `InventoryUpdated`
-- [ ] `OrderPlaced`, `OrderStatusChanged`
+- [x] `ProductCreated`, `ProductUpdated`, `ProductDeleted` (в `CatalogService`)
+- [x] `VariantCreated`, `VariantUpdated`, `VariantDeleted` (в REST `variants.rs` — исправлено, теперь через `publish_in_tx()`)
+- [x] `PriceUpdated` (в `PricingService`)
+- [x] `InventoryUpdated` (в `InventoryService`)
+- [!] `OrderPlaced`, `OrderStatusChanged` — OrderService не реализован
 
 #### Blog Events
-- [ ] `PostCreated`, `PostUpdated`, `PostDeleted`
-- [ ] `PostPublished`, `PostUnpublished`
+- [x] `BlogPostCreated`, `BlogPostUpdated`, `BlogPostDeleted` (в `PostService`)
+- [x] `BlogPostPublished`, `BlogPostUnpublished` (в `PostService`)
 
 #### Forum Events
-- [ ] `TopicCreated`, `TopicUpdated`
-- [ ] `ReplyCreated`
+- [x] `ForumTopicCreated` (в `TopicService`)
+- [x] `ForumTopicStatusChanged`, `ForumTopicPinned` (в `ModerationService`)
+- [x] `ForumTopicReplied` — в `ReplyService` (`reply.rs:104`)
 
 #### Pages Events
-- [ ] `PageCreated`, `PageUpdated`, `PageDeleted`
-- [ ] `PagePublished`
+- [x] Pages публикуют события через NodeService (NodeCreated/NodePublished/NodeUnpublished)
+  - Нет отдельных PageCreated/PagePublished событий — используются Node* события
 
 ### 6.5 Outbox Relay
 
@@ -517,14 +519,14 @@
 **Путь:** `crates/rustok-commerce/`
 
 #### Entities
-- [ ] `products` entity: id, tenant_id, slug, status, created_at, updated_at
-- [ ] `product_translations` entity
-- [ ] `product_variants` entity: id, product_id, sku, price, stock
-- [ ] `variant_translations` entity
-- [ ] `prices` entity: id, variant_id, currency, amount
-- [ ] `product_images` entity
-- [ ] `product_options` entity
-- [ ] Все entities имеют tenant_id (или наследуют через product)
+- [x] `products` entity: id, tenant_id, status (enum: Draft/Active/Archived), vendor, product_type, metadata, created_at, updated_at, published_at
+- [x] `product_translations` entity: id, product_id, locale, title, handle, description, meta_title, meta_description
+- [x] `product_variants` entity: id, product_id, tenant_id, sku, barcode, inventory_policy, inventory_quantity, weight, option1-3, position, created_at, updated_at
+- [x] `variant_translations` entity (в entities/variant_translation.rs)
+- [x] `prices` entity: id, variant_id, currency_code, amount, compare_at_amount
+- [x] `product_images` entity (в entities/product_image.rs)
+- [x] `product_options` entity (в entities/product_option.rs)
+- [x] Tenant isolation: `products` и `product_variants` имеют `tenant_id`; дочерние записи (translations, prices, images, options) изолируются через parent ID
 
 #### Services
 - [x] `CatalogService` — CRUD для products
@@ -534,13 +536,13 @@
 - [x] Все сервисы принимают `SecurityContext`
 
 #### DTOs
-- [ ] `CreateProductInput` / `UpdateProductInput`
-- [ ] `ProductResponse` / `ProductListItem`
-- [ ] `CreateVariantInput` / `VariantResponse`
+- [x] `CreateProductInput` / `UpdateProductInput` (в `dto/product.rs`)
+- [x] `ProductResponse` / `ProductListItem` (в `dto/product.rs`)
+- [x] `CreateVariantInput` / `VariantResponse` (в `dto/variant.rs`)
 
 #### State Machine
-- [ ] Product status: Draft → Active → Archived
-- [ ] Property tests для state machine
+- [x] Product status: Draft → Active → Archived (в `state_machine.rs`)
+- [x] Property tests для state machine (`state_machine_proptest.rs`)
 
 #### Migrations
 - [ ] Все commerce-таблицы имеют миграции
@@ -744,12 +746,13 @@
 
 **Файлы:** `apps/server/src/controllers/commerce/`
 
-- [ ] `products.rs` — CRUD для products (REST)
-- [ ] `variants.rs` — управление вариантами
-- [ ] `inventory.rs` — управление стоками
-- [ ] Все endpoints имеют RBAC
-- [ ] Все endpoints имеют tenant isolation
-- [ ] OpenAPI annotations (`#[utoipa::path(...)]`)
+- [x] `products.rs` — CRUD + publish/unpublish (8 endpoints: list, create, get, update, delete, publish, unpublish)
+- [x] `variants.rs` — управление вариантами (6 endpoints: list, create, get, update, delete, update_prices)
+- [x] `inventory.rs` — управление стоками (4 endpoints: get, adjust, set, check_availability)
+- [x] Все endpoints имеют RBAC (RequireProducts* / RequireInventory*)
+- [x] Все endpoints имеют tenant isolation (TenantContext передаётся во все сервисы)
+- [x] OpenAPI annotations (`#[utoipa::path(...)]`) на всех handlers
+- [x] События публикуются через `publish_in_tx()` в транзакции (исправлено в variants.rs)
 
 ### 9.4 Content REST
 
@@ -1281,6 +1284,7 @@
 #### Unsafe event publishing
 - [x] Поиск `publish(` без `_in_tx` в domain services — нарушений не найдено
   - Все сервисы используют `publish_in_tx()` корректно
+- [x] REST controllers: `variants.rs` исправлен — все три операции (create/update/delete) используют `publish_in_tx()` внутри транзакции
 - [ ] Проверка: каждый DomainEvent в crates содержит `tenant_id` field
 
 #### Hardcoded secrets
@@ -1492,6 +1496,7 @@
 | 10 | 🟡 Высокий | ✅ Исправлено | GraphQL Forum — stub реализация. Реализованы полноценные queries и mutations через TopicService, ReplyService, CategoryService с RBAC. | `apps/server/src/graphql/forum/mutation.rs`, `query.rs`, `types.rs` | 4.3, 8.5 |
 | 11 | 🟡 Высокий | ✅ Исправлено | GraphQL Pages mutations — без RBAC, использовали SecurityContext::system(). Добавлены PAGES_CREATE/UPDATE/DELETE через `AuthService::has_any_permission()`. | `apps/server/src/graphql/pages/mutation.rs` | 4.3, 8.7 |
 | 12 | 🟡 Высокий | ✅ Исправлено | RBAC extractors RequirePagesCreate/Read/Update/Delete использовали NODES_* permissions вместо PAGES_*. Исправлено. Добавлены константы PAGES_* и permissions для Manager/Customer. | `extractors/rbac.rs`, `permissions.rs`, `rbac.rs` | 4.1, 4.4 |
+| 13 | 🔴 Критический | ✅ Исправлено | REST контроллер `variants.rs`: `create_variant`, `update_variant`, `delete_variant` публиковали события `VariantCreated/Updated/Deleted` через `event_bus_from_context().publish()` **после** коммита транзакции. При сбое между commit и publish событие терялось. Исправлено: все три операции переведены на `publish_in_tx()` внутри транзакции до `commit()`. Update/Delete-операции получили обёртку в транзакцию. | `apps/server/src/controllers/commerce/variants.rs` | 6.2, 19.1 |
 
 ### 21.1 Детали: Проблема #2 — Небезопасная публикация событий в blog/forum
 
