@@ -77,6 +77,7 @@ mod tests {
     struct StubResolver {
         permissions: Vec<Permission>,
         cache_hit: bool,
+        fail_resolve: bool,
     }
 
     #[async_trait]
@@ -88,6 +89,9 @@ mod tests {
             _tenant_id: &uuid::Uuid,
             _user_id: &uuid::Uuid,
         ) -> Result<PermissionResolution, Self::Error> {
+            if self.fail_resolve {
+                return Err("resolve failed".to_string());
+            }
             Ok(PermissionResolution {
                 permissions: self.permissions.clone(),
                 cache_hit: self.cache_hit,
@@ -135,6 +139,7 @@ mod tests {
         let resolver = StubResolver {
             permissions: vec![],
             cache_hit: true,
+            fail_resolve: false,
         };
 
         let decision = authorize_permission(
@@ -157,6 +162,7 @@ mod tests {
         let resolver = StubResolver {
             permissions: vec![Permission::USERS_MANAGE],
             cache_hit: false,
+            fail_resolve: false,
         };
 
         let decision = authorize_any_permission(
@@ -178,6 +184,7 @@ mod tests {
         let resolver = StubResolver {
             permissions: vec![Permission::USERS_READ],
             cache_hit: false,
+            fail_resolve: false,
         };
 
         let decision = authorize_all_permissions(
@@ -191,5 +198,44 @@ mod tests {
 
         assert!(!decision.allowed);
         assert_eq!(decision.missing_permissions, vec![Permission::USERS_UPDATE]);
+    }
+
+    #[tokio::test]
+    async fn authorize_all_permissions_allows_empty_requirements() {
+        let resolver = StubResolver {
+            permissions: vec![Permission::USERS_READ],
+            cache_hit: true,
+            fail_resolve: false,
+        };
+
+        let decision =
+            authorize_all_permissions(&resolver, &uuid::Uuid::new_v4(), &uuid::Uuid::new_v4(), &[])
+                .await
+                .unwrap();
+
+        assert!(decision.allowed);
+        assert!(decision.missing_permissions.is_empty());
+        assert!(decision.denied_reason.is_none());
+        assert_eq!(decision.permissions_count, 1);
+        assert!(decision.cache_hit);
+    }
+
+    #[tokio::test]
+    async fn authorize_any_permission_propagates_resolver_error() {
+        let resolver = StubResolver {
+            permissions: vec![Permission::USERS_READ],
+            cache_hit: false,
+            fail_resolve: true,
+        };
+
+        let result = authorize_any_permission(
+            &resolver,
+            &uuid::Uuid::new_v4(),
+            &uuid::Uuid::new_v4(),
+            &[Permission::USERS_READ],
+        )
+        .await;
+
+        assert_eq!(result, Err("resolve failed".to_string()));
     }
 }

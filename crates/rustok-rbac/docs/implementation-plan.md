@@ -30,7 +30,7 @@ compatibility with platform-level contracts.
 - [x] Introduce shared permission-policy helpers (`permission_policy`) and start consuming them from `apps/server` extractors/service wiring to reduce server-owned policy logic.
 - [x] Introduce shared permission evaluation API (`permission_evaluator`) and move allow/deny + missing-permissions outcome assembly from `apps/server::AuthService` into `rustok-rbac`.
 - [ ] Align error/validation conventions with platform guidance.
-- [ ] Expand automated tests around core invariants and boundary behavior (including stable normalized permission payload from both relation and cache paths).
+- [x] Expand automated tests around core invariants and boundary behavior (including stable normalized permission payload from both relation and cache paths, empty-requirements decision contract, and resolver error propagation in `permission_authorizer`).
 
 ### Phase 2 — Domain expansion (planned)
 
