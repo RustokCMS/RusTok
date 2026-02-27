@@ -3,6 +3,7 @@ pub mod entities;
 pub mod error;
 pub mod services;
 
+pub use error::RbacError;
 pub use services::authz_mode::RbacAuthzMode;
 pub use services::permission_authorizer::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,

@@ -29,7 +29,7 @@ compatibility with platform-level contracts.
 - [x] Freeze initial public RBAC runtime API: exported `permission_policy`/`permission_evaluator` + trait contract `PermissionResolver`/`PermissionResolution` with default use-case methods (`has_*`) for adapter-driven integrations.
 - [x] Introduce shared permission-policy helpers (`permission_policy`) and start consuming them from `apps/server` extractors/service wiring to reduce server-owned policy logic.
 - [x] Introduce shared permission evaluation API (`permission_evaluator`) and move allow/deny + missing-permissions outcome assembly from `apps/server::AuthService` into `rustok-rbac`.
-- [ ] Align error/validation conventions with platform guidance.
+- [x] Align error/validation conventions with platform guidance (added typed `RbacError` validation path for authz-mode parsing via `RbacAuthzMode::try_parse` while preserving backward-compatible fallback in `parse`).
 - [x] Expand automated tests around core invariants and boundary behavior (including stable normalized permission payload from both relation and cache paths, empty-requirements decision contract, and resolver error propagation in `permission_authorizer`).
 
 ### Phase 2 — Domain expansion (planned)

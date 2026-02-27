@@ -1,3 +1,5 @@
+use crate::error::RbacError;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RbacAuthzMode {
     RelationOnly,
@@ -12,12 +14,18 @@ const RELATION_DUAL_READ_FLAG_ALIASES: [&str; 3] = [
 ];
 
 impl RbacAuthzMode {
-    pub fn parse(value: &str) -> Self {
+    pub fn try_parse(value: &str) -> Result<Self, RbacError> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "dual_read" | "dual-read" | "dual" => Self::DualRead,
-            "relation_only" | "relation-only" | "relation" => Self::RelationOnly,
-            _ => Self::RelationOnly,
+            "dual_read" | "dual-read" | "dual" => Ok(Self::DualRead),
+            "relation_only" | "relation-only" | "relation" => Ok(Self::RelationOnly),
+            _ => Err(RbacError::InvalidAuthzMode {
+                value: value.to_string(),
+            }),
         }
+    }
+
+    pub fn parse(value: &str) -> Self {
+        Self::try_parse(value).unwrap_or(Self::RelationOnly)
     }
 
     pub fn from_env() -> Self {
@@ -54,6 +62,7 @@ fn env_flag_enabled(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{RbacAuthzMode, AUTHZ_MODE_ENV, RELATION_DUAL_READ_FLAG_ALIASES};
+    use crate::error::RbacError;
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
     struct EnvVarGuard {
@@ -120,6 +129,16 @@ mod tests {
     #[test]
     fn parse_defaults_to_relation_only() {
         assert_eq!(RbacAuthzMode::parse("legacy"), RbacAuthzMode::RelationOnly);
+    }
+
+    #[test]
+    fn try_parse_returns_validation_error_for_unknown_mode() {
+        assert_eq!(
+            RbacAuthzMode::try_parse("legacy"),
+            Err(RbacError::InvalidAuthzMode {
+                value: "legacy".to_string(),
+            }),
+        );
     }
 
     #[test]
