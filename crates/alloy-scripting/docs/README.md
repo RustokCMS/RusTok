@@ -4,6 +4,7 @@
 
 ## Содержание
 
+- [Alloy Concept](../../../docs/alloy-concept.md) — стратегическое видение Alloy: Self-Evolving Integration Runtime
 - [implementation-plan.md](./implementation-plan.md) — архитектура, компоненты, flow выполнения, future improvements
 
 ## Краткий обзор

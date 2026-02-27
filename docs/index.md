@@ -124,6 +124,11 @@ graph TD
 - [Session Template](./ai/SESSION_TEMPLATE.md)
 - [Known Pitfalls](./ai/KNOWN_PITFALLS.md)
 
+### Alloy (`docs/`)
+
+- [Alloy Concept](./alloy-concept.md) — стратегическое видение: Self-Evolving Integration Runtime
+- [Alloy Technical Review](./alloy-review.md) — ревью текущей реализации alloy-scripting, проблемы и рекомендации
+
 ### References (`docs/references/`)
 
 - [Loco reference package](./references/loco/README.md)

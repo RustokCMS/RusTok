@@ -249,6 +249,7 @@ impl OrderService {
 
 ## Documentation
 
+- [Alloy Concept](../../docs/alloy-concept.md) — стратегическое видение Alloy: Self-Evolving Integration Runtime
 - [Implementation Plan](./docs/implementation-plan.md) — архитектура и детали реализации
 - [Rhai Book](https://rhai.rs/book/) — документация по языку Rhai
 
