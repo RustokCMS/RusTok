@@ -1,6 +1,6 @@
 <div align="center">
 
-# <img src="assets/rustok-logo-512x512.png" width="48" align="center" /> RusToK
+# <img src="assets/rustok-logo-512x512.png" width="72" align="center" /> RusToK
 
 **Event-Driven Enterprise Headless Platform Built with Rust**
 
@@ -591,4 +591,4 @@ Built with amazing open-source projects:
 ---
 
 ⬆ Back to Top  
-Made with <img src="assets/rustok-logo-32x32.png" width="16" align="center" /> by the RusToK community
+Made with <img src="assets/rustok-logo-32x32.png" width="24" align="center" /> by the RusToK community

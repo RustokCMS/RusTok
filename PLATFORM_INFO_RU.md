@@ -1,4 +1,4 @@
-# <img src="assets/rustok-logo-512x512.png" width="48" align="center" /> RusToK — Краткая справка о платформе
+# <img src="assets/rustok-logo-512x512.png" width="72" align="center" /> RusToK — Краткая справка о платформе
 
 **Event-Driven Headless Platform на Rust**
 
@@ -148,4 +148,4 @@ MIT License — см. [LICENSE](LICENSE)
 ---
 
 ⬆ [Наверх](#-rustok--краткая-справка-о-платформе)  
-<img src="assets/rustok-logo-32x32.png" width="16" align="center" /> Сделано с любовью к Rust
+<img src="assets/rustok-logo-32x32.png" width="24" align="center" /> Сделано с любовью к Rust
