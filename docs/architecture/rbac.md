@@ -32,6 +32,8 @@ RusToK implements a comprehensive RBAC system that controls access to resources 
 ### Manager
 - Can manage commerce (products, orders, inventory)
 - Can create and manage content (posts, nodes, media)
+- Can create and manage blog posts (create/read/update/delete/list/publish)
+- Can moderate forum topics and replies (create/read/update/delete/list/moderate)
 - Can view customers and analytics
 - Cannot manage users or system settings
 
@@ -39,6 +41,8 @@ RusToK implements a comprehensive RBAC system that controls access to resources 
 - Can view products and content
 - Can create and view their own orders
 - Can read posts and nodes
+- Can read blog posts and forum content
+- Can create forum topics and replies
 - Can create comments
 - Limited write access
 
@@ -56,14 +60,19 @@ The following resources are defined in the system:
 - `customers` - Customer data
 - `inventory` - Stock management
 - `discounts` - Discount codes and promotions
-- `posts` - Blog posts
+- `posts` - Content posts (generic)
 - `pages` - Static pages
 - `nodes` - Content nodes (generic content)
 - `media` - Media files and assets
 - `comments` - User comments
 - `analytics` - Analytics and reports
-- `logs` - System logs
+- `logs` - System logs (DLQ and event audit)
 - `webhooks` - Webhook integrations
+- `blog_posts` - Blog module posts (domain-specific)
+- `forum_categories` - Forum module categories
+- `forum_topics` - Forum module topics/threads
+- `forum_replies` - Forum module replies
+- `scripts` - Alloy scripting engine scripts
 
 ## Actions
 
@@ -75,6 +84,8 @@ The following resources are defined in the system:
 - `export` - Export data
 - `import` - Import data
 - `manage` - All actions on resource (wildcard)
+- `publish` - Publish/unpublish resource (content lifecycle)
+- `moderate` - Moderate resource (forum moderation)
 
 ## Permission Enforcement
 
@@ -180,7 +191,7 @@ impl NodeService {
 
 The following extractors are pre-defined and ready to use:
 
-### Content
+### Content (nodes)
 - `RequireNodesCreate`
 - `RequireNodesRead`
 - `RequireNodesUpdate`
@@ -204,6 +215,41 @@ The following extractors are pre-defined and ready to use:
 - `RequireOrdersDelete`
 - `RequireOrdersList`
 
+### Blog
+- `RequireBlogPostsCreate`
+- `RequireBlogPostsRead`
+- `RequireBlogPostsUpdate`
+- `RequireBlogPostsDelete`
+- `RequireBlogPostsList`
+- `RequireBlogPostsPublish`
+
+### Forum
+- `RequireForumTopicsCreate`
+- `RequireForumTopicsRead`
+- `RequireForumTopicsUpdate`
+- `RequireForumTopicsDelete`
+- `RequireForumTopicsList`
+- `RequireForumTopicsModerate`
+- `RequireForumRepliesCreate`
+- `RequireForumRepliesRead`
+- `RequireForumRepliesModerate`
+- `RequireForumCategoriesCreate`
+- `RequireForumCategoriesList`
+- `RequireForumCategoriesUpdate`
+- `RequireForumCategoriesDelete`
+
+### Pages
+- `RequirePagesCreate`
+- `RequirePagesRead`
+- `RequirePagesUpdate`
+- `RequirePagesDelete`
+
+### Scripts (Alloy)
+- `RequireScriptsCreate`
+- `RequireScriptsRead`
+- `RequireScriptsList`
+- `RequireScriptsManage`
+
 ### Administration
 - `RequireUsersCreate`
 - `RequireUsersRead`
@@ -214,6 +260,7 @@ The following extractors are pre-defined and ready to use:
 - `RequireSettingsUpdate`
 - `RequireAnalyticsRead`
 - `RequireAnalyticsExport`
+- `RequireLogsRead`
 
 ## Creating Custom Permission Extractors
 

@@ -11,7 +11,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::extractors::auth::CurrentUser;
+use crate::extractors::rbac::RequireLogsRead;
 
 #[derive(Debug, Deserialize)]
 pub struct DlqQuery {
@@ -46,7 +46,7 @@ pub struct DlqReplayResponse {
 
 pub async fn list_dlq(
     State(ctx): State<AppContext>,
-    _user: CurrentUser,
+    _user: RequireLogsRead,
     Query(query): Query<DlqQuery>,
 ) -> Result<Json<DlqListResponse>> {
     let limit = query.limit.clamp(1, 200);
@@ -103,7 +103,7 @@ pub async fn list_dlq(
 
 pub async fn replay_dlq_event(
     State(ctx): State<AppContext>,
-    _user: CurrentUser,
+    _user: RequireLogsRead,
     Path(id): Path<Uuid>,
 ) -> Result<Json<DlqReplayResponse>> {
     let model = entity::Entity::find_by_id(id)

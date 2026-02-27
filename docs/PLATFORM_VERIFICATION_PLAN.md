@@ -295,6 +295,13 @@
 - [x] `RequireUsersCreate`, `RequireUsersRead`, `RequireUsersUpdate`, `RequireUsersDelete`, `RequireUsersList` — определены
 - [x] `RequireSettingsRead`, `RequireSettingsUpdate` — определены
 - [x] `RequireAnalyticsRead`, `RequireAnalyticsExport` — определены
+- [x] `RequireBlogPostsCreate`, `RequireBlogPostsRead`, `RequireBlogPostsUpdate`, `RequireBlogPostsDelete`, `RequireBlogPostsList`, `RequireBlogPostsPublish` — определены
+- [x] `RequireForumTopicsCreate`, `RequireForumTopicsRead`, `RequireForumTopicsUpdate`, `RequireForumTopicsDelete`, `RequireForumTopicsList`, `RequireForumTopicsModerate` — определены
+- [x] `RequireForumRepliesCreate`, `RequireForumRepliesRead`, `RequireForumRepliesModerate` — определены
+- [x] `RequireForumCategoriesCreate`, `RequireForumCategoriesList`, `RequireForumCategoriesUpdate`, `RequireForumCategoriesDelete` — определены
+- [x] `RequirePagesCreate`, `RequirePagesRead`, `RequirePagesUpdate`, `RequirePagesDelete` — определены
+- [x] `RequireScriptsCreate`, `RequireScriptsRead`, `RequireScriptsList`, `RequireScriptsManage` — определены
+- [x] `RequireLogsRead` — определён (для DLQ admin endpoints)
 - [x] Макрос `define_permission_extractor!` работает
 
 #### Inline checks
@@ -316,14 +323,20 @@
 
 ### 4.3 RBAC на GraphQL
 
-- [ ] GraphQL resolvers проверяют permissions перед выполнением
-- [ ] Механизм проверки permissions в GraphQL context (guard / inline check)
-- [ ] Ошибка 403 корректно преобразуется в GraphQL error extension
+- [x] GraphQL resolvers проверяют permissions перед выполнением
+  - `mutations.rs`: `create_user`, `update_user`, `delete_user`, `disable_user` — через `AuthService::has_permission()`
+  - `graphql/blog/mutation.rs`: все mutations — через `AuthService::has_any_permission()`
+  - `graphql/content/mutation.rs`: `create_node`, `update_node`, `delete_node` — auth check
+- [x] Механизм проверки permissions в GraphQL context — `AuthService::has_any_permission(db, tenant_id, user_id, permissions)`
+- [x] Ошибка 403 корректно преобразуется в GraphQL error extension — через `GraphQLError::permission_denied()`
 
 ### 4.4 RBAC consistency
 
-- [ ] Каждый REST endpoint имеет RBAC-проверку
-- [ ] Каждый GraphQL mutation имеет RBAC-проверку
+- [x] REST endpoints `content/nodes.rs`, `blog/posts.rs`, `forum/topics.rs`, `forum/replies.rs`, `forum/categories.rs`, `pages.rs`, `admin_events.rs` — RBAC extractors применены
+- [x] REST `commerce/products.rs`, `commerce/variants.rs`, `commerce/inventory.rs` — RBAC extractors применены
+- [~] GraphQL mutations Blog — RBAC через `AuthService::has_any_permission()` добавлен
+- [ ] GraphQL mutations Forum — stub реализация, RBAC требует реальной имплементации
+- [ ] GraphQL mutations Content — только auth check, нет проверки конкретных permissions
 - [ ] Нет endpoints без auth/RBAC (кроме public: health, login, register, public storefront queries)
 
 ---
@@ -732,39 +745,44 @@
 
 **Файлы:** `apps/server/src/controllers/content/`
 
-- [ ] `nodes.rs` — CRUD для nodes
-- [ ] RBAC + tenant isolation
+- [x] `nodes.rs` — CRUD для nodes
+- [x] RBAC: все 5 endpoints используют RBAC extractors (`RequireNodesList`, `RequireNodesRead`, `RequireNodesCreate`, `RequireNodesUpdate`, `RequireNodesDelete`)
+- [x] Tenant isolation: `TenantContext` передаётся в сервис
 
 ### 9.5 Blog REST
 
 **Файлы:** `apps/server/src/controllers/blog/`
 
-- [ ] `posts.rs` — CRUD для posts
-- [ ] RBAC + tenant isolation
+- [x] `posts.rs` — CRUD + publish/unpublish для posts (7 endpoints)
+- [x] RBAC: все endpoints используют специализированные Blog RBAC extractors
+- [x] Tenant isolation: `TenantContext` передаётся в сервис
 
 ### 9.6 Forum REST
 
 **Файлы:** `apps/server/src/controllers/forum/`
 
-- [ ] `topics.rs` — CRUD для topics
-- [ ] `replies.rs` — CRUD для replies
-- [ ] `categories.rs` — CRUD для categories
-- [ ] RBAC + tenant isolation
+- [x] `topics.rs` — CRUD для topics (6 endpoints с RBAC)
+- [x] `replies.rs` — CRUD для replies (5 endpoints с RBAC)
+- [x] `categories.rs` — CRUD для categories (5 endpoints с RBAC)
+- [x] RBAC: Forum-специфичные extractors (`RequireForumTopicsCreate`, etc.)
+- [x] Tenant isolation: `TenantContext` передаётся в сервис
 
 ### 9.7 Pages REST
 
 **Файл:** `apps/server/src/controllers/pages.rs`
 
-- [ ] CRUD для pages
-- [ ] RBAC + tenant isolation
+- [x] GET `/api/pages` — получение страницы по slug
+- [x] POST `/api/admin/pages` — создание страницы
+- [x] RBAC: `RequirePagesRead` и `RequirePagesCreate` применены
+- [x] Tenant isolation: `TenantContext` передаётся в сервис
 
 ### 9.8 Admin Events REST
 
 **Файл:** `apps/server/src/controllers/admin_events.rs`
 
-- [ ] `GET /api/admin/events/dlq` — просмотр DLQ
-- [ ] `POST /api/admin/events/dlq/{id}/replay` — replay
-- [ ] Только для SuperAdmin/Admin
+- [x] `GET /api/admin/events/dlq` — просмотр DLQ
+- [x] `POST /api/admin/events/dlq/{id}/replay` — replay
+- [x] RBAC: `RequireLogsRead` применён — доступен только SuperAdmin и Admin
 
 ### 9.9 Metrics & Swagger
 
@@ -1440,6 +1458,9 @@
 | 2 | 🔴 Критический | ✅ Исправлено | `rustok-blog` и `rustok-forum` используют `event_bus.publish()` вместо `publish_in_tx()` — нарушение атомарности. Все сервисы переведены на `publish_in_tx()` с открытой транзакцией. | `crates/rustok-blog/src/services/post.rs`, `crates/rustok-forum/src/services/{topic,reply,moderation}.rs` | 6.2, 7.3, 7.4 |
 | 3 | 🟡 Высокий | ✅ Исправлено | `iggy` версия `0.9.2` не существует на crates.io. CI-сборка падала. Исправлено на `0.9.0`. | `Cargo.toml`, `crates/rustok-iggy-connector/Cargo.toml` | 0.6 |
 | 4 | 🔴 Критический | ✅ Исправлено | Контроллеры `blog/posts.rs`, `forum/topics.rs`, `forum/replies.rs`, `forum/categories.rs`, `pages.rs` использовали только `CurrentUser` без RBAC-проверок. Добавлены RBAC-экстракторы (`RequireBlogPostsCreate`, `RequireForumTopicsCreate`, и т.д.). Добавлена матрица Blog/Forum permissions для всех ролей в `rbac.rs`. | `apps/server/src/controllers/blog/posts.rs`, `forum/topics.rs`, `forum/replies.rs`, `forum/categories.rs`, `pages.rs`, `crates/rustok-core/src/rbac.rs`, `apps/server/src/extractors/rbac.rs` | 4.4, 18.2, 19.2 |
+| 5 | 🔴 Критический | ✅ Исправлено | `content/nodes.rs` использовал `CurrentUser` без RBAC-проверок для всех 5 endpoints. Заменён на RBAC extractors (`RequireNodesList`, `RequireNodesRead`, `RequireNodesCreate`, `RequireNodesUpdate`, `RequireNodesDelete`). OpenAPI 403 добавлен. | `apps/server/src/controllers/content/nodes.rs` | 4.4, 9.4, 18.2 |
+| 6 | 🔴 Критический | ✅ Исправлено | `admin_events.rs` (DLQ просмотр/replay) использовал `CurrentUser` без RBAC — доступен любому аутентифицированному пользователю. Заменён на `RequireLogsRead` (Admin/SuperAdmin only). Добавлен `Logs::Read` и `Logs::List` в `ADMIN_PERMISSIONS`. | `apps/server/src/controllers/admin_events.rs`, `crates/rustok-core/src/rbac.rs`, `apps/server/src/extractors/rbac.rs` | 4.4, 9.8, 18.2 |
+| 7 | 🟡 Высокий | ✅ Исправлено | GraphQL Blog mutations (`create_post`, `update_post`, `delete_post`, `publish_post`, `unpublish_post`, `archive_post`) имели только auth check, но не проверяли конкретные RBAC permissions. Добавлены проверки через `AuthService::has_any_permission()` для каждой операции. | `apps/server/src/graphql/blog/mutation.rs` | 4.3, 8.4 |
 
 ### 21.1 Детали: Проблема #2 — Небезопасная публикация событий в blog/forum
 

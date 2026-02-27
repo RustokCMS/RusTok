@@ -66,6 +66,8 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::new(Resource::Modules, Action::Read));
     permissions.insert(Permission::new(Resource::Modules, Action::List));
     permissions.insert(Permission::new(Resource::Scripts, Action::Manage));
+    permissions.insert(Permission::new(Resource::Logs, Action::Read));
+    permissions.insert(Permission::new(Resource::Logs, Action::List));
 
     permissions.insert(Permission::new(Resource::BlogPosts, Action::Manage));
     permissions.insert(Permission::new(Resource::ForumCategories, Action::Manage));
