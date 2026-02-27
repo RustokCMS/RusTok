@@ -335,7 +335,10 @@ pub async fn validate_script<S: ScriptRegistry>(
     Json(req): Json<CreateScriptRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let mut scope = rhai::Scope::new();
-    match state.engine.compile("__validation__", &req.code, &mut scope) {
+    match state
+        .engine
+        .compile("__validation__", &req.code, &mut scope)
+    {
         Ok(_) => Ok(Json(serde_json::json!({
             "valid": true,
             "message": "Script compiles successfully"

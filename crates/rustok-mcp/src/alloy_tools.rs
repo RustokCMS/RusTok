@@ -48,8 +48,16 @@ impl<R: ScriptRegistry + 'static> Clone for AlloyMcpState<R> {
 }
 
 impl<R: ScriptRegistry + 'static> AlloyMcpState<R> {
-    pub fn new(registry: Arc<R>, engine: Arc<ScriptEngine>, orchestrator: Arc<ScriptOrchestrator<R>>) -> Self {
-        Self { registry, engine, orchestrator }
+    pub fn new(
+        registry: Arc<R>,
+        engine: Arc<ScriptEngine>,
+        orchestrator: Arc<ScriptOrchestrator<R>>,
+    ) -> Self {
+        Self {
+            registry,
+            engine,
+            orchestrator,
+        }
     }
 }
 
@@ -203,7 +211,11 @@ pub async fn alloy_list_scripts<R: ScriptRegistry>(
         None => ScriptQuery::All,
     };
 
-    let scripts = state.registry.find(query).await.map_err(|e| e.to_string())?;
+    let scripts = state
+        .registry
+        .find(query)
+        .await
+        .map_err(|e| e.to_string())?;
     let total = scripts.len();
     Ok(ListScriptsResponse {
         scripts: scripts.into_iter().map(AlloyScriptInfo::from).collect(),
@@ -216,7 +228,11 @@ pub async fn alloy_get_script<R: ScriptRegistry>(
     request: GetScriptRequest,
 ) -> Result<AlloyScriptInfo, String> {
     if let Some(name) = request.name {
-        let script = state.registry.get_by_name(&name).await.map_err(|e| e.to_string())?;
+        let script = state
+            .registry
+            .get_by_name(&name)
+            .await
+            .map_err(|e| e.to_string())?;
         return Ok(script.into());
     }
     if let Some(id_str) = request.id {
@@ -252,7 +268,11 @@ pub async fn alloy_create_script<R: ScriptRegistry>(
             .ok_or_else(|| format!("Invalid status: {status_str}"))?;
     }
 
-    let saved = state.registry.save(script).await.map_err(|e| e.to_string())?;
+    let saved = state
+        .registry
+        .save(script)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(saved.into())
 }
 
@@ -260,7 +280,10 @@ pub async fn alloy_update_script<R: ScriptRegistry>(
     state: &AlloyMcpState<R>,
     request: UpdateScriptRequest,
 ) -> Result<AlloyScriptInfo, String> {
-    let id = request.id.parse::<uuid::Uuid>().map_err(|e| e.to_string())?;
+    let id = request
+        .id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| e.to_string())?;
     let mut script = state.registry.get(id).await.map_err(|e| e.to_string())?;
 
     if let Some(code) = request.code {
@@ -282,7 +305,11 @@ pub async fn alloy_update_script<R: ScriptRegistry>(
             .ok_or_else(|| format!("Invalid status: {status_str}"))?;
     }
 
-    let saved = state.registry.save(script).await.map_err(|e| e.to_string())?;
+    let saved = state
+        .registry
+        .save(script)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(saved.into())
 }
 
@@ -290,7 +317,10 @@ pub async fn alloy_delete_script<R: ScriptRegistry>(
     state: &AlloyMcpState<R>,
     request: DeleteScriptRequest,
 ) -> Result<bool, String> {
-    let id = request.id.parse::<uuid::Uuid>().map_err(|e| e.to_string())?;
+    let id = request
+        .id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| e.to_string())?;
     let script = state.registry.get(id).await.map_err(|e| e.to_string())?;
     state.engine.invalidate(&script.name);
     state.registry.delete(id).await.map_err(|e| e.to_string())?;
@@ -302,7 +332,10 @@ pub fn alloy_validate_script<R: ScriptRegistry>(
     request: ValidateScriptRequest,
 ) -> ValidateScriptResponse {
     let mut scope = rhai::Scope::new();
-    match state.engine.compile("__mcp_validate__", &request.code, &mut scope) {
+    match state
+        .engine
+        .compile("__mcp_validate__", &request.code, &mut scope)
+    {
         Ok(_) => ValidateScriptResponse {
             valid: true,
             message: "Script compiles successfully".to_string(),
@@ -319,17 +352,19 @@ pub async fn alloy_run_script<R: ScriptRegistry>(
     request: RunScriptRequest,
 ) -> Result<RunScriptResponse, String> {
     let params = match request.params {
-        Some(serde_json::Value::Object(map)) => {
-            map.into_iter().map(|(k, v)| (k, json_to_dynamic(v))).collect()
-        }
+        Some(serde_json::Value::Object(map)) => map
+            .into_iter()
+            .map(|(k, v)| (k, json_to_dynamic(v)))
+            .collect(),
         _ => HashMap::new(),
     };
 
     let entity = request.entity.map(|e| {
         let data = match e.data {
-            serde_json::Value::Object(map) => {
-                map.into_iter().map(|(k, v)| (k, json_to_dynamic(v))).collect()
-            }
+            serde_json::Value::Object(map) => map
+                .into_iter()
+                .map(|(k, v)| (k, json_to_dynamic(v)))
+                .collect(),
             _ => HashMap::new(),
         };
         EntityProxy::new(e.id, e.entity_type, data)
@@ -342,7 +377,10 @@ pub async fn alloy_run_script<R: ScriptRegistry>(
         .map_err(|e| e.to_string())?;
 
     let (success, error, return_value, changes) = match result.outcome {
-        ExecutionOutcome::Success { return_value, entity_changes } => {
+        ExecutionOutcome::Success {
+            return_value,
+            entity_changes,
+        } => {
             let rv = return_value.map(dynamic_to_json);
             let ch = serde_json::Value::Object(
                 entity_changes
@@ -423,31 +461,51 @@ pub fn alloy_script_helpers() -> ScriptHelpersResponse {
                 name: "validate_email".to_string(),
                 signature: "validate_email(email: string) -> bool".to_string(),
                 description: "Validate an email address format".to_string(),
-                available_in: vec!["before".to_string(), "manual".to_string(), "scheduled".to_string()],
+                available_in: vec![
+                    "before".to_string(),
+                    "manual".to_string(),
+                    "scheduled".to_string(),
+                ],
             },
             ScriptHelperInfo {
                 name: "validate_required".to_string(),
                 signature: "validate_required(value: string) -> bool".to_string(),
                 description: "Check that a string is non-empty after trimming".to_string(),
-                available_in: vec!["before".to_string(), "manual".to_string(), "scheduled".to_string()],
+                available_in: vec![
+                    "before".to_string(),
+                    "manual".to_string(),
+                    "scheduled".to_string(),
+                ],
             },
             ScriptHelperInfo {
                 name: "validate_min_length".to_string(),
                 signature: "validate_min_length(value: string, min: i64) -> bool".to_string(),
                 description: "Check that a string has at least min characters".to_string(),
-                available_in: vec!["before".to_string(), "manual".to_string(), "scheduled".to_string()],
+                available_in: vec![
+                    "before".to_string(),
+                    "manual".to_string(),
+                    "scheduled".to_string(),
+                ],
             },
             ScriptHelperInfo {
                 name: "validate_max_length".to_string(),
                 signature: "validate_max_length(value: string, max: i64) -> bool".to_string(),
                 description: "Check that a string has at most max characters".to_string(),
-                available_in: vec!["before".to_string(), "manual".to_string(), "scheduled".to_string()],
+                available_in: vec![
+                    "before".to_string(),
+                    "manual".to_string(),
+                    "scheduled".to_string(),
+                ],
             },
             ScriptHelperInfo {
                 name: "validate_range".to_string(),
                 signature: "validate_range(value: i64, min: i64, max: i64) -> bool".to_string(),
                 description: "Check that a number is within [min, max]".to_string(),
-                available_in: vec!["before".to_string(), "manual".to_string(), "scheduled".to_string()],
+                available_in: vec![
+                    "before".to_string(),
+                    "manual".to_string(),
+                    "scheduled".to_string(),
+                ],
             },
             ScriptHelperInfo {
                 name: "format_money".to_string(),

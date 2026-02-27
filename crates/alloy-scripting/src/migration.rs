@@ -12,16 +12,8 @@ impl MigrationTrait for ScriptsMigration {
                     .table(Scripts::Table)
                     .if_not_exists()
                     .col(ColumnDef::new(Scripts::Id).uuid().not_null().primary_key())
-                    .col(
-                        ColumnDef::new(Scripts::TenantId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Scripts::Name)
-                            .string_len(255)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Scripts::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(Scripts::Name).string_len(255).not_null())
                     .col(ColumnDef::new(Scripts::Description).text())
                     .col(ColumnDef::new(Scripts::Code).text().not_null())
                     .col(

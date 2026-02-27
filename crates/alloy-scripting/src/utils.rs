@@ -4,7 +4,9 @@ use cron::Schedule;
 use rhai::Dynamic;
 
 pub fn validate_cron_expression(expression: &str) -> Result<(), String> {
-    Schedule::from_str(expression).map(|_| ()).map_err(|err| err.to_string())
+    Schedule::from_str(expression)
+        .map(|_| ())
+        .map_err(|err| err.to_string())
 }
 
 pub fn json_to_dynamic(v: serde_json::Value) -> Dynamic {

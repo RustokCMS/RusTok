@@ -45,11 +45,17 @@ pub struct SeaOrmStorage {
 
 impl SeaOrmStorage {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db, tenant_id: None }
+        Self {
+            db,
+            tenant_id: None,
+        }
     }
 
     pub fn with_tenant(db: DatabaseConnection, tenant_id: Uuid) -> Self {
-        Self { db, tenant_id: Some(tenant_id) }
+        Self {
+            db,
+            tenant_id: Some(tenant_id),
+        }
     }
 
     pub fn for_tenant(&self, tenant_id: Uuid) -> Self {
@@ -211,9 +217,7 @@ impl SeaOrmStorage {
             ScriptQuery::Scheduled => select
                 .filter(Column::TriggerType.eq("cron"))
                 .filter(Column::Status.eq(ScriptStatus::Active.as_str())),
-            ScriptQuery::ByStatus(status) => {
-                select.filter(Column::Status.eq(status.as_str()))
-            }
+            ScriptQuery::ByStatus(status) => select.filter(Column::Status.eq(status.as_str())),
             ScriptQuery::All => select,
         };
 
@@ -261,7 +265,10 @@ impl ScriptRegistry for SeaOrmStorage {
         let items: ScriptResult<Vec<Script>> =
             models.into_iter().map(Self::model_to_script).collect();
 
-        Ok(ScriptPage { items: items?, total })
+        Ok(ScriptPage {
+            items: items?,
+            total,
+        })
     }
 
     async fn get(&self, id: ScriptId) -> ScriptResult<Script> {

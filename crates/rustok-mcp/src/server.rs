@@ -11,9 +11,9 @@ use rmcp::{
 use rustok_core::registry::ModuleRegistry;
 
 use crate::alloy_tools::{
-    alloy_create_script, alloy_delete_script, alloy_get_script, alloy_list_scripts,
-    alloy_run_script, alloy_script_helpers, alloy_update_script, alloy_validate_script,
-    alloy_list_entity_types, AlloyMcpState, CreateScriptRequest, DeleteScriptRequest,
+    alloy_create_script, alloy_delete_script, alloy_get_script, alloy_list_entity_types,
+    alloy_list_scripts, alloy_run_script, alloy_script_helpers, alloy_update_script,
+    alloy_validate_script, AlloyMcpState, CreateScriptRequest, DeleteScriptRequest,
     GetScriptRequest, ListScriptsRequest, RunScriptRequest, UpdateScriptRequest,
     ValidateScriptRequest, ALL_ALLOY_TOOLS, TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT,
     TOOL_ALLOY_GET_SCRIPT, TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS,
@@ -217,14 +217,18 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
                 "tool_disabled",
                 "Tool is disabled by configuration",
             ))?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]));
+            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                content,
+            )]));
         }
 
         match request.name.as_ref() {
             TOOL_LIST_MODULES => {
                 let result = self.list_modules_internal().await;
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    content,
+                )]))
             }
             TOOL_QUERY_MODULES => {
                 let args = request
@@ -236,7 +240,9 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
                     })?;
                 let result = self.list_modules_filtered_internal(req).await;
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    content,
+                )]))
             }
             TOOL_MODULE_EXISTS => {
                 let args = request
@@ -248,7 +254,9 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
                     })?;
                 let result = self.module_exists_internal(&req.slug).await;
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    content,
+                )]))
             }
             TOOL_MODULE_DETAILS => {
                 let args = request
@@ -260,33 +268,45 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
                     })?;
                 let result = self.module_details_internal(&req.slug).await;
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    content,
+                )]))
             }
             TOOL_CONTENT_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_CONTENT);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    content,
+                )]))
             }
             TOOL_BLOG_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_BLOG);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    content,
+                )]))
             }
             TOOL_FORUM_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_FORUM);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    content,
+                )]))
             }
             TOOL_PAGES_MODULE => {
                 let result = self.module_details_by_slug_internal(MODULE_PAGES);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    content,
+                )]))
             }
             TOOL_MCP_HEALTH => {
                 let tool_count = self.available_tool_names().len();
                 let result = self.health_response(tool_count);
                 let content = Self::serialize_response(McpToolResponse::success(result))?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                    content,
+                )]))
             }
 
             // ── Alloy tools ──────────────────────────────────────────────────────────
@@ -298,7 +318,9 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
                             "not_configured",
                             "Alloy scripting is not configured in this MCP server",
                         ))?;
-                        return Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]));
+                        return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            content,
+                        )]));
                     }
                 };
 
@@ -310,88 +332,110 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
                             Ok(v) => McpToolResponse::success(v),
                             Err(e) => McpToolResponse::error("alloy_error", e),
                         })?;
-                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            content,
+                        )]))
                     }
                     TOOL_ALLOY_GET_SCRIPT => {
                         let args = require_args(request.arguments)?;
-                        let req: GetScriptRequest =
-                            serde_json::from_value(serde_json::Value::Object(args))
-                                .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
+                        let req: GetScriptRequest = serde_json::from_value(
+                            serde_json::Value::Object(args),
+                        )
+                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
                         let result = alloy_get_script(&alloy, req).await;
                         let content = Self::serialize_response(match result {
                             Ok(v) => McpToolResponse::success(v),
                             Err(e) => McpToolResponse::error("alloy_error", e),
                         })?;
-                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            content,
+                        )]))
                     }
                     TOOL_ALLOY_CREATE_SCRIPT => {
                         let args = require_args(request.arguments)?;
-                        let req: CreateScriptRequest =
-                            serde_json::from_value(serde_json::Value::Object(args))
-                                .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
+                        let req: CreateScriptRequest = serde_json::from_value(
+                            serde_json::Value::Object(args),
+                        )
+                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
                         let result = alloy_create_script(&alloy, req).await;
                         let content = Self::serialize_response(match result {
                             Ok(v) => McpToolResponse::success(v),
                             Err(e) => McpToolResponse::error("alloy_error", e),
                         })?;
-                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            content,
+                        )]))
                     }
                     TOOL_ALLOY_UPDATE_SCRIPT => {
                         let args = require_args(request.arguments)?;
-                        let req: UpdateScriptRequest =
-                            serde_json::from_value(serde_json::Value::Object(args))
-                                .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
+                        let req: UpdateScriptRequest = serde_json::from_value(
+                            serde_json::Value::Object(args),
+                        )
+                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
                         let result = alloy_update_script(&alloy, req).await;
                         let content = Self::serialize_response(match result {
                             Ok(v) => McpToolResponse::success(v),
                             Err(e) => McpToolResponse::error("alloy_error", e),
                         })?;
-                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            content,
+                        )]))
                     }
                     TOOL_ALLOY_DELETE_SCRIPT => {
                         let args = require_args(request.arguments)?;
-                        let req: DeleteScriptRequest =
-                            serde_json::from_value(serde_json::Value::Object(args))
-                                .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
+                        let req: DeleteScriptRequest = serde_json::from_value(
+                            serde_json::Value::Object(args),
+                        )
+                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
                         let result = alloy_delete_script(&alloy, req).await;
                         let content = Self::serialize_response(match result {
                             Ok(v) => McpToolResponse::success(v),
                             Err(e) => McpToolResponse::error("alloy_error", e),
                         })?;
-                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            content,
+                        )]))
                     }
                     TOOL_ALLOY_VALIDATE_SCRIPT => {
                         let args = require_args(request.arguments)?;
-                        let req: ValidateScriptRequest =
-                            serde_json::from_value(serde_json::Value::Object(args))
-                                .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
+                        let req: ValidateScriptRequest = serde_json::from_value(
+                            serde_json::Value::Object(args),
+                        )
+                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
                         let result = alloy_validate_script(&alloy, req);
                         let content = Self::serialize_response(McpToolResponse::success(result))?;
-                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            content,
+                        )]))
                     }
                     TOOL_ALLOY_RUN_SCRIPT => {
                         let args = require_args(request.arguments)?;
-                        let req: RunScriptRequest =
-                            serde_json::from_value(serde_json::Value::Object(args))
-                                .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
+                        let req: RunScriptRequest = serde_json::from_value(
+                            serde_json::Value::Object(args),
+                        )
+                        .map_err(|e| rmcp::ErrorData::invalid_params(e.to_string(), None))?;
                         let result = alloy_run_script(&alloy, req).await;
                         let content = Self::serialize_response(match result {
                             Ok(v) => McpToolResponse::success(v),
                             Err(e) => McpToolResponse::error("alloy_error", e),
                         })?;
-                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            content,
+                        )]))
                     }
                     TOOL_ALLOY_LIST_ENTITY_TYPES => {
                         let result = alloy_list_entity_types();
-                        let content =
-                            Self::serialize_response(McpToolResponse::success(result))?;
-                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                        let content = Self::serialize_response(McpToolResponse::success(result))?;
+                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            content,
+                        )]))
                     }
                     TOOL_ALLOY_SCRIPT_HELPERS => {
                         let result = alloy_script_helpers();
-                        let content =
-                            Self::serialize_response(McpToolResponse::success(result))?;
-                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(content)]))
+                        let content = Self::serialize_response(McpToolResponse::success(result))?;
+                        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                            content,
+                        )]))
                     }
                     _ => unreachable!("ALL_ALLOY_TOOLS exhausted"),
                 }
@@ -605,9 +649,7 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
 /// Serve the MCP server over stdio
 pub async fn serve_stdio(config: McpServerConfig) -> Result<()> {
     let server = match config.enabled_tools {
-        Some(enabled_tools) => {
-            RusToKMcpServer::with_enabled_tools(config.registry, enabled_tools)
-        }
+        Some(enabled_tools) => RusToKMcpServer::with_enabled_tools(config.registry, enabled_tools),
         None => RusToKMcpServer::new(config.registry),
     };
 

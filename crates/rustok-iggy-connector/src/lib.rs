@@ -317,7 +317,9 @@ impl RemoteConnector {
     }
 
     #[cfg(feature = "iggy")]
-    async fn create_and_connect(config: &RemoteConnectorConfig) -> Result<IggyClient, ConnectorError> {
+    async fn create_and_connect(
+        config: &RemoteConnectorConfig,
+    ) -> Result<IggyClient, ConnectorError> {
         let address = config
             .addresses
             .first()

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    entity::prelude::*, ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait,
-    QueryOrder, QuerySelect,
+    entity::prelude::*, ActiveModelTrait, ActiveValue, DatabaseConnection, EntityTrait, QueryOrder,
+    QuerySelect,
 };
 use uuid::Uuid;
 

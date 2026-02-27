@@ -17,11 +17,7 @@ impl MigrationTrait for ScriptExecutionsMigration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(ScriptExecutions::ScriptId)
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ScriptExecutions::ScriptId).uuid().not_null())
                     .col(
                         ColumnDef::new(ScriptExecutions::ScriptName)
                             .string_len(255)

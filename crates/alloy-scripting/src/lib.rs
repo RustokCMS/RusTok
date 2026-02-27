@@ -24,7 +24,9 @@ pub use model::{
     register_entity_proxy, EntityProxy, EventType, HttpMethod, Script, ScriptId, ScriptStatus,
     ScriptTrigger,
 };
-pub use runner::{ExecutionOutcome, ExecutionResult, HookOutcome, ScriptExecutor, ScriptOrchestrator};
+pub use runner::{
+    ExecutionOutcome, ExecutionResult, HookOutcome, ScriptExecutor, ScriptOrchestrator,
+};
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaOrmStorage};
 

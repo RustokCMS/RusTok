@@ -16,9 +16,7 @@ fn run_blocking<F, T>(f: F) -> T
 where
     F: std::future::Future<Output = T>,
 {
-    tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(f)
-    })
+    tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(f))
 }
 
 fn build_http_response(status: u16, body: serde_json::Value) -> Map {
@@ -131,8 +129,8 @@ fn http_request(method: &str, url: &str, body: Dynamic, headers: Map) -> Map {
 
     let result = run_blocking(async move {
         let client = reqwest::Client::new();
-        let req_method = reqwest::Method::from_bytes(method.as_bytes())
-            .unwrap_or(reqwest::Method::GET);
+        let req_method =
+            reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::GET);
 
         let mut request = client
             .request(req_method, &url)
@@ -172,9 +170,7 @@ fn http_request(method: &str, url: &str, body: Dynamic, headers: Map) -> Map {
 fn extract_headers(headers: Map) -> HashMap<String, String> {
     headers
         .into_iter()
-        .filter_map(|(key, value)| {
-            value.try_cast::<String>().map(|v| (key.to_string(), v))
-        })
+        .filter_map(|(key, value)| value.try_cast::<String>().map(|v| (key.to_string(), v)))
         .collect()
 }
 

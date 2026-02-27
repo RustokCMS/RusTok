@@ -45,7 +45,9 @@ impl<R: ScriptRegistry> ScriptExecutor<R> {
             execution.id = %ctx.execution_id,
             execution.phase = ?ctx.phase,
         );
-        self.execute_inner(script, ctx, entity).instrument(span).await
+        self.execute_inner(script, ctx, entity)
+            .instrument(span)
+            .await
     }
 
     async fn execute_inner(
