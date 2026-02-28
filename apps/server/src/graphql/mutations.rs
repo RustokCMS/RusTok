@@ -329,7 +329,7 @@ mod tests {
     #[test]
     fn create_user_maps_email_exists() {
         let err = map_create_user_error(AuthLifecycleError::EmailAlreadyExists);
-        assert!(err.to_string().contains("already exists"));
+        assert!(err.message.contains("already exists"));
     }
 
     #[test]
@@ -337,6 +337,6 @@ mod tests {
         let err = map_create_user_error(AuthLifecycleError::Internal(
             loco_rs::prelude::Error::InternalServerError,
         ));
-        assert!(!err.to_string().is_empty());
+        assert!(!err.message.is_empty());
     }
 }

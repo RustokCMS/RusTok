@@ -274,7 +274,7 @@ mod tests {
     #[test]
     fn maps_invalid_refresh_token_message() {
         let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidRefreshToken);
-        assert!(err.to_string().contains("Invalid refresh token"));
+        assert!(err.message.contains("Invalid refresh token"));
     }
 
     #[test]
@@ -282,6 +282,6 @@ mod tests {
         let err = map_auth_lifecycle_error(AuthLifecycleError::Internal(
             loco_rs::prelude::Error::InternalServerError,
         ));
-        assert!(!err.to_string().is_empty());
+        assert!(!err.message.is_empty());
     }
 }

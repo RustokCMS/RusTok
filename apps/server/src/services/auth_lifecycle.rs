@@ -442,12 +442,13 @@ mod tests {
         AUTH_CHANGE_PASSWORD_SESSIONS_REVOKED_TOTAL, AUTH_FLOW_INCONSISTENCY_TOTAL,
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL, AUTH_PASSWORD_RESET_SESSIONS_REVOKED_TOTAL,
     };
-    use crate::models::{sessions, tenants, user_roles, users};
+    use crate::models::_entities::user_roles;
+    use crate::models::{sessions, tenants, users};
     use crate::services::auth::AuthService;
     use chrono::{Duration, Utc};
     use migration::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
     use std::sync::atomic::Ordering;
 
     #[test]
@@ -589,7 +590,7 @@ mod tests {
         AuthLifecycleService::reset_password_and_revoke_sessions(
             &db,
             tenant.id,
-            user,
+            user.clone(),
             "new-password",
             None,
         )
@@ -701,7 +702,7 @@ mod tests {
         AuthLifecycleService::reset_password_and_revoke_sessions(
             &db,
             tenant.id,
-            user,
+            user.clone(),
             "new-password",
             Some(current_session.id),
         )

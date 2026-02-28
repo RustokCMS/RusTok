@@ -24,3 +24,4 @@ iggy = ["rustok-iggy-connector/iggy"]
 
 [dev-dependencies]
 tokio.workspace = true
+serde_yaml.workspace = true

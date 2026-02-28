@@ -898,12 +898,13 @@ impl RoleAssignmentStore for ServerRoleAssignmentStore {
 #[cfg(test)]
 mod tests {
     use super::AuthService;
-    use crate::models::{roles, tenants, user_roles, users};
+    use crate::models::_entities::{roles, user_roles};
+    use crate::models::{tenants, users};
     use chrono::Utc;
     use migration::Migrator;
     use rustok_core::UserRole;
     use rustok_test_utils::db::setup_test_db_with_migrations;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+    use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
     const AUTHZ_MODE_ENV: &str = "RUSTOK_RBAC_AUTHZ_MODE";
