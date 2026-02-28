@@ -22,7 +22,7 @@ where
 fn build_http_response(status: u16, body: serde_json::Value) -> Map {
     let mut result = Map::new();
     result.insert("status".into(), Dynamic::from(status as i64));
-    result.insert("ok".into(), Dynamic::from(status >= 200 && status < 300));
+    result.insert("ok".into(), Dynamic::from((200..300).contains(&status)));
     result.insert("body".into(), json_to_dynamic(body));
     result
 }
