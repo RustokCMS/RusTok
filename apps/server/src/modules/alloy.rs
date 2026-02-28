@@ -10,6 +10,12 @@ pub struct AlloyModule {
     db: Option<DatabaseConnection>,
 }
 
+impl Default for AlloyModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AlloyModule {
     pub fn new() -> Self {
         Self { db: None }
