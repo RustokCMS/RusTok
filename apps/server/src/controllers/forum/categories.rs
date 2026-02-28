@@ -67,7 +67,7 @@ pub async fn list_categories(
 pub async fn get_category(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    RequireForumCategoriesList(user): RequireForumCategoriesList,
+    RequireForumCategoriesList(_user): RequireForumCategoriesList,
     Path(id): Path<Uuid>,
     Query(params): Query<CategoryListParams>,
 ) -> Result<Json<CategoryResponse>> {

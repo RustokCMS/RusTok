@@ -399,7 +399,7 @@ impl IggyConnector for RemoteConnector {
             let client_guard = self.client.read().await;
             let client: &IggyClient = client_guard.as_ref().ok_or(ConnectorError::NotConnected)?;
 
-            let mut producer = client
+            let producer = client
                 .producer(&request.stream, &request.topic)
                 .map_err(|e: IggyError| ConnectorError::Publish(e.to_string()))?
                 .partitioning(Partitioning::partition_id(partition))

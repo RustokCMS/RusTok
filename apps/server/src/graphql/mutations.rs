@@ -1,6 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 
+use crate::auth::hash_password;
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
 use crate::graphql::types::{

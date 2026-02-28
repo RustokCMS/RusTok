@@ -38,6 +38,12 @@ impl From<Error> for AuthLifecycleError {
     }
 }
 
+impl From<sea_orm::DbErr> for AuthLifecycleError {
+    fn from(value: sea_orm::DbErr) -> Self {
+        Self::Internal(value.into())
+    }
+}
+
 impl From<AuthLifecycleError> for Error {
     fn from(value: AuthLifecycleError) -> Self {
         match value {

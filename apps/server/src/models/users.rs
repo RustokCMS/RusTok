@@ -3,7 +3,7 @@ use sea_orm::prelude::*;
 use rustok_core::{generate_id, UserRole, UserStatus};
 
 use super::_entities::users::{self};
-pub use super::_entities::users::{ActiveModel, Entity, Model};
+pub use super::_entities::users::{ActiveModel, Column, Entity, Model};
 
 impl Model {
     pub fn is_active(&self) -> bool {

@@ -3,7 +3,7 @@ use loco_rs::prelude::*;
 use moka::future::Cache;
 use once_cell::sync::Lazy;
 use sea_orm::{
-    sea_query::OnConflict, ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection,
+    sea_query::OnConflict, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection,
     EntityTrait, QueryFilter,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -102,7 +102,7 @@ impl AuthService {
             .await?;
 
         if let Some(user) = user {
-            USER_LEGACY_ROLE_CACHE.insert(cache_key, user.role).await;
+            USER_LEGACY_ROLE_CACHE.insert(cache_key, user.role.clone()).await;
             return Ok(Some(user.role));
         }
 
@@ -511,13 +511,12 @@ impl AuthService {
     }
 
     pub async fn replace_user_role(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
         role: UserRole,
     ) -> Result<()> {
-        let resolver = Self::resolver(db);
-        resolver.replace_user_role(tenant_id, user_id, role).await
+        Self::replace_user_role_via_store(db, user_id, tenant_id, role).await
     }
 
     pub async fn remove_tenant_role_assignments(
@@ -544,7 +543,7 @@ impl AuthService {
     }
 
     async fn assign_role_permissions_via_store(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
         role: UserRole,
@@ -591,7 +590,7 @@ impl AuthService {
     }
 
     async fn replace_user_role_via_store(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
         role: UserRole,
@@ -602,7 +601,7 @@ impl AuthService {
     }
 
     async fn remove_tenant_role_assignments_via_store(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
     ) -> Result<()> {
@@ -630,7 +629,7 @@ impl AuthService {
     }
 
     async fn remove_user_role_assignment_via_store(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         user_id: &uuid::Uuid,
         tenant_id: &uuid::Uuid,
         role: UserRole,
@@ -656,7 +655,7 @@ impl AuthService {
     }
 
     async fn get_or_create_role(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         tenant_id: &uuid::Uuid,
         role: &UserRole,
     ) -> Result<roles::Model> {
@@ -694,11 +693,11 @@ impl AuthService {
             .filter(roles::Column::Slug.eq(role.to_string()))
             .one(db)
             .await?
-            .ok_or_else(|| Error::InternalServerError("role upsert failed".to_string()))
+            .ok_or(Error::InternalServerError)
     }
 
     async fn get_or_create_permission(
-        db: &DatabaseConnection,
+        db: &impl ConnectionTrait,
         tenant_id: &uuid::Uuid,
         permission: &Permission,
     ) -> Result<permissions::Model> {
@@ -741,7 +740,7 @@ impl AuthService {
             .filter(permissions::Column::Action.eq(action_str))
             .one(db)
             .await?
-            .ok_or_else(|| Error::InternalServerError("permission upsert failed".to_string()))
+            .ok_or(Error::InternalServerError)
     }
 }
 
