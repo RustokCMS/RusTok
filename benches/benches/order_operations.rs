@@ -1,8 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use rust_decimal::Decimal;
-use rustok_commerce::state_machine::{
-    Cancelled, Confirmed, Delivered, Order, Paid, Pending, Shipped,
-};
+use rustok_commerce::state_machine::{Order, Paid, Pending};
 use uuid::Uuid;
 
 /// Benchmark order state machine workflows
@@ -30,7 +28,7 @@ fn bench_order_workflows(c: &mut Criterion) {
                 .ship("TRACK123".to_string(), "UPS".to_string())
                 .unwrap();
             let delivered = shipped.deliver(None);
-            black_box(delivered)
+            std::hint::black_box(delivered)
         })
     });
 
@@ -45,7 +43,7 @@ fn bench_order_workflows(c: &mut Criterion) {
                 "USD".to_string(),
             );
             let cancelled = pending.cancel("Customer request".to_string());
-            black_box(cancelled)
+            std::hint::black_box(cancelled)
         })
     });
 
@@ -63,7 +61,7 @@ fn bench_order_workflows(c: &mut Criterion) {
             let paid = confirmed
                 .pay("pay_123".to_string(), "credit_card".to_string())
                 .unwrap();
-            black_box(paid)
+            std::hint::black_box(paid)
         })
     });
 
@@ -85,7 +83,7 @@ fn bench_order_queries(c: &mut Criterion) {
             Decimal::new(10000, 2),
             "USD".to_string(),
         );
-        b.iter(|| black_box(pending.id))
+        b.iter(|| std::hint::black_box(pending.id))
     });
 
     group.bench_function("get_total_pending", |b| {
@@ -96,7 +94,7 @@ fn bench_order_queries(c: &mut Criterion) {
             Decimal::new(10000, 2),
             "USD".to_string(),
         );
-        b.iter(|| black_box(pending.total_amount))
+        b.iter(|| std::hint::black_box(pending.total_amount))
     });
 
     group.bench_function("get_total_paid", |b| {
@@ -111,7 +109,7 @@ fn bench_order_queries(c: &mut Criterion) {
         let paid = confirmed
             .pay("pay_123".to_string(), "credit_card".to_string())
             .unwrap();
-        b.iter(|| black_box(paid.total_amount))
+        b.iter(|| std::hint::black_box(paid.total_amount))
     });
 
     group.finish();
@@ -146,7 +144,7 @@ fn bench_order_throughput(c: &mut Criterion) {
                                 .unwrap()
                         })
                         .collect();
-                    black_box(orders.len())
+                    std::hint::black_box(orders.len())
                 })
             },
         );
@@ -171,7 +169,7 @@ fn bench_order_monetary(c: &mut Criterion) {
                 Decimal::new(1_000_000_000, 2), // $10M
                 "USD".to_string(),
             );
-            black_box(pending)
+            std::hint::black_box(pending)
         })
     });
 
@@ -184,7 +182,7 @@ fn bench_order_monetary(c: &mut Criterion) {
                 Decimal::new(1, 2), // $0.01
                 "USD".to_string(),
             );
-            black_box(pending)
+            std::hint::black_box(pending)
         })
     });
 
@@ -197,7 +195,7 @@ fn bench_order_monetary(c: &mut Criterion) {
                 Decimal::new(0, 2), // $0.00
                 "USD".to_string(),
             );
-            black_box(pending)
+            std::hint::black_box(pending)
         })
     });
 
@@ -216,7 +214,6 @@ fn bench_order_concurrent(c: &mut Criterion) {
         b.iter(|| {
             let handles: Vec<_> = (0..4)
                 .map(|_| {
-                    let tenant_id = tenant_id;
                     thread::spawn(move || {
                         for i in 0..25 {
                             let customer_id = Uuid::new_v4();
@@ -231,7 +228,7 @@ fn bench_order_concurrent(c: &mut Criterion) {
                             let paid = confirmed
                                 .pay("pay_123".to_string(), "credit_card".to_string())
                                 .unwrap();
-                            black_box(paid);
+                            std::hint::black_box(paid);
                         }
                     })
                 })
