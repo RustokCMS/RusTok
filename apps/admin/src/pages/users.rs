@@ -267,9 +267,6 @@ pub fn Users() -> impl IntoView {
     };
 
     let create_user = {
-        let token = token;
-        let tenant = tenant;
-        let set_refresh_counter = set_refresh_counter;
         move |_| {
             let email_val = new_email.get();
             let password_val = new_password.get();
