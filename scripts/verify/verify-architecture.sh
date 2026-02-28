@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # RusTok — Верификация архитектурных паттернов
 # Фаза 1, 5: module registry, Loco hooks, MCP, controller return types
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -18,8 +18,8 @@ WARNINGS=0
 
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
 pass()   { echo -e "  ${GREEN}✓${NC} $1"; }
-fail()   { echo -e "  ${RED}✗${NC} $1"; ((ERRORS++)); }
-warn()   { echo -e "  ${YELLOW}!${NC} $1"; ((WARNINGS++)); }
+fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
+warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 SERVER_SRC="apps/server/src"
 CORE_SRC="crates/rustok-core/src"
@@ -117,11 +117,11 @@ if [[ -d "$CONTROLLERS_DIR" ]]; then
         # Get return type (next few lines)
         ret_type=$(sed -n "${lineno},$((lineno + 3))p" "$file" 2>/dev/null | tr '\n' ' ' || true)
         if echo "$ret_type" | grep -qiE 'loco_rs::Result\|loco::Result\|Result<.*Response\|Result<Json'; then
-            ((loco_result++))
+            loco_result=$((loco_result + 1))
         elif echo "$ret_type" | grep -qiE 'Result<'; then
             fn_name=$(echo "$line" | grep -oP 'fn\s+\K\w+' || echo "unknown")
             warn "$(basename $file):$fn_name — non-loco Result type"
-            ((custom_result++))
+            custom_result=$((custom_result + 1))
         fi
     done <<< "$controller_fns"
 

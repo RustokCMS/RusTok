@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # RusTok — Верификация tenant isolation
 # Фаза 19.1: поиск SQL-запросов без tenant_id фильтрации
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -18,8 +18,8 @@ WARNINGS=0
 
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
 pass()   { echo -e "  ${GREEN}✓${NC} $1"; }
-fail()   { echo -e "  ${RED}✗${NC} $1"; ((ERRORS++)); }
-warn()   { echo -e "  ${YELLOW}!${NC} $1"; ((WARNINGS++)); }
+fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
+warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 DOMAIN_CRATES=(
     "crates/rustok-content/src"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # RusTok — Верификация безопасности
 # Фаза 18: password hashing, security headers, SSRF, secrets, JWT
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -18,8 +18,8 @@ WARNINGS=0
 
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
 pass()   { echo -e "  ${GREEN}✓${NC} $1"; }
-fail()   { echo -e "  ${RED}✗${NC} $1"; ((ERRORS++)); }
-warn()   { echo -e "  ${YELLOW}!${NC} $1"; ((WARNINGS++)); }
+fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
+warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 SERVER_SRC="apps/server/src"
 CORE_SRC="crates/rustok-core/src"
@@ -93,28 +93,28 @@ security_headers=0
 
 if grep -rq "Content-Security-Policy\|content_security_policy\|csp" "$SERVER_SRC" --include="*.rs" 2>/dev/null; then
     pass "Content-Security-Policy header configured"
-    ((security_headers++))
+    security_headers=$((security_headers + 1))
 else
     warn "Content-Security-Policy header not found"
 fi
 
 if grep -rq "X-Frame-Options\|x_frame_options\|frame_options" "$SERVER_SRC" --include="*.rs" 2>/dev/null; then
     pass "X-Frame-Options header configured"
-    ((security_headers++))
+    security_headers=$((security_headers + 1))
 else
     warn "X-Frame-Options header not found"
 fi
 
 if grep -rq "Strict-Transport-Security\|hsts\|HSTS" "$SERVER_SRC" --include="*.rs" 2>/dev/null; then
     pass "HSTS header configured"
-    ((security_headers++))
+    security_headers=$((security_headers + 1))
 else
     warn "HSTS header not found"
 fi
 
 if grep -rq "X-Content-Type-Options\|x_content_type_options\|nosniff" "$SERVER_SRC" --include="*.rs" 2>/dev/null; then
     pass "X-Content-Type-Options header configured"
-    ((security_headers++))
+    security_headers=$((security_headers + 1))
 else
     warn "X-Content-Type-Options header not found"
 fi

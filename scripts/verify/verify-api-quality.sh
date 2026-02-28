@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # RusTok — Верификация API quality
 # Фаза 19.12-19.14: GraphQL antipatterns, REST antipatterns, REST↔GraphQL parity
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -18,8 +18,8 @@ WARNINGS=0
 
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
 pass()   { echo -e "  ${GREEN}✓${NC} $1"; }
-fail()   { echo -e "  ${RED}✗${NC} $1"; ((ERRORS++)); }
-warn()   { echo -e "  ${YELLOW}!${NC} $1"; ((WARNINGS++)); }
+fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
+warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 CONTROLLERS_DIR="apps/server/src/controllers"
 GRAPHQL_DIR="apps/server/src/graphql"
@@ -151,14 +151,14 @@ if [[ -d "$CONTROLLERS_DIR" ]]; then
         while IFS= read -r line; do
             lineno=$(echo "$line" | cut -d: -f1)
             fn_name=$(echo "$line" | grep -oP 'fn\s+\K\w+' || echo "unknown")
-            ((total_handlers++))
+            total_handlers=$((total_handlers + 1))
 
             # Check for utoipa annotation above the function (within 10 lines)
             start=$((lineno > 10 ? lineno - 10 : 1))
             above=$(sed -n "${start},${lineno}p" "$file" 2>/dev/null || true)
             if echo "$above" | grep -q "utoipa::path\|#\[utoipa"; then
                 pass "$basename_f::$fn_name — has #[utoipa::path]"
-                ((annotated_handlers++))
+                annotated_handlers=$((annotated_handlers + 1))
             else
                 warn "$basename_f::$fn_name ($file:$lineno) — missing #[utoipa::path]"
             fi

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # RusTok — Верификация RBAC coverage
 # Фаза 19.2: каждый handler/resolver имеет RBAC check
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -18,8 +18,8 @@ WARNINGS=0
 
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
 pass()   { echo -e "  ${GREEN}✓${NC} $1"; }
-fail()   { echo -e "  ${RED}✗${NC} $1"; ((ERRORS++)); }
-warn()   { echo -e "  ${YELLOW}!${NC} $1"; ((WARNINGS++)); }
+fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
+warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 CONTROLLERS_DIR="apps/server/src/controllers"
 GRAPHQL_DIR="apps/server/src/graphql"
@@ -51,7 +51,7 @@ if [[ -d "$CONTROLLERS_DIR" ]]; then
         while IFS= read -r line; do
             lineno=$(echo "$line" | cut -d: -f1)
             fn_name=$(echo "$line" | grep -oP 'fn\s+\K\w+' || echo "unknown")
-            ((total_handlers++))
+            total_handlers=$((total_handlers + 1))
 
             # Check function signature for RBAC extractors (Require*, Permission, etc.)
             # Look at function params (next 5 lines)
@@ -65,7 +65,7 @@ if [[ -d "$CONTROLLERS_DIR" ]]; then
                 pass "$fn_name — public endpoint (OK without RBAC)"
             else
                 warn "$fn_name (line $lineno) — no RBAC extractor found"
-                ((unprotected_handlers++))
+                unprotected_handlers=$((unprotected_handlers + 1))
             fi
         done <<< "$handlers"
     done
@@ -96,7 +96,7 @@ if [[ -d "$GRAPHQL_DIR" ]]; then
         while IFS= read -r line; do
             lineno=$(echo "$line" | cut -d: -f1)
             fn_name=$(echo "$line" | grep -oP 'fn\s+\K\w+' || echo "unknown")
-            ((total_mutations++))
+            total_mutations=$((total_mutations + 1))
 
             # Check for permission/auth checks in function body (next 15 lines)
             fn_body=$(sed -n "${lineno},$((lineno + 20))p" "$file" 2>/dev/null || true)
@@ -107,7 +107,7 @@ if [[ -d "$GRAPHQL_DIR" ]]; then
                 pass "$fn_name — auth endpoint (OK without permission)"
             else
                 warn "$fn_name (line $lineno) — no permission check found"
-                ((unprotected_mutations++))
+                unprotected_mutations=$((unprotected_mutations + 1))
             fi
         done <<< "$mutations"
     done
@@ -142,7 +142,7 @@ if [[ -d "$GRAPHQL_DIR" ]]; then
                 continue
             fi
 
-            ((total_queries++))
+            total_queries=$((total_queries + 1))
 
             fn_body=$(sed -n "${lineno},$((lineno + 15))p" "$file" 2>/dev/null || true)
 
@@ -151,7 +151,7 @@ if [[ -d "$GRAPHQL_DIR" ]]; then
             else
                 # Queries can be public, so this is a warning not error
                 warn "$fn_name ($file:$lineno) — no auth context found (may be public)"
-                ((unprotected_queries++))
+                unprotected_queries=$((unprotected_queries + 1))
             fi
         done <<< "$queries"
     done

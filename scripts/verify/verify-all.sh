@@ -113,10 +113,10 @@ for entry in "${SCRIPTS[@]}"; do
 
     if [[ $exit_code -eq 0 ]]; then
         RESULTS+=("${GREEN}PASS${NC} $script_label")
-        ((TOTAL_PASSED++))
+        TOTAL_PASSED=$((TOTAL_PASSED + 1))
     else
         RESULTS+=("${RED}FAIL${NC} $script_label ($exit_code error(s))")
-        ((TOTAL_FAILED++))
+        TOTAL_FAILED=$((TOTAL_FAILED + 1))
         # In non-verbose mode, show errors
         if [[ $VERBOSE -eq 0 ]]; then
             echo "$output" | grep "✗" | head -5

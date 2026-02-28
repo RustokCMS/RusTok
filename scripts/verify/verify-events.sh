@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # RusTok — Верификация событийной системы
 # Фаза 6 + 19.1: publish_in_tx, tenant_id в events, handler quality
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -18,8 +18,8 @@ WARNINGS=0
 
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
 pass()   { echo -e "  ${GREEN}✓${NC} $1"; }
-fail()   { echo -e "  ${RED}✗${NC} $1"; ((ERRORS++)); }
-warn()   { echo -e "  ${YELLOW}!${NC} $1"; ((WARNINGS++)); }
+fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
+warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 DOMAIN_CRATES=(
     "crates/rustok-content/src"
@@ -90,12 +90,12 @@ if [[ -n "$event_files" ]]; then
                     warn "$name enum — tenant_id not found in variants"
                 fi
             else
-                ((total_events++))
+                total_events=$((total_events + 1))
                 # For structs, check tenant_id field
                 struct_body=$(sed -n "${lineno},$((lineno + 20))p" "$file" 2>/dev/null || true)
                 if echo "$struct_body" | grep -qi "tenant_id"; then
                     pass "$name — has tenant_id field"
-                    ((events_with_tenant++))
+                    events_with_tenant=$((events_with_tenant + 1))
                 else
                     warn "$name — no tenant_id field ($file:$lineno)"
                 fi
