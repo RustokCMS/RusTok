@@ -6,7 +6,7 @@ use tracing::{error, info};
 use crate::config::{IggyConfig, IggyMode};
 use crate::consumer::ConsumerGroupManager;
 use crate::producer;
-use crate::serialization::{PostcardSerializer, EventSerializer, JsonSerializer};
+use crate::serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
 use crate::topology::TopologyManager;
 use rustok_core::events::{EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_core::Result;

@@ -142,7 +142,7 @@ topology:
 mod serialization_tests {
     use rustok_core::events::{DomainEvent, EventEnvelope};
     use rustok_iggy::config::SerializationFormat;
-    use rustok_iggy::serialization::{PostcardSerializer, EventSerializer, JsonSerializer};
+    use rustok_iggy::serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
     use uuid::Uuid;
 
     fn create_test_envelope() -> EventEnvelope {

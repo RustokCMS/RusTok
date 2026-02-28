@@ -102,7 +102,9 @@ impl AuthService {
             .await?;
 
         if let Some(user) = user {
-            USER_LEGACY_ROLE_CACHE.insert(cache_key, user.role.clone()).await;
+            USER_LEGACY_ROLE_CACHE
+                .insert(cache_key, user.role.clone())
+                .await;
             return Ok(Some(user.role));
         }
 
