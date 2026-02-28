@@ -295,7 +295,7 @@ pub fn partition<T>(input: Vec<T>, predicate: impl Fn(&T) -> bool) -> (Vec<T>, V
     (left, right)
 }
 
-/// Convert a Vec<Result<T, E>> into Result<Vec<T>, E>
+/// Convert a `Vec<Result<T, E>>` into `Result<Vec<T>, E>`
 pub fn collect_results<T, E>(input: Vec<Result<T, E>>) -> Result<Vec<T>, E> {
     let mut results = Vec::with_capacity(input.len());
 

@@ -251,7 +251,7 @@ pub async fn alloy_create_script<R: ScriptRegistry>(
         serde_json::from_value(request.trigger).map_err(|e| e.to_string())?;
 
     if let ScriptTrigger::Cron { ref expression } = trigger {
-        alloy_scripting::utils::validate_cron_expression(expression).map_err(|e| e)?;
+        alloy_scripting::utils::validate_cron_expression(expression)?;
     }
 
     let mut scope = rhai::Scope::new();
