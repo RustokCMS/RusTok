@@ -394,7 +394,7 @@ impl IggyConnector for RemoteConnector {
 
         #[cfg(feature = "iggy")]
         {
-            use iggy::prelude::{IggyMessage, Partitioning};
+            use iggy::prelude::{BytesSerializable, IggyMessage, Partitioning};
 
             let client_guard = self.client.read().await;
             let client: &IggyClient = client_guard.as_ref().ok_or(ConnectorError::NotConnected)?;
