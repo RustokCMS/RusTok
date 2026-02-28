@@ -14,8 +14,8 @@ use uuid::Uuid;
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 struct TestContext {
-    tenant_id: Uuid,
-    events: broadcast::Receiver<EventEnvelope>,
+    _tenant_id: Uuid,
+    _events: broadcast::Receiver<EventEnvelope>,
 }
 
 #[tokio::test]
@@ -112,8 +112,8 @@ async fn test_context() -> TestResult<TestContext> {
     let (_event_sender, event_receiver) = broadcast::channel(128);
 
     Ok(TestContext {
-        tenant_id: Uuid::new_v4(),
-        events: event_receiver,
+        _tenant_id: Uuid::new_v4(),
+        _events: event_receiver,
     })
 }
 
