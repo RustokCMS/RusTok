@@ -33,6 +33,7 @@ fn http_get(url: &str) -> Map {
 
 fn http_get_with_headers(url: &str, headers: Map) -> Map {
     let url = url.to_string();
+    let url_log = url.clone();
     let headers = extract_headers(headers);
 
     debug!(target: "alloy::script", "HTTP GET {}", url);
@@ -61,7 +62,7 @@ fn http_get_with_headers(url: &str, headers: Map) -> Map {
     match result {
         Ok((status, body)) => build_http_response(status, body),
         Err(err) => {
-            warn!(target: "alloy::script", "HTTP GET {} failed: {}", url, err);
+            warn!(target: "alloy::script", "HTTP GET {} failed: {}", url_log, err);
             let mut map = Map::new();
             map.insert("status".into(), Dynamic::from(0_i64));
             map.insert("ok".into(), Dynamic::from(false));
@@ -77,6 +78,7 @@ fn http_post_json(url: &str, body: Dynamic) -> Map {
 
 fn http_post_json_with_headers(url: &str, body: Dynamic, headers: Map) -> Map {
     let url = url.to_string();
+    let url_log = url.clone();
     let headers = extract_headers(headers);
     let body_json = dynamic_to_json_value(body);
 
@@ -109,7 +111,7 @@ fn http_post_json_with_headers(url: &str, body: Dynamic, headers: Map) -> Map {
     match result {
         Ok((status, resp_body)) => build_http_response(status, resp_body),
         Err(err) => {
-            warn!(target: "alloy::script", "HTTP POST {} failed: {}", url, err);
+            warn!(target: "alloy::script", "HTTP POST {} failed: {}", url_log, err);
             let mut map = Map::new();
             map.insert("status".into(), Dynamic::from(0_i64));
             map.insert("ok".into(), Dynamic::from(false));
@@ -122,6 +124,8 @@ fn http_post_json_with_headers(url: &str, body: Dynamic, headers: Map) -> Map {
 fn http_request(method: &str, url: &str, body: Dynamic, headers: Map) -> Map {
     let method = method.to_uppercase();
     let url = url.to_string();
+    let method_log = method.clone();
+    let url_log = url.clone();
     let headers = extract_headers(headers);
     let body_json = dynamic_to_json_value(body);
 
@@ -157,7 +161,7 @@ fn http_request(method: &str, url: &str, body: Dynamic, headers: Map) -> Map {
     match result {
         Ok((status, resp_body)) => build_http_response(status, resp_body),
         Err(err) => {
-            warn!(target: "alloy::script", "HTTP {} {} failed: {}", method, url, err);
+            warn!(target: "alloy::script", "HTTP {} {} failed: {}", method_log, url_log, err);
             let mut map = Map::new();
             map.insert("status".into(), Dynamic::from(0_i64));
             map.insert("ok".into(), Dynamic::from(false));
