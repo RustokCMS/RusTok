@@ -1,6 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use std::hint::black_box;
 use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 // Type aliases for benchmarking
@@ -9,6 +9,7 @@ type EventId = Uuid;
 
 /// Simplified event types for benchmarking
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 struct DomainEvent {
     id: EventId,
     tenant_id: TenantId,
@@ -33,9 +34,11 @@ mod event_bus_sim {
     use std::collections::VecDeque;
     use std::sync::Mutex;
 
+    type SubscriberList = Mutex<Vec<Box<dyn Fn(&DomainEvent) + Send>>>;
+
     pub struct EventBus {
         queue: Mutex<VecDeque<DomainEvent>>,
-        subscribers: Mutex<Vec<Box<dyn Fn(&DomainEvent) + Send>>>,
+        subscribers: SubscriberList,
     }
 
     impl EventBus {
@@ -64,6 +67,7 @@ mod event_bus_sim {
             self.subscribers.lock().unwrap().push(Box::new(handler));
         }
 
+        #[allow(dead_code)]
         pub fn drain(&self) -> Vec<DomainEvent> {
             self.queue.lock().unwrap().drain(..).collect()
         }
