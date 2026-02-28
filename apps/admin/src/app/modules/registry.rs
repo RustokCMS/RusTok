@@ -16,7 +16,7 @@ pub struct AdminComponentRegistration {
 }
 
 thread_local! {
-    static REGISTRY: RefCell<Vec<AdminComponentRegistration>> = RefCell::new(Vec::new());
+    static REGISTRY: RefCell<Vec<AdminComponentRegistration>> = const { RefCell::new(Vec::new()) };
 }
 
 pub fn register_component(component: AdminComponentRegistration) {

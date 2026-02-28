@@ -30,7 +30,7 @@ struct CreateUserInput {
 #[derive(Clone, Debug, Deserialize)]
 struct CreateUserResponse {
     #[serde(rename = "createUser")]
-    create_user: Option<GraphqlUser>,
+    _create_user: Option<GraphqlUser>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -267,9 +267,9 @@ pub fn Users() -> impl IntoView {
     };
 
     let create_user = {
-        let token = token.clone();
-        let tenant = tenant.clone();
-        let set_refresh_counter = set_refresh_counter.clone();
+        let token = token;
+        let tenant = tenant;
+        let set_refresh_counter = set_refresh_counter;
         move |_| {
             let email_val = new_email.get();
             let password_val = new_password.get();
@@ -539,7 +539,7 @@ pub fn Users() -> impl IntoView {
 
                         <div class="mt-6 flex gap-3">
                             <Button
-                                on_click=create_user.clone()
+                                on_click=create_user
                                 disabled=is_creating.into()
                                 class="flex-1"
                             >

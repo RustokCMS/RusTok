@@ -147,9 +147,6 @@ pub fn UserDetails() -> impl IntoView {
     };
 
     let save_user = {
-        let token = token;
-        let tenant = tenant;
-        let params = params;
         move |_| {
             let user_id = params.with(|p| {
                 p.as_ref()
@@ -202,9 +199,6 @@ pub fn UserDetails() -> impl IntoView {
     };
 
     let confirm_delete = {
-        let token = token;
-        let tenant = tenant;
-        let params = params;
         let navigate = navigate.clone();
         move |_| {
             let user_id = params.with(|p| {
@@ -291,7 +285,7 @@ pub fn UserDetails() -> impl IntoView {
                     </Show>
                     <Show when=move || is_editing.get()>
                         <Button
-                            on_click=save_user.clone()
+                            on_click=save_user
                             disabled=is_saving.into()
                         >
                             {move || if is_saving.get() {

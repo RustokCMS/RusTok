@@ -376,22 +376,22 @@ pub async fn alloy_run_script<R: ScriptRegistry>(
         .await
         .map_err(|e| e.to_string())?;
 
-    let (success, error, return_value, changes) = match result.outcome {
+    let (success, error, return_value, changes) = match &result.outcome {
         ExecutionOutcome::Success {
             return_value,
             entity_changes,
         } => {
-            let rv = return_value.map(dynamic_to_json);
+            let rv = return_value.clone().map(dynamic_to_json);
             let ch = serde_json::Value::Object(
                 entity_changes
-                    .into_iter()
-                    .map(|(k, v)| (k, dynamic_to_json(v)))
+                    .iter()
+                    .map(|(k, v)| (k.clone(), dynamic_to_json(v.clone())))
                     .collect(),
             );
             (true, None, rv, Some(ch))
         }
-        ExecutionOutcome::Aborted { ref reason } => (false, Some(reason.clone()), None, None),
-        ExecutionOutcome::Failed { ref error } => (false, Some(error.to_string()), None, None),
+        ExecutionOutcome::Aborted { reason } => (false, Some(reason.clone()), None, None),
+        ExecutionOutcome::Failed { error } => (false, Some(error.to_string()), None, None),
     };
 
     Ok(RunScriptResponse {

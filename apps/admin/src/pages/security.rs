@@ -31,7 +31,7 @@ struct ChangePasswordInput {
 #[derive(Deserialize)]
 struct ChangePasswordResponse {
     #[serde(rename = "changePassword")]
-    change_password: SuccessPayload,
+    _change_password: SuccessPayload,
 }
 
 #[derive(Deserialize)]

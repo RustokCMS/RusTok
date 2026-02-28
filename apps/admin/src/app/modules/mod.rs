@@ -8,7 +8,7 @@ pub use registry::{
 };
 
 thread_local! {
-    static INIT: Cell<bool> = Cell::new(false);
+    static INIT: Cell<bool> = const { Cell::new(false) };
 }
 
 pub fn init_modules() {

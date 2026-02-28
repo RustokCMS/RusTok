@@ -661,6 +661,7 @@ pub async fn serve_stdio(config: McpServerConfig) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))?
         .waiting()
         .await
+        .map(|_| ())
         .map_err(|e| anyhow::anyhow!("MCP server error: {}", e))
 }
 
