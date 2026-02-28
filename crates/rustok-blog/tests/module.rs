@@ -69,8 +69,7 @@ fn module_permissions_cover_all_resources() {
     let module = BlogModule;
     let permissions = module.permissions();
 
-    let resources: std::collections::HashSet<_> =
-        permissions.iter().map(|p| p.resource.clone()).collect();
+    let resources: std::collections::HashSet<_> = permissions.iter().map(|p| p.resource).collect();
 
     // Should cover all blog-related resources
     assert!(

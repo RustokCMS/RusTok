@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use rustok_core::Result;
 use rustok_iggy_connector::IggyConnector;
 use tokio::sync::RwLock;
 use tracing::info;
@@ -37,7 +36,7 @@ impl TopologyManager {
         &self,
         config: &IggyConfig,
         _connector: &dyn IggyConnector,
-    ) -> Result<()> {
+    ) -> rustok_core::Result<()> {
         let stream_name = config.topology.stream_name.clone();
         let partitions = config.topology.domain_partitions;
 
@@ -110,7 +109,7 @@ mod tests {
         async fn connect(
             &self,
             _config: &rustok_iggy_connector::ConnectorConfig,
-        ) -> Result<(), rustok_iggy_connector::ConnectorError> {
+        ) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
             Ok(())
         }
 
@@ -121,7 +120,7 @@ mod tests {
         async fn publish(
             &self,
             _request: rustok_iggy_connector::PublishRequest,
-        ) -> Result<(), rustok_iggy_connector::ConnectorError> {
+        ) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
             Ok(())
         }
 
@@ -130,14 +129,14 @@ mod tests {
             _stream: &str,
             _topic: &str,
             _partition: u32,
-        ) -> Result<
+        ) -> std::result::Result<
             Box<dyn rustok_iggy_connector::MessageSubscriber>,
             rustok_iggy_connector::ConnectorError,
         > {
             Ok(Box::new(MockSubscriber))
         }
 
-        async fn shutdown(&self) -> Result<(), rustok_iggy_connector::ConnectorError> {
+        async fn shutdown(&self) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
             Ok(())
         }
     }
@@ -146,7 +145,9 @@ mod tests {
 
     #[async_trait::async_trait]
     impl rustok_iggy_connector::MessageSubscriber for MockSubscriber {
-        async fn recv(&mut self) -> Result<Option<Vec<u8>>, rustok_iggy_connector::ConnectorError> {
+        async fn recv(
+            &mut self,
+        ) -> std::result::Result<Option<Vec<u8>>, rustok_iggy_connector::ConnectorError> {
             Ok(None)
         }
     }
