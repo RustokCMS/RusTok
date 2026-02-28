@@ -30,8 +30,7 @@ impl EventSerializer for PostcardSerializer {
     }
 
     fn serialize(&self, envelope: &EventEnvelope) -> Result<Vec<u8>> {
-        postcard::to_stdvec(envelope)
-            .map_err(|err| rustok_core::Error::External(err.to_string()))
+        postcard::to_stdvec(envelope).map_err(|err| rustok_core::Error::External(err.to_string()))
     }
 }
 

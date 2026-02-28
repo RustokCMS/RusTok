@@ -77,6 +77,6 @@ pub use dlq::{DlqEntry, DlqManager};
 pub use health::{health_check, HealthCheckResult, HealthStatus};
 pub use partitioning::{calculate_partition, partition_key};
 pub use replay::{ActiveReplay, ReplayConfig, ReplayManager, ReplayStatus};
-pub use serialization::{PostcardSerializer, EventSerializer, JsonSerializer};
+pub use serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
 pub use topology::TopologyManager;
 pub use transport::IggyTransport;
