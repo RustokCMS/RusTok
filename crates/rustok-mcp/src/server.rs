@@ -615,7 +615,9 @@ impl<R: ScriptRegistry + Send + Sync + 'static> ServerHandler for RusToKMcpServe
         }
 
         if let Some(enabled) = &self.enabled_tools {
-            tools.retain(|tool| enabled.contains(tool.name.as_ref()) || tool.name == TOOL_MCP_HEALTH);
+            tools.retain(|tool| {
+                enabled.contains(tool.name.as_ref()) || tool.name == TOOL_MCP_HEALTH
+            });
         }
 
         Ok(ListToolsResult {
