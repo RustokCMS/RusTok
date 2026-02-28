@@ -158,7 +158,7 @@ impl AuthLifecycleService {
                     return Err(AuthLifecycleError::EmailAlreadyExists);
                 }
 
-                return Err(AuthLifecycleError::from(err.into()));
+                return Err(AuthLifecycleError::from(err));
             }
         };
 
