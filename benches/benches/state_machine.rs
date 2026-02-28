@@ -1,9 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use rust_decimal::Decimal;
-use rustok_commerce::state_machine::{
-    Cancelled, Confirmed, Delivered, Order, Paid, Pending, Shipped,
-};
-use rustok_content::state_machine::{Archived, ContentNode, Draft, Published};
+use rustok_commerce::state_machine::{Order, Pending};
+use rustok_content::state_machine::{ContentNode, Draft};
+use std::hint::black_box;
 use uuid::Uuid;
 
 fn bench_content_state_transitions(c: &mut Criterion) {

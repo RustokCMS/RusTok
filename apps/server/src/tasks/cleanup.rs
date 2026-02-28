@@ -14,7 +14,7 @@ use rustok_core::UserRole;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use crate::models::sessions;
 use crate::services::rbac_consistency::{
@@ -331,18 +331,18 @@ struct BackfillRollbackEntry {
 
 fn write_rollback_file(path: &str, entries: &[BackfillRollbackEntry]) -> Result<()> {
     let payload = serde_json::to_vec_pretty(entries).map_err(|error| {
-        loco_rs::Error::string(format!("rollback file serialization failed: {error}"))
+        loco_rs::Error::string(&format!("rollback file serialization failed: {error}"))
     })?;
     std::fs::write(path, payload)
-        .map_err(|error| loco_rs::Error::string(format!("rollback file write failed: {error}")))?;
+        .map_err(|error| loco_rs::Error::string(&format!("rollback file write failed: {error}")))?;
     Ok(())
 }
 
 fn read_rollback_file(path: &str) -> Result<Vec<BackfillRollbackEntry>> {
     let payload = std::fs::read(path)
-        .map_err(|error| loco_rs::Error::string(format!("rollback file read failed: {error}")))?;
+        .map_err(|error| loco_rs::Error::string(&format!("rollback file read failed: {error}")))?;
     serde_json::from_slice(&payload)
-        .map_err(|error| loco_rs::Error::string(format!("rollback file parse failed: {error}")))
+        .map_err(|error| loco_rs::Error::string(&format!("rollback file parse failed: {error}")))
 }
 
 fn write_rbac_report_file(
@@ -355,21 +355,21 @@ fn write_rbac_report_file(
         "orphan_role_permissions_total": stats.orphan_role_permissions_total,
     }))
     .map_err(|error| {
-        loco_rs::Error::string(format!("rbac report serialization failed: {error}"))
+        loco_rs::Error::string(&format!("rbac report serialization failed: {error}"))
     })?;
     std::fs::write(path, payload)
-        .map_err(|error| loco_rs::Error::string(format!("rbac report write failed: {error}")))?;
+        .map_err(|error| loco_rs::Error::string(&format!("rbac report write failed: {error}")))?;
     Ok(())
 }
 
 fn write_backfill_report_file(path: &str, report: BackfillExecutionReport) -> Result<()> {
     let payload = serde_json::to_vec_pretty(&report).map_err(|error| {
-        loco_rs::Error::string(format!(
+        loco_rs::Error::string(&format!(
             "rbac backfill report serialization failed: {error}"
         ))
     })?;
     std::fs::write(path, payload).map_err(|error| {
-        loco_rs::Error::string(format!("rbac backfill report write failed: {error}"))
+        loco_rs::Error::string(&format!("rbac backfill report write failed: {error}"))
     })?;
     Ok(())
 }
@@ -379,36 +379,36 @@ fn write_backfill_rollback_report_file(
     report: BackfillRollbackExecutionReport,
 ) -> Result<()> {
     let payload = serde_json::to_vec_pretty(&report).map_err(|error| {
-        loco_rs::Error::string(format!(
+        loco_rs::Error::string(&format!(
             "rbac backfill rollback report serialization failed: {error}"
         ))
     })?;
     std::fs::write(path, payload).map_err(|error| {
-        loco_rs::Error::string(format!(
+        loco_rs::Error::string(&format!(
             "rbac backfill rollback report write failed: {error}"
         ))
     })?;
     Ok(())
 }
 
-fn is_flag_enabled(cli: &HashMap<String, String>, key: &str) -> bool {
+fn is_flag_enabled(cli: &BTreeMap<String, String>, key: &str) -> bool {
     matches!(
         cli.get(key).map(String::as_str),
         Some("1") | Some("true") | Some("yes")
     )
 }
 
-fn parse_limit(cli: &HashMap<String, String>) -> Result<Option<usize>> {
+fn parse_limit(cli: &BTreeMap<String, String>) -> Result<Option<usize>> {
     match cli.get("limit") {
         None => Ok(None),
         Some(raw) => raw
             .parse::<usize>()
             .map(Some)
-            .map_err(|_| loco_rs::Error::string(format!("invalid limit value: {raw}"))),
+            .map_err(|_| loco_rs::Error::string(&format!("invalid limit value: {raw}"))),
     }
 }
 
-fn parse_uuid_set(cli: &HashMap<String, String>, key: &str) -> Result<HashSet<uuid::Uuid>> {
+fn parse_uuid_set(cli: &BTreeMap<String, String>, key: &str) -> Result<HashSet<uuid::Uuid>> {
     let Some(raw) = cli.get(key) else {
         return Ok(HashSet::new());
     };
@@ -420,7 +420,7 @@ fn parse_uuid_set(cli: &HashMap<String, String>, key: &str) -> Result<HashSet<uu
         .filter(|value| !value.is_empty())
     {
         let parsed = value.parse::<uuid::Uuid>().map_err(|error| {
-            loco_rs::Error::string(format!("invalid UUID in {key}: {value} ({error})"))
+            loco_rs::Error::string(&format!("invalid UUID in {key}: {value} ({error})"))
         })?;
         result.insert(parsed);
     }
@@ -428,7 +428,7 @@ fn parse_uuid_set(cli: &HashMap<String, String>, key: &str) -> Result<HashSet<uu
     Ok(result)
 }
 
-fn parse_role_set(cli: &HashMap<String, String>, key: &str) -> Result<HashSet<UserRole>> {
+fn parse_role_set(cli: &BTreeMap<String, String>, key: &str) -> Result<HashSet<UserRole>> {
     let Some(raw) = cli.get(key) else {
         return Ok(HashSet::new());
     };
@@ -440,7 +440,7 @@ fn parse_role_set(cli: &HashMap<String, String>, key: &str) -> Result<HashSet<Us
         .filter(|value| !value.is_empty())
     {
         let parsed = value.parse::<UserRole>().map_err(|error| {
-            loco_rs::Error::string(format!("invalid role in {key}: {value} ({error})"))
+            loco_rs::Error::string(&format!("invalid role in {key}: {value} ({error})"))
         })?;
         result.insert(parsed);
     }
@@ -457,32 +457,32 @@ mod tests {
         BackfillRollbackExecutionReport,
     };
     use rustok_core::UserRole;
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     #[test]
     fn parse_limit_returns_value() {
-        let cli = HashMap::from([(String::from("limit"), String::from("42"))]);
+        let cli = BTreeMap::from([(String::from("limit"), String::from("42"))]);
 
         assert_eq!(parse_limit(&cli).unwrap(), Some(42));
     }
 
     #[test]
     fn parse_limit_rejects_invalid_input() {
-        let cli = HashMap::from([(String::from("limit"), String::from("oops"))]);
+        let cli = BTreeMap::from([(String::from("limit"), String::from("oops"))]);
 
         assert!(parse_limit(&cli).is_err());
     }
 
     #[test]
     fn dry_run_flag_accepts_true_aliases() {
-        let cli = HashMap::from([(String::from("dry_run"), String::from("yes"))]);
+        let cli = BTreeMap::from([(String::from("dry_run"), String::from("yes"))]);
 
         assert!(is_flag_enabled(&cli, "dry_run"));
     }
 
     #[test]
     fn continue_on_error_flag_defaults_to_false() {
-        let cli = HashMap::new();
+        let cli = BTreeMap::new();
 
         assert!(!is_flag_enabled(&cli, "continue_on_error"));
     }
@@ -491,7 +491,7 @@ mod tests {
     fn parse_uuid_set_supports_csv() {
         let a = uuid::Uuid::new_v4();
         let b = uuid::Uuid::new_v4();
-        let cli = HashMap::from([(String::from("exclude_user_ids"), format!("{a}, {b}"))]);
+        let cli = BTreeMap::from([(String::from("exclude_user_ids"), format!("{a}, {b}"))]);
 
         let parsed = parse_uuid_set(&cli, "exclude_user_ids").unwrap();
         assert_eq!(parsed.len(), 2);
@@ -501,7 +501,7 @@ mod tests {
 
     #[test]
     fn parse_role_set_supports_csv() {
-        let cli = HashMap::from([(
+        let cli = BTreeMap::from([(
             String::from("exclude_roles"),
             String::from("admin,customer"),
         )]);

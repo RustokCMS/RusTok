@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use rustok_core::{Action, Permission};
+use rustok_core::Permission;
 
 use crate::extractors::auth::CurrentUser;
 

@@ -1,6 +1,6 @@
 use loco_rs::{app::AppContext, Error, Result};
 use rustok_core::UserRole;
-use sea_orm::{ConnectionTrait, DbBackend, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
@@ -70,7 +70,7 @@ pub async fn load_users_without_tenant_roles(
     for row in rows {
         let role_raw = row.try_get::<String>("", "role")?;
         let role = role_raw.parse::<UserRole>().map_err(|error| {
-            Error::string(format!(
+            Error::string(&format!(
                 "invalid user role '{role_raw}' for backfill: {error}"
             ))
         })?;
