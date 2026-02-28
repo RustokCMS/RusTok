@@ -390,7 +390,7 @@ pub async fn alloy_run_script<R: ScriptRegistry>(
             );
             (true, None, rv, Some(ch))
         }
-        ExecutionOutcome::Aborted { reason } => (false, Some(reason), None, None),
+        ExecutionOutcome::Aborted { ref reason } => (false, Some(reason.clone()), None, None),
         ExecutionOutcome::Failed { ref error } => (false, Some(error.to_string()), None, None),
     };
 
