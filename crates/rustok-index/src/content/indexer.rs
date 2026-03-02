@@ -194,8 +194,7 @@ impl ContentIndexer {
     /// Upsert the index_content row
     #[instrument(skip(self, model))]
     async fn upsert_index_content(&self, model: &IndexContentModel) -> IndexResult<()> {
-        let tags_json = serde_json::to_value(&model.tags)
-            .unwrap_or(JsonValue::Array(vec![]));
+        let tags_json = serde_json::to_value(&model.tags).unwrap_or(JsonValue::Array(vec![]));
 
         let stmt = Statement::from_sql_and_values(
             self.backend(),
@@ -311,11 +310,7 @@ impl ContentIndexer {
 
     /// Remove a specific locale for a node from index_content
     #[instrument(skip(self))]
-    async fn delete_node_locale_from_index(
-        &self,
-        node_id: Uuid,
-        locale: &str,
-    ) -> IndexResult<()> {
+    async fn delete_node_locale_from_index(&self, node_id: Uuid, locale: &str) -> IndexResult<()> {
         let stmt = Statement::from_sql_and_values(
             self.backend(),
             "DELETE FROM index_content WHERE node_id = $1 AND locale = $2",

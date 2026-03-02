@@ -23,7 +23,11 @@ pub struct CreateVariantInput {
     #[serde(default)]
     pub inventory_quantity: i32,
     #[serde(default = "default_inventory_policy")]
-    #[validate(length(min = 1, max = 32, message = "Inventory policy must be 1-32 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 32,
+        message = "Inventory policy must be 1-32 characters"
+    ))]
     pub inventory_policy: String,
     pub weight: Option<Decimal>,
     #[validate(length(max = 16, message = "Weight unit must be max 16 characters"))]
@@ -36,7 +40,11 @@ fn default_inventory_policy() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct PriceInput {
-    #[validate(length(min = 3, max = 3, message = "Currency code must be exactly 3 characters (ISO 4217)"))]
+    #[validate(length(
+        min = 3,
+        max = 3,
+        message = "Currency code must be exactly 3 characters (ISO 4217)"
+    ))]
     pub currency_code: String,
     pub amount: Decimal,
     pub compare_at_amount: Option<Decimal>,

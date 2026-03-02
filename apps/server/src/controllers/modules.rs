@@ -97,19 +97,12 @@ pub async fn toggle_module(
     axum::extract::Path(slug): axum::extract::Path<String>,
     Json(input): Json<ToggleModuleInput>,
 ) -> Result<Json<ModuleInfo>> {
-    let module = registry
-        .get(&slug)
-        .ok_or_else(|| Error::NotFound)?;
+    let module = registry.get(&slug).ok_or_else(|| Error::NotFound)?;
 
-    let record = ModuleLifecycleService::toggle_module(
-        &ctx.db,
-        &registry,
-        tenant.id,
-        &slug,
-        input.enabled,
-    )
-    .await
-    .map_err(|e| Error::BadRequest(e.to_string()))?;
+    let record =
+        ModuleLifecycleService::toggle_module(&ctx.db, &registry, tenant.id, &slug, input.enabled)
+            .await
+            .map_err(|e| Error::BadRequest(e.to_string()))?;
 
     let is_core = registry.is_core(&slug);
     Ok(Json(ModuleInfo {
@@ -118,7 +111,11 @@ pub async fn toggle_module(
         description: module.description().to_string(),
         version: module.version().to_string(),
         kind: if is_core { "core" } else { "optional" },
-        dependencies: module.dependencies().iter().map(|d| d.to_string()).collect(),
+        dependencies: module
+            .dependencies()
+            .iter()
+            .map(|d| d.to_string())
+            .collect(),
         enabled: record.enabled,
     }))
 }
