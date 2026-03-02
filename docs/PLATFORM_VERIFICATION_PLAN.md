@@ -150,7 +150,7 @@
 
 **Проверяем соответствие Категориям A/B/C из `docs/architecture/improvement-recommendations.md`:**
 
-- [ ] **Категория A (Compile-time, не модули):** `rustok-core`, `rustok-outbox`, `rustok-events`, `rustok-telemetry`, `rustok-test-utils`, `rustok-iggy`, `rustok-iggy-connector`, `rustok-mcp`, `utoipa-swagger-ui-vendored`, `tailwind-*` — НЕ имеют `impl RusToKModule`
+- [x] **Категория A (Compile-time, не модули):** `rustok-core`, `rustok-outbox`, `rustok-events`, `rustok-telemetry`, `rustok-test-utils`, `rustok-iggy`, `rustok-iggy-connector`, `rustok-mcp`, `utoipa-swagger-ui-vendored`, `tailwind-*` — НЕ имеют `impl RusToKModule` (проверено)
 - [x] **Категория B (Core modules):** `rustok-index`, `rustok-tenant`, `rustok-rbac` — имеют `impl RusToKModule` с `kind() -> ModuleKind::Core`
 - [x] **Категория C (Optional modules):** `rustok-content`, `rustok-commerce`, `rustok-blog`, `rustok-forum`, `rustok-pages`, `alloy-scripting` — имеют `impl RusToKModule` с `kind() -> ModuleKind::Optional`
   - `rustok-content` использует default `kind()` из trait (возвращает `ModuleKind::Optional`), что корректно
@@ -159,10 +159,10 @@
 
 - [x] `rustok-blog` зависит от `rustok-content` (в Cargo.toml)
 - [x] `rustok-forum` зависит от `rustok-content` (в Cargo.toml)
-- [ ] `rustok-index` зависит от `rustok-core` (в Cargo.toml)
-- [ ] Все domain crates зависят от `rustok-core`
+- [x] `rustok-index` зависит от `rustok-core` (в Cargo.toml) — подтверждено в `crates/rustok-index/Cargo.toml`
+- [x] Все domain crates зависят от `rustok-core` (проверено через grep)
 - [x] Нет циклических зависимостей
-- [ ] `rustok-events` → `rustok-core` dependency chain корректен
+- [x] `rustok-events` → `rustok-core` dependency chain корректен (re-export в `crates/rustok-events/src/lib.rs`)
 
 ---
 
@@ -382,8 +382,8 @@
 
 **Таблица:** `tenant_modules`
 
-- [ ] Таблица `tenant_modules` имеет schema: `id, tenant_id, module_slug, enabled, settings, created_at`
-- [ ] UNIQUE constraint на `(tenant_id, module_slug)`
+- [x] Таблица `tenant_modules` имеет schema: `id, tenant_id, module_slug, enabled, settings, created_at, updated_at` — миграция `m20250101_000003_create_tenant_modules.rs`
+- [x] UNIQUE constraint на `(tenant_id, module_slug)` — `idx_tenant_modules_unique` в миграции
 - [ ] `toggle_module()` проверяет зависимости перед отключением
 - [ ] Core-модули нельзя отключить
 
@@ -439,7 +439,7 @@
 #### Content Events
 - [x] `NodeCreated` — при создании node (`node_service.rs:239`)
 - [x] `NodeUpdated` — при обновлении node (`node_service.rs:411,514,541,567,588,614`)
-- [~] `NodeDeleted` — при удалении node (soft delete через статус, NodeUpdated публикуется)
+- [x] `NodeDeleted` — при удалении node публикуется `DomainEvent::NodeDeleted` через `publish_in_tx()` в `delete_node_in_tx()` — soft delete с `deleted_at`
 - [x] `NodePublished` / `NodeUnpublished` — при смене статуса (`node_service.rs:518,545`)
 
 #### Commerce Events
@@ -602,11 +602,9 @@
 **Путь:** `crates/rustok-index/`
 
 - [x] `IndexModule` зарегистрирован как `ModuleKind::Core` (в `crates/rustok-index/src/lib.rs`)
-- [x] `IndexListener` определён в `listener.rs` — слушает NodeCreated/NodeUpdated/NodePublished/NodeDeleted, вызывает `reindex_node()`/`engine.delete()`
-- [x] Engine trait определён в `engine.rs` — trait `SearchEngine` с методами `index()`, `delete()`, `search()`
-- [x] `PgSearchEngine` реализован в `pg_engine.rs` — PostgreSQL full-text search
-- [x] Denormalized models в `models.rs`
-- [x] Search services в `services/`
+- [x] `ContentIndexer` и `ProductIndexer` зарегистрированы как `EventHandler` через `EventDispatcher` в `app.rs::after_routes()`
+- [x] Структура: `content/indexer.rs`, `product/indexer.rs`, `search/full_text.rs`, `traits.rs`, `error.rs`
+  - (Старые `listener.rs`, `engine.rs`, `pg_engine.rs`, `models.rs`, `services/` удалены как orphan-файлы)
 - [~] Product indexer: обрабатывает commerce events через EventHandler (реализован stub, не полноценный продуктовый индекс)
 - [~] Content indexer: `reindex_node()` возвращает Ok(()) — stub, полная реализация не завершена
 
@@ -627,10 +625,10 @@
 **Путь:** `crates/rustok-tenant/`
 
 - [x] `TenantModule` зарегистрирован как `ModuleKind::Core` (в `crates/rustok-tenant/src/lib.rs`)
-- [ ] Entities: `tenants`, `tenant_modules`
-- [ ] Services: CRUD для tenants, module toggle
-- [ ] Health check работает
-- [ ] Миграции
+- [~] Entities: SeaORM entities в `rustok-tenant` — stubs (`entities/mod.rs` пустой), реальные модели в `apps/server/src/models/_entities/`
+- [~] Services: сервисный слой — stub (`services/mod.rs` пустой), tenant-операции выполняются через `apps/server/src/models/tenants.rs`
+- [x] Health check работает — `health()` возвращает `HealthStatus::Healthy`
+- [x] Миграции — `m20250101_000001_create_tenants.rs` + `m20250101_000003_create_tenant_modules.rs` в server Migrator
 
 ---
 
@@ -1514,6 +1512,8 @@
 | 14 | 🟡 Высокий | ✅ Исправлено | Миграция таблицы `sys_events` (outbox pattern) не была зарегистрирована в главном сервере. Создан файл `m20260211_000002_create_sys_events.rs` и добавлен в `apps/server/migration/src/lib.rs`. | `apps/server/migration/src/` | 2.2 |
 | 15 | 🟡 Высокий | ✅ Исправлено | Rate limiting middleware существовал в `middleware/rate_limit.rs` но **не был подключён** к роутеру. Все auth endpoints были уязвимы к брутфорс-атакам. Исправлено: добавлен `axum_middleware::from_fn` с per-IP sliding window limiter (20 req/60 сек) для `/api/auth/login`, `/api/auth/register`, `/api/auth/reset/*` в `app.rs::after_routes()`. | `apps/server/src/app.rs`, `apps/server/src/middleware/rate_limit.rs` | 9.10, 18.1 |
 | 16 | 🔴 Критический | ✅ Исправлено | `ContentIndexer` и `ProductIndexer` из `rustok-index` никогда не запускались — не были подписаны на EventBus. Добавлен `EventBus` в `EventRuntime`, `EventDispatcher` создаётся в `app.rs::after_routes()` и регистрирует оба indexer'а. `MemoryTransport::with_bus()` создан для разделения EventBus между transport и dispatcher. `event_bus_from_context()` обновлён для использования `EventRuntime.event_bus`. | `apps/server/src/app.rs`, `apps/server/src/services/event_transport_factory.rs`, `apps/server/src/services/event_bus.rs`, `crates/rustok-core/src/events/memory.rs` | 6.3 |
+
+| 17 | 🔴 Критический | ✅ Исправлено | Миграции `alloy-scripting` (`scripts`, `script_executions`) отсутствовали в сервере `Migrator` — таблицы для скриптов никогда не создавались в БД. Исправлено: добавлены `ScriptsMigration` и `ScriptExecutionsMigration` в `apps/server/migration/src/lib.rs`, `alloy-scripting` добавлен как зависимость migration crate. Также исправлен порядок регистрации миграций (sessions и roles перемещены до content-таблиц). | `apps/server/migration/src/lib.rs`, `apps/server/migration/Cargo.toml` | 7.6, 20.5 |
 
 ### 21.1 Детали: Проблема #2 — Небезопасная публикация событий в blog/forum
 
