@@ -58,4 +58,6 @@ normal = [
   "serde_urlencoded",
   "chrono-humanize",
   "chrono",
+  "leptos-forms",
+  "uuid",
 ]

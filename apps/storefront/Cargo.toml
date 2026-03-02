@@ -36,4 +36,5 @@ normal = [
   "leptos_i18n",
   "leptos-next-metadata",
   "leptos_query",
+  "leptos_router",
 ]

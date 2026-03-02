@@ -27,3 +27,7 @@ tokio-test = "0.4"
 default = ["content", "commerce"]
 content = ["dep:rustok-content"]
 commerce = ["dep:rustok-commerce"]
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["rustok-commerce", "rustok-content"]
+development = ["tokio-test"]
