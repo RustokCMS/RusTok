@@ -151,6 +151,9 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
+    type PermissionCacheKey = (uuid::Uuid, uuid::Uuid);
+    type PermissionCacheMap = HashMap<PermissionCacheKey, Vec<Permission>>;
+
     struct StubStore {
         role_ids: Vec<uuid::Uuid>,
         tenant_role_ids: Vec<uuid::Uuid>,
@@ -188,7 +191,7 @@ mod tests {
 
     #[derive(Default)]
     struct StubCache {
-        values: Arc<Mutex<HashMap<(uuid::Uuid, uuid::Uuid), Vec<Permission>>>>,
+        values: Arc<Mutex<PermissionCacheMap>>,
     }
 
     #[derive(Default)]

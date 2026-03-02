@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn shadow_check_string_representation_is_stable() {
         let required = permission(Resource::Users, Action::Read);
-        let required_set = [required.clone()];
+        let required_set = [required];
 
         assert_eq!(ShadowCheck::Single(&required).as_str(), "single");
         assert_eq!(ShadowCheck::Any(&required_set).as_str(), "any");
