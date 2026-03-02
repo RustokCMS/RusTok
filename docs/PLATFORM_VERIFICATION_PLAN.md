@@ -427,10 +427,10 @@
 
 ### 6.3 Event Flow (Read Path — Index)
 
-- [ ] `rustok-index` подписывается на DomainEvents
-- [ ] При `NodeCreated/NodeUpdated` — обновляет `index_content`
-- [ ] При `ProductCreated/ProductUpdated` — обновляет `index_products`
-- [ ] Indexer корректно обрабатывает ошибки (не теряет события)
+- [x] `rustok-index` подписывается на DomainEvents — `ContentIndexer` и `ProductIndexer` регистрируются через `EventDispatcher` в `app.rs::after_routes()`
+- [~] При `NodeCreated/NodeUpdated` — ContentIndexer обрабатывает события (реализация `build_index_content()` — stub, возвращает None)
+- [~] При `ProductCreated/ProductUpdated` — ProductIndexer обрабатывает события (stub, возвращает Ok(()))
+- [x] Indexer корректно обрабатывает ошибки — через `IndexError` → `rustok_core::Error` конверсию и `EventDispatcher` retry
 
 ### 6.4 DomainEvent Coverage
 
@@ -1513,6 +1513,7 @@
 | 13 | 🔴 Критический | ✅ Исправлено | REST контроллер `variants.rs`: `create_variant`, `update_variant`, `delete_variant` публиковали события `VariantCreated/Updated/Deleted` через `event_bus_from_context().publish()` **после** коммита транзакции. При сбое между commit и publish событие терялось. Исправлено: все три операции переведены на `publish_in_tx()` внутри транзакции до `commit()`. Update/Delete-операции получили обёртку в транзакцию. | `apps/server/src/controllers/commerce/variants.rs` | 6.2, 19.1 |
 | 14 | 🟡 Высокий | ✅ Исправлено | Миграция таблицы `sys_events` (outbox pattern) не была зарегистрирована в главном сервере. Создан файл `m20260211_000002_create_sys_events.rs` и добавлен в `apps/server/migration/src/lib.rs`. | `apps/server/migration/src/` | 2.2 |
 | 15 | 🟡 Высокий | ✅ Исправлено | Rate limiting middleware существовал в `middleware/rate_limit.rs` но **не был подключён** к роутеру. Все auth endpoints были уязвимы к брутфорс-атакам. Исправлено: добавлен `axum_middleware::from_fn` с per-IP sliding window limiter (20 req/60 сек) для `/api/auth/login`, `/api/auth/register`, `/api/auth/reset/*` в `app.rs::after_routes()`. | `apps/server/src/app.rs`, `apps/server/src/middleware/rate_limit.rs` | 9.10, 18.1 |
+| 16 | 🔴 Критический | ✅ Исправлено | `ContentIndexer` и `ProductIndexer` из `rustok-index` никогда не запускались — не были подписаны на EventBus. Добавлен `EventBus` в `EventRuntime`, `EventDispatcher` создаётся в `app.rs::after_routes()` и регистрирует оба indexer'а. `MemoryTransport::with_bus()` создан для разделения EventBus между transport и dispatcher. `event_bus_from_context()` обновлён для использования `EventRuntime.event_bus`. | `apps/server/src/app.rs`, `apps/server/src/services/event_transport_factory.rs`, `apps/server/src/services/event_bus.rs`, `crates/rustok-core/src/events/memory.rs` | 6.3 |
 
 ### 21.1 Детали: Проблема #2 — Небезопасная публикация событий в blog/forum
 
