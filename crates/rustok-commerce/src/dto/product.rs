@@ -28,7 +28,11 @@ pub struct CreateProductInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct ProductTranslationInput {
-    #[validate(length(min = 2, max = 5, message = "Locale must be 2-5 characters (e.g. 'en', 'en-US')"))]
+    #[validate(length(
+        min = 2,
+        max = 5,
+        message = "Locale must be 2-5 characters (e.g. 'en', 'en-US')"
+    ))]
     pub locale: String,
     #[validate(length(min = 1, max = 255, message = "Title must be 1-255 characters"))]
     pub title: String,

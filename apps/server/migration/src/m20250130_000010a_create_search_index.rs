@@ -17,7 +17,11 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(SearchIndex::DocType).string().not_null())
                     .col(ColumnDef::new(SearchIndex::Title).string().not_null())
                     .col(ColumnDef::new(SearchIndex::Content).text())
-                    .col(ColumnDef::new(SearchIndex::Payload).json_binary().not_null())
+                    .col(
+                        ColumnDef::new(SearchIndex::Payload)
+                            .json_binary()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(SearchIndex::UpdatedAt)
                             .timestamp_with_time_zone()

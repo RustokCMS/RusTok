@@ -76,7 +76,10 @@ pub struct NoopBuildEventPublisher;
 #[async_trait]
 impl BuildEventPublisher for NoopBuildEventPublisher {
     async fn publish(&self, event: BuildEvent) -> anyhow::Result<()> {
-        warn!(?event, "Build event publisher is not configured, skipping event");
+        warn!(
+            ?event,
+            "Build event publisher is not configured, skipping event"
+        );
         Ok(())
     }
 }
@@ -107,7 +110,10 @@ impl BuildEventPublisher for EventBusBuildEventPublisher {
                 requested_by,
             },
             unsupported => {
-                warn!(?unsupported, "Build event is not mapped to DomainEvent yet, skipping");
+                warn!(
+                    ?unsupported,
+                    "Build event is not mapped to DomainEvent yet, skipping"
+                );
                 return Ok(());
             }
         };
@@ -135,7 +141,10 @@ impl BuildService {
         db: DatabaseConnection,
         event_publisher: Arc<dyn BuildEventPublisher>,
     ) -> Self {
-        Self { db, event_publisher }
+        Self {
+            db,
+            event_publisher,
+        }
     }
 
     pub async fn request_build(&self, request: BuildRequest) -> anyhow::Result<Build> {

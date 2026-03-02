@@ -180,10 +180,8 @@ impl ProductIndexer {
                 .map(|t| JsonValue::String(t.clone()))
                 .collect(),
         );
-        let options_json =
-            serde_json::to_value(&model.options).unwrap_or(JsonValue::Array(vec![]));
-        let images_json =
-            serde_json::to_value(&model.images).unwrap_or(JsonValue::Array(vec![]));
+        let options_json = serde_json::to_value(&model.options).unwrap_or(JsonValue::Array(vec![]));
+        let images_json = serde_json::to_value(&model.images).unwrap_or(JsonValue::Array(vec![]));
 
         let stmt = Statement::from_sql_and_values(
             self.backend(),

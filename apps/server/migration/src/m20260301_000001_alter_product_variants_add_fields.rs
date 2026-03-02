@@ -29,10 +29,18 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
-                    .add_column_if_not_exists(ColumnDef::new(ProductVariants::WeightUnit).string_len(16))
-                    .add_column_if_not_exists(ColumnDef::new(ProductVariants::Option1).string_len(255))
-                    .add_column_if_not_exists(ColumnDef::new(ProductVariants::Option2).string_len(255))
-                    .add_column_if_not_exists(ColumnDef::new(ProductVariants::Option3).string_len(255))
+                    .add_column_if_not_exists(
+                        ColumnDef::new(ProductVariants::WeightUnit).string_len(16),
+                    )
+                    .add_column_if_not_exists(
+                        ColumnDef::new(ProductVariants::Option1).string_len(255),
+                    )
+                    .add_column_if_not_exists(
+                        ColumnDef::new(ProductVariants::Option2).string_len(255),
+                    )
+                    .add_column_if_not_exists(
+                        ColumnDef::new(ProductVariants::Option3).string_len(255),
+                    )
                     .add_column_if_not_exists(
                         ColumnDef::new(ProductVariants::Position)
                             .integer()
