@@ -1,28 +1,38 @@
 import { getPost } from '../api/posts';
-import type { PostResponse } from '../api/posts';
+import type { PostDetail, GqlContentStatus } from '../api/posts';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface PostDetailPageProps {
   postId: string;
-  locale?: string;
   token?: string | null;
   tenantSlug?: string | null;
+  tenantId: string;
 }
 
-const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
-  Published: 'default',
-  Draft: 'secondary',
-  Archived: 'outline'
+const statusVariant: Record<GqlContentStatus, 'default' | 'secondary' | 'outline'> = {
+  PUBLISHED: 'default',
+  DRAFT: 'secondary',
+  ARCHIVED: 'outline'
 };
 
 export default async function PostDetailPage({
   postId,
-  locale = 'en',
   token,
-  tenantSlug
+  tenantSlug,
+  tenantId
 }: PostDetailPageProps) {
-  const post: PostResponse = await getPost(postId, locale, { token, tenantSlug });
+  const post: PostDetail | null = await getPost(postId, { token, tenantSlug, tenantId });
+
+  if (!post) {
+    return (
+      <Card>
+        <CardContent className='py-8 text-center text-muted-foreground'>
+          Post not found
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -34,9 +44,9 @@ export default async function PostDetailPage({
           </Badge>
         </div>
         <p className='text-muted-foreground text-sm'>
-          {post.slug} &middot; {post.locale}
-          {post.published_at && (
-            <> &middot; Published {new Date(post.published_at).toLocaleDateString()}</>
+          {post.slug}
+          {post.publishedAt && (
+            <> &middot; Published {new Date(post.publishedAt).toLocaleDateString()}</>
           )}
         </p>
       </CardHeader>

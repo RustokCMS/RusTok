@@ -145,6 +145,8 @@ pub struct ModuleRegistryItem {
     pub name: String,
     pub description: String,
     pub version: String,
+    /// `"core"` or `"optional"`
+    pub kind: String,
     pub enabled: bool,
     pub dependencies: Vec<String>,
 }

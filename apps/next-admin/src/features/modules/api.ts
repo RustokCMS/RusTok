@@ -1,55 +1,72 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
+import { graphqlRequest } from '@/shared/api/graphql';
 
 export interface ModuleInfo {
-  slug: string;
+  moduleSlug: string;
   name: string;
   description: string;
   version: string;
   kind: 'core' | 'optional';
-  dependencies: string[];
   enabled: boolean;
+  dependencies: string[];
 }
 
-export interface ModulesListResponse {
-  modules: ModuleInfo[];
+export interface TenantModuleResult {
+  moduleSlug: string;
+  enabled: boolean;
+  settings: string;
 }
 
-interface FetchOptions {
-  token?: string | null;
-  tenantSlug?: string | null;
-}
+// ---------- GraphQL queries ----------
 
-function buildHeaders(opts: FetchOptions): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
-  if (opts.tenantSlug) headers['X-Tenant-Slug'] = opts.tenantSlug;
-  return headers;
-}
+const MODULE_REGISTRY_QUERY = `
+query ModuleRegistry {
+  moduleRegistry {
+    moduleSlug
+    name
+    description
+    version
+    kind
+    enabled
+    dependencies
+  }
+}`;
+
+const TOGGLE_MODULE_MUTATION = `
+mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!) {
+  toggleModule(moduleSlug: $moduleSlug, enabled: $enabled) {
+    moduleSlug
+    enabled
+    settings
+  }
+}`;
+
+// ---------- API functions ----------
 
 export async function listModules(
-  opts: FetchOptions = {}
-): Promise<ModulesListResponse> {
-  const res = await fetch(`${API_URL}/api/modules`, {
-    headers: buildHeaders(opts),
-    cache: 'no-store'
-  });
-  if (!res.ok) throw new Error(`listModules failed: ${res.status}`);
-  return res.json();
+  token?: string | null,
+  tenantSlug?: string | null
+): Promise<ModuleInfo[]> {
+  const data = await graphqlRequest<
+    undefined,
+    { moduleRegistry: ModuleInfo[] }
+  >(MODULE_REGISTRY_QUERY, undefined, token, tenantSlug);
+  return data.moduleRegistry;
 }
 
 export async function toggleModule(
-  slug: string,
+  moduleSlug: string,
   enabled: boolean,
-  opts: FetchOptions = {}
-): Promise<ModuleInfo> {
-  const res = await fetch(`${API_URL}/api/modules/${slug}/toggle`, {
-    method: 'PUT',
-    headers: buildHeaders(opts),
-    body: JSON.stringify({ enabled })
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `toggleModule failed: ${res.status}`);
-  }
-  return res.json();
+  token?: string | null,
+  tenantSlug?: string | null
+): Promise<TenantModuleResult> {
+  const data = await graphqlRequest<
+    object,
+    { toggleModule: TenantModuleResult }
+  >(
+    TOGGLE_MODULE_MUTATION,
+    { moduleSlug, enabled },
+    token,
+    tenantSlug
+  );
+  return data.toggleModule;
 }

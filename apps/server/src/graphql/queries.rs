@@ -86,17 +86,21 @@ impl RootQuery {
         Ok(registry
             .list()
             .into_iter()
-            .map(|module| ModuleRegistryItem {
-                module_slug: module.slug().to_string(),
-                name: module.name().to_string(),
-                description: module.description().to_string(),
-                version: module.version().to_string(),
-                enabled: enabled_set.contains(module.slug()),
-                dependencies: module
-                    .dependencies()
-                    .iter()
-                    .map(|dependency| dependency.to_string())
-                    .collect(),
+            .map(|module| {
+                let is_core = registry.is_core(module.slug());
+                ModuleRegistryItem {
+                    module_slug: module.slug().to_string(),
+                    name: module.name().to_string(),
+                    description: module.description().to_string(),
+                    version: module.version().to_string(),
+                    kind: if is_core { "core".to_string() } else { "optional".to_string() },
+                    enabled: is_core || enabled_set.contains(module.slug()),
+                    dependencies: module
+                        .dependencies()
+                        .iter()
+                        .map(|dependency| dependency.to_string())
+                        .collect(),
+                }
             })
             .collect())
     }

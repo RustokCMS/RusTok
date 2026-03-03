@@ -6,10 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form } from '@/components/ui/form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import * as z from 'zod';
-import type { PostResponse } from '../api/posts';
+import type { PostDetail } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
 
 const formSchema = z.object({
@@ -19,9 +20,9 @@ const formSchema = z.object({
   body: z.string().min(10, 'Body must be at least 10 characters.'),
   excerpt: z.string().optional(),
   tags: z.string().optional(),
-  featured_image_url: z.string().url().optional().or(z.literal('')),
-  seo_title: z.string().optional(),
-  seo_description: z.string().optional(),
+  featuredImageUrl: z.string().url().optional().or(z.literal('')),
+  seoTitle: z.string().optional(),
+  seoDescription: z.string().optional(),
   publish: z.boolean().default(false)
 });
 
@@ -31,21 +32,28 @@ export default function PostForm({
   initialData,
   pageTitle
 }: {
-  initialData: PostResponse | null;
+  initialData: PostDetail | null;
   pageTitle: string;
 }) {
   const router = useRouter();
+  const { data: session } = useSession();
+
+  const gqlOpts = {
+    token: session?.user?.rustokToken,
+    tenantSlug: session?.user?.tenantSlug,
+    tenantId: session?.user?.tenantId ?? ''
+  };
 
   const defaultValues: FormValues = {
     title: initialData?.title ?? '',
     slug: initialData?.slug ?? '',
-    locale: initialData?.locale ?? 'en',
+    locale: 'en',
     body: initialData?.body ?? '',
     excerpt: initialData?.excerpt ?? '',
     tags: initialData?.tags?.join(', ') ?? '',
-    featured_image_url: initialData?.featured_image_url ?? '',
-    seo_title: initialData?.seo_title ?? '',
-    seo_description: initialData?.seo_description ?? '',
+    featuredImageUrl: initialData?.featuredImageUrl ?? '',
+    seoTitle: initialData?.seoTitle ?? '',
+    seoDescription: initialData?.seoDescription ?? '',
     publish: false
   };
 
@@ -68,11 +76,10 @@ export default function PostForm({
           body: values.body,
           excerpt: values.excerpt || undefined,
           tags,
-          featured_image_url: values.featured_image_url || undefined,
-          seo_title: values.seo_title || undefined,
-          seo_description: values.seo_description || undefined,
-          version: initialData.version
-        });
+          featuredImageUrl: values.featuredImageUrl || undefined,
+          seoTitle: values.seoTitle || undefined,
+          seoDescription: values.seoDescription || undefined
+        }, gqlOpts);
         toast.success('Post updated');
       } else {
         await createPost({
@@ -83,10 +90,10 @@ export default function PostForm({
           excerpt: values.excerpt || undefined,
           publish: values.publish,
           tags,
-          featured_image_url: values.featured_image_url || undefined,
-          seo_title: values.seo_title || undefined,
-          seo_description: values.seo_description || undefined
-        });
+          featuredImageUrl: values.featuredImageUrl || undefined,
+          seoTitle: values.seoTitle || undefined,
+          seoDescription: values.seoDescription || undefined
+        }, gqlOpts);
         toast.success('Post created');
       }
       router.push('/dashboard/blog');
@@ -160,7 +167,7 @@ export default function PostForm({
 
           <FormInput
             control={form.control}
-            name='featured_image_url'
+            name='featuredImageUrl'
             label='Featured Image URL'
             placeholder='https://...'
           />
@@ -168,13 +175,13 @@ export default function PostForm({
           <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
             <FormInput
               control={form.control}
-              name='seo_title'
+              name='seoTitle'
               label='SEO Title'
               placeholder='SEO title override'
             />
             <FormInput
               control={form.control}
-              name='seo_description'
+              name='seoDescription'
               label='SEO Description'
               placeholder='SEO meta description'
             />

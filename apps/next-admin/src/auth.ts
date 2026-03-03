@@ -1,6 +1,6 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { signIn as rustokSignIn } from '@/lib/auth-api';
+import { signIn as rustokSignIn, fetchCurrentTenant } from '@/lib/auth-api';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -15,18 +15,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
         try {
+          const slug = credentials.tenantSlug as string;
           const result = await rustokSignIn(
             credentials.email as string,
             credentials.password as string,
-            credentials.tenantSlug as string
+            slug
           );
+
+          // Получаем tenantId (UUID) через GraphQL
+          const tenant = await fetchCurrentTenant(result.accessToken, slug);
+
           return {
             id: result.user.id,
             email: result.user.email,
             name: result.user.name,
             role: result.user.role,
             status: result.user.status,
-            tenantSlug: credentials.tenantSlug as string,
+            tenantSlug: slug,
+            tenantId: tenant?.id ?? null,
             rustokToken: result.accessToken
           };
         } catch {
@@ -43,6 +49,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.role = (user as any).role;
         token.status = (user as any).status;
         token.tenantSlug = (user as any).tenantSlug;
+        token.tenantId = (user as any).tenantId;
         token.rustokToken = (user as any).rustokToken;
       }
       return token;
@@ -53,6 +60,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       session.user.role = token.role as string;
       session.user.status = token.status as string;
       session.user.tenantSlug = token.tenantSlug as string | null;
+      session.user.tenantId = token.tenantId as string | null;
       session.user.rustokToken = token.rustokToken as string;
       return session;
     }

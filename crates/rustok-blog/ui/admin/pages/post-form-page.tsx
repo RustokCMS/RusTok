@@ -5,15 +5,17 @@ interface PostFormPageProps {
   postId?: string;
   token?: string | null;
   tenantSlug?: string | null;
+  tenantId: string;
 }
 
 export default async function PostFormPage({
   postId,
   token,
-  tenantSlug
+  tenantSlug,
+  tenantId
 }: PostFormPageProps) {
   const initialData = postId
-    ? await getPost(postId, 'en', { token, tenantSlug })
+    ? await getPost(postId, { token, tenantSlug, tenantId })
     : null;
 
   return (

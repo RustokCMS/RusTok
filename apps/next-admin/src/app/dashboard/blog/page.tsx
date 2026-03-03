@@ -1,3 +1,4 @@
+import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
 import { buttonVariants } from '@/components/ui/button';
 import { DataTableSkeleton } from '@/widgets/data-table';
@@ -6,6 +7,7 @@ import { cn } from '@/shared/lib/utils';
 import { IconPlus } from '@tabler/icons-react';
 import Link from 'next/link';
 import { SearchParams } from 'nuqs/server';
+import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
 export const metadata = {
@@ -17,6 +19,9 @@ type PageProps = {
 };
 
 export default async function Page(props: PageProps) {
+  const session = await auth();
+  if (!session) redirect('/auth/sign-in');
+
   const searchParams = await props.searchParams;
 
   return (
@@ -45,6 +50,9 @@ export default async function Page(props: PageProps) {
             title: searchParams.title as string | undefined,
             status: searchParams.status as string | undefined
           }}
+          token={session.user.rustokToken}
+          tenantSlug={session.user.tenantSlug}
+          tenantId={session.user.tenantId ?? ''}
         />
       </Suspense>
     </PageContainer>

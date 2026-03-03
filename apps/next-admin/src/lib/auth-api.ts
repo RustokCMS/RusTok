@@ -122,7 +122,38 @@ interface RefreshTokenResponse {
   refreshToken: AuthPayloadResponse;
 }
 
+const CURRENT_TENANT_QUERY = `
+query CurrentTenant {
+  currentTenant {
+    id
+    name
+    slug
+  }
+}
+`;
+
+interface CurrentTenantResponse {
+  currentTenant: { id: string; name: string; slug: string };
+}
+
 // API functions
+
+export async function fetchCurrentTenant(
+  token: string,
+  tenantSlug: string
+): Promise<{ id: string; name: string; slug: string } | null> {
+  try {
+    const data = await graphqlRequest<undefined, CurrentTenantResponse>(
+      CURRENT_TENANT_QUERY,
+      undefined,
+      token,
+      tenantSlug
+    );
+    return data.currentTenant;
+  } catch {
+    return null;
+  }
+}
 
 export async function signIn(
   email: string,

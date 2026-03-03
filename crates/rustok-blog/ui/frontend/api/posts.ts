@@ -1,44 +1,64 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5150';
+import { graphqlRequest } from '@/lib/graphql';
 
 export interface PublicPostSummary {
   id: string;
   title: string;
-  slug: string;
+  slug: string | null;
   excerpt: string | null;
-  featured_image_url: string | null;
-  author_name: string | null;
-  tags: string[];
-  published_at: string | null;
+  status: string;
+  authorId: string | null;
+  createdAt: string;
+  publishedAt: string | null;
 }
 
 export interface PublicPostListResponse {
   items: PublicPostSummary[];
   total: number;
-  page: number;
-  per_page: number;
-  total_pages: number;
+}
+
+const PUBLISHED_POSTS_QUERY = `
+query PublishedPosts($tenantId: UUID!, $filter: PostsFilter) {
+  posts(tenantId: $tenantId, filter: $filter) {
+    items { id title slug excerpt status authorId createdAt publishedAt }
+    total
+  }
+}`;
+
+const CURRENT_TENANT_QUERY = `
+query CurrentTenant {
+  currentTenant { id }
+}`;
+
+async function resolveTenantId(tenantSlug: string): Promise<string> {
+  const data = await graphqlRequest<undefined, { currentTenant: { id: string } }>(
+    CURRENT_TENANT_QUERY,
+    undefined,
+    null,
+    tenantSlug
+  );
+  return data.currentTenant.id;
 }
 
 export async function fetchPublishedPosts(
   page = 1,
-  perPage = 6,
-  tenantSlug?: string
+  perPage = 6
 ): Promise<PublicPostListResponse> {
-  const params = new URLSearchParams({
-    status: 'Published',
-    page: String(page),
-    per_page: String(perPage),
-    sort_by: 'published_at',
-    sort_order: 'desc'
-  });
+  const tenantSlug = process.env.NEXT_PUBLIC_TENANT_SLUG ?? '';
+  const tenantId = process.env.NEXT_PUBLIC_TENANT_ID
+    ?? await resolveTenantId(tenantSlug);
 
-  const headers: Record<string, string> = {};
-  if (tenantSlug) headers['X-Tenant-Slug'] = tenantSlug;
-
-  const res = await fetch(`${API_URL}/api/blog/posts?${params}`, {
-    headers,
-    next: { revalidate: 60 }
-  });
-  if (!res.ok) throw new Error(`fetchPublishedPosts failed: ${res.status}`);
-  return res.json();
+  const data = await graphqlRequest<object, { posts: PublicPostListResponse }>(
+    PUBLISHED_POSTS_QUERY,
+    {
+      tenantId,
+      filter: {
+        status: 'PUBLISHED',
+        page,
+        perPage
+      }
+    },
+    null,
+    tenantSlug
+  );
+  return data.posts;
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -19,6 +18,7 @@ import {
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import type { ModuleInfo } from '../api';
 import { toggleModule } from '../api';
 
@@ -30,6 +30,9 @@ export function ModulesList({ modules: initialModules }: ModulesListProps) {
   const [modules, setModules] = useState(initialModules);
   const [loading, setLoading] = useState<string | null>(null);
   const router = useRouter();
+  const { data: session } = useSession();
+  const token = session?.user?.rustokToken;
+  const tenantSlug = session?.user?.tenantSlug;
 
   const coreModules = modules.filter((m) => m.kind === 'core');
   const optionalModules = modules.filter((m) => m.kind === 'optional');
@@ -37,12 +40,15 @@ export function ModulesList({ modules: initialModules }: ModulesListProps) {
   const handleToggle = async (slug: string, enabled: boolean) => {
     setLoading(slug);
     try {
-      const updated = await toggleModule(slug, enabled);
+      const updated = await toggleModule(slug, enabled, token, tenantSlug);
       setModules((prev) =>
-        prev.map((m) => (m.slug === slug ? { ...m, enabled: updated.enabled } : m))
+        prev.map((m) =>
+          m.moduleSlug === slug ? { ...m, enabled: updated.enabled } : m
+        )
       );
+      const mod = modules.find((m) => m.moduleSlug === slug);
       toast.success(
-        `${updated.name} ${updated.enabled ? 'enabled' : 'disabled'}`
+        `${mod?.name ?? slug} ${updated.enabled ? 'enabled' : 'disabled'}`
       );
       router.refresh();
     } catch (err) {
@@ -68,9 +74,9 @@ export function ModulesList({ modules: initialModules }: ModulesListProps) {
         <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
           {coreModules.map((mod) => (
             <ModuleCard
-              key={mod.slug}
+              key={mod.moduleSlug}
               module={mod}
-              loading={loading === mod.slug}
+              loading={loading === mod.moduleSlug}
             />
           ))}
         </div>
@@ -85,9 +91,9 @@ export function ModulesList({ modules: initialModules }: ModulesListProps) {
         <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-3'>
           {optionalModules.map((mod) => (
             <ModuleCard
-              key={mod.slug}
+              key={mod.moduleSlug}
               module={mod}
-              loading={loading === mod.slug}
+              loading={loading === mod.moduleSlug}
               onToggle={handleToggle}
             />
           ))}
@@ -157,7 +163,7 @@ function ModuleCard({
                 checked={module.enabled}
                 disabled={loading}
                 onCheckedChange={(checked) =>
-                  onToggle?.(module.slug, checked)
+                  onToggle?.(module.moduleSlug, checked)
                 }
               />
             </div>
