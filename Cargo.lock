@@ -147,7 +147,7 @@ dependencies = [
  "chrono",
  "cron 0.15.0",
  "parking_lot",
- "reqwest 0.12.28",
+ "reqwest 0.13.2",
  "rhai",
  "sea-orm",
  "sea-orm-migration",
@@ -1887,15 +1887,6 @@ dependencies = [
 
 [[package]]
 name = "convert_case"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "baaaa0ecca5b51987b9423ccdc971514dd8b0bb7b4060b983d3664dad3f1f89f"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
-name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
@@ -2670,9 +2661,9 @@ dependencies = [
 
 [[package]]
 name = "either_of"
-version = "0.1.6"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "216d23e0ec69759a17f05e1c553f3a6870e5ec73420fbb07807a6f34d5d1d5a4"
+checksum = "14f7f86eef3a7e4b9c2107583dbbbe3d9535c4b800796faf1774b82ba22033da"
 dependencies = [
  "paste",
  "pin-project-lite",
@@ -3778,22 +3769,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper-tls"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70206fc6890eaca9fde8a0bf71caa2ddfc9fe045ac9e5c70df101a7dbde866e0"
-dependencies = [
- "bytes",
- "http-body-util",
- "hyper",
- "hyper-util",
- "native-tls",
- "tokio",
- "tokio-native-tls",
- "tower-service",
-]
-
-[[package]]
 name = "hyper-util"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4557,7 +4532,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 name = "iu-leptos"
 version = "0.1.0"
 dependencies = [
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "serde",
 ]
 
@@ -4768,9 +4743,9 @@ dependencies = [
 
 [[package]]
 name = "leptos"
-version = "0.8.16"
+version = "0.8.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43ad8042559850ee5253293b8460a75513f7d542021b9303083d5c236bcdd16f"
+checksum = "4b540ac2868724738f0f5d00f00ec4640e587223774219c1baddc46bad46fb8e"
 dependencies = [
  "any_spawner",
  "cfg-if",
@@ -4793,7 +4768,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_qs 0.15.0",
- "server_fn 0.8.10",
+ "server_fn 0.8.11",
  "slotmap",
  "tachys",
  "thiserror 2.0.18",
@@ -4812,7 +4787,7 @@ version = "0.1.0"
 dependencies = [
  "gloo-storage",
  "js-sys",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "leptos-graphql",
  "leptos-use 0.18.0",
  "leptos_router",
@@ -4829,7 +4804,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "777b6bb2100427b4e5f6c64ec659a27c253b69f4a78ccd58f4bcc5d39c6dcffb"
 dependencies = [
  "chrono",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "leptos-use 0.18.0",
  "log",
  "web-sys",
@@ -4839,7 +4814,7 @@ dependencies = [
 name = "leptos-forms"
 version = "0.1.0"
 dependencies = [
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "regex",
  "serde",
  "thiserror 2.0.18",
@@ -4849,7 +4824,7 @@ dependencies = [
 name = "leptos-graphql"
 version = "0.1.0"
 dependencies = [
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
@@ -4877,7 +4852,7 @@ dependencies = [
  "futures",
  "image",
  "js-sys",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "leptos-next-metadata-macros",
  "leptos_meta",
  "leptos_router",
@@ -4920,7 +4895,7 @@ dependencies = [
 name = "leptos-shadcn-pagination"
 version = "0.1.0"
 dependencies = [
- "leptos 0.8.16",
+ "leptos 0.8.17",
 ]
 
 [[package]]
@@ -4929,7 +4904,7 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8512aac7ab65b0e8f4c963abd4a0501fe49eac2ab18b99a046001e7ea73a07df"
 dependencies = [
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "leptos-struct-table-macro",
  "leptos-use 0.18.0",
  "send_wrapper",
@@ -4963,7 +4938,7 @@ name = "leptos-ui"
 version = "0.1.0"
 dependencies = [
  "iu-leptos",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "serde",
 ]
 
@@ -4979,7 +4954,7 @@ dependencies = [
  "default-struct-builder",
  "js-sys",
  "lazy_static",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "paste",
  "send_wrapper",
  "thiserror 2.0.18",
@@ -5003,7 +4978,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "lazy_static",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "paste",
  "send_wrapper",
  "thiserror 2.0.18",
@@ -5149,7 +5124,7 @@ dependencies = [
  "icu_list",
  "icu_locale",
  "icu_plurals",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "leptos-use 0.17.0",
  "leptos_i18n_macro",
  "leptos_meta",
@@ -5268,7 +5243,7 @@ checksum = "6c3efe657b4c55ed2e078922786ffe20acfb71767c3dd913767b09a35c75c890"
 dependencies = [
  "futures",
  "indexmap 2.13.0",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "or_poisoned",
  "send_wrapper",
  "wasm-bindgen",
@@ -5324,7 +5299,7 @@ dependencies = [
  "futures",
  "gloo-net",
  "js-sys",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "leptos_router_macro",
  "or_poisoned",
  "percent-encoding",
@@ -5382,7 +5357,7 @@ dependencies = [
  "send_wrapper",
  "serde",
  "serde_json",
- "server_fn 0.8.10",
+ "server_fn 0.8.11",
  "tachys",
 ]
 
@@ -5877,9 +5852,9 @@ dependencies = [
 
 [[package]]
 name = "moka"
-version = "0.12.13"
+version = "0.12.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ac832c50ced444ef6be0767a008b02c106a909ba79d1d830501e94b96f6b7e"
+checksum = "85f8024e1c8e71c778968af91d43700ce1d11b219d127d79fb2934153b82b42b"
 dependencies = [
  "async-lock",
  "crossbeam-channel",
@@ -5920,23 +5895,6 @@ dependencies = [
  "mime",
  "spin 0.9.8",
  "version_check",
-]
-
-[[package]]
-name = "native-tls"
-version = "0.2.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "465500e14ea162429d264d44189adc38b199b62b1c21eea9f69e4b73cb03bbf2"
-dependencies = [
- "libc",
- "log",
- "openssl",
- "openssl-probe",
- "openssl-sys",
- "schannel",
- "security-framework",
- "security-framework-sys",
- "tempfile",
 ]
 
 [[package]]
@@ -7219,6 +7177,7 @@ version = "0.11.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1906b49b0c3bc04b5fe5d86a77925ae6524a19b816ae38ce1e426255f1d8a31"
 dependencies = [
+ "aws-lc-rs",
  "bytes",
  "fastbloom",
  "getrandom 0.3.4",
@@ -7500,12 +7459,12 @@ dependencies = [
 
 [[package]]
 name = "reactive_stores"
-version = "0.3.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35372f05664a62a3dd389503371a15b8feb3396f99f6ec000de651fddb030942"
+checksum = "3e114642d342893571ff40b4e1da8ccdea907be44c649041eb7d8413b3fd95e8"
 dependencies = [
- "dashmap 6.1.0",
  "guardian",
+ "indexmap 2.13.0",
  "itertools 0.14.0",
  "or_poisoned",
  "paste",
@@ -7517,11 +7476,11 @@ dependencies = [
 
 [[package]]
 name = "reactive_stores_macro"
-version = "0.2.6"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fa40919eb2975100283b2a70e68eafce1e8bcf81f0622ff168e4c2b3f8d46bb"
+checksum = "5b024812c47a6867b6cb32767a46182203f94e59eb88c69b032fd9caffa304ce"
 dependencies = [
- "convert_case 0.8.0",
+ "convert_case 0.11.0",
  "proc-macro-error2",
  "proc-macro2",
  "quote",
@@ -7672,22 +7631,17 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64 0.22.1",
  "bytes",
- "encoding_rs",
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2",
  "http",
  "http-body",
  "http-body-util",
  "hyper",
  "hyper-rustls",
- "hyper-tls",
  "hyper-util",
  "js-sys",
  "log",
- "mime",
- "native-tls",
  "percent-encoding",
  "pin-project-lite",
  "quinn",
@@ -7698,7 +7652,6 @@ dependencies = [
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
- "tokio-native-tls",
  "tokio-rustls",
  "tokio-util",
  "tower 0.5.3",
@@ -7720,20 +7673,29 @@ checksum = "ab3f43e3283ab1488b624b44b0e988d0acea0b3214e694730a055cb6b2efa801"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "encoding_rs",
  "futures-core",
+ "h2",
  "http",
  "http-body",
  "http-body-util",
  "hyper",
+ "hyper-rustls",
  "hyper-util",
  "js-sys",
  "log",
+ "mime",
  "percent-encoding",
  "pin-project-lite",
+ "quinn",
+ "rustls",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
  "serde",
  "serde_json",
  "sync_wrapper",
  "tokio",
+ "tokio-rustls",
  "tower 0.5.3",
  "tower-http",
  "tower-service",
@@ -7915,9 +7877,9 @@ dependencies = [
 
 [[package]]
 name = "rmcp"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc4c9c94680f75470ee8083a0667988b5d7b5beb70b9f998a8e51de7c682ce60"
+checksum = "8a0ce46f9101dc911f07e1468084c057839d15b08040d110820c5513312ef56a"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -7937,9 +7899,9 @@ dependencies = [
 
 [[package]]
 name = "rmcp-macros"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90c23c8f26cae4da838fbc3eadfaecf2d549d97c04b558e7bd90526a9c28b42a"
+checksum = "abad6f5f46e220e3bda2fc90fd1ad64c1c2a2bd716d52c845eb5c9c64cda7542"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
@@ -8215,7 +8177,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "gloo-storage",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "leptos-auth",
  "leptos-chartistry",
  "leptos-forms",
@@ -8564,7 +8526,7 @@ name = "rustok-storefront"
 version = "0.1.0"
 dependencies = [
  "axum",
- "leptos 0.8.16",
+ "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
  "leptos-hook-form",
@@ -9279,9 +9241,9 @@ dependencies = [
 
 [[package]]
 name = "server_fn"
-version = "0.8.10"
+version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fafe3a832a747ded8dc4827c538a2a064284f150c1c44c51ec56b58bd947dd7"
+checksum = "7c799cec4e8e210dfb2f203aa97f0e82232c619e385ef4d011b17a58d6397c7b"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -10048,9 +10010,9 @@ dependencies = [
 
 [[package]]
 name = "tachys"
-version = "0.2.13"
+version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14691ce610071757bd17bd8d572065192c9c93f9f169125390aaea345a4c56b9"
+checksum = "f768750b0d5514f487772187d4b20c66f56faff4541b1faa5aad4975f5aee085"
 dependencies = [
  "any_spawner",
  "async-trait",
@@ -10376,16 +10338,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.116",
-]
-
-[[package]]
-name = "tokio-native-tls"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
-dependencies = [
- "native-tls",
- "tokio",
 ]
 
 [[package]]

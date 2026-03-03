@@ -79,7 +79,7 @@ chrono = { version = "0.4", features = ["serde"] }
 unicode-normalization = "0.1"
 
 # Leptos
-leptos = "0.8.16"
+leptos = "0.8.17"
 leptos_axum = "0.8.11"
 leptos_router = "0.8.12"
 leptos-auth = { path = "crates/leptos-auth" }
@@ -125,7 +125,7 @@ sha2 = "0.10"
 once_cell = "1.19"
 hex = "0.4"
 iggy = "0.9.0"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 reqwest-middleware = "0.3.3"
 reqwest-retry = "0.5.0"
 prometheus = "0.14"
