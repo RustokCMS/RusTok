@@ -12,28 +12,21 @@ use rustok_test_utils::MockEventTransport;
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Schema};
 use std::future::Future;
 use std::sync::Arc;
-use std::thread;
 use uuid::Uuid;
 
-fn run_async_test_with_large_stack<F, Fut>(f: F)
+fn run_async_test<F, Fut>(f: F)
 where
-    F: FnOnce() -> Fut + Send + 'static,
-    Fut: Future<Output = ()> + 'static,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = ()>,
 {
-    thread::Builder::new()
-        .name("content-node-event-test".to_string())
-        .stack_size(8 * 1024 * 1024)
-        .spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("failed to build tokio runtime");
+    // Execute on the test harness thread to avoid custom spawned-thread stack limits
+    // in coverage/instrumented CI environments.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime");
 
-            runtime.block_on(f());
-        })
-        .expect("failed to spawn test thread")
-        .join()
-        .expect("test thread panicked");
+    runtime.block_on(f());
 }
 
 async fn setup_content_test_db() -> DatabaseConnection {
@@ -82,7 +75,7 @@ async fn create_entity_table(
 
 #[test]
 fn test_node_creation_triggers_event_and_indexing() {
-    run_async_test_with_large_stack(|| async {
+    run_async_test(|| async {
         // Setup test database and services
         let db = setup_content_test_db().await;
         ensure_content_schema(&db).await;
@@ -149,7 +142,7 @@ fn test_node_creation_triggers_event_and_indexing() {
 
 #[test]
 fn test_node_update_triggers_event() {
-    run_async_test_with_large_stack(|| async {
+    run_async_test(|| async {
         // Setup test database and services
         let db = setup_content_test_db().await;
         ensure_content_schema(&db).await;
@@ -228,7 +221,7 @@ fn test_node_update_triggers_event() {
 
 #[test]
 fn test_node_deletion_triggers_event() {
-    run_async_test_with_large_stack(|| async {
+    run_async_test(|| async {
         // Setup test database and services
         let db = setup_content_test_db().await;
         ensure_content_schema(&db).await;
@@ -294,7 +287,7 @@ fn test_node_deletion_triggers_event() {
 
 #[test]
 fn test_transactional_event_persistence() {
-    run_async_test_with_large_stack(|| async {
+    run_async_test(|| async {
         // Setup test database and services
         let db = setup_content_test_db().await;
         ensure_content_schema(&db).await;
