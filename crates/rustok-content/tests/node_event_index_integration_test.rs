@@ -3,18 +3,19 @@
 
 use rustok_content::dto::{BodyInput, CreateNodeInput, NodeTranslationInput, UpdateNodeInput};
 use rustok_content::entities::node::ContentStatus;
+use rustok_content::entities::{body, node, node_translation};
 use rustok_content::services::NodeService;
 use rustok_core::events::DomainEvent;
 use rustok_core::{SecurityContext, UserRole};
 use rustok_outbox::TransactionalEventBus;
 use rustok_test_utils::MockEventTransport;
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Schema};
 use std::sync::Arc;
 use uuid::Uuid;
 
 async fn setup_content_test_db() -> DatabaseConnection {
     let db_url = format!(
-        "sqlite:file:content_events_{}?mode=memory&cache=shared",
+        "sqlite:file:content_node_event_{}?mode=memory&cache=shared",
         Uuid::new_v4()
     );
     let mut opts = ConnectOptions::new(db_url);
@@ -22,77 +23,45 @@ async fn setup_content_test_db() -> DatabaseConnection {
         .min_connections(1)
         .sqlx_logging(false);
 
-    let db = Database::connect(opts)
+    Database::connect(opts)
         .await
-        .expect("Failed to connect to content test database");
+        .expect("failed to connect content test sqlite database")
+}
 
-    db.execute_unprepared(
-        r#"
-        CREATE TABLE IF NOT EXISTS nodes (
-            id TEXT PRIMARY KEY NOT NULL,
-            tenant_id TEXT NOT NULL,
-            parent_id TEXT,
-            author_id TEXT,
-            kind TEXT NOT NULL,
-            category_id TEXT,
-            status TEXT NOT NULL,
-            position INTEGER NOT NULL,
-            depth INTEGER NOT NULL,
-            reply_count INTEGER NOT NULL,
-            metadata TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            published_at TEXT,
-            deleted_at TEXT,
-            version INTEGER NOT NULL DEFAULT 1
-        );
+async fn ensure_content_schema(db: &DatabaseConnection) {
+    if db.get_database_backend() != DbBackend::Sqlite {
+        return;
+    }
 
-        CREATE TABLE IF NOT EXISTS node_translations (
-            id TEXT PRIMARY KEY NOT NULL,
-            node_id TEXT NOT NULL,
-            locale TEXT NOT NULL,
-            title TEXT,
-            slug TEXT,
-            excerpt TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
+    let builder = db.get_database_backend();
+    let schema = Schema::new(builder);
 
-        CREATE TABLE IF NOT EXISTS bodies (
-            id TEXT PRIMARY KEY NOT NULL,
-            node_id TEXT NOT NULL,
-            locale TEXT NOT NULL,
-            body TEXT,
-            format TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS sys_events (
-            id TEXT PRIMARY KEY NOT NULL,
-            event_type TEXT NOT NULL,
-            schema_version INTEGER NOT NULL,
-            payload TEXT NOT NULL,
-            status TEXT NOT NULL,
-            retry_count INTEGER NOT NULL DEFAULT 0,
-            next_attempt_at TEXT,
-            last_error TEXT,
-            claimed_by TEXT,
-            claimed_at TEXT,
-            created_at TEXT NOT NULL,
-            dispatched_at TEXT
-        );
-        "#,
+    create_entity_table(db, &builder, schema.create_table_from_entity(node::Entity)).await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(node_translation::Entity),
     )
-    .await
-    .expect("Failed to create content test schema");
+    .await;
+    create_entity_table(db, &builder, schema.create_table_from_entity(body::Entity)).await;
+}
 
-    db
+async fn create_entity_table(
+    db: &DatabaseConnection,
+    builder: &DbBackend,
+    mut statement: sea_orm::sea_query::TableCreateStatement,
+) {
+    statement.if_not_exists();
+    db.execute(builder.build(&statement))
+        .await
+        .expect("failed to create content test table");
 }
 
 #[tokio::test]
 async fn test_node_creation_triggers_event_and_indexing() {
     // Setup test database and services
     let db = setup_content_test_db().await;
+    ensure_content_schema(&db).await;
     let transport = Arc::new(MockEventTransport::new());
     let event_bus = TransactionalEventBus::new(transport.clone());
     let service = NodeService::new(db.clone(), event_bus);
@@ -157,6 +126,7 @@ async fn test_node_creation_triggers_event_and_indexing() {
 async fn test_node_update_triggers_event() {
     // Setup test database and services
     let db = setup_content_test_db().await;
+    ensure_content_schema(&db).await;
     let transport = Arc::new(MockEventTransport::new());
     let event_bus = TransactionalEventBus::new(transport.clone());
     let service = NodeService::new(db.clone(), event_bus);
@@ -233,6 +203,7 @@ async fn test_node_update_triggers_event() {
 async fn test_node_deletion_triggers_event() {
     // Setup test database and services
     let db = setup_content_test_db().await;
+    ensure_content_schema(&db).await;
     let transport = Arc::new(MockEventTransport::new());
     let event_bus = TransactionalEventBus::new(transport.clone());
     let service = NodeService::new(db.clone(), event_bus);
@@ -296,6 +267,7 @@ async fn test_node_deletion_triggers_event() {
 async fn test_transactional_event_persistence() {
     // Setup test database and services
     let db = setup_content_test_db().await;
+    ensure_content_schema(&db).await;
     let transport = Arc::new(MockEventTransport::new());
     let event_bus = TransactionalEventBus::new(transport.clone());
     let service = NodeService::new(db.clone(), event_bus);
