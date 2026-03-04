@@ -202,3 +202,7 @@ edition = "2021"
 
 # Default VCS
 vcs = "git"
+
+[env]
+# Avoid CI failures when /tmp is mounted with limited space (e.g. coverage builds).
+TMPDIR = { value = "/var/tmp", force = true }
