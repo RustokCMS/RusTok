@@ -488,7 +488,7 @@ mod tests {
     use migration::Migrator;
     use rustok_core::UserStatus;
     use rustok_test_utils::db::setup_test_db_with_migrations;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
     use std::sync::atomic::Ordering;
 
     #[test]
@@ -696,6 +696,60 @@ mod tests {
         assert!(
             !resolved_permissions.contains(&rustok_core::Permission::USERS_MANAGE),
             "manager role should not get admin-only permissions"
+        );
+    }
+
+    #[tokio::test]
+    async fn user_permissions_are_consistent_for_same_role_across_creation_paths() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Permission Parity Tenant", "permission-parity")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        let lifecycle_user = AuthLifecycleService::create_user_db(
+            &db,
+            tenant.id,
+            "lifecycle@example.com",
+            "Password123!",
+            Some("Lifecycle User".to_string()),
+            rustok_core::UserRole::Manager,
+            None,
+        )
+        .await
+        .expect("create_user via lifecycle path should succeed");
+
+        let password_hash = hash_password("Password123!").expect("failed to hash password");
+        let mut legacy_user = users::ActiveModel::new(tenant.id, "legacy@example.com", &password_hash);
+        legacy_user.role = Set(rustok_core::UserRole::Manager);
+        let legacy_user = legacy_user
+            .insert(&db)
+            .await
+            .expect("legacy user insert should succeed");
+
+        AuthService::replace_user_role(
+            &db,
+            &legacy_user.id,
+            &tenant.id,
+            rustok_core::UserRole::Manager,
+        )
+        .await
+        .expect("legacy path should assign manager relations");
+
+        let lifecycle_permissions = AuthService::get_user_permissions(&db, &tenant.id, &lifecycle_user.id)
+            .await
+            .expect("failed to fetch permissions for lifecycle user");
+        let legacy_permissions = AuthService::get_user_permissions(&db, &tenant.id, &legacy_user.id)
+            .await
+            .expect("failed to fetch permissions for legacy user");
+
+        assert_eq!(
+            lifecycle_permissions, legacy_permissions,
+            "same role should resolve to identical permissions independent of creation path"
+        );
+        assert!(
+            lifecycle_permissions.contains(&rustok_core::Permission::PRODUCTS_CREATE),
+            "manager permission baseline should include PRODUCTS_CREATE"
         );
     }
 
