@@ -229,6 +229,22 @@ Gate перед выкладкой:
 2. Для каждого gate зафиксировать owner и дату завершения проверки.
 3. Если хотя бы один gate не закрыт, релиз блокируется до устранения причины.
 
+Шаблон parity report (staging, заполнить перед закрытием gate):
+
+| Сценарий | REST (endpoint + итог) | GraphQL (mutation + итог) | Parity | Evidence |
+| --- | --- | --- | --- | --- |
+| `create_user` | `POST /api/auth/invite/accept` + итог | `create_user` + итог | Pending | Ссылка на лог/артефакт |
+| `confirm_reset` / `reset_password` | `POST /api/auth/reset/confirm` + итог | `reset_password` + итог | Pending | Ссылка на лог/артефакт |
+| `change_password` | `POST /api/auth/change-password` + итог | `change_password` + итог | Pending | Ссылка на лог/артефакт |
+
+Шаблон security checklist/sign-off (заполнить перед закрытием gate):
+
+- [ ] Reset password отзывает все активные сессии (`password reset => revoke all active sessions`).
+- [ ] Change password не оставляет bypass и соблюдает policy отзыва сессий.
+- [ ] Inactive user не может пройти login/sign_in/refresh.
+- [ ] Ошибки `InvalidResetToken`/`UserInactive` имеют стабильный transport-контракт.
+- [ ] Security reviewer sign-off: `<имя/роль>`, дата: `YYYY-MM-DD`, ссылка на evidence.
+
 Текущий прогресс по gate:
 
 - Кодовые и документационные задачи Phases A-C завершены (см. раздел 5).
