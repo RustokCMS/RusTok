@@ -792,3 +792,70 @@
 Рекомендуемый формат записи в PR:
 
 `RBAC-CASBIN-UPDATE: phase=<C0..C5>; engine_mode=<...>; parity=<artifact>; gate=<go|no-go|n-a>`
+
+---
+
+## 17. Продолжение реализации: ближайшие deliverables (next PR queue)
+
+Чтобы «продолжить реализацию» без расползания scope, фиксируем очередь следующих PR с чётким DoD.
+
+### 17.1 PR-1 (C0): Casbin ADR + модель
+
+**Что делаем:**
+- оформить ADR для Casbin-track (engine role, adapter choice, rollback, SLO-gates),
+- зафиксировать `model.conf` (или кодовый эквивалент) для tenant-aware matcher,
+- добавить ссылку на ADR в раздел 11.1 (MVP execution board) и в раздел 15.2.
+
+**DoD PR-1:**
+- ADR принят,
+- matcher покрывает wildcard + tenant domain,
+- rollback-путь явно описан и совместим с текущим runbook.
+
+### 17.2 PR-2 (C1): Shadow wiring в `crates/rustok-rbac`
+
+**Что делаем:**
+- подключить Casbin-resolver за feature flag без изменения active decision path,
+- добавить structured-логи mismatch (с tenant/user/resource/action),
+- добавить метрики из раздела 15.4 (C1).
+
+**DoD PR-2:**
+- active engine в production остаётся relation,
+- shadow path не ломает fail-closed semantics,
+- метрики/логи доступны на dashboard и в алертах.
+
+### 17.3 PR-3 (C2): Staging parity report
+
+**Что делаем:**
+- прогоняем regression matrix + policy-fixtures,
+- собираем parity/perf отчёты в `artifacts/rbac-cutover/<date>/...`,
+- фиксируем go/no-go запись по этапу C2.
+
+**DoD PR-3:**
+- `engine_mismatch == 0` в окне наблюдения staging,
+- p95/p99 укладываются в согласованный порог,
+- отчёт приложен и ссылается на конкретные артефакты.
+
+### 17.4 PR-4 (C3/C4): Production dual-engine -> switch
+
+**Что делаем:**
+- открываем production dual-engine окно (Casbin shadow),
+- при соблюдении gate переводим Casbin в active mode,
+- relation оставляем только как rollback fallback на stabilization window.
+
+**DoD PR-4:**
+- формально закрыты gate из разделов 12.1 и 15.6,
+- on-call подтверждает отсутствие SLO-регрессии,
+- запись `RBAC-CASBIN-UPDATE` заполнена полностью.
+
+---
+
+## 18. Casbin-специфичные риски и контрмеры
+
+1. **Risk:** разнобой semantics между SQL relation-check и Casbin matcher.
+   - **Countermeasure:** единый contract-test suite на одинаковых fixtures для обоих engines.
+2. **Risk:** устаревание policy snapshot при burst-изменениях ролей.
+   - **Countermeasure:** event-driven invalidation + верхняя граница TTL + forced reload endpoint для on-call.
+3. **Risk:** непредсказуемый рост latency при сложных matcher-правилах.
+   - **Countermeasure:** ограничить matcher complexity в ADR, профилировать hot-path до production switch.
+4. **Risk:** тихие mismatch без операционного действия.
+   - **Countermeasure:** mismatch-alert переводится в page-level инцидент в окне C3/C4.
