@@ -35,7 +35,7 @@ pub use auth::{
 };
 #[cfg(feature = "redis-cache")]
 pub use cache::RedisCacheBackend;
-pub use cache::{CacheStats, InMemoryCacheBackend};
+pub use cache::{CacheStats, FallbackCacheBackend, InMemoryCacheBackend};
 pub use config::{
     Config, ConfigError, ConfigLoader, ConfigSource, ConfigValue, DatabaseConfig, Secret,
     ServerConfig,
@@ -108,6 +108,9 @@ pub mod prelude {
     pub use crate::types::{UserRole, UserStatus};
     #[cfg(feature = "redis-cache")]
     pub use crate::RedisCacheBackend;
-    pub use crate::{AppContext, CacheBackend, CacheStats, InMemoryCacheBackend, SearchBackend};
+    pub use crate::{
+        AppContext, CacheBackend, CacheStats, FallbackCacheBackend, InMemoryCacheBackend,
+        SearchBackend,
+    };
     pub use uuid::Uuid;
 }

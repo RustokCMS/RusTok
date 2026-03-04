@@ -193,6 +193,9 @@ impl Hooks for App {
             .layer(axum_middleware::from_fn_with_state(
                 ctx.clone(),
                 middleware::tenant::resolve,
+            ))
+            .layer(axum_middleware::from_fn(
+                middleware::security_headers::security_headers,
             )))
     }
 

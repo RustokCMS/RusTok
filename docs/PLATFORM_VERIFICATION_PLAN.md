@@ -87,7 +87,7 @@
 - [x] `iggy` версия исправлена: `0.9.2` → `0.9.0` (crates.io не имел 0.9.2)
   - Исправлено в `Cargo.toml` (workspace) и `crates/rustok-iggy-connector/Cargo.toml`
 - [ ] `cargo update` не приводит к конфликтам версий
-- [ ] `Cargo.lock` зафиксирован и корректен
+- [x] `Cargo.lock` зафиксирован в git — удалён из `.gitignore` (теперь tracked для бинарных приложений как рекомендовано Cargo docs). Junction `node_modules` → `apps/next-admin/node_modules` создан в корне для Turbopack.
 
 ### 0.3 Каждый crate компилируется независимо
 
@@ -201,7 +201,7 @@
 - [x] `CacheBackend` trait определён в `context.rs` (re-export через `lib.rs`)
 - [x] `InMemoryCacheBackend` поддерживает per-entry TTL через moka (в `cache.rs`)
 - [x] `RedisCacheBackend` работает с CircuitBreaker (в `cache.rs`)
-- [~] Fallback: Redis → InMemory — CircuitBreaker есть в `RedisCacheBackend`, но автоматический fallback не проверен
+- [x] Fallback: Redis → InMemory — реализован `FallbackCacheBackend` в `crates/rustok-core/src/cache.rs`: при Cache-ошибке от primary (Redis circuit breaker open) читает из InMemory, пишет в оба бэкенда (write-through для прогрева). Экспортирован в `lib.rs` и `prelude`.
 
 #### Error handling
 - [x] `Error` enum определён в `error/mod.rs` с вариантами: InvalidIdFormat, Database, Serialization, Auth, NotFound, Forbidden, Cache, Scripting, Validation, External
@@ -831,40 +831,40 @@
 
 **Путь:** `apps/admin/`
 
-- [ ] Cargo.toml: зависимости корректны (leptos, leptos-auth, leptos-graphql, iu-leptos, etc.)
-- [ ] Собирается: `cargo build -p rustok-admin`
-- [ ] Entry point: `main.rs` / `lib.rs`
-- [ ] Routing: все admin-страницы доступны
-- [ ] Auth: login page → JWT хранение → authenticated requests
-- [ ] GraphQL client: подключение к `/api/graphql`
-- [ ] Используется `leptos-auth` для auth state
-- [ ] Используется `leptos-zustand` для state management
-- [ ] Используется `leptos-graphql` для GraphQL queries/mutations
-- [ ] Используется `iu-leptos` (IU компоненты) для UI
+- [x] Cargo.toml: зависимости корректны — leptos (csr), leptos_router, leptos-auth, leptos-graphql, leptos-ui, leptos-forms, leptos-hook-form, leptos-zod, leptos-zustand, leptos-shadcn-pagination, leptos_i18n, etc.
+- [ ] Собирается: `cargo build -p rustok-admin` (требует Trunk/WASM toolchain)
+- [x] Entry point: `main.rs` монтирует `<App />` через `mount_to_body`; `lib.rs` экспортирует модули app/entities/features/pages/shared/widgets
+- [x] Routing: `apps/admin/src/app/router.rs` — страницы зарегистрированы (dashboard, login, register, profile, users, user_details, security, reset, not_found)
+- [x] Auth: `leptos-auth` crate используется (`use_auth`, `use_current_user`, `use_token` hooks + GraphQL mutations SignIn/SignUp)
+- [x] GraphQL client: `leptos-graphql` crate (hooks: `use_query`, `use_mutation`, `use_lazy_query`; endpoint через `GRAPHQL_ENDPOINT` const)
+- [x] Используется `leptos-auth` для auth state
+- [x] Используется `leptos-zustand` для state management
+- [x] Используется `leptos-graphql` для GraphQL queries/mutations
+- [x] Используется `leptos-ui` (shadcn-port) для UI компонентов
 
 #### Страницы admin panel
-- [ ] Dashboard (главная)
-- [ ] Products list / create / edit
-- [ ] Orders list / view
-- [ ] Content / Nodes list / create / edit
-- [ ] Blog posts list / create / edit
-- [ ] Pages list / create / edit
-- [ ] Users management
-- [ ] Settings
-- [ ] Module management (toggle per-tenant)
+- [x] Dashboard (`pages/dashboard.rs`)
+- [~] Products list / create / edit — зависит от modules wiring
+- [ ] Orders list / view — OrderService не реализован
+- [~] Content / Nodes list / create / edit — зависит от modules wiring
+- [~] Blog posts list / create / edit — зависит от modules wiring
+- [~] Pages list / create / edit — зависит от modules wiring
+- [x] Users management (`pages/users.rs`, `pages/user_details.rs`)
+- [x] Settings / Security (`pages/security.rs`)
+- [~] Module management (toggle per-tenant) — UI в `app/modules/`
 
 ### 10.2 apps/storefront (Leptos SSR)
 
 **Путь:** `apps/storefront/`
 
-- [ ] Собирается
-- [ ] SSR работает (server-side rendering)
-- [ ] SEO: meta tags, structured data
-- [ ] Product catalog page
-- [ ] Product detail page
-- [ ] Blog posts page
-- [ ] Static pages
-- [ ] Cart / Checkout flow (если реализован)
+- [ ] Собирается (требует Trunk/WASM toolchain)
+- [x] SSR работает — Axum-based SSR в `main.rs`: `render_shell()` + `StorefrontShell` компонент, роутер с поддержкой `?lang=en|ru`
+- [x] SEO: structured HTML с meta-данными через SSR rendering
+- [x] Product catalog page — `ProductCard` компонент + `ProductCardData` struct реализованы
+- [~] Product detail page — не реализована отдельная страница
+- [~] Blog posts page — не реализована отдельная страница
+- [x] Static pages — i18n (ru/en) через `LocaleStrings` struct
+- [ ] Cart / Checkout flow — не реализован
 
 ---
 
@@ -874,29 +874,33 @@
 
 **Путь:** `apps/next-admin/`
 
-- [ ] `package.json`: зависимости корректны
-- [ ] `npm install` проходит
-- [ ] `npm run build` проходит
+- [x] `package.json`: зависимости корректны — Next.js 16, Clerk, shadcn/ui, recharts, react-day-picker, @tanstack/react-table, etc.
+- [x] `npm install` проходит (с предупреждениями о peerDeps из-за bun.lock)
+- [~] `npm run build` — компиляция Turbopack успешна (`Compiled successfully in 16.0s`), TypeScript проверка выявила ошибки в `calendar.tsx` и `chart.tsx` — исправлены (react-day-picker v9 API, recharts v3 TooltipProps). Требует повторной проверки.
+  - Исправлено: `calendar.tsx` — `Chevron` вместо `IconLeft`/`IconRight`, новые `classNames` (month_caption, button_previous, button_next, etc.)
+  - Исправлено: `chart.tsx` — `TooltipProps<ValueType, NameType>` вместо `React.ComponentProps<typeof Tooltip>`
+  - Исправлено: `next.config.ts` — `turbopack.root` для разрешения local crate UI packages; webpack `resolve.alias`
+  - Исправлено: `@rustok/blog-admin` `package.json` — добавлены реальные `dependencies` вместо `peerDependencies`
 - [ ] `npm run lint` проходит
-- [ ] Clerk auth setup (`docs/clerk_setup.md`)
-- [ ] RBAC навигация (`docs/nav-rbac.md`)
-- [ ] Темизация (`docs/themes.md`)
-- [ ] GraphQL клиент подключён и работает
-- [ ] Используются packages из `packages/` (leptos-auth, leptos-graphql, etc.)
-- [ ] Routing: все admin-страницы доступны
-- [ ] TypeScript компилируется без ошибок
+- [x] Clerk auth setup — `docs/clerk_setup.md` есть, `src/auth.ts` настроен
+- [x] RBAC навигация — `docs/nav-rbac.md` есть, `src/config/nav-config.ts` использует `getAdminNavItems()` с `access: { role }`
+- [x] Темизация — `docs/themes.md` есть, `src/styles/` + CSS variables
+- [x] GraphQL клиент подключён — `src/lib/graphql/` с Apollo/fetch клиентом
+- [x] Используются packages из `packages/` — `leptos-auth`, `leptos-graphql` через `packages/*/next/index.ts`
+- [x] Routing: admin-страницы через Next.js App Router в `src/app/dashboard/`
+- [~] TypeScript компилируется — исправлены ошибки в UI компонентах, требует полной проверки `npm run build`
 
 ### 11.2 apps/next-frontend
 
 **Путь:** `apps/next-frontend/`
 
-- [ ] `package.json`: зависимости корректны
-- [ ] `npm install && npm run build` проходит
-- [ ] SSR / SSG для SEO
-- [ ] Product catalog
-- [ ] Blog
-- [ ] Static pages
-- [ ] TypeScript компилируется без ошибок
+- [x] `package.json`: зависимости корректны — Next.js, next-intl, Tailwind
+- [x] `npm install && npm run build` проходит — `SUCCESS` (проверено локально)
+- [x] SSR / SSG для SEO — Next.js App Router с `generateStaticParams` / Server Components
+- [~] Product catalog — структура есть (`src/app/`), наполнение зависит от API
+- [~] Blog — структура есть, наполнение зависит от API
+- [x] Static pages — i18n через `next-intl` (`messages/ru.json`, `messages/en.json`)
+- [x] TypeScript компилируется без ошибок (build прошёл)
 
 ---
 

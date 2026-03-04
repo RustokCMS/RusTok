@@ -268,6 +268,100 @@ impl CacheBackend for RedisCacheBackend {
     }
 }
 
+/// `FallbackCacheBackend` wraps a primary `CacheBackend` (e.g. Redis) with an in-memory
+/// fallback. When the primary backend returns a `Cache` error (e.g. circuit breaker open),
+/// reads are served from the in-memory cache and writes go to both backends so the in-memory
+/// layer stays warm. This provides transparent degraded-mode operation without surfacing
+/// cache errors to callers.
+///
+/// # Example
+/// ```rust,ignore
+/// let redis = Arc::new(RedisCacheBackend::new(url, "prefix", ttl).await?);
+/// let memory = Arc::new(InMemoryCacheBackend::new(ttl, 1000));
+/// let cache: Arc<dyn CacheBackend> = Arc::new(FallbackCacheBackend::new(redis, memory));
+/// ```
+pub struct FallbackCacheBackend {
+    primary: Arc<dyn CacheBackend>,
+    fallback: Arc<InMemoryCacheBackend>,
+}
+
+impl FallbackCacheBackend {
+    pub fn new(primary: Arc<dyn CacheBackend>, fallback: Arc<InMemoryCacheBackend>) -> Self {
+        Self { primary, fallback }
+    }
+}
+
+#[async_trait]
+impl CacheBackend for FallbackCacheBackend {
+    async fn health(&self) -> Result<()> {
+        // Report healthy as long as the fallback is available; primary degraded is OK.
+        match self.primary.health().await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                tracing::warn!(error = %e, "Primary cache unhealthy, using in-memory fallback");
+                self.fallback.health().await
+            }
+        }
+    }
+
+    async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        match self.primary.get(key).await {
+            Ok(value) => Ok(value),
+            Err(e) => {
+                tracing::debug!(error = %e, key, "Primary cache GET failed, falling back to in-memory");
+                self.fallback.get(key).await
+            }
+        }
+    }
+
+    async fn set(&self, key: String, value: Vec<u8>) -> Result<()> {
+        // Write to fallback unconditionally to keep it warm.
+        let _ = self
+            .fallback
+            .set(key.clone(), value.clone())
+            .await;
+
+        match self.primary.set(key, value).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                tracing::debug!(error = %e, "Primary cache SET failed, wrote to in-memory fallback only");
+                Ok(()) // Degrade gracefully — value is in memory
+            }
+        }
+    }
+
+    async fn set_with_ttl(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<()> {
+        let _ = self
+            .fallback
+            .set_with_ttl(key.clone(), value.clone(), ttl)
+            .await;
+
+        match self.primary.set_with_ttl(key, value, ttl).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                tracing::debug!(error = %e, "Primary cache SET_TTL failed, wrote to in-memory fallback only");
+                Ok(())
+            }
+        }
+    }
+
+    async fn invalidate(&self, key: &str) -> Result<()> {
+        let _ = self.fallback.invalidate(key).await;
+
+        match self.primary.invalidate(key).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                tracing::debug!(error = %e, key, "Primary cache INVALIDATE failed, in-memory entry removed");
+                Ok(())
+            }
+        }
+    }
+
+    fn stats(&self) -> CacheStats {
+        self.primary.stats()
+    }
+}
+
 #[cfg(test)]
 #[path = "cache_tests.rs"]
 mod tests;
