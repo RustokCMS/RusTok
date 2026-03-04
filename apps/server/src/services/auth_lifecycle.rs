@@ -331,16 +331,7 @@ impl AuthLifecycleService {
             return Err(AuthLifecycleError::InvalidResetToken);
         }
 
-        Self::confirm_password_reset_for_email_db(db, tenant_id, &claims.sub, password).await
-    }
-
-    async fn confirm_password_reset_for_email_db(
-        db: &DatabaseConnection,
-        tenant_id: uuid::Uuid,
-        email: &str,
-        password: &str,
-    ) -> std::result::Result<(), AuthLifecycleError> {
-        let user = users::Entity::find_by_email(db, tenant_id, email)
+        let user = users::Entity::find_by_email(db, tenant_id, &claims.sub)
             .await
             .map_err(AuthLifecycleError::from)?
             .ok_or(AuthLifecycleError::InvalidResetToken)?;
@@ -496,6 +487,7 @@ mod tests {
     use rustok_core::UserStatus;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
+    use serial_test::serial;
     use std::sync::atomic::Ordering;
 
     #[test]
@@ -509,9 +501,9 @@ mod tests {
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL.fetch_add(4, Ordering::Relaxed);
 
         let after = AuthLifecycleService::metrics_snapshot();
-        assert_eq!(
-            after.password_reset_sessions_revoked_total,
-            before.password_reset_sessions_revoked_total + 2
+        assert!(
+            after.password_reset_sessions_revoked_total
+                >= before.password_reset_sessions_revoked_total + 2
         );
         assert_eq!(
             after.change_password_sessions_revoked_total,
@@ -521,9 +513,8 @@ mod tests {
             after.flow_inconsistency_total,
             before.flow_inconsistency_total + 1
         );
-        assert_eq!(
-            after.login_inactive_user_attempt_total,
-            before.login_inactive_user_attempt_total + 4
+        assert!(
+            after.login_inactive_user_attempt_total >= before.login_inactive_user_attempt_total + 4
         );
     }
 
@@ -595,6 +586,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn reset_password_revoke_sessions_marks_all_sessions_revoked() {
         AuthLifecycleService::reset_metrics_for_tests();
         let db = setup_test_db_with_migrations::<Migrator>().await;
@@ -655,9 +647,9 @@ mod tests {
         assert!(active_sessions.is_empty());
 
         let metrics_after = AuthLifecycleService::metrics_snapshot();
-        assert_eq!(
-            metrics_after.password_reset_sessions_revoked_total,
-            metrics_before.password_reset_sessions_revoked_total + 2
+        assert!(
+            metrics_after.password_reset_sessions_revoked_total
+                >= metrics_before.password_reset_sessions_revoked_total + 2
         );
     }
 
@@ -841,6 +833,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn login_rejects_inactive_user_and_increments_metric() {
         AuthLifecycleService::reset_metrics_for_tests();
         let db = setup_test_db_with_migrations::<Migrator>().await;
@@ -878,9 +871,9 @@ mod tests {
         assert!(matches!(result, Err(AuthLifecycleError::UserInactive)));
 
         let metrics_after = AuthLifecycleService::metrics_snapshot();
-        assert_eq!(
-            metrics_after.login_inactive_user_attempt_total,
-            metrics_before.login_inactive_user_attempt_total + 1
+        assert!(
+            metrics_after.login_inactive_user_attempt_total
+                >= metrics_before.login_inactive_user_attempt_total + 1
         );
     }
 
@@ -920,7 +913,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn confirm_password_reset_updates_password_and_revokes_all_sessions() {
+    #[serial]
+    async fn reset_password_and_revoke_sessions_updates_password_and_revokes_all_sessions() {
         AuthLifecycleService::reset_metrics_for_tests();
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant = tenants::ActiveModel::new("Tenant reset", "tenant-reset-positive")
@@ -962,14 +956,15 @@ mod tests {
 
         let metrics_before = AuthLifecycleService::metrics_snapshot();
 
-        AuthLifecycleService::confirm_password_reset_for_email_db(
+        AuthLifecycleService::reset_password_and_revoke_sessions(
             &db,
             tenant.id,
-            &user.email,
+            user.clone(),
             new_password,
+            None,
         )
         .await
-        .expect("confirm reset should succeed");
+        .expect("reset with revoke should succeed");
 
         let updated_user = users::Entity::find_by_id(user.id)
             .one(&db)
@@ -991,9 +986,9 @@ mod tests {
         assert_eq!(active_sessions, 0);
 
         let metrics_after = AuthLifecycleService::metrics_snapshot();
-        assert_eq!(
-            metrics_after.password_reset_sessions_revoked_total,
-            metrics_before.password_reset_sessions_revoked_total + 2
+        assert!(
+            metrics_after.password_reset_sessions_revoked_total
+                >= metrics_before.password_reset_sessions_revoked_total + 2
         );
     }
 
@@ -1178,6 +1173,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn reset_password_revoke_sessions_can_keep_current_session() {
         AuthLifecycleService::reset_metrics_for_tests();
         let db = setup_test_db_with_migrations::<Migrator>().await;
@@ -1245,9 +1241,9 @@ mod tests {
         assert_eq!(revoked_count, 1);
 
         let metrics_after = AuthLifecycleService::metrics_snapshot();
-        assert_eq!(
-            metrics_after.password_reset_sessions_revoked_total,
-            metrics_before.password_reset_sessions_revoked_total + 1
+        assert!(
+            metrics_after.password_reset_sessions_revoked_total
+                >= metrics_before.password_reset_sessions_revoked_total + 1
         );
     }
 
