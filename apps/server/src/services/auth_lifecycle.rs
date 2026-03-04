@@ -624,6 +624,15 @@ mod tests {
     }
 
     #[test]
+    fn maps_user_not_found_to_unauthorized() {
+        let err: Error = AuthLifecycleError::UserNotFound.into();
+        match err {
+            Error::Unauthorized(msg) => assert_eq!(msg, "User not found"),
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
     fn keeps_internal_error_as_is() {
         let err: Error = AuthLifecycleError::Internal(Error::Unauthorized("inner".into())).into();
         match err {

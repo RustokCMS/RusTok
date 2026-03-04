@@ -273,6 +273,12 @@ mod tests {
     }
 
     #[test]
+    fn maps_user_not_found_message() {
+        let err = map_auth_lifecycle_error(AuthLifecycleError::UserNotFound);
+        assert!(err.message.contains("User not found"));
+    }
+
+    #[test]
     fn maps_internal_to_internal_graphql_error() {
         let err = map_auth_lifecycle_error(AuthLifecycleError::Internal(
             loco_rs::prelude::Error::InternalServerError,
