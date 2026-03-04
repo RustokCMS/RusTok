@@ -720,7 +720,8 @@ mod tests {
         .expect("create_user via lifecycle path should succeed");
 
         let password_hash = hash_password("Password123!").expect("failed to hash password");
-        let mut legacy_user = users::ActiveModel::new(tenant.id, "legacy@example.com", &password_hash);
+        let mut legacy_user =
+            users::ActiveModel::new(tenant.id, "legacy@example.com", &password_hash);
         legacy_user.role = Set(rustok_core::UserRole::Manager);
         let legacy_user = legacy_user
             .insert(&db)
@@ -736,12 +737,14 @@ mod tests {
         .await
         .expect("legacy path should assign manager relations");
 
-        let lifecycle_permissions = AuthService::get_user_permissions(&db, &tenant.id, &lifecycle_user.id)
-            .await
-            .expect("failed to fetch permissions for lifecycle user");
-        let legacy_permissions = AuthService::get_user_permissions(&db, &tenant.id, &legacy_user.id)
-            .await
-            .expect("failed to fetch permissions for legacy user");
+        let lifecycle_permissions =
+            AuthService::get_user_permissions(&db, &tenant.id, &lifecycle_user.id)
+                .await
+                .expect("failed to fetch permissions for lifecycle user");
+        let legacy_permissions =
+            AuthService::get_user_permissions(&db, &tenant.id, &legacy_user.id)
+                .await
+                .expect("failed to fetch permissions for legacy user");
 
         assert_eq!(
             lifecycle_permissions, legacy_permissions,
@@ -954,14 +957,10 @@ mod tests {
         .await
         .expect("failed to create tenant B session");
 
-        let revoked_for_a = AuthLifecycleService::revoke_user_sessions_db(
-            &db,
-            tenant_a.id,
-            user_a.id,
-            None,
-        )
-        .await
-        .expect("revoke for tenant A should succeed");
+        let revoked_for_a =
+            AuthLifecycleService::revoke_user_sessions_db(&db, tenant_a.id, user_a.id, None)
+                .await
+                .expect("revoke for tenant A should succeed");
 
         assert_eq!(revoked_for_a, 1);
 
@@ -1204,7 +1203,6 @@ mod tests {
         );
     }
 
-
     #[tokio::test]
     async fn create_user_scopes_duplicate_email_check_per_tenant() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
@@ -1257,5 +1255,4 @@ mod tests {
             .expect("failed to query users in tenant B");
         assert_eq!(tenant_b_users, 1);
     }
-
 }
