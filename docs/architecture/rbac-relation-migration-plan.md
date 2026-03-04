@@ -1016,3 +1016,70 @@ RBAC-WEEKLY-STATUS:
 4. `verification_step` (какой отчёт/метрика подтвердит исправление).
 
 Это требование закрывает «серую зону», когда решение No-Go есть, но плана выхода нет.
+
+---
+
+## 23. План ближайших 3 PR (операционное продолжение без расширения scope)
+
+Чтобы продолжение шло предсказуемо, фиксируем минимальный трек из трёх PR с измеримым результатом каждого шага.
+
+### 23.1 PR-A (C0): ADR + policy contract freeze
+
+**Задача:** закрыть архитектурный долг до внедрения runtime-shadow.
+
+**Минимум в PR-A:**
+1. ADR в `DECISIONS/` с финальной формой matcher и перечнем non-goals.
+2. Явная карта rollback-переключателей (какой флаг, кто переключает, где фиксируется действие).
+3. Decision table для deny-reason категорий (`no-role`, `no-permission`, `cross-tenant`, `resolver-error`).
+
+**Артефакты выхода:**
+- `DECISIONS/<date>-rbac-casbin-cutover-adr.md`
+- ссылка на ADR в section 11.1 и section 15.2
+- обновление статуса `RBAC-CASBIN-UPDATE: phase=C0`
+
+### 23.2 PR-B (C1): runtime shadow + telemetry hardening
+
+**Задача:** подключить Casbin в shadow без изменения production decision path.
+
+**Минимум в PR-B:**
+1. Shadow resolver вызывается параллельно relation-resolver.
+2. Mismatch логируется только в структурированном формате (без свободного текста как единственного источника).
+3. Метрики C1 доступны в dashboard и снабжены базовыми alert conditions.
+
+**Артефакты выхода:**
+- `artifacts/rbac-cutover/<date>/shadow-smoke.md`
+- `artifacts/rbac-cutover/<date>/metrics-snapshot.json`
+- `RBAC-CASBIN-UPDATE: phase=C1; engine_mode=relation-active/casbin-shadow`
+
+### 23.3 PR-C (C2): staging parity + formal gate decision
+
+**Задача:** подтвердить готовность к production dual-engine окну.
+
+**Минимум в PR-C:**
+1. parity-окно staging не менее 24 часов.
+2. Отчёт включает сравнение объёма решений (`decision volume`) и latency delta.
+3. Формальная запись gate (`go`/`no-go`) с owner и timestamp.
+
+**Артефакты выхода:**
+- `artifacts/rbac-cutover/<date>/baseline.json`
+- `artifacts/rbac-cutover/<date>/baseline.md`
+- `artifacts/rbac-cutover/<date>/gate-decision.md`
+- `RBAC-CASBIN-UPDATE: phase=C2; gate=<go|no-go>`
+
+### 23.4 Правило последовательности (strict order)
+
+- PR-B не стартует до принятия PR-A.
+- PR-C не стартует до подтверждённого telemetry baseline из PR-B.
+- Параллельные изменения, затрагивающие policy semantics, в этом окне запрещены (чтобы не ломать parity-интерпретацию).
+
+Нарушение порядка автоматически требует переоткрытия gate и пересчёта baseline-артефактов.
+
+### 23.5 Критерий «план выполняется» (weekly control)
+
+На еженедельном синке план считается исполняемым только если одновременно:
+
+1. У текущего этапа есть owner и целевая дата завершения.
+2. У этапа есть хотя бы один свежий артефакт не старше 7 дней.
+3. Статус в section 0, section 11.1, section 16 и section 21 не конфликтует между собой.
+
+Если хотя бы один пункт не выполнен — статус плана на неделю: **at risk**, и переключение в следующий этап запрещено.
