@@ -873,7 +873,7 @@ mod tests {
         let metrics_after = AuthLifecycleService::metrics_snapshot();
         assert!(
             metrics_after.login_inactive_user_attempt_total
-                >= metrics_before.login_inactive_user_attempt_total + 1
+                > metrics_before.login_inactive_user_attempt_total
         );
     }
 
@@ -1243,7 +1243,7 @@ mod tests {
         let metrics_after = AuthLifecycleService::metrics_snapshot();
         assert!(
             metrics_after.password_reset_sessions_revoked_total
-                >= metrics_before.password_reset_sessions_revoked_total + 1
+                > metrics_before.password_reset_sessions_revoked_total
         );
     }
 
