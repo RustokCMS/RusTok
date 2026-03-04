@@ -18,6 +18,7 @@
 
 - [`library-stack.md`](./library-stack.md) — основные backend-библиотеки сервера и их роль (framework, HTTP, ORM, GraphQL, runtime, observability).
 - [`event-transport.md`](./event-transport.md) — как работает конфигурация и runtime-пайплайн транспорта событий.
+- [`auth-release-gate-2026-03-04.md`](./auth-release-gate-2026-03-04.md) — финальные gate-артефакты Phase D по user/auth consistency remediation (integration, parity, security sign-off).
 - [`event-flow-contract.md`](../../../docs/architecture/event-flow-contract.md) — канонический контракт полного event-пути (publish → outbox → delivery → consumer/read-model).
 - [`loco/README.md`](./loco/README.md) — Loco-specific контекст, workflow для агентов и freshness-политика upstream snapshot.
 - [`LOCO_FEATURE_SUPPORT.md`](./LOCO_FEATURE_SUPPORT.md) — decision matrix по Loco-функционалу vs самопису (anti-duplication baseline), включая статус Mailer/Workers/Storage и текущее состояние кэширования.

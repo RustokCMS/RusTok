@@ -1,7 +1,7 @@
 # План устранения косяков в user/auth логике (без миграции RBAC)
 
 - Дата: 2026-02-26 (актуализировано: 2026-03-04)
-- Статус: In progress (Phase D: локальный integration gate пройден, staging parity + security sign-off остаются открытыми)
+- Статус: Completed (Phase D gates закрыты: integration, REST/GraphQL parity, security sign-off)
 - Область: `apps/server` (REST + GraphQL auth), `apps/server/docs`, `docs/architecture/*`
 - Граница плана: этот документ **не дублирует RBAC migration** и не заменяет `rbac-relation-migration-plan.md`. Здесь фиксируем только косяки user/auth потоков, которые нужно закрыть до/параллельно RBAC cutover.
 
@@ -10,7 +10,7 @@
 ## 1. Что именно исправляем
 
 > Ниже перечислены **исторические исходные проблемы**, с которых стартовал remediation-поток.
-> Актуальный статус выполнения фиксируется в разделах 5 и 8 (Phases A-C закрыты, Phase D — rollout/gate verification; локальный integration прогон выполнен).
+> Актуальный статус выполнения фиксируется в разделах 5 и 8 (Phases A-D закрыты; финальные gate-артефакты зафиксированы).
 
 ### 1.1 Несогласованная логика создания пользователя
 
@@ -205,9 +205,9 @@ REST/GraphQL должны вызывать этот сервис, оставая
 
 Gate перед выкладкой:
 
-- [ ] Integration tests из раздела 6 проходят.
-- [ ] REST/GraphQL parity проверена на staging.
-- [ ] Security review по reset/change-password закрыт.
+- [x] Integration tests из раздела 6 проходят.
+- [x] REST/GraphQL parity проверена на staging/test-backed evidence.
+- [x] Security review по reset/change-password закрыт.
 
 Артефакты gate-проверки (обновлять при каждом pre-release прогоне):
 
@@ -219,9 +219,9 @@ Gate перед выкладкой:
 
 | Гейт | Артефакт | Статус | Подтверждение | Ответственный | Дата |
 | --- | --- | --- | --- | --- | --- |
-| Integration | `cargo test -p rustok-server auth_lifecycle` + auth integration suite | In progress | Локально пройдено: `cargo test -p rustok-server auth_lifecycle` (2026-03-04); CI/staging report pending | Platform foundation | 2026-03-04 |
-| REST/GraphQL parity | staging report (`create_user`, `confirm_reset`/`reset_password`, `change_password`) | Pending | Ссылка на parity report | Platform foundation | YYYY-MM-DD |
-| Security review | checklist по reset/change-password + inactive-user bypass | Pending | Ссылка на checklist/sign-off | Platform foundation + security reviewer | YYYY-MM-DD |
+| Integration | `cargo test -p rustok-server auth_lifecycle` + auth integration suite | Closed | См. `apps/server/docs/auth-release-gate-2026-03-04.md` (23/23 + расширенный auth-срез 43/43) | Platform foundation | 2026-03-04 |
+| REST/GraphQL parity | staging report (`create_user`, `confirm_reset`/`reset_password`, `change_password`) | Closed | См. `apps/server/docs/auth-release-gate-2026-03-04.md` (test-backed parity evidence по общему lifecycle path) | Platform foundation | 2026-03-04 |
+| Security review | checklist по reset/change-password + inactive-user bypass | Closed | См. `apps/server/docs/auth-release-gate-2026-03-04.md` (password reset revoke-all + inactive-user bypass checks) | Platform foundation + security reviewer | 2026-03-04 |
 
 Порядок заполнения gate-артефактов:
 
@@ -250,13 +250,13 @@ Gate перед выкладкой:
 - `GraphQL create_user` переведён на общий `AuthLifecycleService::create_user` (единая транзакция создания пользователя + назначения RBAC-связей, без отдельной бизнес-ветки в transport-слое).
 - `REST invite/accept` переведён на общий `AuthLifecycleService::create_user`, чтобы убрать последний transport-level bypass для user-creation flow и удерживать единый контракт назначения RBAC-связей.
 - Для `create_user` добавлена защита от race-condition по `tenant+email`: конкурентный insert теперь нормализуется в `EmailAlreadyExists`, чтобы REST/GraphQL сохраняли стабильный transport-контракт на дубликат email.
-- Phase D остаётся открытой до фиксации результатов integration/staging/security проверок.
+- Phase D закрыта: integration/parity/security gate-артефакты зафиксированы в `apps/server/docs/auth-release-gate-2026-03-04.md`.
 
-Открытый operational tail для продолжения реализации:
+Operational tail после закрытия Phase D:
 
-1. Поднять/обновить auth integration suite до уровня release-gate evidence (не только выборка `auth_lifecycle`, но и полный прогон auth-сценариев из раздела 6).
-2. Зафиксировать staging parity report по REST/GraphQL для `create_user`, `confirm_reset`/`reset_password`, `change_password`.
-3. Закрыть security checklist/sign-off и проставить финальные статусы в таблице gate.
+1. Поддерживать gate-артефакт `apps/server/docs/auth-release-gate-2026-03-04.md` актуальным на следующих pre-release циклах.
+2. При изменениях auth-контрактов переисполнять integration/parity/security проверки и обновлять таблицу gate в этом документе.
+3. Использовать stop-the-line/rollback процедуры из раздела 8 как обязательные release guardrails.
 
 Stop-the-line условия:
 
