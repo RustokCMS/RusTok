@@ -665,3 +665,48 @@
 3. Уточнить долгосрочную судьбу `users.role` отдельным ADR (удаление vs derived-only).
 4. Консолидировать observability dashboard (RBAC migration + steady-state RBAC ops).
 5. Обновить onboarding docs для backend/on-call с финальной relation-only моделью.
+
+---
+
+## 15. План ближайшей итерации (execution window: ближайшие 1–2 спринта)
+
+Чтобы ускорить закрытие MVP-блокеров без расширения scope, фиксируем короткий, измеримый план на следующий цикл.
+
+### 15.1 Приоритеты (строго по порядку)
+
+1. **Закрыть MVP-блокер 1 (staging rehearsal end-to-end).**
+   - Обязательный результат: полный пакет `artifacts/rbac-staging/<date>/*` + stage-report.
+2. **Закрыть MVP-блокер 2 (final cutover ADR).**
+   - Обязательный результат: ADR с rollback-gate, stop-the-line условиями и ссылкой на runbook.
+3. **Подготовить старт production dual-read окна (MVP-блокер 3, часть A).**
+   - Обязательный результат: заполненный baseline template + назначенные on-call ответственные на окно наблюдения.
+
+### 15.2 Dependency chain (что блокирует что)
+
+- Без закрытого rehearsal (15.1.1) запрещено выносить Go/No-Go на production.
+- Без утверждённого final ADR (15.1.2) запрещено включать relation-only даже при нулевом mismatch.
+- Dual-read baseline (15.1.3) считается валидным только при наличии decision-volume выше `--min-decision-delta`.
+
+### 15.3 Готовность к переключению relation-only (операционный чек)
+
+Переключение разрешается только если одновременно выполняются условия:
+
+1. `users_without_roles_total == 0` (или согласованный whitelist приложен к отчёту).
+2. `orphan_user_roles_total == 0` и `orphan_role_permissions_total == 0` в post-check отчёте.
+3. `mismatch_delta == 0` в baseline окне и отсутствует рост denied/error rate.
+4. QA sign-off + on-call sign-off задокументированы в release-notes/runbook append.
+
+---
+
+## 16. Шаблон обновления статуса после каждого merge
+
+Чтобы изменения в этом плане были единообразными и проверяемыми, каждый merge в рамках фаз 4–5 должен обновлять минимум 4 поля:
+
+1. **Progress tracker:** статус фазы (`[ ]` → `[~]` → `[x]`) с коротким комментарием «что именно закрыто».
+2. **MVP execution board (11.1):** изменение только соответствующего блокера + ссылка на артефакт.
+3. **Runbook traceability:** добавление ссылки на новый отчёт (`artifacts/rbac-staging/*` или `artifacts/rbac-cutover/*`).
+4. **Риск/решение:** если найдено отклонение, короткая запись в разделах 12/13 (без создания дублирующего документа).
+
+Формат записи в PR-описании (рекомендуемый):
+
+`RBAC-MIGRATION-UPDATE: phase=<N>; blocker=<id>; artifacts=<paths>; decision=<go|no-go|n/a>`
