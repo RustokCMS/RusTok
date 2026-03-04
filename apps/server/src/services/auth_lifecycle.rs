@@ -913,6 +913,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn revoke_user_sessions_repeat_call_is_idempotent() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant Revoke", "tenant-revoke-repeat")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        let user = users::ActiveModel::new(tenant.id, "revoke-repeat@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("failed to create user");
+
+        let now = Utc::now();
+        sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "revoke-repeat-token-1".to_string(),
+            now + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("failed to create first session");
+        sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "revoke-repeat-token-2".to_string(),
+            now + Duration::hours(2),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("failed to create second session");
+
+        let first = AuthLifecycleService::revoke_user_sessions_db(&db, tenant.id, user.id, None)
+            .await
+            .expect("first revoke should succeed");
+        let second = AuthLifecycleService::revoke_user_sessions_db(&db, tenant.id, user.id, None)
+            .await
+            .expect("second revoke should succeed");
+
+        assert_eq!(first, 2);
+        assert_eq!(second, 0);
+    }
+
+    #[tokio::test]
     async fn revoke_user_sessions_is_strictly_scoped_by_tenant_and_user() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant_a = tenants::ActiveModel::new("Tenant A", "tenant-a-revoke")
