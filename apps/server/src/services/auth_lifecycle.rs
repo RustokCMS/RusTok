@@ -932,6 +932,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn refresh_rejects_unknown_refresh_token() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Unknown refresh tenant", "unknown-refresh-tenant")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        let config = AuthConfig {
+            secret: "refresh-secret".to_string(),
+            access_expiration: 600,
+            refresh_expiration: 3600,
+            issuer: "rustok-test".to_string(),
+            audience: "rustok-test".to_string(),
+        };
+
+        let result = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            "unknown-refresh-token",
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(AuthLifecycleError::InvalidRefreshToken)
+        ));
+    }
+
+    #[tokio::test]
+    async fn refresh_rejects_inactive_user() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant =
+            tenants::ActiveModel::new("Refresh inactive tenant", "refresh-inactive-tenant")
+                .insert(&db)
+                .await
+                .expect("failed to create tenant");
+
+        let password_hash = hash_password("Password123!").expect("failed to hash password");
+        let mut user =
+            users::ActiveModel::new(tenant.id, "refresh-inactive@example.com", &password_hash);
+        user.status = Set(UserStatus::Inactive);
+        let user = user
+            .insert(&db)
+            .await
+            .expect("failed to create inactive user");
+
+        let refresh_token = "inactive-user-refresh-token";
+        sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token(refresh_token),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("failed to create active session for inactive user");
+
+        let config = AuthConfig {
+            secret: "refresh-secret".to_string(),
+            access_expiration: 600,
+            refresh_expiration: 3600,
+            issuer: "rustok-test".to_string(),
+            audience: "rustok-test".to_string(),
+        };
+
+        let result =
+            AuthLifecycleService::refresh_with_config_db(&db, &config, tenant.id, refresh_token)
+                .await;
+
+        assert!(matches!(result, Err(AuthLifecycleError::UserInactive)));
+    }
+
+    #[tokio::test]
     async fn confirm_password_reset_rejects_invalid_token_payload() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant = tenants::ActiveModel::new("Tenant A", "tenant-a")
