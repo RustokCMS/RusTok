@@ -533,12 +533,13 @@ async fn change_password(
     responses((status = 200, description = "Profile updated", body = UserResponse)))]
 async fn update_profile(
     State(ctx): State<AppContext>,
+    CurrentTenant(tenant): CurrentTenant,
     current: CurrentUser,
     Json(params): Json<UpdateProfileParams>,
 ) -> Result<Response> {
-    let mut user_active: users::ActiveModel = current.user.into();
-    user_active.name = Set(params.name);
-    let user = user_active.update(&ctx.db).await?;
+    let user = AuthLifecycleService::update_profile(&ctx, tenant.id, current.user.id, params.name)
+        .await
+        .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
     format::json(UserResponse::from(user))
 }

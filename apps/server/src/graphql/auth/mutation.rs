@@ -1,10 +1,9 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use loco_rs::prelude::*;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 
 use crate::auth::{encode_password_reset_token, AuthConfig};
 use crate::context::TenantContext;
-use crate::graphql::errors::GraphQLError;
+use crate::graphql::errors::{ErrorCode, GraphQLError};
 use crate::models::users;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
 use crate::services::email::{EmailService, PasswordResetEmail, PasswordResetEmailSender};
@@ -15,15 +14,25 @@ use super::types::*;
 
 const DEFAULT_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
+fn unauthenticated_auth_error(message: &str) -> FieldError {
+    use async_graphql::ErrorExtensions;
+
+    FieldError::new(message).extend_with(|_, e| {
+        e.set("code", ErrorCode::Unauthenticated.as_str());
+    })
+}
+
 fn map_auth_lifecycle_error(error: AuthLifecycleError) -> FieldError {
     match error {
         AuthLifecycleError::EmailAlreadyExists => FieldError::new("Email already exists"),
-        AuthLifecycleError::InvalidCredentials => FieldError::new("Invalid credentials"),
-        AuthLifecycleError::UserInactive => FieldError::new("User is inactive"),
-        AuthLifecycleError::InvalidRefreshToken => FieldError::new("Invalid refresh token"),
-        AuthLifecycleError::SessionExpired => FieldError::new("Session expired"),
-        AuthLifecycleError::UserNotFound => FieldError::new("User not found"),
-        AuthLifecycleError::InvalidResetToken => FieldError::new("Invalid reset token"),
+        AuthLifecycleError::InvalidCredentials => unauthenticated_auth_error("Invalid credentials"),
+        AuthLifecycleError::UserInactive => unauthenticated_auth_error("User is inactive"),
+        AuthLifecycleError::InvalidRefreshToken => {
+            unauthenticated_auth_error("Invalid refresh token")
+        }
+        AuthLifecycleError::SessionExpired => unauthenticated_auth_error("Session expired"),
+        AuthLifecycleError::UserNotFound => unauthenticated_auth_error("User not found"),
+        AuthLifecycleError::InvalidResetToken => unauthenticated_auth_error("Invalid reset token"),
         AuthLifecycleError::Internal(err) => {
             <FieldError as GraphQLError>::internal_error(&err.to_string())
         }
@@ -189,26 +198,10 @@ impl AuthMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        let user = users::Entity::find_by_id(auth.user_id)
-            .filter(crate::models::_entities::users::Column::TenantId.eq(tenant.id))
-            .one(&app_ctx.db)
-            .await
-            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?
-            .ok_or_else(|| FieldError::new("User not found"))?;
-
-        let mut model: users::ActiveModel = user.into();
-        if let Some(name) = input.name {
-            model.name = Set(if name.trim().is_empty() {
-                None
-            } else {
-                Some(name.trim().to_string())
-            });
-        }
-
-        let updated = model
-            .update(&app_ctx.db)
-            .await
-            .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+        let updated =
+            AuthLifecycleService::update_profile(app_ctx, tenant.id, auth.user_id, input.name)
+                .await
+                .map_err(map_auth_lifecycle_error)?;
 
         Ok(AuthUser {
             id: updated.id.to_string(),
@@ -287,6 +280,26 @@ mod tests {
     fn maps_invalid_reset_token_message() {
         let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidResetToken);
         assert!(err.message.contains("Invalid reset token"));
+    }
+
+    #[test]
+    fn maps_user_not_found_message() {
+        let err = map_auth_lifecycle_error(AuthLifecycleError::UserNotFound);
+        assert!(err.message.contains("User not found"));
+    }
+
+    #[test]
+    fn maps_auth_errors_with_unauthenticated_code() {
+        let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidCredentials);
+        let code = err
+            .extensions
+            .as_ref()
+            .and_then(|ext| ext.get("code"))
+            .and_then(|value| match value {
+                async_graphql::Value::String(s) => Some(s.as_str()),
+                _ => None,
+            });
+        assert_eq!(code, Some("UNAUTHENTICATED"));
     }
 
     #[test]

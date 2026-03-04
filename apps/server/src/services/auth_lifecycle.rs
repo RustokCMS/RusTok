@@ -171,6 +171,44 @@ impl AuthLifecycleService {
         Ok(user)
     }
 
+    pub async fn update_profile(
+        ctx: &AppContext,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        name: Option<String>,
+    ) -> std::result::Result<users::Model, AuthLifecycleError> {
+        Self::update_profile_db(&ctx.db, tenant_id, user_id, name).await
+    }
+
+    async fn update_profile_db(
+        db: &DatabaseConnection,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+        name: Option<String>,
+    ) -> std::result::Result<users::Model, AuthLifecycleError> {
+        let user = users::Entity::find_by_id(user_id)
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .one(db)
+            .await
+            .map_err(AuthLifecycleError::from)?
+            .ok_or(AuthLifecycleError::UserNotFound)?;
+
+        let mut user_active: users::ActiveModel = user.into();
+        if let Some(name) = name {
+            let normalized = if name.trim().is_empty() {
+                None
+            } else {
+                Some(name.trim().to_string())
+            };
+            user_active.name = Set(normalized);
+        }
+
+        user_active
+            .update(db)
+            .await
+            .map_err(AuthLifecycleError::from)
+    }
+
     pub async fn register(
         ctx: &AppContext,
         tenant_id: uuid::Uuid,
@@ -586,6 +624,15 @@ mod tests {
     }
 
     #[test]
+    fn maps_user_not_found_to_unauthorized() {
+        let err: Error = AuthLifecycleError::UserNotFound.into();
+        match err {
+            Error::Unauthorized(msg) => assert_eq!(msg, "User not found"),
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
     fn keeps_internal_error_as_is() {
         let err: Error = AuthLifecycleError::Internal(Error::Unauthorized("inner".into())).into();
         match err {
@@ -705,6 +752,84 @@ mod tests {
             !resolved_permissions.contains(&rustok_core::Permission::USERS_MANAGE),
             "manager role should not get admin-only permissions"
         );
+    }
+
+    #[tokio::test]
+    async fn update_profile_trims_name_and_allows_clearing_with_blank_value() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Profile tenant", "profile-tenant")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        let user = AuthLifecycleService::create_user_db(
+            &db,
+            tenant.id,
+            "profile@example.com",
+            "Password123!",
+            Some("Original Name".to_string()),
+            rustok_core::UserRole::Customer,
+            None,
+        )
+        .await
+        .expect("failed to create user");
+
+        let updated = AuthLifecycleService::update_profile_db(
+            &db,
+            tenant.id,
+            user.id,
+            Some("   Updated Name   ".to_string()),
+        )
+        .await
+        .expect("update_profile should trim name");
+
+        assert_eq!(updated.name.as_deref(), Some("Updated Name"));
+
+        let cleared = AuthLifecycleService::update_profile_db(
+            &db,
+            tenant.id,
+            user.id,
+            Some("   ".to_string()),
+        )
+        .await
+        .expect("blank profile name should clear value");
+
+        assert_eq!(cleared.name, None);
+    }
+
+    #[tokio::test]
+    async fn update_profile_rejects_user_from_another_tenant() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant_a = tenants::ActiveModel::new("Tenant A", "tenant-a")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant A");
+        let tenant_b = tenants::ActiveModel::new("Tenant B", "tenant-b")
+            .insert(&db)
+            .await
+            .expect("failed to create tenant B");
+
+        let user = AuthLifecycleService::create_user_db(
+            &db,
+            tenant_a.id,
+            "tenant-a@example.com",
+            "Password123!",
+            Some("Tenant A User".to_string()),
+            rustok_core::UserRole::Customer,
+            None,
+        )
+        .await
+        .expect("failed to create user in tenant A");
+
+        let result = AuthLifecycleService::update_profile_db(
+            &db,
+            tenant_b.id,
+            user.id,
+            Some("Should fail".to_string()),
+        )
+        .await;
+
+        assert!(matches!(result, Err(AuthLifecycleError::UserNotFound)));
     }
 
     #[tokio::test]
