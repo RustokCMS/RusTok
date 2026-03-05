@@ -692,6 +692,7 @@
 **Решение по старту:**
 - Минимальный gate начала Casbin track: `users_without_roles_total == 0` на staging + подтверждённый rehearsal dry-run/apply/rollback.
 - Если этот gate не выполнен, Casbin-track откладывается, продолжается доработка Фазы 4.
+- Плановая точка старта работ C0/C1: сразу после подтверждённого закрытия Фазы 4 в weekly control (section 23.5), без ожидания полного relation-only cutover.
 
 ### 15.2 Что нужно доделать перед интеграцией Casbin (pre-Casbin backlog)
 
@@ -731,11 +732,18 @@
 
 - Добавить `CasbinPermissionResolver` как альтернативную реализацию текущего resolver-контракта.
 - Включить shadow-evaluation: runtime decision остаётся за текущим relation resolver, Casbin считает параллельно.
+- Добавить зависимость `casbin-rs` в `Cargo.toml` (workspace + `crates/rustok-rbac`), с feature-gating под shadow rollout.
 - Добавить mismatch-метрики:
   - `rbac_engine_mismatch_total{source="relation",target="casbin"}`
   - `rbac_engine_eval_latency_ms{engine="casbin"}`.
 
-**Выход:** Casbin работает в shadow без влияния на production decisions.
+**Выход:** Casbin работает в shadow без влияния на production decisions, `casbin-rs` зафиксирован как зависимость в TOML.
+
+### 15.4.1 Ответ на операционный вопрос «когда Casbin появится в TOML»
+
+- До PR-B / C1 зависимость `casbin-rs` в манифестах не добавляем, чтобы не создавать «мертвую» зависимость без runtime wiring.
+- В рамках PR-B / C1 зависимость появляется одновременно с `CasbinPermissionResolver` и shadow telemetry.
+- Минимальный критерий готовности C1: в diff присутствуют изменения `Cargo.toml` (workspace + `crates/rustok-rbac`) и код shadow-path, связанный с этой зависимостью.
 
 #### Этап C2 — Staging parity hardening
 

@@ -25,7 +25,10 @@ pub use services::permission_policy::{
 };
 
 pub use services::casbin_model::default_casbin_model;
-pub use services::casbin_shadow_evaluator::evaluate_casbin_shadow;
+pub use services::casbin_shadow_evaluator::{
+    compare_casbin_shadow_decision, evaluate_casbin_shadow, evaluate_casbin_shadow_comparison,
+    permissions_for_shadow_check, CasbinShadowComparison, CasbinShadowDecision,
+};
 pub use services::permission_resolver::{PermissionResolution, PermissionResolver};
 pub use services::relation_permission_resolver::{
     invalidate_cached_permissions, resolve_permissions_from_relations,
