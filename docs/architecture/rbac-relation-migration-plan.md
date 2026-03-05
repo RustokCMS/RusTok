@@ -122,12 +122,14 @@
   - В baseline helper добавлены дополнительные stop-the-line guardrails: обязательный минимальный объём decision-трафика в окне (`--min-decision-delta`, default `1`) и fail-fast при обнаружении reset-а счётчиков (уменьшение counter-метрик между последовательными samples). Для аудита и post-mortem helper по умолчанию сохраняет raw `/metrics` snapshots по всем sample-точкам (`rbac_cutover_samples_*`), с опциональным отключением через `--no-save-samples`.
   - Для более строгого dual-read gate baseline helper теперь также по умолчанию требует `shadow_compare_failures_delta == 0`; для controlled troubleshooting-окон доступен явный override-флаг `--allow-shadow-failures`.
   - Добавлены тесты helper'а (`scripts/tests/rbac_cutover_baseline_test.sh` + smoke `scripts/test_rbac_cutover_baseline.sh`) с mocked curl-path (`RUSTOK_CURL_BIN`) для проверки mismatch-gate и генерации baseline артефактов.
+  - Добавлен gate helper `scripts/rbac_cutover_gate.sh` для финальной проверки обязательных артефактов (timestamp-consistent staging bundle: pre/dry-run/apply/rollback/post-rollback + timestamp-consistent cutover baseline md/json + auth release gate report; helper поддерживает pinning конкретного bundle через `--stage-ts`/`--cutover-ts` (формат: `YYYYMMDDTHHMMSSZ`) и fail-fast в случае `gate_status != pass`, ненулевых `mismatch_delta/shadow_compare_failures_delta` или ненулевых post-rollback инвариантов (`users_without_roles_total`, `orphan_user_roles_total`, `orphan_role_permissions_total`); helper покрыт тестами (`scripts/tests/rbac_cutover_gate_test.sh` + smoke `scripts/test_rbac_cutover_gate.sh`).
+  - Принят ADR финального relation-only cutover с обязательным rollback-gate и привязкой к auth parity release-gate: `DECISIONS/2026-03-05-rbac-relation-only-final-cutover-gate.md`.
 - [ ] **Фаза 6 — Cleanup legacy-модели:** не начато.
 
 ### Что осталось приоритетно на ближайший шаг
 
 1. Провести staged dry-run/backfill/rollback в staging и приложить отчёт по инвариантам (MVP-блокер №1, Фаза 4).
-2. Подготовить и согласовать ADR по final cutover (`relation-only`) с чётким rollback-гейтом (MVP-блокер №2) и ссылкой на актуальные auth parity gate-артефакты из user/auth плана.
+2. ✅ ADR по final cutover (`relation-only`) согласован: `DECISIONS/2026-03-05-rbac-relation-only-final-cutover-gate.md` (явный rollback-gate + связь с auth parity gate-артефактами).
 3. Выполнить production dual-read окно наблюдения и зафиксировать baseline-отчёт без регрессий (MVP-блокер №3, Фаза 5).
 
 ### Post-MVP (выполнять только после relation-only стабилизации)
@@ -536,8 +538,8 @@
 
 - [ ] **MVP-блокер 1 (Фаза 4):** staged rehearsal завершён (dry-run/backfill/rollback) + приложен отчёт по инвариантам.
   - Артефакты: `artifacts/rbac-staging/*`, stage-report markdown, pre/post JSON consistency reports; проверка проходит по runbook-последовательности из раздела 13.1/13.5.
-- [ ] **MVP-блокер 2 (Фаза 5 prep):** ADR final cutover согласован с явным rollback-gate и stop-the-line условиями.
-  - Артефакты: ADR в `DECISIONS/` + ссылка в этом плане.
+- [x] **MVP-блокер 2 (Фаза 5 prep):** ADR final cutover согласован с явным rollback-gate и stop-the-line условиями.
+  - Артефакты: `DECISIONS/2026-03-05-rbac-relation-only-final-cutover-gate.md`.
 - [ ] **MVP-блокер 3 (Фаза 5):** production dual-read окно наблюдения завершено, baseline зафиксирован, принято go/no-go решение для relation-only.
   - Артефакты: baseline report/json из `artifacts/rbac-cutover/*`, запись решения (go/no-go) в release-notes/runbook; gate проверяется по разделам 13.2/13.3/13.5.
 
@@ -635,6 +637,7 @@
 1. **Staging rehearsal:** `scripts/rbac_relation_staging.sh --require-report-artifacts`.
 2. **Production baseline:** `scripts/rbac_cutover_baseline.sh <...параметры окна наблюдения...>`.
 3. **Auth gate перед переключением:** `scripts/auth_release_gate.sh --require-all-gates`.
+4. **Final Go/No-Go helper:** `scripts/rbac_cutover_gate.sh --auth-gate-report <auth_report.md>` (для deterministic replay допускаются `--stage-ts <ts>` и `--cutover-ts <ts>`; формат: `YYYYMMDDTHHMMSSZ`).
 
 Минимальный набор артефактов, который должен быть приложен к go/no-go решению:
 

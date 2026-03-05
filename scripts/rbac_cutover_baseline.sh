@@ -36,6 +36,7 @@ MIN_DECISION_DELTA=1
 SAVE_SAMPLES="true"
 REQUIRE_ZERO_MISMATCH="true"
 ALLOW_SHADOW_FAILURES="false"
+REQUIRE_ZERO_SHADOW_FAILURES="true"
 CURL_BIN="${RUSTOK_CURL_BIN:-curl}"
 
 while [[ $# -gt 0 ]]; do
@@ -59,7 +60,7 @@ while [[ $# -gt 0 ]]; do
     --allow-mismatch)
       REQUIRE_ZERO_MISMATCH="false"; shift ;;
     --allow-shadow-failures)
-      ALLOW_SHADOW_FAILURES="true"; shift ;;
+      ALLOW_SHADOW_FAILURES="true"; REQUIRE_ZERO_SHADOW_FAILURES="false"; shift ;;
     --help)
       usage; exit 0 ;;
     *)
