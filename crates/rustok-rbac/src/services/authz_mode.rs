@@ -287,12 +287,18 @@ mod tests {
 
     #[test]
     fn exposes_active_engine_and_shadow_controls() {
-        assert_eq!(RbacAuthzMode::DualRead.active_engine(), AuthzEngine::Relation);
+        assert_eq!(
+            RbacAuthzMode::DualRead.active_engine(),
+            AuthzEngine::Relation
+        );
         assert_eq!(
             RbacAuthzMode::CasbinShadow.active_engine(),
             AuthzEngine::Relation
         );
-        assert_eq!(RbacAuthzMode::CasbinOnly.active_engine(), AuthzEngine::Casbin);
+        assert_eq!(
+            RbacAuthzMode::CasbinOnly.active_engine(),
+            AuthzEngine::Casbin
+        );
         assert!(RbacAuthzMode::DualRead.should_run_legacy_role_shadow());
         assert!(RbacAuthzMode::CasbinShadow.should_run_casbin_shadow());
         assert!(!RbacAuthzMode::CasbinOnly.should_run_casbin_shadow());

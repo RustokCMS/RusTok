@@ -316,10 +316,7 @@ impl CacheBackend for FallbackCacheBackend {
 
     async fn set(&self, key: String, value: Vec<u8>) -> Result<()> {
         // Write to fallback unconditionally to keep it warm.
-        let _ = self
-            .fallback
-            .set(key.clone(), value.clone())
-            .await;
+        let _ = self.fallback.set(key.clone(), value.clone()).await;
 
         match self.primary.set(key, value).await {
             Ok(()) => Ok(()),
