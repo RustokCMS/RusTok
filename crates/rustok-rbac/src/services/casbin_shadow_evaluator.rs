@@ -43,19 +43,31 @@ pub fn compare_casbin_shadow_decision(
     }
 }
 
-pub fn permissions_for_shadow_check(shadow_check: ShadowCheck<'_>) -> Vec<Permission> {
+pub fn for_each_permission_in_shadow_check(
+    shadow_check: ShadowCheck<'_>,
+    mut visitor: impl FnMut(Permission),
+) {
     match shadow_check {
-        ShadowCheck::Single(required_permission) => vec![*required_permission],
+        ShadowCheck::Single(required_permission) => visitor(*required_permission),
         ShadowCheck::Any(required_permissions) | ShadowCheck::All(required_permissions) => {
-            required_permissions.to_vec()
+            for permission in required_permissions {
+                visitor(*permission);
+            }
         }
     }
+}
+
+pub fn permissions_for_shadow_check(shadow_check: ShadowCheck<'_>) -> Vec<Permission> {
+    let mut permissions = Vec::new();
+    for_each_permission_in_shadow_check(shadow_check, |permission| permissions.push(permission));
+    permissions
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        compare_casbin_shadow_decision, evaluate_casbin_shadow, permissions_for_shadow_check,
+        compare_casbin_shadow_decision, evaluate_casbin_shadow,
+        for_each_permission_in_shadow_check, permissions_for_shadow_check,
     };
     use crate::ShadowCheck;
     use rustok_core::Permission;
@@ -127,5 +139,19 @@ mod tests {
 
         assert_eq!(single, vec![Permission::USERS_READ]);
         assert_eq!(any, vec![Permission::USERS_READ, Permission::USERS_UPDATE]);
+    }
+
+    #[test]
+    fn for_each_permission_in_shadow_check_visits_without_allocation() {
+        let mut collected = Vec::new();
+        for_each_permission_in_shadow_check(
+            ShadowCheck::All(&[Permission::USERS_READ, Permission::USERS_UPDATE]),
+            |permission| collected.push(permission),
+        );
+
+        assert_eq!(
+            collected,
+            vec![Permission::USERS_READ, Permission::USERS_UPDATE]
+        );
     }
 }
