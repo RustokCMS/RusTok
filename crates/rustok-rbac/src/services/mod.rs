@@ -1,5 +1,6 @@
 pub mod authz_mode;
 pub mod casbin_model;
+pub mod casbin_shadow_evaluator;
 pub mod permission_authorizer;
 pub mod permission_evaluator;
 mod permission_normalization;

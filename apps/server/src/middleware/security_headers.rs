@@ -1,3 +1,4 @@
+use axum::http::HeaderValue;
 /// Security Headers Middleware
 ///
 /// Adds OWASP-recommended security response headers to every HTTP response:
@@ -11,7 +12,6 @@
 ///
 /// Mounted globally in `app.rs::after_routes()` via `axum::middleware::from_fn`.
 use axum::{extract::Request, middleware::Next, response::Response};
-use http::HeaderValue;
 
 /// Default CSP for API server: no HTML rendering, only JSON/GraphQL responses.
 /// Allows same-origin fetch only; blocks everything else.
@@ -26,9 +26,7 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     let headers = response.headers_mut();
 
     // Content-Security-Policy
-    if let Ok(v) = HeaderValue::from_static(CSP).try_into() {
-        headers.insert("content-security-policy", v);
-    }
+    headers.insert("content-security-policy", HeaderValue::from_static(CSP));
 
     // X-Content-Type-Options
     headers.insert(
@@ -59,10 +57,7 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
 
     // Strict-Transport-Security — only in production (HTTPS)
     if std::env::var("RUSTOK_HTTPS").as_deref() == Ok("true") {
-        headers.insert(
-            "strict-transport-security",
-            HeaderValue::from_static(HSTS),
-        );
+        headers.insert("strict-transport-security", HeaderValue::from_static(HSTS));
     }
 
     response

@@ -24,13 +24,14 @@ pub use services::permission_policy::{
     has_effective_permission_in_set, missing_permissions, DeniedReasonKind, PermissionCheckOutcome,
 };
 
+pub use services::casbin_model::default_casbin_model;
+pub use services::casbin_shadow_evaluator::evaluate_casbin_shadow;
 pub use services::permission_resolver::{PermissionResolution, PermissionResolver};
 pub use services::relation_permission_resolver::{
     invalidate_cached_permissions, resolve_permissions_from_relations,
     resolve_permissions_with_cache, PermissionCache, RelationPermissionStore,
 };
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
-pub use services::casbin_model::default_casbin_model;
 pub use services::shadow_decision::{
     compare_all_permissions, compare_any_permissions, compare_shadow_decision,
     compare_single_permission, ShadowCheck, ShadowDecision,

@@ -13,9 +13,8 @@ use tracing::{debug, warn};
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 use rustok_rbac::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,
-    evaluate_all_permissions, evaluate_any_permission, evaluate_dual_read,
-    evaluate_single_permission, invalidate_cached_permissions, DeniedReasonKind, DualReadOutcome,
-    PermissionCache, PermissionResolver, RbacAuthzMode, RelationPermissionStore,
+    evaluate_casbin_shadow, evaluate_dual_read, invalidate_cached_permissions, DeniedReasonKind,
+    DualReadOutcome, PermissionCache, PermissionResolver, RbacAuthzMode, RelationPermissionStore,
     RoleAssignmentStore, RuntimePermissionResolver, ShadowCheck,
 };
 
@@ -181,17 +180,7 @@ impl AuthService {
         let started_at = Instant::now();
         let resolver = Self::resolver(db);
         let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
-        let casbin_allowed = match shadow_check {
-            ShadowCheck::Single(required_permission) => {
-                evaluate_single_permission(&resolved.permissions, required_permission).allowed
-            }
-            ShadowCheck::Any(required_permissions) => {
-                evaluate_any_permission(&resolved.permissions, required_permissions).allowed
-            }
-            ShadowCheck::All(required_permissions) => {
-                evaluate_all_permissions(&resolved.permissions, required_permissions).allowed
-            }
-        };
+        let casbin_allowed = evaluate_casbin_shadow(tenant_id, &resolved.permissions, shadow_check);
 
         let eval_latency_ms = started_at.elapsed().as_millis() as u64;
         Self::record_engine_decision("relation");
