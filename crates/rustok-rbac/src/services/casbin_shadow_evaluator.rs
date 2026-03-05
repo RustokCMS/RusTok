@@ -1,6 +1,18 @@
 use crate::{has_effective_permission_in_set, ShadowCheck};
 use rustok_core::Permission;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CasbinShadowDecision {
+    pub relation_allowed: bool,
+    pub casbin_allowed: bool,
+}
+
+impl CasbinShadowDecision {
+    pub fn mismatch(self) -> bool {
+        self.relation_allowed != self.casbin_allowed
+    }
+}
+
 pub fn evaluate_casbin_shadow(
     _tenant_id: &uuid::Uuid,
     resolved_permissions: &[Permission],
@@ -19,9 +31,32 @@ pub fn evaluate_casbin_shadow(
     }
 }
 
+pub fn compare_casbin_shadow_decision(
+    tenant_id: &uuid::Uuid,
+    resolved_permissions: &[Permission],
+    shadow_check: ShadowCheck<'_>,
+    relation_allowed: bool,
+) -> CasbinShadowDecision {
+    CasbinShadowDecision {
+        relation_allowed,
+        casbin_allowed: evaluate_casbin_shadow(tenant_id, resolved_permissions, shadow_check),
+    }
+}
+
+pub fn permissions_for_shadow_check(shadow_check: ShadowCheck<'_>) -> Vec<Permission> {
+    match shadow_check {
+        ShadowCheck::Single(required_permission) => vec![*required_permission],
+        ShadowCheck::Any(required_permissions) | ShadowCheck::All(required_permissions) => {
+            required_permissions.to_vec()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::evaluate_casbin_shadow;
+    use super::{
+        compare_casbin_shadow_decision, evaluate_casbin_shadow, permissions_for_shadow_check,
+    };
     use crate::ShadowCheck;
     use rustok_core::Permission;
 
@@ -65,5 +100,32 @@ mod tests {
 
         assert!(allows_any);
         assert!(allows_all);
+    }
+
+    #[test]
+    fn compare_reports_mismatch_state() {
+        let tenant_id = uuid::Uuid::new_v4();
+        let decision = compare_casbin_shadow_decision(
+            &tenant_id,
+            &[Permission::USERS_READ],
+            ShadowCheck::Single(&Permission::USERS_READ),
+            false,
+        );
+
+        assert!(decision.mismatch());
+        assert!(decision.casbin_allowed);
+        assert!(!decision.relation_allowed);
+    }
+
+    #[test]
+    fn permissions_for_shadow_check_returns_flat_set() {
+        let single = permissions_for_shadow_check(ShadowCheck::Single(&Permission::USERS_READ));
+        let any = permissions_for_shadow_check(ShadowCheck::Any(&[
+            Permission::USERS_READ,
+            Permission::USERS_UPDATE,
+        ]));
+
+        assert_eq!(single, vec![Permission::USERS_READ]);
+        assert_eq!(any, vec![Permission::USERS_READ, Permission::USERS_UPDATE]);
     }
 }

@@ -13,9 +13,10 @@ use tracing::{debug, warn};
 use rustok_core::{Action, Permission, Rbac, Resource, UserRole};
 use rustok_rbac::{
     authorize_all_permissions, authorize_any_permission, authorize_permission,
-    evaluate_casbin_shadow, evaluate_dual_read, invalidate_cached_permissions, DeniedReasonKind,
-    DualReadOutcome, PermissionCache, PermissionResolver, RbacAuthzMode, RelationPermissionStore,
-    RoleAssignmentStore, RuntimePermissionResolver, ShadowCheck,
+    compare_casbin_shadow_decision, evaluate_dual_read, invalidate_cached_permissions,
+    permissions_for_shadow_check, DeniedReasonKind, DualReadOutcome, PermissionCache,
+    PermissionResolver, RbacAuthzMode, RelationPermissionStore, RoleAssignmentStore,
+    RuntimePermissionResolver, ShadowCheck,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles, users};
@@ -180,40 +181,30 @@ impl AuthService {
         let started_at = Instant::now();
         let resolver = Self::resolver(db);
         let resolved = resolver.resolve_permissions(tenant_id, user_id).await?;
-        let casbin_allowed = evaluate_casbin_shadow(tenant_id, &resolved.permissions, shadow_check);
+        let casbin_shadow = compare_casbin_shadow_decision(
+            tenant_id,
+            &resolved.permissions,
+            shadow_check,
+            relation_allowed,
+        );
 
         let eval_latency_ms = started_at.elapsed().as_millis() as u64;
         Self::record_engine_decision("relation");
         Self::record_engine_decision("casbin");
         Self::record_engine_eval_duration(eval_latency_ms);
 
-        if casbin_allowed != relation_allowed {
+        if casbin_shadow.mismatch() {
             Self::record_engine_mismatch();
-            match shadow_check {
-                ShadowCheck::Single(required_permission) => {
-                    warn!(
-                        tenant_id = %tenant_id,
-                        user_id = %user_id,
-                        resource = %required_permission.resource,
-                        action = %required_permission.action,
-                        relation_decision = relation_allowed,
-                        casbin_decision = casbin_allowed,
-                        "rbac_engine_mismatch"
-                    );
-                }
-                ShadowCheck::Any(required_permissions) | ShadowCheck::All(required_permissions) => {
-                    for permission in required_permissions {
-                        warn!(
-                            tenant_id = %tenant_id,
-                            user_id = %user_id,
-                            resource = %permission.resource,
-                            action = %permission.action,
-                            relation_decision = relation_allowed,
-                            casbin_decision = casbin_allowed,
-                            "rbac_engine_mismatch"
-                        );
-                    }
-                }
+            for permission in permissions_for_shadow_check(shadow_check) {
+                warn!(
+                    tenant_id = %tenant_id,
+                    user_id = %user_id,
+                    resource = %permission.resource,
+                    action = %permission.action,
+                    relation_decision = casbin_shadow.relation_allowed,
+                    casbin_decision = casbin_shadow.casbin_allowed,
+                    "rbac_engine_mismatch"
+                );
             }
         }
 
