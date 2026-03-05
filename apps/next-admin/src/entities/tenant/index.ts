@@ -1,1 +1,1 @@
-export type { Tenant, Workspace } from './model';
+export * from './model';

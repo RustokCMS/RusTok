@@ -1,5 +1,5 @@
 import { Providers } from '@/widgets/app-shell';
-import { Toaster } from '@/components/ui/sonner';
+import { Toaster } from '@/shared/ui/shadcn/sonner';
 import { fontVariables } from '@/shared/lib/themes/font.config';
 import { DEFAULT_THEME } from '@/shared/lib/themes/theme.config';
 import ThemeProvider from '@/shared/lib/themes/theme-provider';

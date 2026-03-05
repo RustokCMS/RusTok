@@ -1,5 +1,5 @@
 'use client';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/shared/ui/shadcn/avatar';
 import type { User } from '../model';
 
 interface UserAvatarProps {

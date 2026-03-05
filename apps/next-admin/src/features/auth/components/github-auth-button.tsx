@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/shared/ui/shadcn/button';
 import { Icons } from '@/shared/ui/icons';
 
 export default function GithubSignInButton() {

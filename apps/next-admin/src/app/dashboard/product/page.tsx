@@ -1,5 +1,5 @@
 import { PageContainer } from '@/widgets/app-shell';
-import { buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/shared/ui/shadcn/button';
 import { DataTableSkeleton } from '@/widgets/data-table';
 import ProductListingPage from '@/features/products/components/product-listing';
 import { searchParamsCache } from '@/shared/lib/searchparams';

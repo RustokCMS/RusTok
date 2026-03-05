@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 #[component]
-pub fn StatsCard(
+pub fn stats_card(
     #[prop(into)] title: String,
     #[prop(into)] value: String,
     #[prop(into)] icon: AnyView,

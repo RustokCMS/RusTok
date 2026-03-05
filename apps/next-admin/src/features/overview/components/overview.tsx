@@ -1,5 +1,5 @@
 import { PageContainer } from '@/widgets/app-shell';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/shared/ui/shadcn/button';
 import {
   Card,
   CardDescription,
@@ -7,14 +7,14 @@ import {
   CardHeader,
   CardTitle,
   CardAction
-} from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+} from '@/shared/ui/shadcn/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/shadcn/tabs';
 import { AreaGraph } from './area-graph';
 import { BarGraph } from './bar-graph';
 import { PieGraph } from './pie-graph';
 import { RecentSales } from './recent-sales';
 import { IconTrendingUp, IconTrendingDown } from '@tabler/icons-react';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/shared/ui/shadcn/badge';
 
 export default function OverViewPage() {
   return (

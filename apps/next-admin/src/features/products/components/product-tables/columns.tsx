@@ -1,7 +1,7 @@
 'use client';
-import { Badge } from '@/components/ui/badge';
-import { DataTableColumnHeader } from '@/components/ui/table/data-table-column-header';
-import { Product } from '@/constants/data';
+import { Badge } from '@/shared/ui/shadcn/badge';
+import { DataTableColumnHeader } from '@/widgets/data-table';
+import { Product } from '@/entities/product';
 import { Column, ColumnDef } from '@tanstack/react-table';
 import { CheckCircle2, Text, XCircle } from 'lucide-react';
 import Image from 'next/image';

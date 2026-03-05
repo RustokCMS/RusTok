@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 #[component]
-pub fn PageHeader(
+pub fn page_header(
     #[prop(into)] title: String,
     #[prop(optional)] subtitle: Option<String>,
     #[prop(optional)] eyebrow: Option<String>,

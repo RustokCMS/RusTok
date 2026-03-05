@@ -1,39 +1,45 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::use_tenant;
+use leptos_hook_form::FormState;
 
 use crate::app::providers::locale::translate;
-use crate::shared::ui::{Button, Input, LanguageToggle};
+use crate::shared::ui::{ui_button, ui_input, ui_language_toggle};
 
 #[component]
-pub fn ResetPassword() -> impl IntoView {
+pub fn reset_password() -> impl IntoView {
     let tenant_signal = use_tenant();
 
     let initial_tenant = tenant_signal.get().unwrap_or_default();
     let (tenant, set_tenant) = signal(initial_tenant);
     let (email, set_email) = signal(String::new());
-    let (error, set_error) = signal(Option::<String>::None);
-    let (status, set_status) = signal(Option::<String>::None);
+    let (form_state, set_form_state) = signal(FormState::idle());
+    let (success_message, set_success_message) = signal(Option::<String>::None);
 
     let on_request = move |_| {
         if tenant.get().is_empty() || email.get().is_empty() {
-            set_error.set(Some(translate("reset.errorRequired").to_string()));
-            set_status.set(None);
+            set_form_state.set(FormState::with_form_error(
+                translate("reset.errorRequired").to_string(),
+            ));
+            set_success_message.set(None);
             return;
         }
 
         let tenant_value = tenant.get().trim().to_string();
         let email_value = email.get().trim().to_string();
 
+        set_form_state.set(FormState::submitting());
+        set_success_message.set(None);
+
         spawn_local(async move {
             match leptos_auth::api::forgot_password(email_value, tenant_value).await {
                 Ok(message) => {
-                    set_error.set(None);
-                    set_status.set(Some(message));
+                    set_form_state.set(FormState::idle());
+                    set_success_message.set(Some(message));
                 }
                 Err(e) => {
-                    set_error.set(Some(format!("{}", e)));
-                    set_status.set(None);
+                    set_form_state.set(FormState::with_form_error(format!("{}", e)));
+                    set_success_message.set(None);
                 }
             }
         });
@@ -68,21 +74,43 @@ pub fn ResetPassword() -> impl IntoView {
                     </div>
                     <div class="flex items-center justify-between gap-3 text-sm text-muted-foreground">
                         <span>{move || translate("reset.languageLabel")}</span>
-                        <LanguageToggle />
+                        <ui_language_toggle />
                     </div>
-                    <Show when=move || error.get().is_some()>
+                    <Show when=move || form_state.get().form_error.is_some()>
                         <div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                            {move || error.get().unwrap_or_default()}
+                            {move || form_state.get().form_error.unwrap_or_default()}
                         </div>
                     </Show>
-                    <Show when=move || status.get().is_some()>
+                    <Show when=move || success_message.get().is_some()>
                         <div class="rounded-md bg-emerald-100 border border-emerald-200 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                            {move || status.get().unwrap_or_default()}
+                            {move || success_message.get().unwrap_or_default()}
                         </div>
                     </Show>
-                    <Input value=tenant set_value=set_tenant placeholder="demo" label=move || translate("reset.tenantLabel") />
-                    <Input value=email set_value=set_email placeholder="admin@rustok.io" label=move || translate("reset.emailLabel") />
-                    <Button on_click=on_request class="w-full">{move || translate("reset.requestSubmit")}</Button>
+                    <ui_input
+                        value=tenant
+                        set_value=set_tenant
+                        placeholder="demo"
+                        label=move || translate("reset.tenantLabel")
+                    />
+                    <ui_input
+                        value=email
+                        set_value=set_email
+                        placeholder="admin@rustok.io"
+                        label=move || translate("reset.emailLabel")
+                    />
+                    <ui_button
+                        on_click=on_request
+                        class="w-full"
+                        disabled=Signal::derive(move || form_state.get().is_submitting)
+                    >
+                        {move || {
+                            if form_state.get().is_submitting {
+                                translate("reset.requesting").to_string()
+                            } else {
+                                translate("reset.requestSubmit").to_string()
+                            }
+                        }}
+                    </ui_button>
                     <div class="flex justify-between gap-3 text-sm">
                         <a class="text-primary hover:underline underline-offset-4" href="/login">
                             {move || translate("reset.loginLink")}

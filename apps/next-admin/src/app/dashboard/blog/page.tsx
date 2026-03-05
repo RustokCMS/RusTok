@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/shared/ui/shadcn/button';
 import { DataTableSkeleton } from '@/widgets/data-table';
 import { PostsPage } from '@rustok/blog-admin';
 import { cn } from '@/shared/lib/utils';

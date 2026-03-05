@@ -1,20 +1,10 @@
-export type ProductCategory =
-  | 'Electronics'
-  | 'Furniture'
-  | 'Clothing'
-  | 'Toys'
-  | 'Groceries'
-  | 'Books'
-  | 'Jewelry'
-  | 'Beauty Products';
-
-export interface Product {
-  id: number;
+export type Product = {
+  photo_url: string;
   name: string;
   description: string;
-  price: number;
-  photo_url: string;
-  category: string;
   created_at: string;
+  price: number;
+  id: number;
+  category: string;
   updated_at: string;
-}
+};

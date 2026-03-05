@@ -1,6 +1,6 @@
 pub mod page_header;
 
-pub use page_header::PageHeader;
+pub use page_header::page_header;
 
 use leptos::prelude::*;
 use leptos::web_sys;
@@ -8,7 +8,7 @@ use leptos::web_sys;
 use crate::shared::i18n::{use_locale, Locale};
 
 #[component]
-pub fn Button(
+pub fn ui_button(
     #[prop(into)] on_click: Callback<web_sys::MouseEvent>,
     #[prop(optional)] children: Option<Children>,
     #[prop(optional, into)] class: String,
@@ -35,7 +35,7 @@ pub fn Button(
 }
 
 #[component]
-pub fn Input(
+pub fn ui_input(
     #[prop(into)] value: Signal<String>,
     #[prop(into)] set_value: WriteSignal<String>,
     #[prop(into)] placeholder: TextProp,
@@ -66,7 +66,7 @@ pub fn Input(
 }
 
 #[component]
-pub fn LanguageToggle() -> impl IntoView {
+pub fn ui_language_toggle() -> impl IntoView {
     let locale = use_locale();
 
     let set_locale = move |value: Locale| {
@@ -103,6 +103,15 @@ pub fn LanguageToggle() -> impl IntoView {
             >
                 "EN"
             </button>
+        </div>
+    }
+}
+
+#[component]
+pub fn ui_success_message(#[prop(into)] message: String) -> impl IntoView {
+    view! {
+        <div class="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
+            {message}
         </div>
     }
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/shadcn/alert';
 import { IconAlertCircle } from '@tabler/icons-react';
 
 export default function OverviewError({ error }: { error: Error }) {

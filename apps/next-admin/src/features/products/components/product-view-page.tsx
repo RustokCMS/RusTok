@@ -1,4 +1,4 @@
-import { fakeProducts, Product } from '@/constants/mock-api';
+import { fakeProducts, Product } from '@/shared/constants/mock-api';
 import { notFound } from 'next/navigation';
 import ProductForm from './product-form';
 

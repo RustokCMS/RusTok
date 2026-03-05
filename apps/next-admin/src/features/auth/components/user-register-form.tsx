@@ -1,7 +1,7 @@
 'use client';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Button } from '@/shared/ui/shadcn/button';
+import { Input } from '@/shared/ui/shadcn/input';
+import { Label } from '@/shared/ui/shadcn/label';
 import { signUp } from '@/shared/api/auth-api';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';

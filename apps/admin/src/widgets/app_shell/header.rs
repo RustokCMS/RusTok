@@ -2,9 +2,9 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 
-use crate::features::auth::UserMenu;
+use crate::features::auth::user_menu;
 use crate::shared::i18n::translate;
-use crate::shared::ui::LanguageToggle;
+use crate::shared::ui::ui_language_toggle;
 
 #[derive(Clone, Copy, PartialEq)]
 struct Breadcrumb {
@@ -13,7 +13,7 @@ struct Breadcrumb {
 }
 
 #[component]
-pub fn Header() -> impl IntoView {
+pub fn header() -> impl IntoView {
     let location = use_location();
 
     let breadcrumbs = Memo::new(move |_| resolve_breadcrumbs(&location.pathname.get()));
@@ -61,8 +61,8 @@ pub fn Header() -> impl IntoView {
             </div>
 
             <div class="flex items-center gap-3">
-                <LanguageToggle />
-                <UserMenu />
+                <ui_language_toggle />
+                <user_menu />
             </div>
         </header>
     }

@@ -1,6 +1,6 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { signIn as rustokSignIn, fetchCurrentTenant } from '@/lib/auth-api';
+import { signIn as rustokSignIn, fetchCurrentTenant } from '@/shared/api/auth-api';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [

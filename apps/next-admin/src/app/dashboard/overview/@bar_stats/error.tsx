@@ -1,8 +1,8 @@
 'use client';
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/shadcn/alert';
+import { Button } from '@/shared/ui/shadcn/button';
+import { Card, CardContent, CardHeader } from '@/shared/ui/shadcn/card';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useTransition } from 'react';

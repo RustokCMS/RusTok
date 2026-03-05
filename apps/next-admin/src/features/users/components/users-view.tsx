@@ -1,21 +1,15 @@
 'use client';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@/shared/ui/shadcn/button';
+import { Input } from '@/shared/ui/shadcn/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/widgets/data-table';
+import { Badge } from '@/shared/ui/shadcn/badge';
 import { graphqlRequest } from '@/shared/api/graphql';
 import { useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 
-interface User {
-  id: string; email: string; name: string | null;
-  role: string; status: string; createdAt: string; tenantName: string | null;
-}
-interface UsersResponse {
-  users: { edges: Array<{ node: User }>; pageInfo: { totalCount: number } };
-}
+import { User, UsersResponse } from '@/entities/user';
 
 const USERS_QUERY = `
 query Users($pagination: PaginationInput, $filter: UsersFilter, $search: String) {

@@ -2,12 +2,12 @@ use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 
 use crate::features::modules::api;
-use crate::features::modules::components::ModulesList;
+use crate::features::modules::components::modules_list;
 use crate::shared::i18n::translate;
-use crate::shared::ui::PageHeader;
+use crate::shared::ui::page_header;
 
 #[component]
-pub fn Modules() -> impl IntoView {
+pub fn modules() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
 
@@ -20,7 +20,7 @@ pub fn Modules() -> impl IntoView {
 
     view! {
         <section class="px-10 py-8">
-            <PageHeader
+            <page_header
                 title=translate("modules.title")
                 eyebrow=translate("modules.eyebrow")
                 subtitle=translate("modules.subtitle")
@@ -41,7 +41,7 @@ pub fn Modules() -> impl IntoView {
                     modules_resource.get().map(|result| {
                         match result {
                             Ok(modules) => {
-                                view! { <ModulesList modules=modules /> }.into_any()
+                                view! { {modules_list(modules)} }.into_any()
                             }
                             Err(err) => {
                                 view! {

@@ -3,4 +3,4 @@ pub mod modules;
 pub mod profile;
 pub mod users;
 
-pub use auth::UserMenu;
+pub use auth::user_menu;

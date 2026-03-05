@@ -1,15 +1,15 @@
 'use client';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Badge } from '@/shared/ui/shadcn/badge';
+import { Button } from '@/shared/ui/shadcn/button';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle
-} from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
+} from '@/shared/ui/shadcn/card';
+import { Switch } from '@/shared/ui/shadcn/switch';
 import {
   IconPackage,
   IconShieldLock,

@@ -1,24 +1,27 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::use_auth;
+use leptos_hook_form::FormState;
 use leptos_router::hooks::use_navigate;
 
 use crate::app::providers::locale::translate;
-use crate::shared::ui::{Button, Input, LanguageToggle};
+use crate::shared::ui::{ui_button, ui_input, ui_language_toggle};
 
 #[component]
-pub fn Login() -> impl IntoView {
+pub fn login() -> impl IntoView {
     let auth = use_auth();
     let navigate = use_navigate();
 
     let (tenant, set_tenant) = signal(String::from("demo"));
     let (email, set_email) = signal(String::new());
     let (password, set_password) = signal(String::new());
-    let (error, set_error) = signal(Option::<String>::None);
+    let (form_state, set_form_state) = signal(FormState::idle());
 
     let on_submit = move |_| {
         if tenant.get().is_empty() || email.get().is_empty() || password.get().is_empty() {
-            set_error.set(Some(translate("auth.errorRequired").to_string()));
+            set_form_state.set(FormState::with_form_error(
+                translate("auth.errorRequired").to_string(),
+            ));
             return;
         }
 
@@ -28,17 +31,19 @@ pub fn Login() -> impl IntoView {
         let auth = auth.clone();
         let navigate = navigate.clone();
 
+        set_form_state.set(FormState::submitting());
+
         spawn_local(async move {
             match auth
                 .sign_in(email_value, password_value, tenant_value)
                 .await
             {
                 Ok(()) => {
-                    set_error.set(None);
+                    set_form_state.set(FormState::idle());
                     navigate("/dashboard", Default::default());
                 }
                 Err(e) => {
-                    set_error.set(Some(format!("{}", e)));
+                    set_form_state.set(FormState::with_form_error(format!("{}", e)));
                 }
             }
         });
@@ -73,35 +78,45 @@ pub fn Login() -> impl IntoView {
                     </div>
                     <div class="flex items-center justify-between gap-3 text-sm text-muted-foreground">
                         <span>{move || translate("auth.languageLabel")}</span>
-                        <LanguageToggle />
+                        <ui_language_toggle />
                     </div>
-                    <Show when=move || error.get().is_some()>
+                    <Show when=move || form_state.get().form_error.is_some()>
                         <div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                            {move || error.get().unwrap_or_default()}
+                            {move || form_state.get().form_error.unwrap_or_default()}
                         </div>
                     </Show>
-                    <Input
+                    <ui_input
                         value=tenant
                         set_value=set_tenant
                         placeholder="demo"
                         label=move || translate("auth.tenantLabel")
                     />
-                    <Input
+                    <ui_input
                         value=email
                         set_value=set_email
                         placeholder="admin@rustok.io"
                         label=move || translate("auth.emailLabel")
                     />
-                    <Input
+                    <ui_input
                         value=password
                         set_value=set_password
                         placeholder="••••••••"
                         type_="password"
                         label=move || translate("auth.passwordLabel")
                     />
-                    <Button on_click=on_submit class="w-full">
-                        {move || translate("auth.submit")}
-                    </Button>
+                    <ui_button
+                        on_click=on_submit
+                        class="w-full"
+                        disabled=Signal::derive(move || form_state.get().is_submitting)
+                    >
+                        {move || {
+                            if form_state.get().is_submitting {
+                                translate("auth.submitting").to_string()
+                            } else {
+                                translate("auth.submit").to_string()
+                            }
+                        }}
+                    </ui_button>
                     <div class="flex justify-between gap-3 text-sm">
                         <a class="text-primary hover:underline underline-offset-4" href="/register">
                             {move || translate("auth.registerLink")}

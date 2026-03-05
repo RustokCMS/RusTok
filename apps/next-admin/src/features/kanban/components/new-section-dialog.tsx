@@ -1,5 +1,5 @@
 'use client';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/shared/ui/shadcn/button';
 import {
   Dialog,
   DialogContent,
@@ -8,8 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+} from '@/shared/ui/shadcn/dialog';
+import { Input } from '@/shared/ui/shadcn/input';
 
 import { useTaskStore } from '../utils/store';
 

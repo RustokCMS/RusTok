@@ -1,1 +1,1 @@
-export { default as KBar } from '@/components/kbar';
+export { default as KBar } from '@/widgets/command-palette';

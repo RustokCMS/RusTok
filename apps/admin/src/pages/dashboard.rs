@@ -8,8 +8,8 @@ use crate::app::modules::{components_for_slot, AdminSlot};
 use crate::app::providers::locale::translate;
 use crate::shared::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
 use crate::shared::api::request;
-use crate::shared::ui::{Button, LanguageToggle, PageHeader};
-use crate::widgets::stats_card::StatsCard;
+use crate::shared::ui::{page_header, ui_button, ui_language_toggle};
+use crate::widgets::stats_card::stats_card;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct DashboardStatsResponse {
@@ -60,7 +60,7 @@ struct ActivityUser {
 }
 
 #[component]
-pub fn Dashboard() -> impl IntoView {
+pub fn dashboard() -> impl IntoView {
     let auth = use_auth();
     let current_user = use_current_user();
     let token = use_token();
@@ -108,21 +108,21 @@ pub fn Dashboard() -> impl IntoView {
 
     view! {
         <section class="px-10 py-8">
-            <PageHeader
+            <page_header
                 title=title
                 eyebrow=translate("app.nav.dashboard")
                 subtitle=translate("app.dashboard.subtitle")
                 actions=view! {
-                    <LanguageToggle />
-                    <Button
+                    <ui_language_toggle />
+                    <ui_button
                         on_click=logout
                         class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || translate("app.dashboard.logout")}
-                    </Button>
-                    <Button on_click=move |_| {}>
+                    </ui_button>
+                    <ui_button on_click=move |_| {}>
                         {move || translate("app.dashboard.createTenant")}
-                    </Button>
+                    </ui_button>
                 }
                 .into_any()
             />
@@ -182,14 +182,15 @@ pub fn Dashboard() -> impl IntoView {
                                 .into_iter()
                                 .map(|(title, value, hint)| {
                                     view! {
-                                        <StatsCard
-                                            title=title
-                                            value=value
-                                            icon=view! { <span class="text-muted-foreground">"•"</span> }.into_any()
-                                            trend=hint
-                                            trend_label=translate("app.dashboard.stats.vsLastMonth")
-                                            class="transition-all hover:scale-[1.02]"
-                                        />
+                                        {stats_card(
+                                            title,
+                                            value,
+                                            view! { <span class="text-muted-foreground">"•"</span> }.into_any(),
+                                            hint,
+                                            Some(translate("app.dashboard.stats.vsLastMonth")),
+                                            None,
+                                            "transition-all hover:scale-[1.02]".to_string(),
+                                        )}
                                     }
                                 })
                                 .collect_view()}
@@ -242,7 +243,7 @@ pub fn Dashboard() -> impl IntoView {
                                                 <div class="flex items-center justify-between border-b border-border py-3 last:border-b-0">
                                                     <div class="min-w-0 flex-1">
                                                         <div class="flex items-center gap-2">
-                                                            <ActivityIcon activity_type=item.r#type.clone() />
+                                                            <activity_icon activity_type=item.r#type.clone() />
                                                             <strong class="truncate text-foreground">{item.description}</strong>
                                                         </div>
                                                         <p class="mt-1 text-sm text-muted-foreground">
@@ -318,7 +319,7 @@ fn format_time_ago(timestamp: &str) -> String {
 }
 
 #[component]
-fn ActivityIcon(activity_type: String) -> impl IntoView {
+fn activity_icon(activity_type: String) -> impl IntoView {
     let (icon, color_class) = match activity_type.as_str() {
         "user.created" | "user.joined" => (
             "M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",

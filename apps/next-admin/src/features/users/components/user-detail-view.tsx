@@ -1,9 +1,9 @@
 'use client';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Badge } from '@/shared/ui/shadcn/badge';
+import { Button } from '@/shared/ui/shadcn/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
+import { Input } from '@/shared/ui/shadcn/input';
+import { Label } from '@/shared/ui/shadcn/label';
 import { graphqlRequest } from '@/shared/api/graphql';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';

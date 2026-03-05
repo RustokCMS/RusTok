@@ -1,6 +1,6 @@
 'use client';
 import { PageContainer } from '@/widgets/app-shell';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/shadcn/card';
 import { useSession } from 'next-auth/react';
 import { BadgeCheck } from 'lucide-react';
 

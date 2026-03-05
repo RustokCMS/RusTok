@@ -2,4 +2,4 @@ pub mod modules;
 pub mod providers;
 pub mod router;
 
-pub use router::App;
+pub use router::app;

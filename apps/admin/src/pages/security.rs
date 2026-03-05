@@ -1,11 +1,12 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_auth, use_tenant, use_token};
+use leptos_hook_form::FormState;
 use serde::{Deserialize, Serialize};
 
 use crate::app::providers::locale::translate;
 use crate::shared::api::{request, ApiError};
-use crate::shared::ui::{Button, Input};
+use crate::shared::ui::{ui_button, ui_input};
 
 const CHANGE_PASSWORD_MUTATION: &str = r#"
 mutation ChangePassword($input: ChangePasswordInput!) {
@@ -41,33 +42,40 @@ struct SuccessPayload {
 }
 
 #[component]
-pub fn Security() -> impl IntoView {
+pub fn security() -> impl IntoView {
     let auth = use_auth();
     let token = use_token();
     let tenant = use_tenant();
 
     let (current_password, set_current_password) = signal(String::new());
     let (new_password, set_new_password) = signal(String::new());
-    let (status, set_status) = signal(Option::<String>::None);
-    let (error, set_error) = signal(Option::<String>::None);
+    let (form_state, set_form_state) = signal(FormState::idle());
+    let (success_message, set_success_message) = signal(Option::<String>::None);
 
     let on_change_password = move |_| {
         if current_password.get().is_empty() || new_password.get().is_empty() {
-            set_error.set(Some(translate("security.passwordRequired").to_string()));
-            set_status.set(None);
+            set_form_state.set(FormState::with_form_error(
+                translate("security.passwordRequired").to_string(),
+            ));
+            set_success_message.set(None);
             return;
         }
 
         let token_value = token.get();
         let tenant_value = tenant.get();
         if token_value.is_none() {
-            set_error.set(Some(translate("errors.auth.unauthorized").to_string()));
-            set_status.set(None);
+            set_form_state.set(FormState::with_form_error(
+                translate("errors.auth.unauthorized").to_string(),
+            ));
+            set_success_message.set(None);
             return;
         }
 
         let current_password_value = current_password.get();
         let new_password_value = new_password.get();
+
+        set_form_state.set(FormState::submitting());
+        set_success_message.set(None);
 
         spawn_local(async move {
             let result = request::<ChangePasswordVariables, ChangePasswordResponse>(
@@ -85,8 +93,9 @@ pub fn Security() -> impl IntoView {
 
             match result {
                 Ok(_) => {
-                    set_error.set(None);
-                    set_status.set(Some(translate("security.passwordUpdated").to_string()));
+                    set_form_state.set(FormState::idle());
+                    set_success_message
+                        .set(Some(translate("security.passwordUpdated").to_string()));
                     set_current_password.set(String::new());
                     set_new_password.set(String::new());
                 }
@@ -97,8 +106,8 @@ pub fn Security() -> impl IntoView {
                         ApiError::Network => translate("errors.network").to_string(),
                         ApiError::Graphql(_) => translate("errors.unknown").to_string(),
                     };
-                    set_error.set(Some(message));
-                    set_status.set(None);
+                    set_form_state.set(FormState::with_form_error(message));
+                    set_success_message.set(None);
                 }
             }
         });
@@ -126,12 +135,12 @@ pub fn Security() -> impl IntoView {
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
-                    <Button
+                    <ui_button
                         on_click=on_sign_out_all
                         class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || translate("security.signOutAll")}
-                    </Button>
+                    </ui_button>
                 </div>
             </header>
 
@@ -143,14 +152,14 @@ pub fn Security() -> impl IntoView {
                     <p class="text-sm text-muted-foreground">
                         {move || translate("security.passwordSubtitle")}
                     </p>
-                    <Input
+                     <ui_input
                         value=current_password
                         set_value=set_current_password
                         placeholder="••••••••"
                         type_="password"
                         label=move || translate("security.currentPasswordLabel")
                     />
-                    <Input
+                    <ui_input
                         value=new_password
                         set_value=set_new_password
                         placeholder="••••••••"
@@ -160,17 +169,27 @@ pub fn Security() -> impl IntoView {
                     <p class="text-sm text-muted-foreground">
                         {move || translate("security.passwordHint")}
                     </p>
-                    <Button on_click=on_change_password class="w-full">
-                        {move || translate("security.passwordSubmit")}
-                    </Button>
-                    <Show when=move || error.get().is_some()>
+                    <ui_button
+                        on_click=on_change_password
+                        class="w-full"
+                        disabled=Signal::derive(move || form_state.get().is_submitting)
+                    >
+                        {move || {
+                            if form_state.get().is_submitting {
+                                translate("common.updating").to_string()
+                            } else {
+                                translate("security.passwordSubmit").to_string()
+                            }
+                        }}
+                    </ui_button>
+                    <Show when=move || form_state.get().form_error.is_some()>
                         <div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                            {move || error.get().unwrap_or_default()}
+                            {move || form_state.get().form_error.unwrap_or_default()}
                         </div>
                     </Show>
-                    <Show when=move || status.get().is_some()>
+                    <Show when=move || success_message.get().is_some()>
                         <div class="rounded-md bg-emerald-100 border border-emerald-200 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                            {move || status.get().unwrap_or_default()}
+                            {move || success_message.get().unwrap_or_default()}
                         </div>
                     </Show>
                 </div>

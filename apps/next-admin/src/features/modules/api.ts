@@ -1,4 +1,4 @@
-import { graphqlRequest } from '@/lib/graphql';
+import { graphqlRequest } from '@/shared/api/graphql';
 
 export interface ModuleInfo {
   moduleSlug: string;

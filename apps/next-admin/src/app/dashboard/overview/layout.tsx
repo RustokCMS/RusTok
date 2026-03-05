@@ -1,5 +1,5 @@
 import { PageContainer } from '@/widgets/app-shell';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/shared/ui/shadcn/badge';
 import {
   Card,
   CardHeader,
@@ -7,7 +7,7 @@ import {
   CardDescription,
   CardAction,
   CardFooter
-} from '@/components/ui/card';
+} from '@/shared/ui/shadcn/card';
 import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
 import React from 'react';
 

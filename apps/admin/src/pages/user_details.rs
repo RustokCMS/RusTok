@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use crate::app::providers::locale::translate;
 use crate::shared::api::queries::{USER_DETAILS_QUERY, USER_DETAILS_QUERY_HASH};
 use crate::shared::api::{request, request_with_persisted, ApiError};
-use crate::shared::ui::{Button, Input, LanguageToggle};
+use crate::shared::ui::{ui_button, ui_input, ui_language_toggle};
 use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_hook_form::FormState;
+use leptos_ui::{Select, SelectOption};
 
 #[derive(Params, PartialEq)]
 struct UserParams {
@@ -93,7 +95,7 @@ mutation DeleteUser($id: UUID!) {
 "#;
 
 #[component]
-pub fn UserDetails() -> impl IntoView {
+pub fn user_details() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
     let navigate = use_navigate();
@@ -125,16 +127,14 @@ pub fn UserDetails() -> impl IntoView {
         },
     );
 
-    let is_editing = RwSignal::new(false);
-    let edit_name = RwSignal::new(String::new());
-    let edit_role = RwSignal::new(String::new());
-    let edit_status = RwSignal::new(String::new());
-    let save_error = RwSignal::new(Option::<String>::None);
-    let is_saving = RwSignal::new(false);
+    let is_editing = signal(false);
+    let edit_name = signal(String::new());
+    let edit_role = signal(String::new());
+    let edit_status = signal(String::new());
+    let (form_state, set_form_state) = signal(FormState::idle());
 
-    let show_delete_confirm = RwSignal::new(false);
-    let is_deleting = RwSignal::new(false);
-    let delete_error = RwSignal::new(Option::<String>::None);
+    let (show_delete_confirm, set_show_delete_confirm) = signal(false);
+    let (delete_form_state, set_delete_form_state) = signal(FormState::idle());
 
     let navigate_back = navigate.clone();
     let go_back = move |_| {
@@ -143,59 +143,58 @@ pub fn UserDetails() -> impl IntoView {
 
     let cancel_edit = move |_| {
         is_editing.set(false);
-        save_error.set(None);
+        set_form_state.set(FormState::idle());
     };
 
-    let save_user = {
-        move |_| {
-            let user_id = params.with(|p| {
-                p.as_ref()
-                    .ok()
-                    .and_then(|p| p.id.clone())
-                    .unwrap_or_default()
-            });
-            let name_val = edit_name.get();
-            let role_val = edit_role.get();
-            let status_val = edit_status.get();
-            let token_val = token.get();
-            let tenant_val = tenant.get();
+    let save_user = move |_| {
+        let (name_signal, _) = edit_name;
+        let (role_signal, _) = edit_role;
+        let (status_signal, _) = edit_status;
+        let user_id = params.with(|p| {
+            p.as_ref()
+                .ok()
+                .and_then(|p| p.id.clone())
+                .unwrap_or_default()
+        });
+        let name_val = name_signal.get();
+        let role_val = role_signal.get();
+        let status_val = status_signal.get();
+        let token_val = token.get();
+        let tenant_val = tenant.get();
 
-            is_saving.set(true);
-            save_error.set(None);
+        set_form_state.set(FormState::submitting());
 
-            spawn_local(async move {
-                let vars = UpdateUserVariables {
-                    id: user_id,
-                    input: UpdateUserInput {
-                        name: if name_val.is_empty() {
-                            None
-                        } else {
-                            Some(name_val)
-                        },
-                        role: role_val,
-                        status: status_val,
+        spawn_local(async move {
+            let vars = UpdateUserVariables {
+                id: user_id,
+                input: UpdateUserInput {
+                    name: if name_val.is_empty() {
+                        None
+                    } else {
+                        Some(name_val)
                     },
-                };
-                match request::<UpdateUserVariables, UpdateUserResponse>(
-                    UPDATE_USER_MUTATION,
-                    vars,
-                    token_val,
-                    tenant_val,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        is_saving.set(false);
-                        is_editing.set(false);
-                        user_resource.refetch();
-                    }
-                    Err(e) => {
-                        is_saving.set(false);
-                        save_error.set(Some(format!("{:?}", e)));
-                    }
+                    role: role_val,
+                    status: status_val,
+                },
+            };
+            match request::<UpdateUserVariables, UpdateUserResponse>(
+                UPDATE_USER_MUTATION,
+                vars,
+                token_val,
+                tenant_val,
+            )
+            .await
+            {
+                Ok(_) => {
+                    set_form_state.set(FormState::idle());
+                    is_editing.set(false);
+                    user_resource.refetch();
                 }
-            });
-        }
+                Err(e) => {
+                    set_form_state.set(FormState::with_form_error(format!("{:?}", e)));
+                }
+            }
+        });
     };
 
     let confirm_delete = {
@@ -210,8 +209,7 @@ pub fn UserDetails() -> impl IntoView {
             let token_val = token.get();
             let tenant_val = tenant.get();
 
-            is_deleting.set(true);
-            delete_error.set(None);
+            set_delete_form_state.set(FormState::submitting());
 
             let navigate_to_users = navigate.clone();
             spawn_local(async move {
@@ -228,9 +226,8 @@ pub fn UserDetails() -> impl IntoView {
                         navigate_to_users("/users", Default::default());
                     }
                     Err(e) => {
-                        is_deleting.set(false);
-                        delete_error.set(Some(format!("{:?}", e)));
-                        show_delete_confirm.set(false);
+                        set_delete_form_state.set(FormState::with_form_error(format!("{:?}", e)));
+                        set_show_delete_confirm.set(false);
                     }
                 }
             });
@@ -252,22 +249,25 @@ pub fn UserDetails() -> impl IntoView {
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-3">
-                    <LanguageToggle />
-                    <Button
+                    <ui_language_toggle />
+                    <ui_button
                         on_click=go_back
                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || translate("users.detail.back")}
-                    </Button>
+                    </ui_button>
                     <Show when=move || !is_editing.get()>
-                        <Button
+                        <ui_button
                             on_click=move |_| {
                                 if let Some(Ok(ref resp)) = user_resource.get() {
                                     if let Some(ref user) = resp.user {
-                                        edit_name.set(user.name.clone().unwrap_or_default());
-                                        edit_role.set(user.role.clone());
-                                        edit_status.set(user.status.clone());
-                                        save_error.set(None);
+                                        let (_, set_n) = edit_name;
+                                        let (_, set_r) = edit_role;
+                                        let (_, set_s) = edit_status;
+                                        set_n.set(user.name.clone().unwrap_or_default());
+                                        set_r.set(user.role.clone());
+                                        set_s.set(user.status.clone());
+                                        set_form_state.set(FormState::idle());
                                         is_editing.set(true);
                                     }
                                 }
@@ -275,38 +275,38 @@ pub fn UserDetails() -> impl IntoView {
                             class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                         >
                             {move || translate("users.detail.edit")}
-                        </Button>
-                        <Button
-                            on_click=move |_| show_delete_confirm.set(true)
+                        </ui_button>
+                        <ui_button
+                            on_click=move |_| set_show_delete_confirm.set(true)
                             class="border border-destructive/30 bg-transparent text-destructive hover:bg-destructive/10"
                         >
                             {move || translate("users.detail.delete")}
-                        </Button>
+                        </ui_button>
                     </Show>
                     <Show when=move || is_editing.get()>
-                        <Button
+                        <ui_button
                             on_click=save_user
-                            disabled=is_saving.into()
+                            disabled=Signal::derive(move || form_state.get().is_submitting)
                         >
-                            {move || if is_saving.get() {
+                            {move || if form_state.get().is_submitting {
                                 translate("users.detail.saving").to_string()
                             } else {
                                 translate("users.detail.save").to_string()
                             }}
-                        </Button>
-                        <Button
+                        </ui_button>
+                        <ui_button
                             on_click=cancel_edit
                             class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                         >
                             {move || translate("users.detail.cancel")}
-                        </Button>
+                        </ui_button>
                     </Show>
                 </div>
             </header>
 
-            <Show when=move || save_error.get().is_some()>
+            <Show when=move || form_state.get().form_error.is_some()>
                 <div class="mb-4 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                    {move || save_error.get().unwrap_or_default()}
+                    {move || form_state.get().form_error.unwrap_or_default()}
                 </div>
             </Show>
 
@@ -319,30 +319,30 @@ pub fn UserDetails() -> impl IntoView {
                         <p class="mb-4 text-sm text-muted-foreground">
                             {move || translate("users.detail.deleteConfirmText")}
                         </p>
-                        <Show when=move || delete_error.get().is_some()>
+                        <Show when=move || delete_form_state.get().form_error.is_some()>
                             <div class="mb-3 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                                {move || delete_error.get().unwrap_or_default()}
+                                {move || delete_form_state.get().form_error.unwrap_or_default()}
                             </div>
                         </Show>
                         <div class="flex gap-3">
-                            <Button
+                            <ui_button
                                 on_click=confirm_delete.clone()
-                                disabled=is_deleting.into()
+                                disabled=Signal::derive(move || delete_form_state.get().is_submitting)
                                 class="flex-1 bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             >
-                                {move || if is_deleting.get() {
+                                {move || if delete_form_state.get().is_submitting {
                                     translate("users.detail.deleting").to_string()
                                 } else {
                                     translate("users.detail.confirmDelete").to_string()
                                 }}
-                            </Button>
-                            <Button
-                                on_click=move |_| show_delete_confirm.set(false)
+                            </ui_button>
+                            <ui_button
+                                on_click=move |_| set_show_delete_confirm.set(false)
                                 class="flex-1 border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
-                                disabled=is_deleting.into()
+                                disabled=Signal::derive(move || delete_form_state.get().is_submitting)
                             >
                                 {move || translate("users.detail.cancel")}
-                            </Button>
+                            </ui_button>
                         </div>
                     </div>
                 </div>
@@ -398,9 +398,9 @@ pub fn UserDetails() -> impl IntoView {
                                                 }
                                             >
                                                 <div class="mt-1">
-                                                    <Input
-                                                        value=Signal::derive(move || edit_name.get())
-                                                        set_value=edit_name.write_only()
+                                                    <ui_input
+                                                        value=edit_name.0
+                                                        set_value=edit_name.1
                                                         placeholder="Full name"
                                                         label=move || String::new()
                                                     />
@@ -419,16 +419,16 @@ pub fn UserDetails() -> impl IntoView {
                                                 }
                                             >
                                                 <div class="mt-1">
-                                                    <select
-                                                        class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                                                        prop:value=move || edit_role.get()
-                                                        on:change=move |ev| edit_role.set(event_target_value(&ev))
-                                                    >
-                                                        <option value="CUSTOMER">"Customer"</option>
-                                                        <option value="MANAGER">"Manager"</option>
-                                                        <option value="ADMIN">"Admin"</option>
-                                                        <option value="SUPER_ADMIN">"Super Admin"</option>
-                                                    </select>
+                                                    <Select
+                                                        options=vec![
+                                                            SelectOption::new("CUSTOMER", "Customer"),
+                                                            SelectOption::new("MANAGER", "Manager"),
+                                                            SelectOption::new("ADMIN", "Admin"),
+                                                            SelectOption::new("SUPER_ADMIN", "Super Admin"),
+                                                        ]
+                                                        value=Some(edit_role.0)
+                                                        set_value=Some(edit_role.1)
+                                                    />
                                                 </div>
                                             </Show>
                                         </div>
@@ -444,15 +444,15 @@ pub fn UserDetails() -> impl IntoView {
                                                 }
                                             >
                                                 <div class="mt-1">
-                                                    <select
-                                                        class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                                                        prop:value=move || edit_status.get()
-                                                        on:change=move |ev| edit_status.set(event_target_value(&ev))
-                                                    >
-                                                        <option value="ACTIVE">"Active"</option>
-                                                        <option value="INACTIVE">"Inactive"</option>
-                                                        <option value="BANNED">"Banned"</option>
-                                                    </select>
+                                                    <Select
+                                                        options=vec![
+                                                            SelectOption::new("ACTIVE", "Active"),
+                                                            SelectOption::new("INACTIVE", "Inactive"),
+                                                            SelectOption::new("BANNED", "Banned"),
+                                                        ]
+                                                        value=Some(edit_status.0)
+                                                        set_value=Some(edit_status.1)
+                                                    />
                                                 </div>
                                             </Show>
                                         </div>

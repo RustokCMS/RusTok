@@ -10,18 +10,18 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
+} from '@/shared/ui/shadcn/alert-dialog';
+import { Button } from '@/shared/ui/shadcn/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
+} from '@/shared/ui/shadcn/dropdown-menu';
 import { useTaskStore } from '../utils/store';
 import { UniqueIdentifier } from '@dnd-kit/core';
-import { Input } from '@/components/ui/input';
+import { Input } from '@/shared/ui/shadcn/input';
 import { toast } from 'sonner';
 
 export function ColumnActions({

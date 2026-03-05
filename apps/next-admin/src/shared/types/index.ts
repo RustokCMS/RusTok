@@ -1,28 +1,44 @@
-export type {
-  NavItem,
-  NavItemWithChildren,
-  NavItemWithOptionalChildren,
-  FooterItem,
-  MainNavItem,
-  SidebarNavItem,
-  PermissionCheck
-} from '@/types';
-export type {
-  BaseFormFieldProps,
-  FormOption,
-  FileUploadConfig,
-  DatePickerConfig,
-  SliderConfig,
-  CheckboxGroupOption,
-  RadioGroupOption,
-  TextareaConfig
-} from '@/types/base-form';
-export type {
-  Option,
-  FilterOperator,
-  FilterVariant,
-  JoinOperator,
-  ExtendedColumnSort,
-  ExtendedColumnFilter,
-  DataTableRowAction
-} from '@/types/data-table';
+import { Icons } from '@/shared/ui/icons';
+
+export interface PermissionCheck {
+  permission?: string;
+  plan?: string;
+  feature?: string;
+  role?: string;
+  requireOrg?: boolean;
+}
+
+export interface NavItem {
+  title: string;
+  url: string;
+  disabled?: boolean;
+  external?: boolean;
+  shortcut?: [string, string];
+  icon?: keyof typeof Icons;
+  label?: string;
+  description?: string;
+  isActive?: boolean;
+  items?: NavItem[];
+  access?: PermissionCheck;
+}
+
+export interface NavItemWithChildren extends NavItem {
+  items: NavItemWithChildren[];
+}
+
+export interface NavItemWithOptionalChildren extends NavItem {
+  items?: NavItemWithChildren[];
+}
+
+export interface FooterItem {
+  title: string;
+  items: {
+    title: string;
+    href: string;
+    external?: boolean;
+  }[];
+}
+
+export type MainNavItem = NavItemWithOptionalChildren;
+
+export type SidebarNavItem = NavItemWithChildren;

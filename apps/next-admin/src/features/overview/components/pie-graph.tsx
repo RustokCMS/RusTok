@@ -11,13 +11,13 @@ import {
   CardFooter,
   CardHeader,
   CardTitle
-} from '@/components/ui/card';
+} from '@/shared/ui/shadcn/card';
 import {
   ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent
-} from '@/components/ui/chart';
+} from '@/shared/ui/shadcn/chart';
 
 const chartData = [
   { browser: 'chrome', visitors: 275, fill: 'var(--primary)' },

@@ -1,7 +1,7 @@
 import { KBar } from '@/widgets/command-palette';
 import { AppSidebar, Header, InfoSidebar } from '@/widgets/app-shell';
-import { InfobarProvider } from '@/components/ui/infobar';
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { InfobarProvider } from '@/shared/ui/shadcn/infobar';
+import { SidebarInset, SidebarProvider } from '@/shared/ui/shadcn/sidebar';
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 

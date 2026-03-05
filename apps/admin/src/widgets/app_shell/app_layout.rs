@@ -1,16 +1,16 @@
 use leptos::prelude::*;
 use leptos_router::components::Outlet;
 
-use super::header::Header;
-use super::sidebar::Sidebar;
+use super::header::header;
+use super::sidebar::sidebar;
 
 #[component]
-pub fn AppLayout() -> impl IntoView {
+pub fn app_layout() -> impl IntoView {
     view! {
-        <div class="flex h-screen bg-background overflow-hidden">
-            <Sidebar />
+        <div class="flex h-screen bg-background text-foreground">
+            {sidebar()}
             <div class="flex flex-1 flex-col overflow-hidden">
-                <Header />
+                {header()}
                 <main class="flex-1 overflow-y-auto">
                     <Outlet />
                 </main>

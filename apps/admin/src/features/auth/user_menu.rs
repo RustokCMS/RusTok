@@ -7,7 +7,7 @@ use leptos_auth::hooks::{use_auth, use_current_user};
 use crate::shared::i18n::translate;
 
 #[component]
-pub fn UserMenu() -> impl IntoView {
+pub fn user_menu() -> impl IntoView {
     let auth = use_auth();
     let current_user = use_current_user();
 
@@ -97,12 +97,12 @@ pub fn UserMenu() -> impl IntoView {
                     </div>
 
                     <div class="py-1">
-                        <DropdownLink href="/profile" icon="user">
+                        <dropdown_link href="/profile" icon="user">
                             {move || translate("app.menu.profile")}
-                        </DropdownLink>
-                        <DropdownLink href="/security" icon="lock">
+                        </dropdown_link>
+                        <dropdown_link href="/security" icon="lock">
                             {move || translate("app.menu.security")}
-                        </DropdownLink>
+                        </dropdown_link>
                     </div>
 
                     <div class="border-t border-border py-1">
@@ -110,7 +110,7 @@ pub fn UserMenu() -> impl IntoView {
                             on:click=move |ev| handle_logout.run(ev)
                             class="flex w-full items-center gap-3 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
                         >
-                            <MenuIcon icon="logout" />
+                            <menu_icon icon="logout" />
                             <span>{move || translate("app.menu.signOut")}</span>
                         </button>
                     </div>
@@ -121,20 +121,20 @@ pub fn UserMenu() -> impl IntoView {
 }
 
 #[component]
-fn DropdownLink(href: &'static str, icon: &'static str, children: Children) -> impl IntoView {
+fn dropdown_link(href: &'static str, icon: &'static str, children: Children) -> impl IntoView {
     view! {
         <A
             href=href
             attr:class="flex items-center gap-3 px-4 py-2 text-sm text-popover-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
         >
-            <MenuIcon icon=icon />
+            <menu_icon icon=icon />
             <span>{children()}</span>
         </A>
     }
 }
 
 #[component]
-fn MenuIcon(icon: &'static str) -> impl IntoView {
+fn menu_icon(icon: &'static str) -> impl IntoView {
     let path = match icon {
         "user" => "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
         "lock" => "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4",

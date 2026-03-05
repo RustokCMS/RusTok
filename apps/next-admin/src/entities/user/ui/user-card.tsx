@@ -1,5 +1,5 @@
 'use client';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/shared/ui/shadcn/badge';
 import type { User } from '../model';
 import { UserAvatar } from './user-avatar';
 

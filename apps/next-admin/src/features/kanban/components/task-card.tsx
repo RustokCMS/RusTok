@@ -1,11 +1,11 @@
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Button } from '@/shared/ui/shadcn/button';
+import { Card, CardContent, CardHeader } from '@/shared/ui/shadcn/card';
 import { Task } from '../utils/store';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cva } from 'class-variance-authority';
 import { IconGripVertical } from '@tabler/icons-react';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/shared/ui/shadcn/badge';
 
 // export interface Task {
 //   id: UniqueIdentifier;

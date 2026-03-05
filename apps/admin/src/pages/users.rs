@@ -4,6 +4,7 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
+use leptos_struct_table::*;
 use leptos_ui::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
 use serde::{Deserialize, Serialize};
@@ -11,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::app::providers::locale::translate;
 use crate::shared::api::queries::{CREATE_USER_MUTATION, USERS_QUERY, USERS_QUERY_HASH};
 use crate::shared::api::{request, request_with_persisted, ApiError};
-use crate::shared::ui::{Button, Input, LanguageToggle, PageHeader};
+use crate::shared::ui::{page_header, ui_button, ui_input, ui_language_toggle};
 
 #[derive(Clone, Debug, Serialize)]
 struct CreateUserVariables {
@@ -50,17 +51,21 @@ struct GraphqlUserEdge {
     node: GraphqlUser,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, StructTable)]
+#[struct_table(class = "w-full border-collapse text-sm")]
 struct GraphqlUser {
+    #[struct_table(title = "Email")]
     id: String,
+    #[struct_table(title = "Email")]
     email: String,
+    #[struct_table(title = "Name")]
     name: Option<String>,
+    #[struct_table(title = "Role")]
     role: String,
+    #[struct_table(title = "Status")]
     status: String,
-    #[serde(rename = "createdAt")]
+    #[struct_table(title = "Created At", field_rename = "createdAt")]
     created_at: String,
-    #[serde(rename = "tenantName")]
-    tenant_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -116,7 +121,7 @@ fn users_table_skeleton() -> impl IntoView {
 }
 
 #[component]
-pub fn Users() -> impl IntoView {
+pub fn users() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
     let navigate = use_navigate();
@@ -330,21 +335,21 @@ pub fn Users() -> impl IntoView {
 
     view! {
         <section class="px-10 py-8">
-            <PageHeader
+            <page_header
                 title=translate("users.title")
                 subtitle=translate("users.subtitle")
                 eyebrow=translate("app.nav.users")
                 actions=view! {
-                    <LanguageToggle />
-                    <Button
+                    <ui_language_toggle />
+                    <ui_button
                         on_click=refresh
                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || translate("users.refresh")}
-                    </Button>
-                    <Button on_click=open_create_modal>
+                    </ui_button>
+                    <ui_button on_click=open_create_modal>
                         {move || translate("users.create.button")}
-                    </Button>
+                    </ui_button>
                 }
                 .into_any()
             />
@@ -367,19 +372,19 @@ pub fn Users() -> impl IntoView {
                                     {move || translate("users.graphql.total")} " " {total_count}
                                 </p>
                                 <div class="mb-4 grid gap-3 md:grid-cols-3">
-                                    <Input
+                                    <ui_input
                                         value=search_query
                                         set_value=set_search_query
                                         placeholder=move || translate("users.filters.searchPlaceholder")
                                         label=move || translate("users.filters.search")
                                     />
-                                    <Input
+                                    <ui_input
                                         value=role_filter
                                         set_value=set_role_filter
                                         placeholder=move || translate("users.filters.rolePlaceholder")
                                         label=move || translate("users.filters.role")
                                     />
-                                    <Input
+                                    <ui_input
                                         value=status_filter
                                         set_value=set_status_filter
                                         placeholder=move || translate("users.filters.statusPlaceholder")
@@ -387,77 +392,24 @@ pub fn Users() -> impl IntoView {
                                     />
                                 </div>
                                 <div class="overflow-x-auto">
-                                    <table class="w-full border-collapse text-sm">
-                                        <thead>
-                                            <tr>
-                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {move || translate("users.graphql.email")}
-                                                </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {move || translate("users.graphql.name")}
-                                                </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {move || translate("users.graphql.role")}
-                                                </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {move || translate("users.graphql.status")}
-                                                </th>
-                                                <th class="pb-2 text-left text-xs font-semibold text-muted-foreground">
-                                                    {move || translate("users.graphql.createdAt")}
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {{
-                                                edges
-                                                    .iter()
-                                                    .map(|edge| {
-                                                        let GraphqlUser {
-                                                            id,
-                                                            email,
-                                                            name,
-                                                            role,
-                                                            status,
-                                                            created_at,
-                                                            ..
-                                                        } = edge.node.clone();
-                                                        view! {
-                                                            <tr>
-                                                                <td class="border-b border-border py-2">
-                                                                    <A href=format!("/users/{}", id)>
-                                                                        <span class="text-primary hover:underline">
-                                                                            {email}
-                                                                        </span>
-                                                                    </A>
-                                                                </td>
-                                                                <td class="border-b border-border py-2 text-foreground">
-                                                                    {name.unwrap_or_else(|| translate("users.placeholderDash").to_string())}
-                                                                </td>
-                                                                <td class="border-b border-border py-2 text-foreground">{role}</td>
-                                                                <td class="border-b border-border py-2">
-                                                                    <Badge variant=if status.eq_ignore_ascii_case("active") { BadgeVariant::Success } else { BadgeVariant::Default }>{status}</Badge>
-                                                                </td>
-                                                                <td class="border-b border-border py-2 text-foreground">{created_at}</td>
-                                                            </tr>
-                                                        }
-                                                    })
-                                                    .collect_view()
-                                            }}
-                                        </tbody>
-                                    </table>
+                                    <Table
+                                        rows=Signal::derive(move || {
+                                            edges.iter().map(|edge| edge.node.clone()).collect::<Vec<_>>()
+                                        })
+                                    />
                                 </div>
                                 <div class="mt-4 flex flex-wrap items-center gap-3">
-                                    <Button
+                                    <ui_button
                                         on_click=previous_page
                                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                                         disabled=Signal::derive(move || page.get() <= 1)
                                     >
                                         {move || translate("users.pagination.prev")}
-                                    </Button>
+                                    </ui_button>
                                     <span class="text-xs text-muted-foreground">
                                         {move || translate("users.pagination.page")} " " {page.get()}
                                     </span>
-                                    <Button
+                                    <ui_button
                                         on_click=next_page
                                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                                         disabled=Signal::derive(move || {
@@ -466,7 +418,7 @@ pub fn Users() -> impl IntoView {
                                         })
                                     >
                                         {move || translate("users.pagination.next")}
-                                    </Button>
+                                    </ui_button>
                                 </div>
                             </div>
                             }
@@ -501,32 +453,32 @@ pub fn Users() -> impl IntoView {
                         </Show>
 
                         <div class="space-y-4">
-                            <Input
+                            <ui_input
                                 value=new_email
                                 set_value=set_new_email
                                 placeholder="admin@rustok.io"
                                 label=move || translate("users.create.emailLabel")
                             />
-                            <Input
+                            <ui_input
                                 value=new_name
                                 set_value=set_new_name
                                 placeholder="John Doe"
                                 label=move || translate("users.create.nameLabel")
                             />
-                            <Input
+                            <ui_input
                                 value=new_password
                                 set_value=set_new_password
                                 placeholder="••••••••"
                                 type_="password"
                                 label=move || translate("users.create.passwordLabel")
                             />
-                            <Input
+                            <ui_input
                                 value=new_role
                                 set_value=set_new_role
                                 placeholder="ADMIN, MANAGER, CUSTOMER"
                                 label=move || translate("users.create.roleLabel")
                             />
-                            <Input
+                            <ui_input
                                 value=new_status
                                 set_value=set_new_status
                                 placeholder="ACTIVE, INACTIVE"
@@ -535,7 +487,7 @@ pub fn Users() -> impl IntoView {
                         </div>
 
                         <div class="mt-6 flex gap-3">
-                            <Button
+                            <ui_button
                                 on_click=create_user
                                 disabled=is_creating.into()
                                 class="flex-1"
@@ -545,13 +497,13 @@ pub fn Users() -> impl IntoView {
                                 } else {
                                     translate("users.create.submit").to_string()
                                 }}
-                            </Button>
-                            <Button
+                            </ui_button>
+                            <ui_button
                                 on_click=close_create_modal
                                 class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                             >
                                 {move || translate("users.create.cancel")}
-                            </Button>
+                            </ui_button>
                         </div>
                     </div>
                 </div>

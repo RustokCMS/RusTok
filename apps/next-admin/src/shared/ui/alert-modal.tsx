@@ -1,1 +1,1 @@
-export { AlertModal } from '@/components/modal/alert-modal';
+export { AlertModal } from '@/widgets/alert-modal';

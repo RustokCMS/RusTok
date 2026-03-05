@@ -1,11 +1,12 @@
 use leptos::prelude::*;
 use leptos_auth::hooks::use_current_user;
 use leptos_router::components::A;
+use leptos_router::hooks::use_location;
 
 use crate::shared::i18n::translate;
 
 #[component]
-pub fn Sidebar() -> impl IntoView {
+pub fn sidebar() -> impl IntoView {
     let current_user = use_current_user();
 
     view! {
@@ -19,65 +20,33 @@ pub fn Sidebar() -> impl IntoView {
                 </A>
             </div>
 
-            <nav class="flex-1 px-3 py-4 overflow-y-auto">
-                <NavGroupLabel label=move || translate("app.nav.group.overview") />
-                <NavLink href="/dashboard" icon="grid">
-                    {move || translate("app.nav.dashboard")}
-                </NavLink>
+            <nav class="flex-1 space-y-6 overflow-y-auto px-4 py-6 custom-scrollbar">
+                <div class="space-y-1">
+                    {nav_group_label(translate("app.nav.main"))}
+                    {nav_link("/", "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", translate("app.nav.dashboard"))}
+                    {nav_link("/users", "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100-8 4 4 0 000 8zm3 5h9a2 2 0 012 2v5a2 2 0 01-2 2h-5", translate("app.nav.users"))}
+                    {nav_link("/modules", "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10", translate("app.nav.modules"))}
+                </div>
 
-                {move || {
-                    let role = current_user.get()
-                        .map(|u| u.role.to_uppercase())
-                        .unwrap_or_default();
-                    let is_admin = role == "ADMIN" || role == "SUPER_ADMIN";
-                    if is_admin {
-                        view! {
-                            <div class="pt-3">
-                                <NavGroupLabel label=move || translate("app.nav.group.management") />
-                                <NavLink href="/users" icon="users">
-                                    {move || translate("app.nav.users")}
-                                </NavLink>
-                                <NavLink href="/modules" icon="package">
-                                    {move || translate("app.nav.modules")}
-                                </NavLink>
-                            </div>
-                        }.into_any()
-                    } else {
-                        ().into_any()
-                    }
-                }}
-
-                <div class="pt-3">
-                    <NavGroupLabel label=move || translate("app.nav.group.account") />
-                    <NavLink href="/profile" icon="user">
-                        {move || translate("app.nav.profile")}
-                    </NavLink>
-                    <NavLink href="/security" icon="lock">
-                        {move || translate("app.nav.security")}
-                    </NavLink>
+                <div class="space-y-1">
+                    {nav_group_label(translate("app.nav.account"))}
+                    {nav_link("/profile", "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", translate("app.nav.profile"))}
+                    {nav_link("/security", "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z", translate("app.nav.security"))}
                 </div>
             </nav>
 
-            <div class="p-4 border-t border-sidebar-border">
-                <div class="flex items-center gap-2">
-                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                        <span class="text-primary text-sm font-semibold">
-                            {move || {
-                                current_user.get()
-                                    .and_then(|u| u.name.clone().or(Some(u.email.clone())))
-                                    .and_then(|n| n.chars().next())
-                                    .map(|c| c.to_uppercase().to_string())
-                                    .unwrap_or_else(|| "U".to_string())
-                            }}
-                        </span>
+            <div class="border-t border-border p-4">
+                <div class="flex items-center gap-3 px-2">
+                    <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                        {move || current_user.get().and_then(|u| u.name.as_ref().and_then(|n| n.chars().next())).unwrap_or('?')}
                     </div>
-                    <div class="grid flex-1 min-w-0 text-left text-sm leading-tight">
-                        <span class="truncate font-semibold text-sidebar-foreground text-xs">
-                            {move || current_user.get().and_then(|u| u.name.clone()).unwrap_or_else(|| translate("app.menu.defaultUser").to_string())}
-                        </span>
-                        <span class="truncate text-xs text-sidebar-foreground/60">
-                            {move || current_user.get().map(|u| u.email.clone()).unwrap_or_default()}
-                        </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="truncate text-sm font-medium text-foreground">
+                            {move || current_user.get().and_then(|u| u.name).unwrap_or_else(|| translate("app.nav.guest").to_string())}
+                        </p>
+                        <p class="truncate text-xs text-muted-foreground">
+                            {move || current_user.get().map(|u| u.email).unwrap_or_default()}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -86,49 +55,45 @@ pub fn Sidebar() -> impl IntoView {
 }
 
 #[component]
-fn NavGroupLabel(label: impl Fn() -> String + Send + Sync + 'static) -> impl IntoView {
+fn nav_group_label(label: String) -> impl IntoView {
     view! {
-        <div class="px-3 pb-1 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
+        <p class="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
             {label}
-        </div>
+        </p>
     }
 }
 
 #[component]
-fn NavLink(href: &'static str, icon: &'static str, children: Children) -> impl IntoView {
+fn nav_link(href: &'static str, icon: &'static str, label: String) -> impl IntoView {
+    let location = use_location();
+    let is_active = move || {
+        let path = location.pathname.get();
+        if href == "/" {
+            path == "/" || path == "/dashboard"
+        } else {
+            path.starts_with(href)
+        }
+    };
+
     view! {
         <A
             href=href
-            attr:class="flex items-center gap-3 px-3 py-2 text-sm font-medium text-sidebar-foreground rounded-lg hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors mb-1"
+            class=move || format!(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all hover:bg-accent hover:text-accent-foreground {}",
+                if is_active() { "bg-accent text-accent-foreground shadow-sm" } else { "text-muted-foreground" }
+            )
         >
-            <NavIcon icon=icon />
-            <span>{children()}</span>
+            {nav_icon(icon)}
+            {label}
         </A>
     }
 }
 
 #[component]
-fn NavIcon(icon: &'static str) -> impl IntoView {
-    let svg_path = match icon {
-        "grid" => "M4 4h6v6H4V4zm0 10h6v6H4v-6zm10-10h6v6h-6V4zm0 10h6v6h-6v-6z",
-        "users" => "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
-        "user" => "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
-        "lock" => "M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4",
-        "package" => "M16.5 9.4l-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12",
-        _ => "M12 12m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0",
-    };
-
+fn nav_icon(d: &'static str) -> impl IntoView {
     view! {
-        <svg
-            class="h-4 w-4 shrink-0"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-        >
-            <path d=svg_path />
+        <svg class="h-4 w-4 shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d=d />
         </svg>
     }
 }

@@ -5,7 +5,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle
-} from '@/components/ui/card';
+} from '@/shared/ui/shadcn';
 
 export default function TeamPage() {
   return (

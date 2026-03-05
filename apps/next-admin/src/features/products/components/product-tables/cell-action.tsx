@@ -1,14 +1,14 @@
 'use client';
 import { AlertModal } from '@/widgets/alert-modal';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/shared/ui/shadcn/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
-import { Product } from '@/constants/data';
+} from '@/shared/ui/shadcn/dropdown-menu';
+import { Product } from '@/shared/constants/data';
 import { IconEdit, IconDotsVertical, IconTrash } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';

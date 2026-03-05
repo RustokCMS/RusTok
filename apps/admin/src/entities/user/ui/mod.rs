@@ -3,7 +3,7 @@ use leptos::prelude::*;
 use super::model::{UserRole, UserStatus};
 
 #[component]
-pub fn UserAvatar(
+pub fn user_avatar(
     #[prop(optional, into)] name: Option<String>,
     #[prop(optional, into)] class: String,
 ) -> impl IntoView {
@@ -24,7 +24,7 @@ pub fn UserAvatar(
 }
 
 #[component]
-pub fn UserRoleBadge(role: UserRole) -> impl IntoView {
+pub fn user_role_badge(role: UserRole) -> impl IntoView {
     let (label, class) = match role {
         UserRole::SuperAdmin => (
             "Super Admin",
@@ -47,7 +47,7 @@ pub fn UserRoleBadge(role: UserRole) -> impl IntoView {
 }
 
 #[component]
-pub fn UserStatusBadge(status: UserStatus) -> impl IntoView {
+pub fn user_status_badge(status: UserStatus) -> impl IntoView {
     let (label, class) = match status {
         UserStatus::Active => (
             "Active",
