@@ -739,3 +739,146 @@ cargo run                     # dev server → OAuth endpoints
 4. POST /oauth/token (refresh_token) → new tokens
 5. POST /oauth/revoke → 200
 6. GET /.well-known/jwks.json → JWKS JSON
+
+---
+
+## Приложение A: Взаимодействие с маркетплейсом модулей
+
+> Связанный документ: `docs/modules/marketplace-plan.md`
+
+Маркетплейс модулей (`modules.rustok.dev`) — **отдельный сервис** со своей БД и API.
+OAuth-подсистема основного RusTok-сервера обеспечивает аутентификацию для трёх сценариев
+взаимодействия с маркетплейсом.
+
+### A.1 Архитектура auth для маркетплейса
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  modules.rustok.dev (отдельный сервис)                               │
+│                                                                      │
+│  ┌──────────────────────────────┐                                    │
+│  │  GraphQL API                 │                                    │
+│  │  marketplace(search) →       │◄──── (2) Server proxy              │
+│  │  publishModule(crate) →      │◄──── (3) CLI direct                │
+│  │  downloadCrate(slug,ver) →   │◄──── (4) Build pipeline            │
+│  └──────────────────────────────┘                                    │
+│                                                                      │
+│  Auth: API key per platform instance + author tokens                 │
+└──────────────────────────────────────────────────────────────────────┘
+         ▲              ▲              ▲
+         │(2)           │(3)           │(4)
+         │              │              │
+┌────────┴──────┐ ┌────┴──────┐ ┌────┴───────────────┐
+│ RusTok Server │ │ CLI       │ │ Build Worker       │
+│ (proxy)       │ │ (author)  │ │ (cargo build)      │
+│               │ │           │ │                     │
+│ OAuth AS ◄────│ │ OAuth ◄───│ │ client_credentials │
+│ for admin UI  │ │ PKCE flow │ │ + marketplace key   │
+└───────────────┘ └───────────┘ └─────────────────────┘
+         ▲
+         │(1)
+┌────────┴──────┐
+│ Admin UI      │
+│ (Leptos/Next) │
+│ OAuth PKCE    │
+└───────────────┘
+```
+
+### A.2 Четыре auth-потока с маркетплейсом
+
+#### (1) Admin UI → RusTok Server
+
+Уже описан в этом плане (OAuth PKCE, `rustok-admin-*` clients).
+Admin UI **не обращается к маркетплейсу напрямую**.
+
+#### (2) RusTok Server → Marketplace API (прокси)
+
+Admin UI запрашивает каталог через GraphQL основного сервера, который **проксирует** запросы к маркетплейсу:
+
+```graphql
+# На основном сервере (проксирует к modules.rustok.dev):
+query { marketplace(search: "seo") { slug, name, ... } }
+mutation { installModule(slug: "seo", version: "1.0") { id, status } }
+```
+
+**Auth**: Основной сервер аутентифицируется в маркетплейсе через **Platform API Key** — уникальный ключ инстанса, выдаваемый при регистрации платформы на modules.rustok.dev.
+
+```yaml
+# development.yaml
+settings.rustok.marketplace:
+  enabled: false                           # на MVP отключён
+  registry_url: https://modules.rustok.dev
+  api_key: ""                              # Platform API Key
+```
+
+Причина прокси, а не прямого доступа: безопасность (API key не утекает в браузер), кэширование, единая точка контроля.
+
+#### (3) CLI автора → Marketplace API
+
+Автор модуля использует `rustok module publish`. CLI аутентифицируется **напрямую к маркетплейсу**:
+
+```
+rustok auth login --registry modules.rustok.dev
+→ OAuth PKCE flow к modules.rustok.dev (у маркетплейса свой OAuth AS или он делегирует)
+→ Получает author token
+→ Сохраняет в ~/.config/rustok/credentials.json
+```
+
+**Решение**: маркетплейс — отдельный сервис, у него может быть **свой OAuth AS** или он принимает токены от **любого RusTok-инстанса** (federated auth). Это решение за рамками текущего плана, но `rustok-cli` OAuth-клиент (определён в Этапе 6) может быть переиспользован для обоих сценариев.
+
+`marketplace_accounts` (из marketplace-plan.md, строка 450) — аккаунты авторов **на стороне маркетплейса**, не в основной БД RusTok.
+
+#### (4) Build Pipeline → Marketplace API
+
+Build Worker скачивает .crate архивы из маркетплейса:
+
+```
+GET modules.rustok.dev/api/v1/crates/rustok-seo/1.0.0.crate
+Authorization: Bearer <platform-api-key>
+```
+
+**Auth**: тот же Platform API Key из конфига сервера. Build worker работает от имени платформы, не от имени пользователя.
+
+### A.3 GraphQL naming: install conflicts
+
+Чтобы избежать путаницы между `installModule` (модуль) и `installApplication` (OAuth app):
+
+| Mutation | Домен | Что делает |
+|----------|-------|-----------|
+| `installModule(slug, version)` | Modules | Скачать crate, пересобрать бинарник, deploy |
+| `installApplication(input)` | OAuth | Создать Installation запись, выдать scopes |
+| `toggleModule(slug, enabled)` | Modules | Включить/отключить для тенанта (мгновенно) |
+| `revokeInstallation(id)` | OAuth | Отозвать OAuth-доступ приложения |
+
+Эти мутации находятся в разных GraphQL модулях:
+- `installModule` → `ModulesMutation` (из build service)
+- `installApplication` → `OAuthMutation` (из rustok-oauth)
+
+### A.4 Permissions для маркетплейса
+
+Добавить в `crates/rustok-core/src/permissions.rs`:
+
+```
+Resource::Marketplace
+  marketplace:browse     — просмотр каталога (все admin роли)
+  marketplace:install    — установка/удаление модулей (admin+)
+  marketplace:manage     — build history, rollback (super_admin)
+
+Resource::Builds
+  builds:view            — просмотр истории сборок
+  builds:manage          — rollback, cancel
+```
+
+### A.5 Audit log: что куда пишется
+
+| Событие | Где пишется | Таблица | category |
+|---------|-------------|---------|----------|
+| OAuth token issued | Основной сервер | `platform_audit_log` | `auth` |
+| App installed (OAuth) | Основной сервер | `platform_audit_log` | `auth` |
+| Module toggle (tenant) | Основной сервер | `platform_audit_log` | `modules` |
+| Module install (platform) | Основной сервер | `platform_audit_log` | `modules` |
+| Build started/completed | Основной сервер | `platform_audit_log` | `builds` |
+| Module published | **Маркетплейс** | Его БД (marketplace_versions) | — |
+| Module yanked | **Маркетплейс** | Его БД | — |
+
+События на маркетплейсе **не попадают** в `platform_audit_log` основного сервера. Это нормально — разные сервисы, разные БД.

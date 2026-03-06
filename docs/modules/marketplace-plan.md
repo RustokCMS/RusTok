@@ -2,6 +2,16 @@
 
 > Статус: RFC
 > Дата: 2026-03-03
+>
+> Связанные документы:
+> - `docs/concepts/plan-oauth2-app-connections.md` — OAuth2 AS, аутентификация клиентов
+> - `docs/modules/module-rebuild-plan.md` — tenant-level toggle, build pipeline
+>
+> **Важно**: Архитектура аутентификации для маркетплейса описана в Приложении A
+> OAuth-плана (`plan-oauth2-app-connections.md`). Три auth-потока:
+> - Admin UI → Server (OAuth PKCE прокси) → Marketplace (Platform API Key)
+> - CLI автора → Marketplace (свой auth или federated)
+> - Build Worker → Marketplace (Platform API Key для скачивания .crate)
 
 ---
 
@@ -944,6 +954,9 @@ rustok module search "blog"
 
 ### 7.2. Аутентификация авторов
 
+> **См. также**: Полная архитектура auth-потоков с маркетплейсом —
+> `docs/concepts/plan-oauth2-app-connections.md`, Приложение A.
+
 ```
 ┌────────────────────────────────────────────────────────┐
 │  Как стать автором модуля                               │
@@ -952,12 +965,16 @@ rustok module search "blog"
 │  2. Подтвердить email                                   │
 │  3. (Опционально) Верифицировать организацию            │
 │  4. Получить API token: rustok auth login               │
+│     → OAuth PKCE flow (client_id: "rustok-cli")         │
 │  5. Опубликовать первый модуль: rustok module publish   │
 │                                                         │
 │  Авторы могут быть:                                     │
 │  - Индивидуальные разработчики                          │
 │  - Организации (несколько участников)                   │
 │  - Core-команда RusTok (official)                       │
+│                                                         │
+│  marketplace_accounts — аккаунты авторов на стороне     │
+│  маркетплейса, не в основной БД RusTok.                 │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -1213,6 +1230,9 @@ modules.rustok.dev
 
 ### Phase 2: Build Pipeline
 
+**Зависимость**: OAuth2 AS должен быть реализован (см. `plan-oauth2-app-connections.md`),
+т.к. Build Worker аутентифицируется через `client_credentials` (`rustok-internal-worker`).
+
 **Цель**: Install/uninstall через админку с автоматической пересборкой.
 
 - `ManifestManager` — CRUD для `modules.toml`.
@@ -1220,6 +1240,7 @@ modules.rustok.dev
 - GraphQL mutations: `installModule`, `uninstallModule`.
 - GraphQL subscription: `buildProgress`.
 - UI: прогресс-бар, история сборок.
+- Permissions: `marketplace:install`, `builds:view`, `builds:manage`.
 
 **Критерий готовности**: Модуль можно установить из git URL через админку.
 
