@@ -32,7 +32,7 @@ tokio = { version = "1.50", features = ["full"] }
 # Web
 axum = "0.8.8"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "fs"] }
+tower-http = { version = "0.6.8", features = ["cors", "fs"] }
 
 # Database (Loco uses SeaORM)
 sea-orm = { version = "1.0", features = [
@@ -51,13 +51,14 @@ async-graphql = { version = "7.2.1", features = ["uuid", "chrono"] }
 base64 = "0.22"
 
 # IDs
-uuid = { version = "1.22", features = ["v4", "serde"] }
+uuid = { version = "1.22.0", features = ["v4", "serde"] }
 ulid = "1.1"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+toml = "1.0.6"
 postcard = { version = "1", features = ["use-std"] }
 
 # Validation
