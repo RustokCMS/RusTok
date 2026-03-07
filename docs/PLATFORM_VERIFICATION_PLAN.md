@@ -1371,12 +1371,13 @@
 
 ### 19.6 State machine correctness
 
-- [ ] Каждый state machine модуль имеет `*_proptest.rs`
+- [x] Каждый state machine модуль имеет `*_proptest.rs`
   - `rustok-content/src/state_machine_proptest.rs`
   - `rustok-commerce/src/state_machine_proptest.rs`
   - `rustok-blog/src/state_machine_proptest.rs`
-- [ ] Невалидные переходы возвращают ошибку (не panic)
-- [ ] Нет string-based status checks (`if status == "published"`)
+- [x] Невалидные переходы возвращают ошибку (не panic)
+- [x] Нет string-based status checks (`if status == "published"`)
+  - Проверено по `crates/` и `apps/server/`: строковых сравнений статусов `published|draft|archived` не найдено, используются enum/state-machine переходы
 
 ### 19.7 DTO consistency
 
@@ -1419,21 +1420,29 @@
 - [x] `rustok-core` не зависит от domain crates (нет circular dependencies)
 - [x] Domain crates не вызывают друг друга напрямую (через events)
 - [x] `rustok-test-utils` — только в `[dev-dependencies]`
-- [ ] Нет `path` dependencies на crates вне workspace
+- [x] Нет `path` dependencies на crates вне workspace
+  - Проверены все `Cargo.toml`: path-зависимости указывают только на workspace-компоненты (`crates/*`, `apps/*`, `UI/leptos`, локальная `migration`); внешних path-dependencies вне репозитория нет
 
 ### 19.12 API antipatterns — GraphQL
 
 - [ ] Нет N+1 queries в resolvers (все связанные данные через DataLoader)
   - Искать: resolvers с прямыми DB-запросами внутри `async fn` для дочерних объектов
 - [x] `MergedObject` используется для модульной schema — `Query(RootQuery, AuthQuery, CommerceQuery, ContentQuery, BlogQuery, ForumQuery, AlloyQuery, PagesQuery)` и аналогичная Mutation в `schema.rs`
-- [ ] Нет `String` errors в GraphQL — используются structured error extensions
+- [~] Нет `String` errors в GraphQL — используются structured error extensions
+  - Есть structured errors через `GraphQLError`, но часть query/mutation/loaders всё ещё использует `async_graphql::Error::new(err.to_string())` и `err.to_string().into()`; требуется довести до единого формата
   - `grep -rn "FieldError::new" apps/server/src/graphql/ --include="*.rs"`
-- [ ] Каждый mutation имеет permission check (не полагается на «auth достаточно»)
-- [ ] Каждый query с list возвращает paginated результат (не полную таблицу)
-- [ ] `context.data::<TenantContext>()` используется в каждом resolver (не пропущен)
-- [ ] Нет бизнес-логики в resolvers — только вызов domain services
-- [ ] Naming convention: queries — `camelCase`, mutations — `camelCase` с глаголом (`createProduct`, не `productCreate`)
-- [ ] Subscription (если есть) использует WebSocket, не polling
+- [x] Каждый mutation имеет permission check (не полагается на «auth достаточно»)
+  - Проверено по `apps/server/src/graphql/*/mutation.rs`: blog/content/commerce/forum/pages/alloy/auth mutations имеют явные permission/auth checks
+- [~] Каждый query с list возвращает paginated результат (не полную таблицу)
+  - `users`, `products`, `pages`, `posts`, `nodes`, `scripts` используют pagination/page_info, но `forum_categories`, `forum_topics`, `forum_replies`, `enabled_modules`, `tenant_modules`, `module_registry` возвращают обычные списки — нужен отдельный рефакторинг
+- [~] `context.data::<TenantContext>()` используется в каждом resolver (не пропущен)
+  - Часть resolvers опирается на аргумент `tenant_id`, а root/resolver-level multi-tenant queries используют `TenantContext`; единый паттерн ещё не везде соблюдён
+- [~] Нет бизнес-логики в resolvers — только вызов domain services
+  - Основные mutation/resolver-ветки делегируют в сервисы, но в `commerce/query.rs` и частично `queries.rs` остаются прямые SeaORM-запросы и сборка response-моделей в resolver-слое
+- [x] Naming convention: queries — `camelCase`, mutations — `camelCase` с глаголом (`createProduct`, не `productCreate`)
+  - Проверено по именам GraphQL-resolvers: `createProduct`, `updateNode`, `publishPost`, `pageBySlug`, `recentActivity`, `dashboardStats` и т.д.
+- [x] Subscription (если есть) использует WebSocket, не polling
+  - В схеме используется `EmptySubscription`, GraphQL subscription API отсутствует, polling-вариант не реализован
 
 ### 19.13 API antipatterns — REST
 
@@ -1563,7 +1572,8 @@
 - [x] Рефакторинг `TopicService` → `publish_in_tx()`
 - [x] Рефакторинг `ReplyService::create_reply()` → `publish_in_tx()`
 - [x] Рефакторинг `ModerationService` (3 вызова) → `publish_in_tx()`
-- [ ] Добавить integration тест: проверить что BlogPostCreated публикуется атомарно
+- [x] Добавить integration тест: проверить что BlogPostCreated публикуется атомарно
+  - Добавлены тесты в `crates/rustok-blog/tests/integration.rs`: happy-path для `MemoryTransport` и failure-path для не-transactional/failing transport (событие не наблюдается при ошибке публикации)
 
 ---
 
