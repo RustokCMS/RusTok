@@ -34,7 +34,7 @@ app = "rustok-server"
 [build]
 target = "x86_64-unknown-linux-gnu"
 profile = "release"
-deployment_profile = "monolith" # monolith | headless
+deployment_profile = "monolith" # monolith | headless-leptos | headless-next
 
 [modules]
 # slug = { crate = "...", source = "...", version = "...", features = [...] }
@@ -56,7 +56,7 @@ default_enabled = ["content", "commerce", "pages"]
 | `app` | string | да | Целевое приложение/бинарник. |
 | `build.target` | string | нет | Целевой triple сборки. |
 | `build.profile` | string | нет | Профиль сборки (`release`/`debug`). |
-| `build.deployment_profile` | string | нет | Режим деплоя: `monolith` (единый релиз server+admin+storefront) или `headless` (раздельные сервисы). |
+| `build.deployment_profile` | string | нет | Режим деплоя: `monolith` \| `headless-leptos` \| `headless-next`. См. ADR `2026-03-07`. |
 | `modules` | table | да | Карта `slug -> module spec`. |
 | `settings.default_enabled` | array | нет | Какие модули включать по умолчанию после сборки. |
 
@@ -76,16 +76,24 @@ default_enabled = ["content", "commerce", "pages"]
 > из `RusToKModule` во время сборки и регистрации в `ModuleRegistry`.
 
 
-## Режимы деплоя (monolith/headless)
+## Режимы деплоя (deployment profiles)
+
+Подробное описание — в ADR [`2026-03-07-deployment-profiles-and-ui-stack.md`](../../DECISIONS/2026-03-07-deployment-profiles-and-ui-stack.md).
 
 ### `monolith`
-- один release-id и один оркестрируемый pipeline для `apps/server`, `apps/admin`, `apps/storefront`;
-- откат — на единый release.
+- Один Rust-бинарник: Axum server + Leptos admin (WASM) + Leptos storefront (SSR).
+- Как WordPress — один процесс, один порт, установил и работает.
+- Один release-id, один pipeline, откат на единый release.
 
-### `headless`
-- backend и UI деплоятся на разных серверах/сервисах;
-- rebuild от одного `modules.toml` запускает раздельные pipeline-ветки;
-- перед деплоем UI обязателен preflight compatibility-check с целевой версией backend.
+### `headless-leptos`
+- Axum API-only + отдельный Leptos admin (WASM) + отдельный Leptos storefront (SSR).
+- Три Rust-бинарника, деплоятся независимо (могут быть в разных регионах).
+- Rebuild от `modules.toml` запускает раздельные pipeline-ветки.
+
+### `headless-next`
+- Axum API-only + отдельный Next.js admin + отдельный Next.js storefront.
+- Один Rust-бинарник + два Node.js-процесса.
+- Перед деплоем UI обязателен preflight compatibility-check с версией backend.
 
 ## Жизненный цикл install/uninstall
 

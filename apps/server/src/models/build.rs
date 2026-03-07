@@ -47,14 +47,23 @@ pub enum BuildStage {
     Complete,
 }
 
-/// Deployment profile
+/// Deployment profile determines how the platform is built and deployed:
+///
+/// - `Monolith`: Single Rust binary — Axum server with Leptos admin (WASM) and
+///   Leptos storefront (SSR) embedded. Like WordPress: one process, one port.
+/// - `HeadlessLeptos`: Axum API-only server + separate Leptos WASM admin +
+///   separate Leptos SSR storefront. Three Rust binaries, independently deployable.
+/// - `HeadlessNext`: Axum API-only server + separate Next.js admin + separate
+///   Next.js storefront. One Rust binary + two Node.js processes.
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
 pub enum DeploymentProfile {
     #[sea_orm(string_value = "monolith")]
     Monolith,
-    #[sea_orm(string_value = "headless")]
-    Headless,
+    #[sea_orm(string_value = "headless-leptos")]
+    HeadlessLeptos,
+    #[sea_orm(string_value = "headless-next")]
+    HeadlessNext,
 }
 
 /// Build entity

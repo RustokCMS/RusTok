@@ -8,7 +8,7 @@ app = "rustok-server"
 [build]
 target = "x86_64-unknown-linux-gnu"
 profile = "release"
-deployment_profile = "monolith" # monolith | headless
+deployment_profile = "monolith" # monolith | headless-leptos | headless-next
 
 [modules]
 # Core modules (required)
