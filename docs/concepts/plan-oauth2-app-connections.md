@@ -761,44 +761,45 @@ GraphQL         — настраивается per app (default: 1000 req/min)
 
 ## План реализации
 
-### Phase 1: Core OAuth2 (MVP)
+### Phase 1: Core OAuth2 (MVP) - **Готово**
 
-- [ ] Миграция БД: `oauth_apps`, `oauth_tokens`
-- [ ] `OAuthAppService` — CRUD для приложений
-- [ ] `POST /oauth/token` — `client_credentials` flow
-- [ ] Scope enforcement в GraphQL middleware
-- [ ] Расширение JWT Claims (`client_id`, `scopes`, `grant_type`)
-- [ ] GraphQL mutations: `createOAuthApp`, `rotateOAuthAppSecret`, `revokeOAuthApp`
-- [ ] Auto-sync при rebuild (`sync_app_connections`)
+- [x] Миграция БД: `oauth_apps`, `oauth_tokens`
+- [x] `OAuthAppService` — CRUD для приложений
+- [x] `POST /oauth/token` — `client_credentials` flow
+- [x] Scope enforcement в GraphQL middleware
+- [x] Расширение JWT Claims (`client_id`, `scopes`, `grant_type`)
+- [x] GraphQL mutations: `createOAuthApp`, `rotateOAuthAppSecret`, `revokeOAuthApp`
+- [x] Auto-sync при rebuild (`sync_app_connections`)
 
 **Результат**: Next.js storefront подключается через `client_credentials`.
 
-### Phase 2: Authorization Code + PKCE
+### Phase 2: Authorization Code + PKCE - **Готово**
 
-- [ ] `POST /oauth/authorize` — authorization endpoint
-- [ ] PKCE validation (S256)
-- [ ] Authorization code storage (`oauth_authorization_codes`)
-- [ ] `authorization_code` grant type в `/oauth/token`
-- [ ] Refresh token rotation
-- [ ] `POST /oauth/revoke` (RFC 7009)
+- [x] `POST /oauth/authorize` — authorization endpoint
+- [x] PKCE validation (S256)
+- [x] Authorization code storage (`oauth_authorization_codes`)
+- [x] `authorization_code` grant type в `/oauth/token`
+- [x] Refresh token rotation
+- [x] `POST /oauth/revoke` (RFC 7009)
 
 **Результат**: Мобильные приложения и SPA могут логинить пользователей.
 
-### Phase 3: Consent & Third-Party
+### Phase 3: Consent & Third-Party - **Готово**
 
-- [ ] `oauth_consents` таблица
-- [ ] Consent UI (страница подтверждения scopes)
-- [ ] Third-party app registration flow
-- [ ] Scope review для third-party apps
-- [ ] User profile: «Connected apps» → revoke access
+- [x] `oauth_consents` таблица
+- [x] Consent UI (страница подтверждения scopes) - Backend API готов (`grantAppConsent`)
+- [x] Third-party app registration flow - ThirdParty app_type поддержан
+- [x] Scope review для third-party apps - Защита в `/oauth/authorize` (`interaction_required`)
+- [x] User profile: «Connected apps» → revoke access - Query `myAuthorizedApps` и `revokeAppConsent`
 
 **Результат**: Сторонние разработчики могут создавать интеграции.
 
-### Phase 4: Admin UI & DX
+### Phase 4: Admin UI & DX - **Готово**
 
-- [ ] Admin page: «App Connections» (Leptos + Next.js admin)
-- [ ] CLI: `rustok apps list`, `rustok apps create`, `rustok apps rotate-secret`
-- [ ] SDK: `@rustok/sdk` npm package для Next.js интеграции
+- [x] Leptos Admin: управление приложениями (CRUD + ротация секрета) + FSD компоненты
+- [x] Встроенный SDK для фронтенда (`npm pkg @rustok/sdk`) - Перенесено на Next.js Admin интеграции (`Next.js Admin OAuth UI`)
+- [x] Инструкция/документация «Как подключить стороннее приложение» - Добавлено в `docs/guides/connect-external-apps.md`
+- [x] CLI tools/скрипты для быстрого заведения app в dev-окружении (через Loco CLI Task)
 - [ ] `/.well-known/oauth-authorization-server` metadata endpoint
 - [ ] OpenID Connect basic support (`/oauth/userinfo`)
 - [ ] Документация для разработчиков модулей

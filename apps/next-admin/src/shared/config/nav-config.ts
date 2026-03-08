@@ -36,6 +36,15 @@ const coreNavItems: NavItem[] = [
     items: []
   },
   {
+    title: 'App Connections',
+    url: '/dashboard/apps',
+    icon: 'post',
+    shortcut: ['a', 'a'],
+    isActive: false,
+    items: [],
+    access: { role: 'admin' }
+  },
+  {
     title: 'Modules',
     url: '/dashboard/modules',
     icon: 'modules',

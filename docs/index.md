@@ -98,6 +98,7 @@ graph TD
 - [Property Testing](./guides/testing-property.md)
 - [Security Audit](./guides/security-audit.md)
 - [Lockfile Troubleshooting](./guides/lockfile-troubleshooting.md)
+- [Connect External Apps](./guides/connect-external-apps.md)
 
 ### Modules (`docs/modules/`)
 

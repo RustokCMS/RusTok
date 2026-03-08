@@ -2,6 +2,10 @@
 
 pub mod _entities;
 pub mod build;
+pub mod oauth_apps;
+pub mod oauth_authorization_codes;
+pub mod oauth_consents;
+pub mod oauth_tokens;
 pub mod release;
 pub mod sessions;
 pub mod tenant_modules;

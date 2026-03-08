@@ -14,6 +14,7 @@ use super::content::{ContentMutation, ContentQuery};
 use super::forum::{ForumMutation, ForumQuery};
 use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader, TenantNameLoader};
 use super::mutations::RootMutation;
+use super::oauth::{OAuthMutation, OAuthQuery};
 use super::observability::GraphqlObservability;
 use super::pages::{PagesMutation, PagesQuery};
 use super::queries::RootQuery;
@@ -28,6 +29,7 @@ pub struct Query(
     ForumQuery,
     AlloyQuery,
     PagesQuery,
+    OAuthQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -40,6 +42,7 @@ pub struct Mutation(
     ForumMutation,
     AlloyMutation,
     PagesMutation,
+    OAuthMutation,
 );
 
 pub type AppSchema = Schema<Query, Mutation, EmptySubscription>;

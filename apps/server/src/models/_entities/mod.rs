@@ -1,3 +1,7 @@
+pub mod oauth_apps;
+pub mod oauth_authorization_codes;
+pub mod oauth_consents;
+pub mod oauth_tokens;
 pub mod permissions;
 pub mod role_permissions;
 pub mod roles;
@@ -7,6 +11,10 @@ pub mod tenants;
 pub mod user_roles;
 pub mod users;
 
+pub use oauth_apps::Entity as OAuthApps;
+pub use oauth_authorization_codes::Entity as OAuthAuthorizationCodes;
+pub use oauth_consents::Entity as OAuthConsents;
+pub use oauth_tokens::Entity as OAuthTokens;
 pub use permissions::Entity as Permissions;
 pub use role_permissions::Entity as RolePermissions;
 pub use roles::Entity as Roles;

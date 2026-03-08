@@ -32,6 +32,10 @@ mod m20260301_000001_alter_product_variants_add_fields;
 mod m20260301_000002_alter_nodes_add_soft_delete;
 mod m20260302_000001_create_scripts;
 mod m20260302_000002_create_script_executions;
+mod m20260308_000001_create_oauth_apps;
+mod m20260308_000002_create_oauth_tokens;
+mod m20260308_000003_create_oauth_codes;
+mod m20260308_000004_create_oauth_consents;
 
 pub struct Migrator;
 
@@ -69,6 +73,10 @@ impl MigratorTrait for Migrator {
             Box::new(m20260301_000002_alter_nodes_add_soft_delete::Migration),
             Box::new(m20260302_000001_create_scripts::Migration),
             Box::new(m20260302_000002_create_script_executions::Migration),
+            Box::new(m20260308_000001_create_oauth_apps::Migration),
+            Box::new(m20260308_000002_create_oauth_tokens::Migration),
+            Box::new(m20260308_000003_create_oauth_codes::Migration),
+            Box::new(m20260308_000004_create_oauth_consents::Migration),
         ]
     }
 }

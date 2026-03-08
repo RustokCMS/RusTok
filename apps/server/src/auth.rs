@@ -20,6 +20,18 @@ pub struct Claims {
     pub aud: String,
     pub exp: usize,
     pub iat: usize,
+
+    // OAuth2 fields (backward-compatible via Option/Default)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<Uuid>,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    #[serde(default = "default_grant_type")]
+    pub grant_type: String,
+}
+
+fn default_grant_type() -> String {
+    "direct".to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -138,6 +150,45 @@ pub fn encode_access_token(
         aud: config.audience.clone(),
         exp: exp.timestamp() as usize,
         iat: now.timestamp() as usize,
+        client_id: None,
+        scopes: Vec::new(),
+        grant_type: "direct".to_string(),
+    };
+
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(config.secret.as_bytes()),
+    )
+    .map_err(|_| Error::InternalServerError)
+}
+
+/// Encode an OAuth2 access token for an app (client_credentials flow).
+/// `sub` is the app ID, `role` is Service, `session_id` is nil.
+pub fn encode_oauth_access_token(
+    config: &AuthConfig,
+    app_id: Uuid,
+    tenant_id: Uuid,
+    client_id: Uuid,
+    scopes: &[String],
+    grant_type: &str,
+    expires_in_secs: u64,
+) -> Result<String> {
+    let now = Utc::now();
+    let exp = now + Duration::seconds(expires_in_secs as i64);
+
+    let claims = Claims {
+        sub: app_id,
+        tenant_id,
+        role: UserRole::Customer, // Service-level: minimal default role
+        session_id: Uuid::nil(),  // No user session
+        iss: config.issuer.clone(),
+        aud: config.audience.clone(),
+        exp: exp.timestamp() as usize,
+        iat: now.timestamp() as usize,
+        client_id: Some(client_id),
+        scopes: scopes.to_vec(),
+        grant_type: grant_type.to_string(),
     };
 
     encode(

@@ -5,7 +5,7 @@ use leptos_router::components::{ParentRoute, Route, Router, Routes};
 use leptos_router::path;
 
 use crate::pages::{
-    dashboard::dashboard, login::login, modules::modules, not_found::not_found, profile::profile,
+    dashboard::dashboard, login::login, modules::modules, not_found::not_found, oauth_apps::oauth_apps_page, profile::profile,
     register::register, reset::reset_password, security::security, user_details::user_details,
     users::users,
 };
@@ -31,6 +31,7 @@ pub fn App() -> impl IntoView {
                                 <Route path=path!("/modules") view=Modules />
                                 <Route path=path!("/users") view=Users />
                                 <Route path=path!("/users/:id") view=UserDetails />
+                                <Route path=path!("/apps") view=OAuthAppsPage />
                                 <Route path=path!("") view=Dashboard />
                             </ParentRoute>
                         </ParentRoute>

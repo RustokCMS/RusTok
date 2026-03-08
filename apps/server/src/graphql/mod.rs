@@ -9,6 +9,7 @@ pub mod errors;
 pub mod forum;
 pub mod loaders;
 pub mod mutations;
+pub mod oauth;
 pub mod observability;
 pub mod pages;
 pub mod persisted;

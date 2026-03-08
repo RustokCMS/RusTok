@@ -8,5 +8,6 @@ pub mod forum;
 pub mod graphql;
 pub mod health;
 pub mod metrics;
+pub mod oauth;
 pub mod pages;
 pub mod swagger;

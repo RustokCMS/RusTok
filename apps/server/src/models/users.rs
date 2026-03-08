@@ -17,6 +17,25 @@ impl Model {
     pub fn is_email_verified(&self) -> bool {
         self.email_verified_at.is_some()
     }
+
+    /// Create a minimal in-memory user model for OAuth2 service tokens.
+    /// Used when the JWT `sub` is an app_id, not a real user_id.
+    pub fn default_service_user(app_id: Uuid, tenant_id: Uuid) -> Self {
+        Self {
+            id: app_id,
+            tenant_id,
+            email: format!("service+{}@oauth.internal", app_id),
+            password_hash: String::new(),
+            name: Some("OAuth Service".to_string()),
+            role: UserRole::Customer,
+            status: UserStatus::Active,
+            email_verified_at: None,
+            last_login_at: None,
+            metadata: serde_json::json!({}),
+            created_at: chrono::Utc::now().into(),
+            updated_at: chrono::Utc::now().into(),
+        }
+    }
 }
 
 impl ActiveModel {

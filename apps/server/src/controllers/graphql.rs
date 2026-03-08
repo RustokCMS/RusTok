@@ -42,6 +42,9 @@ async fn graphql_handler(
             session_id: current_user.session_id,
             tenant_id: current_user.user.tenant_id,
             permissions: current_user.permissions,
+            client_id: current_user.client_id,
+            scopes: current_user.scopes.clone(),
+            grant_type: current_user.grant_type.clone(),
         };
         request = request.data(auth_ctx);
     }

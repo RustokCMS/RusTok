@@ -2,6 +2,7 @@ pub mod dashboard;
 pub mod login;
 pub mod modules;
 pub mod not_found;
+pub mod oauth_apps;
 pub mod profile;
 pub mod register;
 pub mod reset;
