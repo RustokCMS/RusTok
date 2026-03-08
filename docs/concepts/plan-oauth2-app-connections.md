@@ -1,964 +1,851 @@
-# Plan: OAuth2 App Connections (App-подключения)
+# OAuth2 App Connections — подключение внешних приложений
 
-## Context
+- Date: 2026-03-07
+- Status: Draft
+- Depends on: [Deployment Profiles ADR](../../DECISIONS/2026-03-07-deployment-profiles-and-ui-stack.md)
 
-RusTok стремится к модели подключения приложений "как у Shopify/Virto": любая админка, фронт, мобилка или внешняя интеграция подключаются через регистрацию Application + выдачу токенов со scope, без "вечных ключей" в `.env`.
+## Зачем это нужно
 
-Сейчас auth-система user-centric: JWT (HS256, симметричный) + сессии + RBAC (resource:action). Нет OAuth2 Authorization Server, нет сущностей Application/Client/Installation, нет scope-based доступа для приложений. Feature flag `oauth_enabled: false` уже существует в конфиге.
+Composable deployment layers (ADR v2) решают *как собрать платформу*. Но когда
+storefront вынесен в отдельный процесс (Next.js, мобильное приложение, Telegram-бот,
+партнёрская витрина), ему нужен **безопасный, стандартный способ** подключиться к API.
 
-**Решения пользователя**: все 8 этапов за один проход, сразу RS256, consent page — server-rendered HTML с auto-approve для first-party apps.
+Сейчас у нас JWT-аутентификация привязана к пользователям. Этого недостаточно:
 
-**Спецификация**: `docs/concepts/app-подключения` (610 строк детальных рекомендаций).
+| Сценарий | Текущая система | Чего не хватает |
+|---|---|---|
+| Leptos admin (embedded) | Работает через единый бинарник | — |
+| Next.js admin (standalone) | JWT через GraphQL login | Нет app-level credentials, нет scopes |
+| Next.js storefront | JWT | Нет client_id, нет ограничения scopes |
+| Мобильное приложение | — | Нет OAuth2 flow |
+| Telegram-бот магазина | — | Нет machine-to-machine auth |
+| Партнёрская витрина | — | Нет выдачи ограниченного доступа |
 
-**Связанные планы**: `docs/modules/module-rebuild-plan.md`, `docs/modules/marketplace-plan.md`.
+**OAuth2 App Connections** — это механизм регистрации и аутентификации **приложений**
+(не пользователей), дающий им контролируемый доступ к GraphQL API.
 
-### Выбор библиотек (обоснование)
+## Основные концепции
 
-Проведён анализ Rust-экосистемы OAuth2 Authorization Server библиотек. Итоги:
-
-| Крейт | Назначение | Вердикт |
-|-------|-----------|---------|
-| `oxide-auth` + `oxide-auth-axum` | AS framework | **Отклонён**: последний релиз июнь 2024, совместимость с axum 0.8.x не гарантирована, не покрывает OIDC/JWT/JWKS/PKCE — всё равно нужен кастом |
-| `auth-framework` | Full AS | **Отклонён**: новый, непроверенный, низкое community adoption |
-| `oauth2` (oauth2-rs) | OAuth2 Client | Не подходит — только клиентская сторона |
-| `openidconnect` | OIDC Client/RP | Не подходит — RP-библиотека, полезна только для OIDC типов |
-
-**Принятые решения по зависимостям:**
-
-| Компонент | Библиотека | Обоснование |
-|-----------|-----------|-------------|
-| JWT RS256 sign/verify | **`jsonwebtoken` 10.3.0** (уже в workspace) | Без OpenSSL, строго типизированные claims, автовалидация exp/nbf/iss/aud, самый популярный JWT-крейт |
-| JWKS endpoint | **`jsonwebtoken::jwk` типы + ручная сериализация** | ~50 строк, не оправдывает отдельный крейт |
-| JWK generation из RSA | **`jwk_kit`** (опционально) или ручное извлечение n/e из RSA public key | Рассмотреть при реализации Этапа 0 |
-| OAuth2 AS flows | **Кастом** (authorize, token, revoke endpoints) | ~500-700 строк; AS-библиотеки в Rust либо устарели, либо непроверены. Объём кода компактный, полный контроль |
-| PKCE (RFC 7636) | **Кастом** (sha2 + base64url) | ~30 строк, тривиальная реализация |
-| Resource server middleware | **`tower-oauth2-resource-server`** (рассмотреть) | Tower middleware для валидации JWT по JWKS, проверки iss/exp/aud/nbf/scopes на protected routes. Альтернатива: кастомный middleware в extractors (Этап 3) |
-| Session management | **Существующий механизм** (axum sessions) | Уже работает; `tower-sessions` — альтернатива если понадобится миграция |
-| RSA key generation | **`rsa` crate** | Генерация RSA 2048-bit keypair при первом запуске |
-
-**Почему кастомный AS, а не библиотека:**
-1. Бо́льшая часть логики (installations, multi-tenant, Principal, audit) — кастомная в любом случае
-2. OAuth2 endpoints (authorize, token, revoke) — это конечный, хорошо специфицированный набор (~500-700 строк)
-3. Полный контроль над интеграцией с SeaORM, RBAC, tenant isolation
-4. Нет риска зависимости от unmaintained upstream
-
-### Терминология: "App" vs "Module"
-
-В RusTok эти понятия **не пересекаются**:
-
-| Термин | Что это | Пример | Где живёт в UI |
-|--------|---------|--------|----------------|
-| **Application** (App) | Внешний клиент, подключённый к API через OAuth2 | ERP-система, мобильное приложение, сторонний SPA, CLI | `/dashboard/apps` — "Приложения" |
-| **Module** | Серверный плагин (Rust crate), компилируемый в бинарник | Blog, Commerce, Forum, SEO | `/dashboard/modules` — "Модули" |
-
-- **Application** = _кто_ обращается к API (клиент с client_id + scopes)
-- **Module** = _что_ есть на сервере (функциональность платформы)
-
-Приложение может использовать API, которое предоставляется модулями. Модуль может быть включён/отключен независимо от подключённых приложений. OAuth-подсистема сама является модулем (`rustok-oauth`, slug: "oauth").
-
-### Режимы деплоя: монолит vs headless
-
-RusTok поддерживает два режима работы, и это определяет, когда нужен OAuth:
-
-**Текущая архитектура** (headless):
-- Сервер (Axum/Loco) на порту 5150 — только API (GraphQL + REST)
-- Leptos-админка — отдельный CSR WASM-процесс на порту 3001 (Trunk dev server / Nginx в prod)
-- Аутентификация через API: `/api/auth/login` → JWT HS256
-
-**Целевой монолитный режим** (как WordPress) — один бинарник, один процесс, один порт:
-- Leptos-админка и storefront(ы) встраиваются в серверный бинарник через SSR
-- Админка доступна по настраиваемому префиксу (по умолчанию `/admin`, можно изменить для безопасности)
-- Storefront(ы) — корневые роуты или поддомены, тоже SSR
-- Аутентификация через **серверные сессии** напрямую (cookie-based, без OAuth) — как PHP-сессии в WordPress
-- В мультитенантном режиме: один бинарник обслуживает несколько сайтов/доменов, каждый со своим storefront — всё через сессии
-- В мультисайтовом режиме: несколько storefront-ов (например, основной сайт + landing + блог) — все встроены, все через сессии
-- OAuth **не нужен** для встроенных Leptos-приложений — они часть серверного процесса и имеют прямой доступ к сессиям
-- `oauth_enabled: false` — полностью рабочая конфигурация
-- Переход CSR → SSR — отдельная задача, не блокирует OAuth
-
-```yaml
-# Пример конфигурации монолитного режима:
-settings.rustok.admin:
-  prefix: /admin          # настраиваемый путь (можно /cp, /manage, /my-secret-panel)
-  enabled: true
-```
-
-> **Важно**: в монолитном режиме Leptos-админка и storefront — это **не внешние OAuth-клиенты**, а часть самого серверного бинарника. Они рендерятся на сервере (SSR), имеют прямой доступ к серверным сессиям и БД, и не обращаются к API через HTTP. Это принципиально отличается от headless-режима, где фронтенд — отдельный процесс, которому нужен токен для доступа к API. По аналогии: WordPress-темы работают через PHP-сессии, а WooCommerce REST API — через OAuth. Здесь так же: встроенный Leptos UI работает через сессии, а внешние клиенты — через OAuth.
-
-**Headless режим** — сервер как API, фронтенд(ы) отделены:
-- Фронтенд на другом порту/домене/стеке (Next.js, Nuxt, Flutter, мобилка, Leptos CSR)
-- Внешние интеграции (CRM, ERP, 1С)
-- Аутентификация через **OAuth2** (authorization_code + PKCE для UI, client_credentials для server-to-server)
-- `oauth_enabled: true` — активирует OAuth AS endpoints
-- Текущая архитектура (Leptos CSR на порту 3001) — это по сути headless режим
-
-**Смешанный режим** — оба одновременно:
-- Leptos-админка встроена через SSR (сессии), при этом storefront — отдельный SPA или мобилка (OAuth)
-- Или наоборот: встроенный storefront + внешний BI-инструмент через API (OAuth)
-- `oauth_enabled: true`, но встроенные Leptos-приложения продолжают использовать сессии
-
-Принцип: **OAuth — для внешних клиентов. Встроенные (SSR) Leptos-приложения всегда работают через сессии, независимо от `oauth_enabled`.**
-
----
-
-## Этап 0: Новый крейт `rustok-oauth` + инфраструктура ключей RS256
-
-**Цель**: Создать отдельный крейт для OAuth, реализовать асимметричные ключи (RS256), JWKS endpoint.
-
-### Новые файлы
-
-**`crates/rustok-oauth/Cargo.toml`** — зависимости: rustok-core, jsonwebtoken (уже 10.3.0 в workspace — поддерживает RS256), rsa (генерация RSA keypair), sha2, hex, argon2, rand, chrono, serde, serde_json, uuid, async-trait, tracing, base64, thiserror.
-
-**`crates/rustok-oauth/src/lib.rs`** — экспорт публичного API крейта
-
-**`crates/rustok-oauth/src/keys.rs`** — управление ключами:
-- `KeyPair` struct: RSA private key + kid (key ID)
-- `KeyStore`: загрузка PEM из файла (`data/keys/`), генерация при отсутствии
-- Поддержка нескольких ключей для ротации (kid в JWKS)
-- При первом запуске: сгенерировать RSA 2048-bit пару
-
-**`crates/rustok-oauth/src/jwks.rs`** — формирование JWKS JSON:
-- Конвертация публичной части ключа в JWK (RFC 7517)
-- `keys[]` с kid, kty="RSA", alg="RS256", n, e
-- Кэширование JSON с TTL 5 минут
-
-**`crates/rustok-oauth/src/token.rs`** — encode/decode JWT:
-- `OAuthClaims` struct (RFC 9068 — JWT Profile for OAuth2):
-  ```rust
-  pub struct OAuthClaims {
-      pub iss: String,           // issuer URL
-      pub sub: String,           // user_id или installation_id
-      pub aud: Vec<String>,      // ["graphql", "rest"]
-      pub exp: usize,
-      pub iat: usize,
-      pub jti: String,           // unique token ID
-      pub client_id: String,     // OAuth client_id
-      pub tenant_id: Uuid,
-      pub scope: String,         // "products:read orders:read"
-      pub subject_type: String,  // "user" | "app"
-  }
-  ```
-- `encode_access_token(key: &KeyPair, claims: &OAuthClaims) -> String`
-- `decode_access_token(jwks: &[JwkPublic], token: &str) -> OAuthClaims`
-- Header: `typ: "at+jwt"`, `kid: "..."`, `alg: "RS256"`
-
-**`crates/rustok-oauth/src/config.rs`** — типы конфигурации:
-- `OAuthConfig { algorithm, access_ttl_secs, refresh_ttl_secs, code_ttl_secs, issuer, key_path }`
-
-**`crates/rustok-oauth/src/pkce.rs`** — PKCE (RFC 7636):
-- `verify_pkce_s256(code_verifier: &str, code_challenge: &str) -> bool`
-- `BASE64URL(SHA256(code_verifier)) == code_challenge`
-
-### Файлы для изменения
-
-- **`Cargo.toml`** (workspace) — добавить `rustok-oauth` в workspace.members и workspace.dependencies
-- **`apps/server/Cargo.toml`** — добавить зависимость rustok-oauth
-- **`apps/server/src/common/settings.rs`** — добавить `OAuthSettings` struct:
-  ```yaml
-  # в development.yaml:
-  settings.rustok.oauth:
-    algorithm: RS256
-    access_ttl_secs: 900        # 15 мин
-    refresh_ttl_secs: 2592000   # 30 дней
-    code_ttl_secs: 300          # 5 мин
-    key_path: data/keys
-  ```
-- **`apps/server/config/development.yaml`** — добавить секцию oauth
-
----
-
-## Этап 1: Миграции БД — 7 новых таблиц
-
-**Цель**: Создать все таблицы для OAuth подсистемы.
-
-Все файлы в `apps/server/migration/src/`:
-
-### `m20260303_000001_create_applications.rs`
-```
-applications: id uuid PK, name text, slug text UNIQUE, description text NULL,
-  publisher_tenant_id uuid NULL FK→tenants, created_at, updated_at
-```
-
-### `m20260303_000002_create_oauth_clients.rs`
-```
-oauth_clients: id uuid PK, application_id uuid FK→applications CASCADE,
-  client_id text UNIQUE (публичный идентификатор),
-  client_type text (public|confidential),
-  client_secret_hash text NULL (argon2, только для confidential),
-  redirect_uris jsonb, allowed_grants jsonb, allowed_scopes jsonb,
-  pkce_required bool DEFAULT true, created_at, rotated_at NULL
-Индексы: idx_oauth_clients_client_id UNIQUE, idx_oauth_clients_app
-```
-
-### `m20260303_000003_create_installations.rs`
-```
-installations: id uuid PK, tenant_id uuid FK→tenants, application_id uuid FK→applications,
-  status text DEFAULT 'active' (active|suspended|revoked),
-  granted_scopes jsonb, installed_by_user_id uuid FK→users NULL,
-  installed_at, revoked_at NULL
-UNIQUE(tenant_id, application_id)
-```
-
-### `m20260303_000004_create_authorization_codes.rs`
-```
-authorization_codes: id uuid PK, code_hash text UNIQUE,
-  client_id uuid FK→oauth_clients, installation_id uuid FK→installations,
-  user_id uuid FK→users, tenant_id uuid FK→tenants,
-  redirect_uri text, scope text,
-  code_challenge text, code_challenge_method text DEFAULT 'S256',
-  state text NULL, expires_at timestamptz, consumed_at NULL, created_at
-```
-
-### `m20260303_000005_create_oauth_refresh_tokens.rs`
-```
-oauth_refresh_tokens: id uuid PK, token_hash text UNIQUE,
-  tenant_id uuid FK→tenants, client_id uuid FK→oauth_clients,
-  subject_type text (user|installation), subject_id uuid,
-  scope text, expires_at, revoked_at NULL,
-  rotated_from_id uuid FK→self NULL, created_at
-Индексы: idx_oauth_rt_hash UNIQUE, idx_oauth_rt_subject, idx_oauth_rt_client
-```
-
-### `m20260303_000006_create_access_token_jti.rs`
-```
-access_token_jti: jti uuid PK, tenant_id uuid, client_id uuid FK→oauth_clients,
-  subject_type text, subject_id uuid, revoked_at NULL, expires_at
-Индексы: idx_jti_expires (для cleanup)
-```
-
-### `m20260303_000007_create_platform_audit_log.rs`
-
-**Единый audit log** для всей платформы — OAuth, модули, и другие домены. Поле `category` разделяет домены.
+### 1. Что такое «App Connection»
 
 ```
-platform_audit_log: id uuid PK, tenant_id uuid,
-  category text NOT NULL (auth|modules|system|commerce|...),
-  actor_type text (user|client|system), actor_id uuid NULL,
-  event_type text, target_type text NULL, target_id uuid NULL,
-  client_id uuid FK→oauth_clients NULL,
-  ip_address text NULL, user_agent text NULL, details jsonb, created_at
-Индексы: idx_audit_tenant_time, idx_audit_category, idx_audit_event_type
+┌──────────────────────────────────────────────────┐
+│                  RusTok Platform                 │
+│                                                  │
+│  ┌────────────────────────────────────────────┐  │
+│  │              App Registry                  │  │
+│  │                                            │  │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐   │  │
+│  │  │ Next.js │  │ Mobile  │  │ Telegram│   │  │
+│  │  │ Store   │  │ App     │  │ Bot     │   │  │
+│  │  │         │  │         │  │         │   │  │
+│  │  │ client_ │  │ client_ │  │ client_ │   │  │
+│  │  │ id: ... │  │ id: ... │  │ id: ... │   │  │
+│  │  └────┬────┘  └────┬────┘  └────┬────┘   │  │
+│  │       │            │            │         │  │
+│  └───────┼────────────┼────────────┼─────────┘  │
+│          │            │            │             │
+│  ┌───────▼────────────▼────────────▼─────────┐  │
+│  │          GraphQL API (Axum)               │  │
+│  │   scope-based access control per app      │  │
+│  └───────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────┘
 ```
 
-Модульный план (`docs/modules/module-rebuild-plan.md`) переиспользует ту же таблицу:
-category="modules", event_type: `module.installed`, `module.enabled`, `build.started`, etc.
+**App Connection** = запись в БД, описывающая **внешнее приложение**, которому
+разрешено работать с API конкретного tenant'а.
 
-### Файлы для изменения
-- **`apps/server/migration/src/lib.rs`** — 7 новых `mod` + регистрация в `Migrator::migrations()`
+Каждое подключение имеет:
+- `client_id` — публичный идентификатор (UUID)
+- `client_secret` — секрет (хранится как hash, показывается один раз)
+- `app_type` — тип приложения (определяет доступные OAuth2 flows)
+- `scopes` — разрешённые операции
+- `redirect_uris` — для Authorization Code flow
+- Привязка к `tenant_id`
 
-### SeaORM entities — новые файлы
-В `apps/server/src/models/_entities/`:
-- `applications.rs`, `oauth_clients.rs`, `installations.rs`, `authorization_codes.rs`, `oauth_refresh_tokens.rs`, `access_token_jti.rs`, `platform_audit_log.rs`
+### 2. Типы приложений (App Types)
 
-В `apps/server/src/models/`:
-- `applications.rs` — бизнес-методы, валидация slug
-- `oauth_clients.rs` — `find_by_client_id()`, генерация client_id
-- `installations.rs` — `find_active_by_tenant_app()`, scope-проверки
-
-Обновить `models/_entities/mod.rs` и `models/mod.rs` — экспорт.
-
----
-
-## Этап 2: Сервисный слой OAuth2
-
-**Цель**: Вся бизнес-логика OAuth2 в сервисных модулях.
-
-### Новые файлы
-
-**`apps/server/src/services/oauth/mod.rs`** — подмодули:
-
-**`services/oauth/application_service.rs`**:
-- `create_application(db, name, slug, publisher_tenant_id)`, `list_applications()`, `get_application()`
-
-**`services/oauth/client_service.rs`**:
-- `create_client(db, app_id, client_type, redirect_uris, grants, scopes) -> (OAuthClient, Option<secret_plaintext>)`
-  - confidential: генерировать secret, хранить argon2 hash, вернуть plaintext один раз
-  - public: secret = NULL, pkce_required = true
-- `rotate_client_secret(db, client_id) -> secret_plaintext`
-- `validate_client_credentials(db, client_id, secret) -> Result<OAuthClient>`
-- Переиспользовать: `auth::hash_password` для хеширования, `auth::verify_password` для проверки
-
-**`services/oauth/installation_service.rs`**:
-- `install_app(db, tenant_id, app_id, scopes, user_id) -> Installation`
-- `revoke_installation(db, installation_id)` — каскадный revoke всех токенов
-- `list_installations(db, tenant_id)`
-
-**`services/oauth/token_service.rs`** — ядро OAuth2 AS:
-
-*Authorization Code + PKCE*:
-- `create_authorization_code(db, client, user_id, tenant_id, redirect_uri, scope, code_challenge) -> code_plaintext`
-  - Переиспользовать: `auth::generate_refresh_token()` для генерации random bytes
-  - Переиспользовать: `auth::hash_refresh_token()` для SHA-256 хеширования
-  - TTL: 5 минут (из config)
-- `exchange_authorization_code(db, code, client_id, redirect_uri, code_verifier) -> OAuthTokens`
-  - Проверки: code не expired/consumed, redirect_uri exact match, PKCE S256 verify
-  - Пометить consumed, выпустить access + refresh
-
-*Client Credentials*:
-- `issue_client_credentials_token(db, client, scope, tenant_id) -> OAuthTokens`
-  - Только для confidential clients
-  - Без refresh token (client переаутентифицируется)
-
-*Refresh*:
-- `refresh_oauth_token(db, refresh_token, client_id) -> OAuthTokens`
-  - Rotation: revoke старый → create новый
-  - Replay detection: если старый уже revoked → revoke всю цепочку (rotated_from_id)
-
-*Revocation (RFC 7009)*:
-- `revoke_token(db, token, token_type_hint)`
-
-**`services/oauth/audit_service.rs`** — запись в `platform_audit_log`:
-- `log_event(db, tenant_id, actor_type, actor_id, event_type, ip, user_agent, details)`
-- Использовать event bus для асинхронной записи
-
-### Файлы для изменения
-- **`apps/server/src/services/mod.rs`** — `pub mod oauth;`
-
----
-
-## Этап 3: Unified Principal Model
-
-**Цель**: Заменить user-only `AuthContext` на `Principal` enum, поддерживающий и пользователей, и приложения.
-
-### Новые файлы
-
-**`crates/rustok-oauth/src/principal.rs`**:
 ```rust
-pub enum Principal {
-    User { user_id: Uuid, session_id: Uuid, tenant_id: Uuid, permissions: Vec<Permission> },
-    App { installation_id: Uuid, client_id: String, tenant_id: Uuid, permissions: Vec<Permission> },
+pub enum AppType {
+    /// Встроенное в бинарник (Leptos). Не нуждается в OAuth2.
+    /// Доступ к API напрямую через shared state.
+    Embedded,
+
+    /// Первая сторона: наши admin/storefront, вынесенные в отдельный процесс.
+    /// Доверенные — полный набор scopes по умолчанию.
+    /// Flow: Authorization Code + PKCE (для SPA), Client Credentials (для SSR).
+    FirstParty,
+
+    /// Мобильное приложение: Authorization Code + PKCE.
+    /// Пользовательский контекст обязателен.
+    Mobile,
+
+    /// Machine-to-machine: боты, интеграции, CI/CD.
+    /// Flow: Client Credentials (без пользовательского контекста).
+    Service,
+
+    /// Сторонние разработчики: ограниченный доступ.
+    /// Flow: Authorization Code + PKCE.
+    /// Обязательный review scopes.
+    ThirdParty,
+}
+```
+
+### 3. OAuth2 Flows
+
+| App Type | Authorization Code + PKCE | Client Credentials | Implicit |
+|---|---|---|---|
+| FirstParty | Да (SPA frontend) | Да (SSR backend) | Нет |
+| Mobile | Да | Нет | Нет |
+| Service | Нет | Да | Нет |
+| ThirdParty | Да | Нет | Нет |
+
+> **Implicit flow не поддерживается** — deprecated по OAuth 2.1.
+
+### 4. Scopes
+
+Scopes контролируют, к каким частям GraphQL API приложение имеет доступ.
+
+```
+# Формат: resource:action
+# Wildcard: resource:* или *:*
+
+# Чтение
+catalog:read          # Товары, категории, цены
+content:read          # Контент-блоки, страницы
+orders:read           # Заказы (только своего пользователя или все — зависит от контекста)
+users:read            # Профили пользователей
+
+# Запись
+cart:write             # Корзина, checkout
+orders:write           # Создание/обновление заказов
+content:write          # Создание/редактирование контента
+users:write            # Обновление профилей
+
+# Админские
+admin:modules          # Управление модулями
+admin:tenants          # Управление тенантами
+admin:users            # Управление пользователями
+admin:settings         # Системные настройки
+admin:builds           # Запуск сборок
+
+# Специальные
+storefront:*           # Все storefront-операции (для FirstParty storefront)
+admin:*                # Все admin-операции (для FirstParty admin)
+*:*                    # Полный доступ (только Embedded)
+```
+
+**Правило**: scope определяет **максимальные** права приложения. Внутри приложения
+пользователь всё ещё ограничен своей RBAC-ролью. Итоговый доступ = `scopes ∩ RBAC`.
+
+## Архитектура
+
+### 1. Связь с Deployment Profiles
+
+```
+modules.toml                    App Registry (DB)
+─────────────                   ──────────────────
+
+[build.server]                  ┌───────────────────────────┐
+embed_admin = true   ──────►    │ App: "leptos-admin"       │
+                                │ type: Embedded            │
+                                │ scopes: *:*               │
+                                │ (auto-created, no secret) │
+                                └───────────────────────────┘
+
+embed_storefront = false         (no auto-created app)
+
+[[build.storefront]]            ┌───────────────────────────┐
+id = "site-eu"       ──────►    │ App: "site-eu"            │
+stack = "next"                  │ type: FirstParty          │
+                                │ scopes: storefront:*      │
+                                │ client_id: uuid           │
+                                │ client_secret: ****       │
+                                └───────────────────────────┘
+
+[[build.storefront]]            ┌───────────────────────────┐
+id = "site-us"       ──────►    │ App: "site-us"            │
+stack = "next"                  │ type: FirstParty          │
+                                │ scopes: storefront:*      │
+                                │ client_id: uuid           │
+                                │ client_secret: ****       │
+                                └───────────────────────────┘
+```
+
+**Правило синхронизации при `rustok rebuild`**:
+1. Встроенные (`embed_*=true`) → `Embedded` app создаётся автоматически, без secret
+2. Standalone Leptos/Next.js → `FirstParty` app, credentials генерируются при первом создании
+3. Ранее зарегистрированные app'ы, удалённые из `modules.toml` → деактивируются (soft delete)
+
+### 2. Поток аутентификации
+
+#### A. Authorization Code + PKCE (SPA, Mobile, Third-Party)
+
+```
+┌──────────┐                          ┌──────────────┐
+│  Browser │                          │ RusTok API   │
+│  / App   │                          │              │
+└────┬─────┘                          └──────┬───────┘
+     │                                       │
+     │  1. GET /oauth/authorize              │
+     │     ?client_id=xxx                    │
+     │     &redirect_uri=...                 │
+     │     &response_type=code               │
+     │     &code_challenge=...               │
+     │     &code_challenge_method=S256       │
+     │     &scope=catalog:read+cart:write    │
+     │─────────────────────────────────────► │
+     │                                       │
+     │  2. Login page (if not authenticated) │
+     │  ◄──────────────────────────────────  │
+     │                                       │
+     │  3. User authenticates + consents     │
+     │─────────────────────────────────────► │
+     │                                       │
+     │  4. Redirect to redirect_uri          │
+     │     ?code=AUTH_CODE                   │
+     │  ◄──────────────────────────────────  │
+     │                                       │
+     │  5. POST /oauth/token                 │
+     │     grant_type=authorization_code     │
+     │     &code=AUTH_CODE                   │
+     │     &code_verifier=...               │
+     │     &client_id=xxx                   │
+     │─────────────────────────────────────► │
+     │                                       │
+     │  6. { access_token, refresh_token }   │
+     │  ◄──────────────────────────────────  │
+     │                                       │
+     │  7. GraphQL с Bearer token            │
+     │─────────────────────────────────────► │
+```
+
+#### B. Client Credentials (Service, SSR backend)
+
+```
+┌──────────────┐                     ┌──────────────┐
+│ Next.js SSR  │                     │ RusTok API   │
+│ (server-side)│                     │              │
+└──────┬───────┘                     └──────┬───────┘
+       │                                    │
+       │  1. POST /oauth/token              │
+       │     grant_type=client_credentials  │
+       │     &client_id=xxx                 │
+       │     &client_secret=yyy             │
+       │     &scope=storefront:*            │
+       │──────────────────────────────────► │
+       │                                    │
+       │  2. { access_token }               │
+       │     (no refresh_token,             │
+       │      no user context)              │
+       │  ◄─────────────────────────────── │
+       │                                    │
+       │  3. GraphQL с Bearer token         │
+       │──────────────────────────────────► │
+```
+
+#### C. Комбинированный (SSR + пользователь)
+
+Next.js storefront использует **оба** flow:
+- `client_credentials` — для публичных данных (каталог, страницы) без логина
+- `authorization_code` — когда пользователь логинится (корзина, заказы, профиль)
+
+```
+┌──────────────┐
+│ Next.js SSR  │
+└──────┬───────┘
+       │
+       ├── getServerSideProps() ──► client_credentials token
+       │   (каталог, SEO данные)    scope: catalog:read
+       │
+       └── User clicks "Login" ──► authorization_code + PKCE
+           (корзина, профиль)       scope: cart:write,orders:read
+```
+
+### 3. Token Claims (расширение текущей JWT-структуры)
+
+```rust
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    // Существующие поля
+    pub sub: Uuid,                    // User ID (или app_id для client_credentials)
+    pub tenant_id: Uuid,
+    pub role: UserRole,
+    pub session_id: Uuid,
+    pub iss: String,                  // "rustok"
+    pub aud: String,                  // "rustok-api"
+    pub exp: usize,
+    pub iat: usize,
+
+    // Новые поля для OAuth2
+    pub client_id: Option<Uuid>,      // App connection ID (None для embedded)
+    pub scopes: Vec<String>,          // Granted scopes
+    pub grant_type: GrantType,        // Какой flow использовался
 }
 
-impl Principal {
-    pub fn tenant_id(&self) -> Uuid { ... }
-    pub fn permissions(&self) -> &[Permission] { ... }
-    pub fn has_permission(&self, perm: &Permission) -> bool { ... }
-    pub fn is_user(&self) -> bool { ... }
-    pub fn user_id(&self) -> Option<Uuid> { ... }
+pub enum GrantType {
+    /// Прямой доступ (embedded Leptos, текущая система)
+    Direct,
+    /// Authorization Code + PKCE (пользовательский контекст)
+    AuthorizationCode,
+    /// Client Credentials (app-level, без пользователя)
+    ClientCredentials,
+    /// Refresh Token
+    RefreshToken,
 }
 ```
 
-**`crates/rustok-oauth/src/scope.rs`** — маппинг scopes ↔ permissions:
-- `scopes_to_permissions(scope_string: &str) -> Vec<Permission>`
-  - Парсит "products:read orders:list" → Vec<Permission> через `Permission::from_str()`
-  - Переиспользовать: существующий `Permission::from_str()` из `crates/rustok-core/src/permissions.rs:171`
+Для `client_credentials` без пользовательского контекста:
+- `sub` = `app_id` (не user_id)
+- `role` = `Service` (новая роль, ниже Customer по привилегиям)
+- `session_id` = `Uuid::nil()` (нет сессии)
 
-### Файлы для изменения
+### 4. Middleware: scope enforcement
 
-**`apps/server/src/context/auth.rs`** — расширить `AuthContext`:
-- Добавить `principal: Principal` (или заменить отдельные поля на enum)
-- Helper-методы: `tenant_id()`, `permissions()`, `user_id()`, `is_app()`
-- Обеспечить обратную совместимость: старый код продолжает работать через delegation
+```rust
+/// Проверяет, что текущий токен имеет требуемый scope
+pub fn require_scope(required: &str) -> impl Filter {
+    // 1. Извлечь scopes из JWT claims
+    // 2. Проверить: required ∈ scopes (с учётом wildcards)
+    // 3. Если нет — 403 Forbidden с описанием недостающего scope
+}
 
-**`apps/server/src/extractors/auth.rs`** — dual JWT decode в `resolve_current_user`:
-1. Извлечь Bearer token
-2. Проверить наличие `kid` в JWT header:
-   - Есть `kid` → decode как RS256 через JWKS → OAuthClaims → Principal
-   - Нет `kid` → decode как HS256 (legacy) → Claims → Principal::User
-3. `CurrentUser` и `OptionalCurrentUser` остаются, но внутри работают через Principal
-4. Добавить `CurrentPrincipal` / `OptionalCurrentPrincipal` extractors
-
-**Альтернатива**: рассмотреть `tower-oauth2-resource-server` — Tower middleware для валидации JWT по JWKS endpoint с проверкой iss, exp, aud, nbf, scopes. Может упростить реализацию resource server стороны (валидацию OAuth токенов на protected routes), заменив часть кастомного кода в extractors. Решение принять при реализации — если объём кастомного кода в extractors окажется тривиальным (~50-100 строк), отдельный крейт может быть излишним.
-
-**`apps/server/src/controllers/graphql.rs`** — адаптация:
-- `AuthContext` передаётся как обычно, но теперь содержит Principal
-- GraphQL resolvers используют `ctx.data::<AuthContext>()?.permissions()` — единый интерфейс
-
----
-
-## Этап 4: OAuth2 REST Endpoints
-
-**Цель**: Authorization Server endpoints.
-
-### Новые файлы
-
-**`apps/server/src/controllers/oauth/mod.rs`** — роутер + подмодули
-
-**`controllers/oauth/authorize.rs`** — `GET /oauth/authorize`:
-- Параметры: response_type=code, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method
-- Валидация: client_id exists, redirect_uri exact match (RFC 9700), PKCE обязателен для public clients
-- Если user авторизован → check consent → generate auth code → redirect
-- Если нет → redirect на login с return URL
-
-**`controllers/oauth/consent.rs`** — consent page:
-- **First-party apps** (`publisher_tenant_id` совпадает): auto-approve, без показа consent
-- **Third-party apps**: server-rendered HTML страница со списком запрошенных scopes + кнопки "Разрешить"/"Отказать"
-- После approve → redirect к authorize для генерации code
-
-**`controllers/oauth/token.rs`** — `POST /oauth/token`:
-- Content-Type: application/x-www-form-urlencoded (по стандарту)
-- `grant_type=authorization_code` → exchange code + PKCE verify → tokens
-- `grant_type=refresh_token` → rotation → new tokens
-- `grant_type=client_credentials` → client auth + scope → access_token (без refresh)
-- Response: `{ access_token, token_type: "Bearer", expires_in, refresh_token?, scope }`
-- Headers: `Cache-Control: no-store`, `Pragma: no-cache`
-
-**`controllers/oauth/revoke.rs`** — `POST /oauth/revoke` (RFC 7009):
-- Параметры: token, token_type_hint
-- Всегда 200 (по стандарту, даже если токен не найден)
-
-**`controllers/oauth/jwks.rs`** — `GET /.well-known/jwks.json`
-
-**`controllers/oauth/discovery.rs`** — `GET /.well-known/openid-configuration`:
-- Возвращает: issuer, authorization_endpoint, token_endpoint, revocation_endpoint, jwks_uri, response_types_supported, grant_types_supported, scopes_supported
-
-### Файлы для изменения
-
-- **`apps/server/src/controllers/mod.rs`** — `pub mod oauth;`
-- **`apps/server/src/app.rs`** — условная регистрация роутов при `oauth_enabled: true`:
-  ```
-  /oauth/authorize, /oauth/token, /oauth/revoke
-  /.well-known/jwks.json, /.well-known/openid-configuration
-  ```
-- **Rate limiter**: `/oauth/token` → 20 req/min per client_id (как auth endpoints)
-
----
-
-## Этап 5: GraphQL Admin API
-
-**Цель**: Управление приложениями, клиентами, установками через GraphQL.
-
-### Новые файлы
-
-**`apps/server/src/graphql/oauth/mod.rs`** — `OAuthQuery` + `OAuthMutation`
-
-**`graphql/oauth/types.rs`** — GraphQL types:
-- `Application`, `OAuthClient` (без client_secret_hash!), `Installation`
-- `CreateApplicationInput`, `CreateOAuthClientInput`, `InstallApplicationInput`
-- `CreateOAuthClientPayload { client: OAuthClient, clientSecretOnce: Option<String> }`
-- `RotateSecretPayload { clientId: String, newClientSecret: String }`
-
-**`graphql/oauth/mutations.rs`**:
-- `createApplication(input)` — SuperAdmin only
-- `createOAuthClient(applicationId, input)` — вернуть secret один раз
-- `installApplication(input)` — Admin tenant-а
-- `rotateClientSecret(clientId)` — вернуть новый secret один раз
-- `revokeInstallation(installationId)` — revoke + cascade tokens
-
-**`graphql/oauth/queries.rs`**:
-- `applications`, `application(id)`, `installations(tenantId)`, `oauthClients(applicationId)`, `authAuditLog(filter, pagination)`
-
-### Файлы для изменения
-
-- **`crates/rustok-core/src/permissions.rs`** — добавить `Resource::Applications`, `Resource::OAuthClients`, `Resource::Installations`, `Resource::AuditLog` (общий для платформы, не только OAuth) + Permission constants
-- **`apps/server/src/graphql/schema.rs`** — добавить `OAuthQuery` и `OAuthMutation` в `MergedObject`
-- **`apps/server/src/graphql/mod.rs`** — `pub mod oauth;`
-
----
-
-## Этап 6: Seed Data — инфраструктурные клиенты
-
-**Цель**: При dev-старте создавать только инфраструктурные OAuth-клиенты (CLI, internal worker). Фронтенды, мобильные приложения и внешние интеграции подключаются через `createOAuthClient` GraphQL mutation.
-
-### Принцип
-
-Seed содержит **только то, что нужно самой платформе** для работы, независимо от выбора фронтенда:
-- CLI — нужен разработчикам для `rustok auth login`, публикации модулей
-- Internal worker — нужен для фоновых задач (build pipeline, cleanup)
-
-Всё остальное (Leptos-админка, Next.js-админка, мобильное приложение, CRM, ERP) — это **внешние клиенты**, которые подключаются администратором через UI "Apps" или GraphQL API. Это универсально: не важно, Leptos это, React, Flutter или интеграция с 1С.
-
-### Seed data
-
-```
-Application: "RusTok Platform", slug: "rustok-platform", publisher: system tenant
-
-OAuth Clients — CLI (public, pkce_required: true, grant: authorization_code):
-  - client_id: "rustok-cli",               redirect: ["http://127.0.0.1:*/callback"]
-    ← используется `rustok auth login` из CLI для авторов модулей
-      (см. docs/modules/marketplace-plan.md, секция 7.2)
-    ← redirect на localhost с динамическим портом (стандартный паттерн для CLI OAuth)
-
-OAuth Clients — server-to-server (confidential, grant: client_credentials):
-  - client_id: "rustok-internal-worker"
-    ← для фоновых задач (build pipeline, cleanup, etc.)
-    ← secret генерируется при первом запуске, выводится в логи
-
-Installation: все seed-клиенты в default tenant, full scopes, auto-approved (first-party)
+// Использование в GraphQL resolvers:
+impl QueryRoot {
+    async fn products(&self, ctx: &Context<'_>) -> Result<Vec<Product>> {
+        let auth = ctx.data::<AuthContext>()?;
+        auth.require_scope("catalog:read")?;  // ← проверка scope
+        // ... fetch products
+    }
+}
 ```
 
-### Подключение фронтендов и приложений
+## Схема БД
 
-Администратор подключает фронтенд или внешнее приложение через GraphQL или UI:
+### Таблица `oauth_apps`
+
+```sql
+CREATE TABLE oauth_apps (
+    id              UUID PRIMARY KEY,
+    tenant_id       UUID NOT NULL REFERENCES tenants(id),
+
+    -- Идентификация
+    name            VARCHAR(255) NOT NULL,          -- "Next.js Storefront EU"
+    slug            VARCHAR(100) NOT NULL,          -- "site-eu"
+    description     TEXT,
+    app_type        VARCHAR(50) NOT NULL,           -- embedded/first_party/mobile/service/third_party
+    icon_url        VARCHAR(500),
+
+    -- Credentials
+    client_id       UUID NOT NULL UNIQUE,           -- Публичный ID
+    client_secret_hash VARCHAR(255),                -- Argon2 hash (NULL для Embedded)
+
+    -- OAuth2 config
+    redirect_uris   JSONB NOT NULL DEFAULT '[]',    -- ["https://store.example.com/callback"]
+    scopes          JSONB NOT NULL DEFAULT '[]',     -- ["storefront:*"]
+    grant_types     JSONB NOT NULL DEFAULT '[]',     -- ["authorization_code", "client_credentials"]
+
+    -- Связь с modules.toml
+    manifest_ref    VARCHAR(100),                   -- "storefront:site-eu" или NULL
+    auto_created    BOOLEAN NOT NULL DEFAULT FALSE,  -- Создан при rebuild?
+
+    -- Статус
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    revoked_at      TIMESTAMPTZ,
+    last_used_at    TIMESTAMPTZ,
+
+    -- Метаданные
+    metadata        JSONB NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    UNIQUE(tenant_id, slug)
+);
+
+CREATE INDEX idx_oauth_apps_client_id ON oauth_apps(client_id);
+CREATE INDEX idx_oauth_apps_tenant ON oauth_apps(tenant_id) WHERE is_active = TRUE;
+```
+
+### Таблица `oauth_authorization_codes`
+
+```sql
+CREATE TABLE oauth_authorization_codes (
+    id              UUID PRIMARY KEY,
+    app_id          UUID NOT NULL REFERENCES oauth_apps(id),
+    user_id         UUID NOT NULL REFERENCES users(id),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id),
+
+    code_hash       VARCHAR(255) NOT NULL UNIQUE,   -- SHA256 hash кода
+    redirect_uri    VARCHAR(500) NOT NULL,
+    scopes          JSONB NOT NULL,
+    code_challenge  VARCHAR(255) NOT NULL,           -- PKCE S256
+    code_challenge_method VARCHAR(10) NOT NULL DEFAULT 'S256',
+
+    expires_at      TIMESTAMPTZ NOT NULL,            -- Короткоживущий: 10 минут
+    used_at         TIMESTAMPTZ,                     -- NULL = не использован
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_oauth_codes_hash ON oauth_authorization_codes(code_hash)
+    WHERE used_at IS NULL;
+```
+
+### Таблица `oauth_tokens`
+
+```sql
+CREATE TABLE oauth_tokens (
+    id              UUID PRIMARY KEY,
+    app_id          UUID NOT NULL REFERENCES oauth_apps(id),
+    user_id         UUID,                           -- NULL для client_credentials
+    tenant_id       UUID NOT NULL REFERENCES tenants(id),
+
+    token_hash      VARCHAR(255) NOT NULL UNIQUE,   -- SHA256 хеш refresh token
+    grant_type      VARCHAR(50) NOT NULL,           -- authorization_code / client_credentials
+    scopes          JSONB NOT NULL,
+
+    expires_at      TIMESTAMPTZ NOT NULL,
+    revoked_at      TIMESTAMPTZ,
+    last_used_at    TIMESTAMPTZ,
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_oauth_tokens_hash ON oauth_tokens(token_hash)
+    WHERE revoked_at IS NULL;
+CREATE INDEX idx_oauth_tokens_app ON oauth_tokens(app_id, tenant_id)
+    WHERE revoked_at IS NULL;
+```
+
+### Таблица `oauth_consent` (для Third-Party apps)
+
+```sql
+CREATE TABLE oauth_consents (
+    id              UUID PRIMARY KEY,
+    app_id          UUID NOT NULL REFERENCES oauth_apps(id),
+    user_id         UUID NOT NULL REFERENCES users(id),
+    tenant_id       UUID NOT NULL REFERENCES tenants(id),
+
+    scopes          JSONB NOT NULL,                  -- Одобренные пользователем scopes
+    granted_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    revoked_at      TIMESTAMPTZ,
+
+    UNIQUE(app_id, user_id, tenant_id)
+);
+```
+
+## GraphQL API
+
+### Queries
 
 ```graphql
-mutation {
-  createOAuthClient(applicationId: "...", input: {
-    clientType: PUBLIC
-    redirectUris: ["http://localhost:3001/auth/callback"]
-    allowedGrants: [AUTHORIZATION_CODE]
-    pkceRequired: true
-  }) {
-    client { clientId }
-  }
+type Query {
+  """Список подключённых приложений (admin-only)"""
+  oauthApps(
+    tenantId: UUID!
+    appType: AppType
+    isActive: Boolean
+  ): [OAuthApp!]!
+
+  """Детали приложения"""
+  oauthApp(id: UUID!): OAuthApp
+
+  """Активные токены приложения"""
+  oauthAppTokens(appId: UUID!): [OAuthTokenInfo!]!
+
+  """Приложения, которым пользователь дал доступ (для профиля)"""
+  myAuthorizedApps: [AuthorizedAppInfo!]!
+}
+
+type OAuthApp {
+  id: UUID!
+  name: String!
+  slug: String!
+  description: String
+  appType: AppType!
+  clientId: UUID!
+  redirectUris: [String!]!
+  scopes: [String!]!
+  grantTypes: [String!]!
+  manifestRef: String
+  autoCreated: Boolean!
+  isActive: Boolean!
+  lastUsedAt: DateTime
+  createdAt: DateTime!
+  activeTokenCount: Int!
+}
+
+type OAuthTokenInfo {
+  id: UUID!
+  grantType: String!
+  scopes: [String!]!
+  userId: UUID
+  lastUsedAt: DateTime
+  expiresAt: DateTime!
+  createdAt: DateTime!
+}
+
+type AuthorizedAppInfo {
+  app: OAuthApp!
+  scopes: [String!]!
+  grantedAt: DateTime!
 }
 ```
 
-Примеры типичных клиентов (не в seed, создаются вручную):
+### Mutations
 
-| Клиент | Тип | Grant | Redirect URI |
-|--------|-----|-------|-------------|
-| Leptos Admin | public | authorization_code | `http://localhost:3001/auth/callback` |
-| Next.js Admin | public | authorization_code | `http://localhost:3000/auth/callback` |
-| Leptos Storefront | public | authorization_code | `http://localhost:3101/auth/callback` |
-| Mobile App (Flutter) | public | authorization_code | `com.rustok.app://callback` |
-| CRM Integration | confidential | client_credentials | — |
-| ERP Sync | confidential | client_credentials | — |
+```graphql
+type Mutation {
+  """Создать новое приложение (admin-only)"""
+  createOAuthApp(input: CreateOAuthAppInput!): CreateOAuthAppResult!
 
-### Связь с маркетплейсом модулей
+  """Обновить настройки приложения"""
+  updateOAuthApp(id: UUID!, input: UpdateOAuthAppInput!): OAuthApp!
 
-`rustok-cli` — это тот же клиент, через который авторы модулей аутентифицируются
-для `rustok module publish` (см. `docs/modules/marketplace-plan.md`, секция 7).
-При запуске `rustok auth login` CLI:
-1. Стартует локальный HTTP-сервер на random порту
-2. Открывает браузер → `/oauth/authorize?client_id=rustok-cli&redirect_uri=http://127.0.0.1:{port}/callback&...`
-3. Пользователь авторизуется → callback → CLI получает tokens
-4. Токены сохраняются в `~/.config/rustok/credentials.json`
+  """Пересоздать client_secret"""
+  rotateOAuthAppSecret(id: UUID!): RotateSecretResult!
 
-### Файлы для изменения
-- **`apps/server/src/initializers/`** или **seed** — создание OAuth seed при первом запуске (если таблица applications пуста)
+  """Деактивировать приложение (revoke все токены)"""
+  revokeOAuthApp(id: UUID!): OAuthApp!
 
----
+  """Отозвать конкретный токен"""
+  revokeOAuthToken(tokenId: UUID!): Boolean!
 
-## Этап 7: Audit, Events, Cleanup
+  """Пользователь отзывает доступ приложения к своему аккаунту"""
+  revokeAppConsent(appId: UUID!): Boolean!
+}
 
-**Цель**: Полный audit trail, domain events, фоновая очистка.
+input CreateOAuthAppInput {
+  name: String!
+  slug: String!
+  description: String
+  appType: AppType!
+  redirectUris: [String!]
+  scopes: [String!]!
+  grantTypes: [GrantType!]!
+}
 
-### Новые файлы
+type CreateOAuthAppResult {
+  app: OAuthApp!
+  """client_secret показывается ОДИН РАЗ при создании"""
+  clientSecret: String!
+}
 
-**`apps/server/src/tasks/oauth_cleanup.rs`** — background task:
-- Удалить expired authorization_codes (старше code_ttl + буфер)
-- Удалить expired access_token_jti записи
-- Удалить expired+revoked oauth_refresh_tokens (retain 30 дней для аудита)
+type RotateSecretResult {
+  app: OAuthApp!
+  """Новый secret, показывается один раз"""
+  clientSecret: String!
+}
+```
 
-**`apps/server/src/tasks/key_rotation.rs`** — ротация ключей:
-- Проверить возраст active key → если старше порога → сгенерировать новый, старый в JWKS ещё 2× max token TTL
+## REST Endpoints (OAuth2 standard)
 
-**`crates/rustok-oauth/src/module.rs`** — `RusToKModule` для OAuth:
+OAuth2 endpoints реализуются как REST (по стандарту RFC 6749/7636):
+
+```
+POST /oauth/authorize          — Authorization endpoint
+POST /oauth/token              — Token endpoint
+POST /oauth/revoke             — Token revocation (RFC 7009)
+GET  /oauth/userinfo           — User info (OpenID Connect)
+GET  /.well-known/oauth-authorization-server  — Server metadata (RFC 8414)
+```
+
+> GraphQL — для **управления** приложениями (admin).
+> REST — для **OAuth2 flows** (стандарт, клиентские библиотеки ожидают REST).
+
+## Admin UI
+
+### Страница «App Connections» (в модуле Modules → раздел Connections)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Connected Applications                           [+ Add]  │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ 🔒 Next.js Storefront EU              FirstParty   │   │
+│  │    client_id: 8a3f...b2c1                          │   │
+│  │    Scopes: storefront:*                            │   │
+│  │    Last used: 2 min ago        ● Active   [Manage] │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ 🔒 Next.js Storefront US              FirstParty   │   │
+│  │    client_id: f1d2...a4e7                          │   │
+│  │    Scopes: storefront:*                            │   │
+│  │    Last used: 5 min ago        ● Active   [Manage] │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ 🤖 Telegram Order Bot                    Service   │   │
+│  │    client_id: c7b8...d3f9                          │   │
+│  │    Scopes: orders:read, catalog:read               │   │
+│  │    Last used: 1 hour ago       ● Active   [Manage] │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ ⚙️ Leptos Admin (embedded)              Embedded   │   │
+│  │    Scopes: *:*                                     │   │
+│  │    Built-in — no credentials needed                │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Manage App Dialog
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Next.js Storefront EU                                  │
+│                                                         │
+│  Client ID:     8a3f...b2c1             [Copy]         │
+│  Client Secret: ●●●●●●●●               [Rotate]       │
+│                                                         │
+│  Redirect URIs:                                        │
+│    https://eu.store.example.com/api/auth/callback       │
+│    https://eu.store.example.com/oauth/callback          │
+│                                                         │
+│  Scopes:                                               │
+│    ☑ catalog:read    ☑ content:read                    │
+│    ☑ cart:write      ☑ orders:read                     │
+│    ☑ orders:write    ☐ admin:*                         │
+│    ☑ users:read      ☐ admin:modules                   │
+│                                                         │
+│  Active Tokens: 142                                    │
+│  Created: 2026-03-01                                   │
+│  Last Used: 2 min ago                                  │
+│                                                         │
+│  [Save Changes]    [Revoke All Tokens]    [Delete App] │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Интеграция с modules.toml
+
+### Автоматическая синхронизация при rebuild
+
 ```rust
-impl RusToKModule for OAuthModule {
-    fn slug(&self) -> &'static str { "oauth" }
-    fn name(&self) -> &'static str { "OAuth2 App Connections" }
-    fn kind(&self) -> ModuleKind { ModuleKind::Optional }
-    fn dependencies(&self) -> &[&'static str] { &["rbac"] }
-    fn permissions(&self) -> Vec<Permission> { /* Applications CRUD, Installations, AuditLog */ }
+/// Вызывается в BuildService после успешной сборки
+async fn sync_app_connections(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    manifest: &ModulesManifest,
+) -> Result<()> {
+    let existing = OAuthApp::find_by_tenant(db, tenant_id).await?;
+
+    // 1. Embedded apps
+    if manifest.build.server.embed_admin {
+        upsert_embedded_app(db, tenant_id, "leptos-admin", &["*:*"]).await?;
+    }
+    if manifest.build.server.embed_storefront {
+        upsert_embedded_app(db, tenant_id, "leptos-storefront", &["*:*"]).await?;
+    }
+
+    // 2. Standalone storefronts → FirstParty apps
+    for sf in &manifest.build.storefronts {
+        if !manifest.build.server.embed_storefront || sf.stack == "next" {
+            upsert_first_party_app(
+                db, tenant_id,
+                &sf.id,
+                &format!("{} storefront", sf.id),
+                &["storefront:*"],
+                &["authorization_code", "client_credentials"],
+            ).await?;
+        }
+    }
+
+    // 3. Standalone admin → FirstParty app
+    if !manifest.build.server.embed_admin {
+        upsert_first_party_app(
+            db, tenant_id,
+            &format!("{}-admin", manifest.build.admin.stack),
+            &format!("{} Admin", manifest.build.admin.stack),
+            &["admin:*"],
+            &["authorization_code", "client_credentials"],
+        ).await?;
+    }
+
+    // 4. Деактивировать apps, удалённые из manifest
+    deactivate_orphaned_apps(db, tenant_id, &manifest).await?;
+
+    Ok(())
 }
 ```
 
-**`crates/rustok-oauth/rustok-module.toml`** — манифест по стандарту маркетплейса (см. `docs/modules/marketplace-plan.md`):
+### Пример: конфигурация Next.js storefront
+
+При `rustok rebuild` с:
 ```toml
-[module]
-slug = "oauth"
-name = "OAuth2 App Connections"
-version = "0.1.0"
-description = "OAuth2 Authorization Server with PKCE, client credentials, and app installations"
-authors = ["RusTok Team"]
-license = "MIT"
-
-[compatibility]
-rustok_min = "0.5.0"
-rust_edition = "2024"
-
-[dependencies]
-rbac = ">= 0.1.0"
-
-[crate]
-name = "rustok-oauth"
-entry_type = "OAuthModule"
-
-[provides]
-migrations = true
-permissions = [
-    "applications:create",
-    "applications:read",
-    "applications:manage",
-    "oauth_clients:create",
-    "oauth_clients:read",
-    "oauth_clients:manage",
-    "installations:create",
-    "installations:read",
-    "installations:manage",
-    "audit_log:read",
-]
-events_emitted = [
-    "oauth.token.issued",
-    "oauth.token.revoked",
-    "oauth.code.exchanged",
-    "oauth.app.installed",
-    "oauth.app.revoked",
-    "oauth.secret.rotated",
-]
-graphql_types = ["Application", "OAuthClient", "Installation", "AuthAuditLogEntry"]
-graphql_queries = ["applications", "application", "installations", "oauthClients", "authAuditLog"]
-graphql_mutations = ["createApplication", "createOAuthClient", "installApplication", "rotateClientSecret", "revokeInstallation"]
-
-[[provides.admin_nav]]
-label_key = "app.nav.apps"
-href = "/apps"
-icon = "grid-3x3"
-section = "platform"
-
-[locales]
-supported = ["en", "ru"]
-default = "en"
+[[build.storefront]]
+id = "site-eu"
+stack = "next"
 ```
 
-Это обеспечивает совместимость `rustok-oauth` с модульным стандартом из `docs/modules/marketplace-plan.md`. Файлы `locales/en.json` и `locales/ru.json` создать в `crates/rustok-oauth/locales/`.
-
-### Файлы для изменения
-- **`crates/rustok-core/src/events/types.rs`** — новые DomainEvent варианты: `OAuthTokenIssued`, `OAuthTokenRevoked`, `OAuthCodeExchanged`, `AppInstalled`, `AppRevoked`, `ClientSecretRotated`. Naming convention: `{Domain}{Entity}{Action}` — согласовано с `events_emitted` в `rustok-module.toml` (dot-notation: `oauth.token.issued`). DomainEvent enum использует PascalCase, audit log event_type — dot-notation
-- **`apps/server/src/app.rs`** — регистрация cleanup tasks
-- **`apps/server/src/modules/`** (или где регистрируется registry) — добавить `OAuthModule`
-
----
-
-## Этап 8: Feature Flag и финальная интеграция
-
-### Feature flag стратегия
-
-Используем существующий `settings.rustok.features.oauth_enabled` из `apps/server/src/common/settings.rs`:
-
-**`oauth_enabled: false`** (default) — **монолитный режим**:
-- OAuth роуты не регистрируются (404)
-- Встроенные Leptos-приложения (админка, storefront(ы)) работают через серверные сессии
-- `CurrentUser` работает только с HS256 (текущее поведение)
-- GraphQL OAuth queries/mutations возвращают "Feature not enabled"
-- Миграции запускаются (таблицы пусты)
-- KeyStore не инициализируется
-- Полностью рабочая конфигурация — достаточна для монолита с любым количеством встроенных Leptos-сайтов
-
-**`oauth_enabled: true`** — **headless / смешанный режим**:
-- OAuth роуты зарегистрированы (`/oauth/authorize`, `/oauth/token`, `/oauth/revoke`, `/.well-known/*`)
-- `CurrentPrincipal` поддерживает HS256 и RS256
-- KeyStore инициализирован, JWKS endpoint активен
-- Все OAuth GraphQL операции доступны
-- Встроенные Leptos-приложения **по-прежнему используют сессии** — OAuth для них не нужен
-- OAuth используется только внешними клиентами (отдельные SPA, мобилки, CRM, ERP)
-
-**Переходный период** (оба механизма активны одновременно):
-- Серверные сессии (cookie-based) — для встроенных Leptos-приложений (всегда)
-- `/api/auth/login` продолжает выдавать HS256 токены (legacy API клиенты)
-- `/oauth/token` выдаёт RS256 токены (новые внешние клиенты)
-- Оба типа JWT принимаются через dual-decode в extractors
-
----
-
-## Этап 9: Admin UI — Страницы регистрации и управления приложениями
-
-**Цель**: Страницы "Apps" (как у Shopify) в Leptos-админке. Полный CRUD: список приложений, установка в tenant, создание OAuth-клиентов, просмотр установок. Next.js-версия откладывается — реализуется при необходимости по аналогии.
-
-### Разделение с Modules UI
-
-"Apps" и "Modules" — **отдельные секции** sidebar, разные доменные сущности:
-
+Система:
+1. Создаёт `oauth_apps` запись: `slug="site-eu"`, `app_type=FirstParty`
+2. Генерирует `client_id` и `client_secret`
+3. Выводит в CLI:
 ```
-Sidebar:
-├── Overview
-│   └── Dashboard
-├── Management
-│   └── Users
-├── Platform                    ← новая секция
-│   ├── Modules  (/modules)    ← серверные плагины (toggle, install, marketplace)
-│   └── Apps     (/apps)       ← внешние OAuth-клиенты (API consumers)
-├── Account
-│   ├── Profile
-│   └── Security
+✅ App connection created for storefront "site-eu"
+
+   Client ID:     8a3f2d1c-...
+   Client Secret: sk_live_a8b7c6d5e4f3...  ← SAVE THIS!
+
+   Add to your Next.js .env:
+   RUSTOK_CLIENT_ID=8a3f2d1c-...
+   RUSTOK_CLIENT_SECRET=sk_live_a8b7c6d5e4f3...
+   RUSTOK_API_URL=https://api.example.com
 ```
 
-**Modules** (`/modules`) — уже реализовано, расширяется вкладками Installed/Catalog/Updates/Build History (см. `docs/modules/module-rebuild-plan.md`).
+### Next.js SDK-интеграция
 
-**Apps** (`/apps`) — новое, управление OAuth Applications и их подключениями к API.
+```typescript
+// apps/next-frontend/src/lib/rustok-client.ts
 
-Обе секции сгруппированы в "Platform", но это разные страницы с разными data sources и GraphQL queries. Пользователь видит их как два инструмента: "какие модули включены" vs "какие приложения подключены".
+import { RusTokClient } from '@rustok/sdk';
 
-### 9.1 Leptos Admin (`apps/admin/`)
+export const rustok = new RusTokClient({
+  apiUrl: process.env.RUSTOK_API_URL!,
+  clientId: process.env.RUSTOK_CLIENT_ID!,
+  clientSecret: process.env.RUSTOK_CLIENT_SECRET!,
 
-**Паттерн для следования**: `apps/admin/src/pages/modules.rs` + `apps/admin/src/features/modules/`
+  // SSR: client_credentials для публичных данных
+  // Browser: authorization_code + PKCE для пользовательских данных
+  mode: 'hybrid',
+});
 
-**Новые файлы — страницы**:
-- `apps/admin/src/pages/apps.rs` — список установленных приложений
-- `apps/admin/src/pages/app_details.rs` — детали приложения + OAuth-клиенты + установки
-- `apps/admin/src/pages/app_create.rs` — регистрация нового приложения
+// Server Component — client_credentials
+export async function getProducts() {
+  const token = await rustok.getServiceToken(['catalog:read']);
+  return rustok.graphql(PRODUCTS_QUERY, {}, token);
+}
 
-**Новые файлы — feature**:
-- `apps/admin/src/features/apps/mod.rs`
-- `apps/admin/src/features/apps/api.rs` — GraphQL вызовы через gql_client (fetch_applications, install_app, create_app, create_client, rotate_secret, revoke_installation)
-- `apps/admin/src/features/apps/components/mod.rs`
-- `apps/admin/src/features/apps/components/apps_list.rs` — таблица/карточки (Leptos component, `#[component] pub fn AppsList`)
-- `apps/admin/src/features/apps/components/app_card.rs` — карточка приложения со статусом и scopes
-- `apps/admin/src/features/apps/components/create_app_form.rs` — форма регистрации (с Leptos реактивными сигналами)
-- `apps/admin/src/features/apps/components/client_secret_dialog.rs` — диалог одноразового показа секрета
-- `apps/admin/src/features/apps/components/scope_selector.rs` — мультиселект scopes
-
-**Файлы для изменения**:
-- `apps/admin/src/shared/config/nav.rs` — добавить секцию "Apps" в `NAV_SECTIONS`:
-  ```rust
-  NavSection {
-      label: "Platform",
-      items: &[
-          NavItem { label_key: "app.nav.modules", href: "/modules", icon: "package" },
-          NavItem { label_key: "app.nav.apps", href: "/apps", icon: "grid-3x3" },
-      ],
-  },
-  ```
-- `apps/admin/src/app/router.rs` — добавить роуты:
-  ```rust
-  <Route path=path!("/apps") view=Apps />
-  <Route path=path!("/apps/create") view=AppCreate />
-  <Route path=path!("/apps/:id") view=AppDetails />
-  ```
-- `apps/admin/src/pages/mod.rs` — экспорт новых страниц
-- `apps/admin/src/features/mod.rs` — `pub mod apps;`
-
-### 9.2 UI/UX — как у Shopify
-
-**Страница "Apps" (список)** — карточки установленных приложений:
-- Название + иконка + описание
-- Статус: Active / Suspended / Revoked (цветной badge)
-- Granted scopes (свёрнутый список)
-- Кнопки: "Manage", "Uninstall"
-- Кнопка "Install app" → переход в каталог
-
-**Страница "App Detail"** — после клика на приложение:
-- Информация: publisher, дата установки, установивший пользователь
-- Granted scopes (полный список, можно изменить)
-- OAuth Clients: список клиентов (client_id, type, redirect URIs)
-  - Кнопка "Rotate Secret" → диалог с новым секретом
-  - Кнопка "Create Client" → форма
-- Audit Log: последние события по этому приложению
-- Кнопка "Revoke/Uninstall" (с подтверждением)
-
-**Страница "Register App"** (для разработчиков):
-- Form: name, slug (auto-generated), description
-- OAuth Client setup: client type (public/confidential), redirect URIs, allowed grants, allowed scopes (checkbox list)
-- Submit → показать client_id + client_secret (один раз, dialog)
-
-### 9.3 i18n ключи
-
-Добавить ключи перевода:
-- `app.nav.apps` = "Apps" / "Приложения"
-- `apps.title` = "Applications" / "Приложения"
-- `apps.subtitle` = "Manage connected applications and integrations"
-- `apps.install` = "Install App"
-- `apps.create` = "Register App"
-- `apps.revoke.confirm` = "Are you sure? This will revoke all access tokens."
-- `apps.secret.warning` = "Copy this secret now. It won't be shown again."
-
-### 9.4 Next.js Admin — отложено
-
-Next.js админка (`apps/next-admin/`) реализуется позже при необходимости. Паттерн аналогичен Leptos: роуты в `app/dashboard/apps/`, feature в `features/apps/`, навигация в `config/nav-config.ts`. GraphQL API (Этап 5) одинаков для обоих фронтендов, поэтому Next.js-версия — чисто UI-задача без серверных изменений.
-
----
-
-## Граф зависимостей
-
-```
-Этап 0 (Крейт + RS256 ключи)  ─┐
-Этап 1 (Миграции БД)  ─────────┤ ← параллельно
-                                │
-Этап 2 (Сервисный слой)  ──────┤ ← зависит от 1
-Этап 3 (Principal Model)  ─────┤ ← зависит от 0, 1
-                                │
-Этап 4 (OAuth REST)  ──────────┤ ← зависит от 0, 2, 3
-Этап 5 (GraphQL Admin)  ───────┤ ← зависит от 2 (параллельно с 4)
-Этап 6 (Seed Data)  ───────────┤ ← зависит от 1, 2
-                                │
-Этап 7 (Audit + Cleanup)  ─────┤ ← зависит от 1, 2
-Этап 8 (Feature Flag)  ────────┤ ← можно на любом этапе
-Этап 9 (Admin UI: Apps)  ──────┘ ← зависит от 5 (GraphQL API)
+// Client Component — authorization_code
+export function useCart() {
+  const { token } = useRusTokAuth(); // PKCE flow
+  return rustok.graphql(CART_QUERY, {}, token);
+}
 ```
 
-**Параллелизм**: Этапы 0+1 параллельно. Этапы 4+5 параллельно. Этапы 6+7+8 параллельно. Этап 9 после 5 (нужен GraphQL API).
+## Безопасность
 
----
+### Хранение секретов
 
-## Критические существующие файлы
+- `client_secret` хранится как **Argon2 hash** (как пароли пользователей)
+- Показывается **один раз** при создании или ротации
+- Prefix `sk_live_` / `sk_test_` для визуального различия
 
-| Файл | Роль |
-|------|------|
-| `apps/server/src/auth.rs` | JWT HS256, Claims — расширяем dual-mode |
-| `apps/server/src/extractors/auth.rs` | CurrentUser → CurrentPrincipal |
-| `apps/server/src/context/auth.rs` | AuthContext — добавляем Principal |
-| `apps/server/src/controllers/graphql.rs` | Injection auth context → адаптируем |
-| `apps/server/src/services/auth_lifecycle.rs` | Паттерн create_session + tokens |
-| `apps/server/migration/src/lib.rs` | Регистрация миграций |
-| `apps/server/config/development.yaml` | oauth_enabled flag + новые настройки |
-| `apps/server/src/common/settings.rs` | FeatureSettings + новый OAuthSettings |
-| `crates/rustok-core/src/permissions.rs` | Resource/Action/Permission — расширяем |
-| `crates/rustok-core/src/module.rs` | RusToKModule trait |
-| `crates/rustok-core/src/events/types.rs` | DomainEvent — новые варианты |
-| `apps/admin/src/shared/config/nav.rs` | Sidebar navigation — добавляем "Apps" |
-| `apps/admin/src/app/router.rs` | Leptos роутер — добавляем /apps роуты |
-| `apps/admin/src/pages/modules.rs` | Паттерн для pages/apps.rs (Leptos) |
-| `apps/admin/src/features/modules/` | Паттерн для features/apps/ (Leptos) |
-
----
-
-## Верификация
-
-### Тесты (на каждом этапе)
-- **Миграции**: up/down на test DB (`rustok_test_utils::db::setup_test_db_with_migrations`)
-- **Сервисы**: PKCE S256 verification, auth code exchange, token rotation, scope validation, replay detection
-- **JWT**: RS256 encode/decode round-trip, dual-mode (HS256 + RS256)
-- **Principal**: permission resolution для User и App
-- **Integration**: полный Authorization Code + PKCE flow end-to-end
-- **Client Credentials**: token → API call с scopes
-- **Feature flag**: oauth_enabled=false → 404
-
-### Команды
-```bash
-cargo test                    # все тесты
-cargo clippy                  # без warnings
-cargo run                     # dev server → OAuth endpoints
-```
-
-### Ручная верификация (curl)
-1. GET /oauth/authorize?... → redirect с code
-2. POST /oauth/token (authorization_code) → access + refresh
-3. Authorization: Bearer <token> → GraphQL /api/graphql
-4. POST /oauth/token (refresh_token) → new tokens
-5. POST /oauth/revoke → 200
-6. GET /.well-known/jwks.json → JWKS JSON
-
----
-
-## Приложение A: Взаимодействие с маркетплейсом модулей
-
-> Связанный документ: `docs/modules/marketplace-plan.md`
-
-Маркетплейс модулей (`modules.rustok.dev`) — **отдельный сервис** со своей БД и API.
-OAuth-подсистема основного RusTok-сервера обеспечивает аутентификацию для трёх сценариев
-взаимодействия с маркетплейсом.
-
-### A.1 Архитектура auth для маркетплейса
+### Rate limiting (per client_id)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  modules.rustok.dev (отдельный сервис)                               │
-│                                                                      │
-│  ┌──────────────────────────────┐                                    │
-│  │  GraphQL API                 │                                    │
-│  │  marketplace(search) →       │◄──── (2) Server proxy              │
-│  │  publishModule(crate) →      │◄──── (3) CLI direct                │
-│  │  downloadCrate(slug,ver) →   │◄──── (4) Build pipeline            │
-│  └──────────────────────────────┘                                    │
-│                                                                      │
-│  Auth: API key per platform instance + author tokens                 │
-└──────────────────────────────────────────────────────────────────────┘
-         ▲              ▲              ▲
-         │(2)           │(3)           │(4)
-         │              │              │
-┌────────┴──────┐ ┌────┴──────┐ ┌────┴───────────────┐
-│ RusTok Server │ │ CLI       │ │ Build Worker       │
-│ (proxy)       │ │ (author)  │ │ (cargo build)      │
-│               │ │           │ │                     │
-│ OAuth AS ◄────│ │ OAuth ◄───│ │ client_credentials │
-│ for admin UI  │ │ PKCE flow │ │ + marketplace key   │
-└───────────────┘ └───────────┘ └─────────────────────┘
-         ▲
-         │(1)
-┌────────┴──────┐
-│ Admin UI      │
-│ (Leptos/Next) │
-│ OAuth PKCE    │
-└───────────────┘
+/oauth/token    — 60 req/min per client_id
+/oauth/authorize — 30 req/min per IP
+GraphQL         — настраивается per app (default: 1000 req/min)
 ```
 
-### A.2 Четыре auth-потока с маркетплейсом
+### Token lifetimes
 
-#### (1) Admin UI → RusTok Server
+| Token | Lifetime | Renewable |
+|---|---|---|
+| Authorization code | 10 min | Нет (one-time use) |
+| Access token (user) | 15 min | Да (через refresh) |
+| Access token (service) | 1 hour | Нет (запросить новый) |
+| Refresh token | 30 days | Да (rotation) |
 
-Уже описан в этом плане (OAuth PKCE, `rustok-admin-*` clients).
-Admin UI **не обращается к маркетплейсу напрямую**.
+### Audit log
 
-#### (2) RusTok Server → Marketplace API (прокси)
+Все OAuth2 события записываются в audit log:
+- `oauth_app.created` / `updated` / `revoked`
+- `oauth_token.issued` / `refreshed` / `revoked`
+- `oauth_consent.granted` / `revoked`
+- `oauth_secret.rotated`
 
-Admin UI запрашивает каталог через GraphQL основного сервера, который **проксирует** запросы к маркетплейсу:
+## План реализации
 
-```graphql
-# На основном сервере (проксирует к modules.rustok.dev):
-query { marketplace(search: "seo") { slug, name, ... } }
-mutation { installModule(slug: "seo", version: "1.0") { id, status } }
+### Phase 1: Core OAuth2 (MVP)
+
+- [ ] Миграция БД: `oauth_apps`, `oauth_tokens`
+- [ ] `OAuthAppService` — CRUD для приложений
+- [ ] `POST /oauth/token` — `client_credentials` flow
+- [ ] Scope enforcement в GraphQL middleware
+- [ ] Расширение JWT Claims (`client_id`, `scopes`, `grant_type`)
+- [ ] GraphQL mutations: `createOAuthApp`, `rotateOAuthAppSecret`, `revokeOAuthApp`
+- [ ] Auto-sync при rebuild (`sync_app_connections`)
+
+**Результат**: Next.js storefront подключается через `client_credentials`.
+
+### Phase 2: Authorization Code + PKCE
+
+- [ ] `POST /oauth/authorize` — authorization endpoint
+- [ ] PKCE validation (S256)
+- [ ] Authorization code storage (`oauth_authorization_codes`)
+- [ ] `authorization_code` grant type в `/oauth/token`
+- [ ] Refresh token rotation
+- [ ] `POST /oauth/revoke` (RFC 7009)
+
+**Результат**: Мобильные приложения и SPA могут логинить пользователей.
+
+### Phase 3: Consent & Third-Party
+
+- [ ] `oauth_consents` таблица
+- [ ] Consent UI (страница подтверждения scopes)
+- [ ] Third-party app registration flow
+- [ ] Scope review для third-party apps
+- [ ] User profile: «Connected apps» → revoke access
+
+**Результат**: Сторонние разработчики могут создавать интеграции.
+
+### Phase 4: Admin UI & DX
+
+- [ ] Admin page: «App Connections» (Leptos + Next.js admin)
+- [ ] CLI: `rustok apps list`, `rustok apps create`, `rustok apps rotate-secret`
+- [ ] SDK: `@rustok/sdk` npm package для Next.js интеграции
+- [ ] `/.well-known/oauth-authorization-server` metadata endpoint
+- [ ] OpenID Connect basic support (`/oauth/userinfo`)
+- [ ] Документация для разработчиков модулей
+
+**Результат**: Полноценная developer experience.
+
+## Связь с другими планами
+
+| Документ | Связь |
+|---|---|
+| [Deployment Profiles ADR](../../DECISIONS/2026-03-07-deployment-profiles-and-ui-stack.md) | `modules.toml` определяет, какие apps создаются автоматически |
+| [Module Rebuild Plan](../modules/module-rebuild-plan.md) | Rebuild триггерит sync_app_connections |
+| [Marketplace Plan](../modules/marketplace-plan.md) | Модули маркетплейса могут регистрировать свои OAuth apps (webhooks, интеграции) |
+| Security Standards (`docs/standards/security.md`) | OAuth2 расширяет существующие OWASP-защиты |
+
+## Итог
+
+OAuth2 App Connections — это **мост** между composable deployment layers и реальными
+приложениями. Без этого механизма standalone storefronts, мобильные приложения и
+сторонние интеграции не могут безопасно работать с API.
+
 ```
-
-**Auth**: Основной сервер аутентифицируется в маркетплейсе через **Platform API Key** — уникальный ключ инстанса, выдаваемый при регистрации платформы на modules.rustok.dev.
-
-```yaml
-# development.yaml
-settings.rustok.marketplace:
-  enabled: false                           # на MVP отключён
-  registry_url: https://modules.rustok.dev
-  api_key: ""                              # Platform API Key
+                        modules.toml
+                            │
+                    ┌───────┴────────┐
+                    │  rustok rebuild │
+                    └───────┬────────┘
+                            │
+                 ┌──────────┴──────────┐
+                 │  sync_app_connections│
+                 └──────────┬──────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+        ┌─────▼─────┐ ┌────▼────┐  ┌─────▼─────┐
+        │ Embedded  │ │ First   │  │ Service   │
+        │ (Leptos)  │ │ Party   │  │ (bots,    │
+        │ no auth   │ │ (Next)  │  │  CI/CD)   │
+        │ needed    │ │ OAuth2  │  │ client_   │
+        │           │ │ PKCE +  │  │ credentials│
+        └───────────┘ │ client_ │  └───────────┘
+                      │ creds   │
+                      └─────────┘
+                           │
+                    ┌──────┴──────┐
+                    │   GraphQL   │
+                    │   API       │
+                    │  (scoped)   │
+                    └─────────────┘
 ```
-
-Причина прокси, а не прямого доступа: безопасность (API key не утекает в браузер), кэширование, единая точка контроля.
-
-#### (3) CLI автора → Marketplace API
-
-Автор модуля использует `rustok module publish`. CLI аутентифицируется **напрямую к маркетплейсу**:
-
-```
-rustok auth login --registry modules.rustok.dev
-→ OAuth PKCE flow к modules.rustok.dev (у маркетплейса свой OAuth AS или он делегирует)
-→ Получает author token
-→ Сохраняет в ~/.config/rustok/credentials.json
-```
-
-**Решение**: маркетплейс — отдельный сервис, у него может быть **свой OAuth AS** или он принимает токены от **любого RusTok-инстанса** (federated auth). Это решение за рамками текущего плана, но `rustok-cli` OAuth-клиент (определён в Этапе 6) может быть переиспользован для обоих сценариев.
-
-`marketplace_accounts` (из marketplace-plan.md, строка 450) — аккаунты авторов **на стороне маркетплейса**, не в основной БД RusTok.
-
-#### (4) Build Pipeline → Marketplace API
-
-Build Worker скачивает .crate архивы из маркетплейса:
-
-```
-GET modules.rustok.dev/api/v1/crates/rustok-seo/1.0.0.crate
-Authorization: Bearer <platform-api-key>
-```
-
-**Auth**: тот же Platform API Key из конфига сервера. Build worker работает от имени платформы, не от имени пользователя.
-
-### A.3 GraphQL naming: install conflicts
-
-Чтобы избежать путаницы между `installModule` (модуль) и `installApplication` (OAuth app):
-
-| Mutation | Домен | Что делает |
-|----------|-------|-----------|
-| `installModule(slug, version)` | Modules | Скачать crate, пересобрать бинарник, deploy |
-| `installApplication(input)` | OAuth | Создать Installation запись, выдать scopes |
-| `toggleModule(slug, enabled)` | Modules | Включить/отключить для тенанта (мгновенно) |
-| `revokeInstallation(id)` | OAuth | Отозвать OAuth-доступ приложения |
-
-Эти мутации находятся в разных GraphQL модулях:
-- `installModule` → `ModulesMutation` (из build service)
-- `installApplication` → `OAuthMutation` (из rustok-oauth)
-
-### A.4 Permissions для маркетплейса
-
-Добавить в `crates/rustok-core/src/permissions.rs`:
-
-```
-Resource::Marketplace
-  marketplace:browse     — просмотр каталога (все admin роли)
-  marketplace:install    — установка/удаление модулей (admin+)
-  marketplace:manage     — build history, rollback (super_admin)
-
-Resource::Builds
-  builds:view            — просмотр истории сборок
-  builds:manage          — rollback, cancel
-```
-
-### A.5 Audit log: что куда пишется
-
-| Событие | Где пишется | Таблица | category |
-|---------|-------------|---------|----------|
-| OAuth token issued | Основной сервер | `platform_audit_log` | `auth` |
-| App installed (OAuth) | Основной сервер | `platform_audit_log` | `auth` |
-| Module toggle (tenant) | Основной сервер | `platform_audit_log` | `modules` |
-| Module install (platform) | Основной сервер | `platform_audit_log` | `modules` |
-| Build started/completed | Основной сервер | `platform_audit_log` | `builds` |
-| Module published | **Маркетплейс** | Его БД (marketplace_versions) | — |
-| Module yanked | **Маркетплейс** | Его БД | — |
-
-События на маркетплейсе **не попадают** в `platform_audit_log` основного сервера. Это нормально — разные сервисы, разные БД.

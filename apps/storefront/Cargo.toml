@@ -19,10 +19,13 @@ leptos-table = { workspace = true }
 leptos-zustand = { workspace = true }
 leptos-shadcn-pagination = { workspace = true }
 leptos-use = { workspace = true }
-leptos_i18n = { workspace = true }
+leptos_i18n = { workspace = true, features = ["ssr"] }
 leptos-next-metadata = { workspace = true }
 leptos_query = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+
+[build-dependencies]
+leptos_i18n_build = { workspace = true }
 
 [package.metadata.cargo-udeps.ignore]
 normal = [

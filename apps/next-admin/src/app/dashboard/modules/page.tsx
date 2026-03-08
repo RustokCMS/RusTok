@@ -3,6 +3,7 @@ import { PageContainer } from '@/widgets/app-shell';
 import { ModulesList } from '@/features/modules/components/modules-list';
 import { listModules } from '@/features/modules/api';
 import { Suspense } from 'react';
+import { getTranslations } from 'next-intl/server';
 
 export const metadata = {
   title: 'Dashboard: Modules'
@@ -16,12 +17,13 @@ async function ModulesContent() {
   return <ModulesList modules={data.modules} />;
 }
 
-export default function Page() {
+export default async function Page() {
+  const t = await getTranslations('modules');
   return (
     <PageContainer
       scrollable
-      pageTitle='Modules'
-      pageDescription='Manage platform modules. Core modules are always active and cannot be disabled.'
+      pageTitle={t('title')}
+      pageDescription={t('subtitle')}
     >
       <Suspense fallback={<div>Loading modules...</div>}>
         <ModulesContent />

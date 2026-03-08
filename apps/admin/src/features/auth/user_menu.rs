@@ -4,10 +4,11 @@ use leptos_router::components::A;
 
 use leptos_auth::hooks::{use_auth, use_current_user};
 
-use crate::shared::i18n::translate;
+use crate::{t_string, use_i18n};
 
 #[component]
-pub fn user_menu() -> impl IntoView {
+pub fn UserMenu() -> impl IntoView {
+    let i18n = use_i18n();
     let auth = use_auth();
     let current_user = use_current_user();
 
@@ -38,7 +39,7 @@ pub fn user_menu() -> impl IntoView {
                                 .and_then(|u| u.name.clone())
                                 .and_then(|n| n.chars().next())
                                 .map(|c| c.to_string())
-                                .unwrap_or_else(|| translate("app.menu.userInitial").to_string())
+                                .unwrap_or_else(|| t_string!(i18n, app.menu.userInitial).to_string())
                         }}
                     </span>
                 </div>
@@ -48,7 +49,7 @@ pub fn user_menu() -> impl IntoView {
                             current_user
                                 .get()
                                 .and_then(|u| u.name.clone())
-                                .unwrap_or_else(|| translate("app.menu.defaultUser").to_string())
+                                .unwrap_or_else(|| t_string!(i18n, app.menu.defaultUser).to_string())
                         }}
                     </p>
                     <p class="text-xs text-muted-foreground">
@@ -83,7 +84,7 @@ pub fn user_menu() -> impl IntoView {
                                 current_user
                                     .get()
                                     .and_then(|u| u.name.clone())
-                                    .unwrap_or_else(|| translate("app.menu.defaultUser").to_string())
+                                    .unwrap_or_else(|| t_string!(i18n, app.menu.defaultUser).to_string())
                             }}
                         </p>
                         <p class="truncate text-xs text-muted-foreground">
@@ -97,12 +98,12 @@ pub fn user_menu() -> impl IntoView {
                     </div>
 
                     <div class="py-1">
-                        <dropdown_link href="/profile" icon="user">
-                            {move || translate("app.menu.profile")}
-                        </dropdown_link>
-                        <dropdown_link href="/security" icon="lock">
-                            {move || translate("app.menu.security")}
-                        </dropdown_link>
+                        <DropdownLink href="/profile" icon="user">
+                            {move || t_string!(i18n, app.menu.profile)}
+                        </DropdownLink>
+                        <DropdownLink href="/security" icon="lock">
+                            {move || t_string!(i18n, app.menu.security)}
+                        </DropdownLink>
                     </div>
 
                     <div class="border-t border-border py-1">
@@ -110,8 +111,8 @@ pub fn user_menu() -> impl IntoView {
                             on:click=move |ev| handle_logout.run(ev)
                             class="flex w-full items-center gap-3 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
                         >
-                            <menu_icon icon="logout" />
-                            <span>{move || translate("app.menu.signOut")}</span>
+                            <MenuIcon icon="logout" />
+                            <span>{move || t_string!(i18n, app.menu.signOut)}</span>
                         </button>
                     </div>
                 </div>

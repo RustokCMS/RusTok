@@ -3,10 +3,11 @@ use leptos_auth::hooks::use_current_user;
 use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 
-use crate::shared::i18n::translate;
+use crate::{t_string, use_i18n};
 
 #[component]
-pub fn sidebar() -> impl IntoView {
+pub fn Sidebar() -> impl IntoView {
+    let i18n = use_i18n();
     let current_user = use_current_user();
 
     view! {
@@ -16,22 +17,46 @@ pub fn sidebar() -> impl IntoView {
                     <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                         <span class="text-primary-foreground font-bold text-sm">"R"</span>
                     </div>
-                    <span class="text-sm font-semibold text-sidebar-foreground">{translate("app.brand.title")}</span>
+                    <span class="text-sm font-semibold text-sidebar-foreground">{t_string!(i18n, app.brand.title)}</span>
                 </A>
             </div>
 
-            <nav class="flex-1 space-y-6 overflow-y-auto px-4 py-6 custom-scrollbar">
-                <div class="space-y-1">
-                    {nav_group_label(translate("app.nav.main"))}
-                    {nav_link("/", "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", translate("app.nav.dashboard"))}
-                    {nav_link("/users", "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100-8 4 4 0 000 8zm3 5h9a2 2 0 012 2v5a2 2 0 01-2 2h-5", translate("app.nav.users"))}
-                    {nav_link("/modules", "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10", translate("app.nav.modules"))}
-                </div>
+            <nav class="flex-1 px-3 py-4 overflow-y-auto">
+                <NavGroupLabel label=move || t_string!(i18n, app.nav.group.overview).to_string() />
+                <NavLink href="/dashboard" icon="grid">
+                    {move || t_string!(i18n, app.nav.dashboard)}
+                </NavLink>
 
-                <div class="space-y-1">
-                    {nav_group_label(translate("app.nav.account"))}
-                    {nav_link("/profile", "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z", translate("app.nav.profile"))}
-                    {nav_link("/security", "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z", translate("app.nav.security"))}
+                {move || {
+                    let role = current_user.get()
+                        .map(|u| u.role.to_uppercase())
+                        .unwrap_or_default();
+                    let is_admin = role == "ADMIN" || role == "SUPER_ADMIN";
+                    if is_admin {
+                        view! {
+                            <div class="pt-3">
+                                <NavGroupLabel label=move || t_string!(i18n, app.nav.group.management).to_string() />
+                                <NavLink href="/users" icon="users">
+                                    {move || t_string!(i18n, app.nav.users)}
+                                </NavLink>
+                                <NavLink href="/modules" icon="package">
+                                    {move || t_string!(i18n, app.nav.modules)}
+                                </NavLink>
+                            </div>
+                        }.into_any()
+                    } else {
+                        ().into_any()
+                    }
+                }}
+
+                <div class="pt-3">
+                    <NavGroupLabel label=move || t_string!(i18n, app.nav.group.account).to_string() />
+                    <NavLink href="/profile" icon="user">
+                        {move || t_string!(i18n, app.nav.profile)}
+                    </NavLink>
+                    <NavLink href="/security" icon="lock">
+                        {move || t_string!(i18n, app.nav.security)}
+                    </NavLink>
                 </div>
             </nav>
 
@@ -40,13 +65,13 @@ pub fn sidebar() -> impl IntoView {
                     <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
                         {move || current_user.get().and_then(|u| u.name.as_ref().and_then(|n| n.chars().next())).unwrap_or('?')}
                     </div>
-                    <div class="min-w-0 flex-1">
-                        <p class="truncate text-sm font-medium text-foreground">
-                            {move || current_user.get().and_then(|u| u.name).unwrap_or_else(|| translate("app.nav.guest").to_string())}
-                        </p>
-                        <p class="truncate text-xs text-muted-foreground">
-                            {move || current_user.get().map(|u| u.email).unwrap_or_default()}
-                        </p>
+                    <div class="grid flex-1 min-w-0 text-left text-sm leading-tight">
+                        <span class="truncate font-semibold text-sidebar-foreground text-xs">
+                            {move || current_user.get().and_then(|u| u.name.clone()).unwrap_or_else(|| t_string!(i18n, app.menu.defaultUser).to_string())}
+                        </span>
+                        <span class="truncate text-xs text-sidebar-foreground/60">
+                            {move || current_user.get().map(|u| u.email.clone()).unwrap_or_default()}
+                        </span>
                     </div>
                 </div>
             </div>

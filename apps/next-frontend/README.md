@@ -31,7 +31,15 @@
 
 - `next`, `react`, `typescript`
 - `tailwindcss` + shadcn/ui
-- `next-intl` (локализация)
+
+### i18n
+
+- `next-intl` 4.0 — многоязычность;
+  - серверные компоненты: `getTranslations('Storefront')`;
+  - клиентские компоненты: `useTranslations()`;
+  - `NextIntlClientProvider` в root layout;
+  - определение локали: middleware + URL prefix `/(ru|en)/`;
+- файлы локалей: `messages/en.json`, `messages/ru.json`.
 
 ### Внутренние пакеты (паритет с админками)
 

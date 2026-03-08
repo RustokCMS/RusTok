@@ -34,6 +34,15 @@
 - `next`, `react`, `typescript`
 - `tailwindcss` + shadcn/ui (Radix primitives)
 
+### i18n
+
+- `next-intl` 4.0 — многоязычность;
+  - серверные компоненты: `getTranslations('namespace')`;
+  - клиентские компоненты: `useTranslations('namespace')`;
+  - `NextIntlClientProvider` в root layout;
+  - определение локали: cookie `rustok-admin-locale` (без URL-роутинга);
+- файлы локалей: `messages/en.json`, `messages/ru.json` (вложенный JSON, ~260 ключей).
+
 ### Данные и API
 
 - GraphQL: внутренний пакет `leptos-graphql/next` (единые endpoint/header контракты)

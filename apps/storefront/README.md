@@ -13,6 +13,7 @@
 - entrypoint: `src/main.rs`
 - модульные расширения витрины: `src/modules/*` (registry/slots)
 - стили: Tailwind + статическая сборка `static/app.css`
+- FSD не применяется (single-file storefront), но модульная расширяемость через slot-систему
 
 ## Соглашения об именовании (Naming Conventions)
 
@@ -24,10 +25,23 @@
 
 ## Библиотеки
 
-- `leptos`, `leptos_router` — UI и SSR маршрутизация
+### Ядро
+
+- `leptos`, `leptos_router` — UI и SSR-рендеринг (чистый SSR, без hydration)
 - `axum`, `tokio` — HTTP сервер
-- внутренние crates: `leptos-auth`, `leptos-graphql`, `leptos-table`, `leptos-hook-form`, `leptos-zod`, `leptos-zustand`
-- util crates: `leptos-shadcn-pagination`, `leptos_i18n`, `leptos-next-metadata`, `leptos_query`
+
+### i18n
+
+- `leptos_i18n` 0.6 (feature `ssr`) — compile-time многоязычность через `t_string!()` макрос;
+- `leptos_i18n_build` — кодогенерация i18n-модуля из `locales/*.json` через `build.rs`;
+- файлы локалей: `locales/en.json`, `locales/ru.json`;
+- выбор языка: query-параметр `?lang=ru`.
+
+### Внутренние crates
+
+- `leptos-auth`, `leptos-graphql` — auth/GraphQL контракты
+- `leptos-table`, `leptos-hook-form`, `leptos-zod`, `leptos-zustand` — формы/состояние
+- `leptos-shadcn-pagination`, `leptos-next-metadata`, `leptos_query` — UI-утилиты
 
 ## Взаимодействие
 
