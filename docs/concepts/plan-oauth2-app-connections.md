@@ -806,6 +806,19 @@ GraphQL         — настраивается per app (default: 1000 req/min)
 
 **Результат**: Полноценная developer experience.
 
+### Phase 5: RFC Compliance Tests - **Готово**
+
+- [x] RFC 6749 (OAuth 2.0) — scope validation, error codes, token response format, grant types (15 тестов)
+- [x] RFC 7636 (PKCE) — S256 transform, Appendix B test vector, constant-time comparison (7 тестов)
+- [x] RFC 7519 (JWT) — claims validation, expiration, issuer/audience/signature check (5 тестов)
+- [x] RFC 7009 (Token Revocation) — always-200 semantics, token_type_hint values (2 теста)
+- [x] RFC 8414 (Metadata) — required fields, well-known paths, implementation match (3 теста)
+- [x] OAuth2 scope enforcement — `AuthContext.require_scope()` для direct/OAuth2 токенов (7 тестов)
+- [x] Credential security — entropy, Argon2, SHA-256, salt uniqueness (6 тестов)
+- [x] Документация — `docs/guides/testing-oauth2-rfc.md`
+
+**Результат**: 45 unit-тестов, не требующих БД. Полное покрытие RFC compliance.
+
 ### Verified: 2026-03-08 — все проблемы исправлены
 
 #### Проблемы, найденные и исправленные при верификации

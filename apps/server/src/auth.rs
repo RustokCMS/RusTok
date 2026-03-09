@@ -369,3 +369,246 @@ pub fn decode_invite_token(config: &AuthConfig, token: &str) -> Result<InviteCla
 
     Ok(claims)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> AuthConfig {
+        AuthConfig {
+            secret: "test-secret-key-for-unit-tests-only-32bytes!".to_string(),
+            access_expiration: 900,
+            refresh_expiration: 2_592_000,
+            issuer: "rustok".to_string(),
+            audience: "rustok-admin".to_string(),
+        }
+    }
+
+    // ===================================================================
+    // RFC 7519 — JWT Claims compliance
+    // ===================================================================
+
+    #[test]
+    fn rfc7519_jwt_required_claims_present() {
+        let config = test_config();
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+
+        let claims = decode_access_token(&config, &token).unwrap();
+        assert_ne!(claims.sub, Uuid::nil());
+        assert_eq!(claims.iss, "rustok");
+        assert_eq!(claims.aud, "rustok-admin");
+        assert!(claims.exp > claims.iat);
+        assert!(claims.iat > 0);
+    }
+
+    #[test]
+    fn rfc7519_jwt_expiration_enforced() {
+        let config = AuthConfig {
+            access_expiration: 0,
+            ..test_config()
+        };
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+
+        let result = decode_access_token(&config, &token);
+        assert!(result.is_err(), "Expired JWT MUST be rejected");
+    }
+
+    #[test]
+    fn rfc7519_jwt_issuer_validated() {
+        let config = test_config();
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+
+        let wrong_config = AuthConfig {
+            issuer: "wrong-issuer".to_string(),
+            ..test_config()
+        };
+        assert!(decode_access_token(&wrong_config, &token).is_err(), "Wrong issuer MUST be rejected");
+    }
+
+    #[test]
+    fn rfc7519_jwt_audience_validated() {
+        let config = test_config();
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+
+        let wrong_config = AuthConfig {
+            audience: "wrong-audience".to_string(),
+            ..test_config()
+        };
+        assert!(decode_access_token(&wrong_config, &token).is_err(), "Wrong audience MUST be rejected");
+    }
+
+    #[test]
+    fn rfc7519_jwt_signature_validated() {
+        let config = test_config();
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+
+        let wrong_config = AuthConfig {
+            secret: "completely-different-secret-key-32bytes!!".to_string(),
+            ..test_config()
+        };
+        assert!(decode_access_token(&wrong_config, &token).is_err(), "Wrong signature MUST be rejected");
+    }
+
+    // ===================================================================
+    // OAuth2 JWT extension claims
+    // ===================================================================
+
+    #[test]
+    fn oauth2_direct_login_no_client_id() {
+        let config = test_config();
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Admin,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+
+        let claims = decode_access_token(&config, &token).unwrap();
+        assert!(claims.client_id.is_none());
+        assert!(claims.scopes.is_empty());
+        assert_eq!(claims.grant_type, "direct");
+    }
+
+    #[test]
+    fn oauth2_client_credentials_token_claims() {
+        let config = test_config();
+        let client_id = Uuid::new_v4();
+        let scopes = vec!["catalog:read".to_string(), "orders:write".to_string()];
+
+        let token = encode_oauth_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            client_id,
+            &scopes,
+            "client_credentials",
+            3600,
+        )
+        .unwrap();
+
+        let claims = decode_access_token(&config, &token).unwrap();
+        assert_eq!(claims.client_id, Some(client_id));
+        assert_eq!(claims.scopes, scopes);
+        assert_eq!(claims.grant_type, "client_credentials");
+    }
+
+    #[test]
+    fn oauth2_token_ttl_matches_requested() {
+        let config = test_config();
+        let token = encode_oauth_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &["catalog:read".to_string()],
+            "client_credentials",
+            3600,
+        )
+        .unwrap();
+
+        let claims = decode_access_token(&config, &token).unwrap();
+        assert_eq!(claims.exp - claims.iat, 3600);
+    }
+
+    #[test]
+    fn oauth2_claims_backward_compatible() {
+        let config = test_config();
+        let token = encode_access_token(
+            &config,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UserRole::Customer,
+            Uuid::new_v4(),
+        )
+        .unwrap();
+
+        let claims = decode_access_token(&config, &token).unwrap();
+        assert!(claims.client_id.is_none());
+        assert!(claims.scopes.is_empty());
+        assert_eq!(claims.grant_type, "direct");
+    }
+
+    // ===================================================================
+    // Credential generation security
+    // ===================================================================
+
+    #[test]
+    fn refresh_token_256_bit_entropy() {
+        let token = generate_refresh_token();
+        assert_eq!(token.len(), 64, "Refresh token must be 64 hex chars (256 bits)");
+        assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn refresh_token_unique() {
+        let t1 = generate_refresh_token();
+        let t2 = generate_refresh_token();
+        assert_ne!(t1, t2);
+    }
+
+    #[test]
+    fn refresh_token_hash_sha256() {
+        let token = generate_refresh_token();
+        let hash = hash_refresh_token(&token);
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn password_hash_argon2() {
+        let hash = hash_password("test_password_123!").unwrap();
+        assert!(hash.starts_with("$argon2"));
+    }
+
+    #[test]
+    fn password_verify_roundtrip() {
+        let password = "SecureP@ssw0rd!";
+        let hash = hash_password(password).unwrap();
+        assert!(verify_password(password, &hash).unwrap());
+        assert!(!verify_password("wrong_password", &hash).unwrap());
+    }
+
+    #[test]
+    fn password_hash_unique_salt() {
+        let h1 = hash_password("same_password").unwrap();
+        let h2 = hash_password("same_password").unwrap();
+        assert_ne!(h1, h2, "Same password must produce different hashes (unique salt)");
+    }
+}

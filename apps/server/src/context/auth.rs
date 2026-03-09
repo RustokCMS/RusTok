@@ -92,4 +92,84 @@ mod tests {
             UserRole::Customer
         );
     }
+
+    // ===================================================================
+    // RFC 6749 — Scope enforcement via require_scope
+    // ===================================================================
+
+    fn make_auth_ctx(client_id: Option<Uuid>, scopes: Vec<String>) -> AuthContext {
+        AuthContext {
+            user_id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            permissions: vec![],
+            client_id,
+            scopes,
+            grant_type: if client_id.is_some() {
+                "client_credentials".to_string()
+            } else {
+                "direct".to_string()
+            },
+        }
+    }
+
+    #[test]
+    fn require_scope_direct_grant_always_allowed() {
+        // Direct grants (no client_id) bypass scope checks
+        let ctx = make_auth_ctx(None, vec![]);
+        assert!(ctx.require_scope("catalog:read").is_ok());
+        assert!(ctx.require_scope("admin:users").is_ok());
+        assert!(ctx.require_scope("anything").is_ok());
+    }
+
+    #[test]
+    fn require_scope_oauth_exact_match() {
+        let ctx = make_auth_ctx(
+            Some(Uuid::new_v4()),
+            vec!["catalog:read".to_string(), "orders:write".to_string()],
+        );
+        assert!(ctx.require_scope("catalog:read").is_ok());
+        assert!(ctx.require_scope("orders:write").is_ok());
+        assert!(ctx.require_scope("admin:users").is_err());
+    }
+
+    #[test]
+    fn require_scope_oauth_wildcard() {
+        let ctx = make_auth_ctx(
+            Some(Uuid::new_v4()),
+            vec!["storefront:*".to_string()],
+        );
+        assert!(ctx.require_scope("storefront:read").is_ok());
+        assert!(ctx.require_scope("storefront:write").is_ok());
+        assert!(ctx.require_scope("admin:read").is_err());
+    }
+
+    #[test]
+    fn require_scope_oauth_superadmin() {
+        let ctx = make_auth_ctx(
+            Some(Uuid::new_v4()),
+            vec!["*:*".to_string()],
+        );
+        assert!(ctx.require_scope("catalog:read").is_ok());
+        assert!(ctx.require_scope("admin:users").is_ok());
+    }
+
+    #[test]
+    fn require_scope_oauth_empty_scopes_rejects() {
+        // OAuth token with empty scopes should reject everything
+        let ctx = make_auth_ctx(Some(Uuid::new_v4()), vec![]);
+        assert!(ctx.require_scope("catalog:read").is_err());
+    }
+
+    #[test]
+    fn require_scope_error_message_includes_scope() {
+        let ctx = make_auth_ctx(
+            Some(Uuid::new_v4()),
+            vec!["catalog:read".to_string()],
+        );
+        let err = ctx.require_scope("admin:users").unwrap_err();
+        let msg = err.message.to_string();
+        assert!(msg.contains("admin:users"), "Error must mention required scope");
+        assert!(msg.contains("catalog:read"), "Error must mention granted scopes");
+    }
 }
