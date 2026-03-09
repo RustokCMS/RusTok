@@ -99,14 +99,13 @@ pub fn use_is_module_enabled(slug: &'static str) -> Signal<bool> {
 }
 
 #[component]
-pub fn ModuleGuard(slug: &'static str, children: Children) -> impl IntoView {
+pub fn ModuleGuard(slug: &'static str, children: ChildrenFn) -> impl IntoView {
     let is_enabled = use_is_module_enabled(slug);
 
-    move || {
-        if is_enabled.get() {
-            children().into_any()
-        } else {
-            view! {
+    view! {
+        <Show
+            when=move || is_enabled.get()
+            fallback=|| view! {
                 <div class="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
                     <h3 class="text-lg font-semibold">"Module unavailable"</h3>
                     <p class="mt-2 text-sm text-muted-foreground">
@@ -114,7 +113,8 @@ pub fn ModuleGuard(slug: &'static str, children: Children) -> impl IntoView {
                     </p>
                 </div>
             }
-            .into_any()
-        }
+        >
+            {children()}
+        </Show>
     }
 }
