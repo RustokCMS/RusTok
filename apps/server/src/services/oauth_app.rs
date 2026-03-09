@@ -896,10 +896,7 @@ mod tests {
 
     #[test]
     fn rfc6749_scope_multiple_wildcards() {
-        let allowed = vec![
-            "catalog:*".to_string(),
-            "orders:read".to_string(),
-        ];
+        let allowed = vec!["catalog:*".to_string(), "orders:read".to_string()];
         assert!(scope_matches(&allowed, "catalog:read"));
         assert!(scope_matches(&allowed, "catalog:write"));
         assert!(scope_matches(&allowed, "orders:read"));
@@ -956,14 +953,24 @@ mod tests {
             "unsupported_grant_type",
             "invalid_request",
             "invalid_scope",
-            "unsupported_response_type",  // RFC 6749 §4.1.2.1
-            "interaction_required",        // OpenID Connect Core §3.1.2.6
-            "server_error",                // RFC 6749 §4.1.2.1
+            "unsupported_response_type", // RFC 6749 §4.1.2.1
+            "interaction_required",      // OpenID Connect Core §3.1.2.6
+            "server_error",              // RFC 6749 §4.1.2.1
         ];
 
         // Core token endpoint error codes must be from RFC 6749 §5.2
-        for code in &["invalid_client", "invalid_grant", "unsupported_grant_type", "invalid_request", "invalid_scope"] {
-            assert!(valid_error_codes.contains(code), "Error code '{}' not in RFC 6749 §5.2", code);
+        for code in &[
+            "invalid_client",
+            "invalid_grant",
+            "unsupported_grant_type",
+            "invalid_request",
+            "invalid_scope",
+        ] {
+            assert!(
+                valid_error_codes.contains(code),
+                "Error code '{}' not in RFC 6749 §5.2",
+                code
+            );
         }
     }
 
@@ -981,8 +988,16 @@ mod tests {
         // All our supported grant types are valid RFC 6749 grant types
         for gt in &supported {
             assert!(
-                ["authorization_code", "implicit", "client_credentials", "refresh_token", "password"].contains(gt),
-                "'{}' is not a valid RFC 6749 grant type", gt
+                [
+                    "authorization_code",
+                    "implicit",
+                    "client_credentials",
+                    "refresh_token",
+                    "password"
+                ]
+                .contains(gt),
+                "'{}' is not a valid RFC 6749 grant type",
+                gt
             );
         }
         // We do NOT support implicit or password (which is correct per security best practices)
@@ -1006,7 +1021,10 @@ mod tests {
     #[test]
     fn rfc7636_wrong_verifier_rejected() {
         let expected_challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
-        assert!(!OAuthAppService::verify_pkce(expected_challenge, "wrong_verifier"));
+        assert!(!OAuthAppService::verify_pkce(
+            expected_challenge,
+            "wrong_verifier"
+        ));
     }
 
     #[test]
@@ -1098,10 +1116,19 @@ mod tests {
         });
 
         // Required fields per RFC 6749 §5.1
-        assert!(response.get("access_token").is_some(), "access_token REQUIRED");
+        assert!(
+            response.get("access_token").is_some(),
+            "access_token REQUIRED"
+        );
         assert!(response.get("token_type").is_some(), "token_type REQUIRED");
-        assert_eq!(response["token_type"], "Bearer", "token_type MUST be Bearer");
-        assert!(response.get("expires_in").is_some(), "expires_in RECOMMENDED");
+        assert_eq!(
+            response["token_type"], "Bearer",
+            "token_type MUST be Bearer"
+        );
+        assert!(
+            response.get("expires_in").is_some(),
+            "expires_in RECOMMENDED"
+        );
     }
 
     #[test]
@@ -1109,7 +1136,10 @@ mod tests {
         // RFC 6749 §4.4.3: A refresh token SHOULD NOT be included
         // in client_credentials response
         let has_refresh_token: Option<String> = None;
-        assert!(has_refresh_token.is_none(), "client_credentials SHOULD NOT include refresh_token");
+        assert!(
+            has_refresh_token.is_none(),
+            "client_credentials SHOULD NOT include refresh_token"
+        );
     }
 
     #[test]
@@ -1117,7 +1147,10 @@ mod tests {
         // RFC 6749 §5.1: refresh_token is OPTIONAL but our implementation
         // always returns one for authorization_code flow
         let has_refresh_token = Some("some_refresh_token".to_string());
-        assert!(has_refresh_token.is_some(), "authorization_code SHOULD include refresh_token");
+        assert!(
+            has_refresh_token.is_some(),
+            "authorization_code SHOULD include refresh_token"
+        );
     }
 
     // ===================================================================
@@ -1144,7 +1177,8 @@ mod tests {
         for hint in &valid_hints {
             assert!(
                 *hint == "access_token" || *hint == "refresh_token",
-                "Invalid token_type_hint: {}", hint
+                "Invalid token_type_hint: {}",
+                hint
             );
         }
     }
@@ -1163,9 +1197,18 @@ mod tests {
             "response_types_supported": ["code"],
         });
 
-        assert!(metadata.get("issuer").is_some(), "issuer REQUIRED (RFC 8414 §2)");
-        assert!(metadata.get("token_endpoint").is_some(), "token_endpoint REQUIRED");
-        assert!(metadata.get("response_types_supported").is_some(), "response_types_supported REQUIRED");
+        assert!(
+            metadata.get("issuer").is_some(),
+            "issuer REQUIRED (RFC 8414 §2)"
+        );
+        assert!(
+            metadata.get("token_endpoint").is_some(),
+            "token_endpoint REQUIRED"
+        );
+        assert!(
+            metadata.get("response_types_supported").is_some(),
+            "response_types_supported REQUIRED"
+        );
     }
 
     #[test]
@@ -1252,7 +1295,10 @@ mod tests {
     #[test]
     fn client_secret_has_prefix() {
         let secret = generate_client_secret();
-        assert!(secret.starts_with("sk_live_"), "Client secret must have sk_live_ prefix");
+        assert!(
+            secret.starts_with("sk_live_"),
+            "Client secret must have sk_live_ prefix"
+        );
         assert!(secret.len() > 72, "Client secret must be sufficiently long");
     }
 
@@ -1288,7 +1334,10 @@ mod tests {
     fn rfc6749_authorization_code_ttl() {
         // Our implementation issues 15-minute tokens for authorization_code
         let expires_in = 900u64;
-        assert_eq!(expires_in, 900, "authorization_code TTL should be 15 minutes");
+        assert_eq!(
+            expires_in, 900,
+            "authorization_code TTL should be 15 minutes"
+        );
     }
 
     #[test]
@@ -1304,6 +1353,9 @@ mod tests {
         // RFC 6749 §4.1.2: authorization code MUST be short-lived
         // "A maximum authorization code lifetime of 10 minutes is RECOMMENDED"
         let code_ttl_minutes = 10;
-        assert_eq!(code_ttl_minutes, 10, "Auth code TTL must be 10 minutes per RFC 6749");
+        assert_eq!(
+            code_ttl_minutes, 10,
+            "Auth code TTL must be 10 minutes per RFC 6749"
+        );
     }
 }

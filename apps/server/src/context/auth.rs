@@ -135,10 +135,7 @@ mod tests {
 
     #[test]
     fn require_scope_oauth_wildcard() {
-        let ctx = make_auth_ctx(
-            Some(Uuid::new_v4()),
-            vec!["storefront:*".to_string()],
-        );
+        let ctx = make_auth_ctx(Some(Uuid::new_v4()), vec!["storefront:*".to_string()]);
         assert!(ctx.require_scope("storefront:read").is_ok());
         assert!(ctx.require_scope("storefront:write").is_ok());
         assert!(ctx.require_scope("admin:read").is_err());
@@ -146,10 +143,7 @@ mod tests {
 
     #[test]
     fn require_scope_oauth_superadmin() {
-        let ctx = make_auth_ctx(
-            Some(Uuid::new_v4()),
-            vec!["*:*".to_string()],
-        );
+        let ctx = make_auth_ctx(Some(Uuid::new_v4()), vec!["*:*".to_string()]);
         assert!(ctx.require_scope("catalog:read").is_ok());
         assert!(ctx.require_scope("admin:users").is_ok());
     }
@@ -163,13 +157,16 @@ mod tests {
 
     #[test]
     fn require_scope_error_message_includes_scope() {
-        let ctx = make_auth_ctx(
-            Some(Uuid::new_v4()),
-            vec!["catalog:read".to_string()],
-        );
+        let ctx = make_auth_ctx(Some(Uuid::new_v4()), vec!["catalog:read".to_string()]);
         let err = ctx.require_scope("admin:users").unwrap_err();
         let msg = err.message.to_string();
-        assert!(msg.contains("admin:users"), "Error must mention required scope");
-        assert!(msg.contains("catalog:read"), "Error must mention granted scopes");
+        assert!(
+            msg.contains("admin:users"),
+            "Error must mention required scope"
+        );
+        assert!(
+            msg.contains("catalog:read"),
+            "Error must mention granted scopes"
+        );
     }
 }

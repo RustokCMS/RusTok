@@ -443,7 +443,10 @@ mod tests {
             issuer: "wrong-issuer".to_string(),
             ..test_config()
         };
-        assert!(decode_access_token(&wrong_config, &token).is_err(), "Wrong issuer MUST be rejected");
+        assert!(
+            decode_access_token(&wrong_config, &token).is_err(),
+            "Wrong issuer MUST be rejected"
+        );
     }
 
     #[test]
@@ -462,7 +465,10 @@ mod tests {
             audience: "wrong-audience".to_string(),
             ..test_config()
         };
-        assert!(decode_access_token(&wrong_config, &token).is_err(), "Wrong audience MUST be rejected");
+        assert!(
+            decode_access_token(&wrong_config, &token).is_err(),
+            "Wrong audience MUST be rejected"
+        );
     }
 
     #[test]
@@ -481,7 +487,10 @@ mod tests {
             secret: "completely-different-secret-key-32bytes!!".to_string(),
             ..test_config()
         };
-        assert!(decode_access_token(&wrong_config, &token).is_err(), "Wrong signature MUST be rejected");
+        assert!(
+            decode_access_token(&wrong_config, &token).is_err(),
+            "Wrong signature MUST be rejected"
+        );
     }
 
     // ===================================================================
@@ -572,7 +581,11 @@ mod tests {
     #[test]
     fn refresh_token_256_bit_entropy() {
         let token = generate_refresh_token();
-        assert_eq!(token.len(), 64, "Refresh token must be 64 hex chars (256 bits)");
+        assert_eq!(
+            token.len(),
+            64,
+            "Refresh token must be 64 hex chars (256 bits)"
+        );
         assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
@@ -609,6 +622,9 @@ mod tests {
     fn password_hash_unique_salt() {
         let h1 = hash_password("same_password").unwrap();
         let h2 = hash_password("same_password").unwrap();
-        assert_ne!(h1, h2, "Same password must produce different hashes (unique salt)");
+        assert_ne!(
+            h1, h2,
+            "Same password must produce different hashes (unique salt)"
+        );
     }
 }
