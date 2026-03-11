@@ -84,6 +84,8 @@ graph TD
 - [Локализация (i18n)](./architecture/i18n.md)
 - [Принципы](./architecture/principles.md)
 - [Рекомендации по улучшению](./architecture/improvement-recommendations.md) (живой backlog архитектурных улучшений, обновлено 2026-03-08).
+- [План интеграции Loco + Core](../apps/server/docs/loco-core-integration-plan.md) — план интеграции Loco RS и Core с управлением из админки (7 фаз).
+- [Верификация ядра](../apps/server/docs/CORE_VERIFICATION_PLAN.md) — периодический чеклист проверки целостности ядра (13 секций).
 
 ### Руководства (`docs/guides/`)
 
