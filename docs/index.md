@@ -107,6 +107,7 @@ graph TD
 - [Registry](./modules/registry.md)
 - [Rustok crates registry](./modules/crates-registry.md)
 - [Manifest](./modules/manifest.md)
+- [План внедрения Tiptap/Page Builder](./modules/tiptap-page-builder-implementation-plan.md)
 - [Module Docs Index](./modules/_index.md)
 
 ### Standards (`docs/standards/`)
