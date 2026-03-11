@@ -32,6 +32,7 @@ usage() {
     echo "  code-quality       Check PII, secrets, metrics, dependencies, observability"
     echo "  security           Check argon2, headers, CORS, SSRF, JWT, rate limiting"
     echo "  architecture       Check module registry, Loco hooks, MCP, DI, telemetry"
+    echo "  anti-bypass       Audit domain bypass patterns and duplicated business logic"
     echo ""
     echo "Without arguments, runs all scripts."
 }
@@ -53,6 +54,7 @@ SCRIPTS=(
     "verify-code-quality.sh:Code Quality"
     "verify-security.sh:Security"
     "verify-architecture.sh:Architecture"
+    "verify-anti-bypass.sh:Anti-bypass Audit"
 )
 
 # Filter to selected script if specified

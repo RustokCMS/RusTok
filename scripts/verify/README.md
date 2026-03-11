@@ -28,6 +28,7 @@
 | Ревью PR | `./scripts/verify/verify-all.sh -v` |
 | Добавили новый endpoint | `./scripts/verify/verify-all.sh api-quality` |
 | Добавили новый event | `./scripts/verify/verify-all.sh events` |
+| Проверка anti-bypass drift | `./scripts/verify/verify-all.sh anti-bypass` |
 | Добавили миграцию | `./scripts/verify/verify-all.sh tenant-isolation` |
 | Подозрение на дыру в RBAC | `./scripts/verify/verify-all.sh rbac-coverage` |
 | Аудит безопасности | `./scripts/verify/verify-security.sh` |
@@ -199,6 +200,23 @@
 
 ---
 
+
+### `verify-anti-bypass.sh`
+**Фаза 19.15** — Anti-bypass audit
+
+Что ищет (кандидаты для ручного review):
+- Повтор валидации доменных правил в `apps/server` и frontend-adapter слое
+- Ручная публикация событий в app-слое вместо модульного сервиса
+- Прямые запросы к доменным таблицам мимо crate API
+- Контрольные сигнатуры orchestration-only (вызовы domain service)
+
+Режимы:
+- `--manual-review` — расширенный вывод кандидатов
+- `--strict` — найденные кандидаты считаются ошибкой (use in CI gate при необходимости)
+
+**Severity:** MEDIUM→HIGH. Цель — системно ловить drift и фиксировать migration-task на перенос логики в `crates/rustok-<domain>`.
+
+---
 ### `verify-all.sh`
 **Master runner** — запуск всех скриптов с итоговым отчётом.
 

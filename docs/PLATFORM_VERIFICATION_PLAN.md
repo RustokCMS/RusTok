@@ -1477,6 +1477,20 @@
 - [~] Error responses — REST возвращает HTTP status codes; GraphQL возвращает errors array с `extensions`; маппинг не унифицирован
 - [~] CRUD parity — Content/Commerce/Blog доступны через оба transport; Forum GraphQL пересекается с REST, но не полностью (например, moderation endpoint только в REST)
 
+### 19.15 Anti-bypass audit
+
+- [ ] Нет повтора валидации доменных правил в `apps/server`/frontend-adapter слое
+  - Автопоиск кандидатов: `./scripts/verify/verify-anti-bypass.sh`
+  - Ручной review: сверка найденных мест с API `crates/rustok-<domain>`
+- [ ] Нет ручной публикации событий в app-слое вместо модульных сервисов
+  - Автопоиск кандидатов: `./scripts/verify/verify-anti-bypass.sh --manual-review`
+  - Для release-gate: `./scripts/verify/verify-anti-bypass.sh --strict`
+- [ ] Нет прямых запросов к таблицам домена из app-слоя мимо crate API
+  - Автопоиск сигнатур `Entity::find*`, `from_raw_sql`, `DatabaseConnection` в `apps/server/src`
+- [ ] Каждый найденный случай оформлен как migration-task
+  - Формат: перенос логики в `crates/rustok-<domain>`, app-слой оставлять orchestration-only
+  - Минимум: ссылка на issue/task + owner + целевой crate API
+
 ---
 
 ## Фаза 20: Правильность написания кода (Code Correctness)
@@ -1631,6 +1645,7 @@
 - [Documentation Map](./index.md)
 - [Testing Guidelines](./guides/testing.md)
 - [Security Audit Guide](./guides/security-audit.md)
+- [Verification scripts README](../scripts/verify/README.md) — включает anti-bypass audit (`verify-anti-bypass.sh`)
 
 ---
 
