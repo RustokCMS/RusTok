@@ -6,7 +6,7 @@ use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo,
 };
 use crate::features::modules::api;
-use crate::features::modules::components::ModulesList;
+use crate::features::modules::components::modules_list;
 use crate::shared::ui::PageHeader;
 use crate::{t_string, use_i18n};
 
@@ -92,7 +92,7 @@ pub fn Modules() -> impl IntoView {
                         match result {
                             Ok(data) => {
                                 view! {
-                                    {ModulesList(
+                                    {modules_list(
                                         "leptos-admin".to_string(),
                                         data.modules,
                                         data.marketplace_modules,

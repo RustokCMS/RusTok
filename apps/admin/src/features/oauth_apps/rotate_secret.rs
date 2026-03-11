@@ -1,6 +1,6 @@
 use crate::entities::oauth_app::model::OAuthApp;
-use crate::shared::ui::{ui_button, ui_input, ui_success_message};
-use leptos::*;
+use crate::shared::ui::Button;
+use leptos::prelude::*;
 
 #[component]
 pub fn RotateSecretDialog(
@@ -8,40 +8,21 @@ pub fn RotateSecretDialog(
     on_success: impl Fn(String) + 'static + Clone,
     on_cancel: impl Fn() + 'static + Clone,
 ) -> impl IntoView {
-    let name = app.name.clone();
-
-    let rotate_action = create_action(move |_: &()| {
+    let app_name = app.name.clone();
+    let rotate_action = Action::new(move |_: &()| {
         let on_success = on_success.clone();
-        async move {
-            // MOCK: GraphQL rotation logic
-            let new_secret = format!(
-                "sk_live_{}",
-                uuid::Uuid::new_v4().to_string().replace("-", "")
-            );
-            on_success(new_secret);
-        }
+        async move { on_success("sk_live_rotated_mock_secret_67890".to_string()) }
     });
 
     view! {
         <div class="space-y-4">
-            <h3 class="text-lg font-medium">"Rotate Client Secret"</h3>
-            <p class="text-sm text-slate-500">
-                "Are you sure you want to rotate the secret for "<span class="font-semibold">{name}</span>"?"
-                <br/>
-                "The old secret will immediately stop working and all active sessions/tokens might be invalidated or require the new secret to refresh."
-            </p>
-
+            <h3 class="text-lg font-medium">"Rotate Secret"</h3>
+            <p class="text-sm text-slate-500">"Generate a new client secret for "<span class="font-semibold">{app_name}</span></p>
             <div class="flex items-center gap-2 pt-4">
-                <Button
-                    variant=crate::shared::ui::ButtonVariant::Destructive
-                    on:click=move |_| rotate_action.dispatch(())
-                >
-                    "Yes, Rotate Secret"
+                <Button on_click=move |_| { rotate_action.dispatch(()); }>
+                    "Rotate"
                 </Button>
-                <Button
-                    variant=crate::shared::ui::ButtonVariant::Outline
-                    on:click=move |_| on_cancel()
-                >
+                <Button on_click=move |_| on_cancel()>
                     "Cancel"
                 </Button>
             </div>

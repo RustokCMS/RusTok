@@ -26,7 +26,7 @@ fn humanize_token(value: &str) -> String {
 }
 
 #[component]
-pub fn ModuleDetailPanel(
+pub fn module_detail_panel(
     admin_surface: String,
     selected_slug: String,
     module: Option<MarketplaceModule>,

@@ -51,20 +51,19 @@ struct GraphqlUserEdge {
     node: GraphqlUser,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, StructTable)]
-#[struct_table(class = "w-full border-collapse text-sm")]
+#[derive(Clone, Debug, Deserialize, Serialize, TableRow)]
 struct GraphqlUser {
-    #[struct_table(title = "Email")]
+    #[table(title = "Email")]
     id: String,
-    #[struct_table(title = "Email")]
+    #[table(title = "Email")]
     email: String,
-    #[struct_table(title = "Name")]
+    #[table(title = "Name")]
     name: Option<String>,
-    #[struct_table(title = "Role")]
+    #[table(title = "Role")]
     role: String,
-    #[struct_table(title = "Status")]
+    #[table(title = "Status")]
     status: String,
-    #[struct_table(title = "Created At", field_rename = "createdAt")]
+    #[table(title = "Created At")]
     created_at: String,
 }
 

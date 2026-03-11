@@ -128,10 +128,10 @@ pub fn UserDetails() -> impl IntoView {
         },
     );
 
-    let is_editing = signal(false);
-    let edit_name = signal(String::new());
-    let edit_role = signal(String::new());
-    let edit_status = signal(String::new());
+    let (is_editing, set_is_editing) = signal(false);
+    let (edit_name, set_edit_name) = signal(String::new());
+    let (edit_role, set_edit_role) = signal(String::new());
+    let (edit_status, set_edit_status) = signal(String::new());
     let (form_state, set_form_state) = signal(FormState::idle());
 
     let (show_delete_confirm, set_show_delete_confirm) = signal(false);
@@ -143,23 +143,20 @@ pub fn UserDetails() -> impl IntoView {
     };
 
     let cancel_edit = move |_| {
-        is_editing.set(false);
+        set_is_editing.set(false);
         set_form_state.set(FormState::idle());
     };
 
     let save_user = move |_| {
-        let (name_signal, _) = edit_name;
-        let (role_signal, _) = edit_role;
-        let (status_signal, _) = edit_status;
-        let user_id = params.with(|p| {
+                let user_id = params.with(|p| {
             p.as_ref()
                 .ok()
                 .and_then(|p| p.id.clone())
                 .unwrap_or_default()
         });
-        let name_val = name_signal.get();
-        let role_val = role_signal.get();
-        let status_val = status_signal.get();
+        let name_val = edit_name.get();
+        let role_val = edit_role.get();
+        let status_val = edit_status.get();
         let token_val = token.get();
         let tenant_val = tenant.get();
 
@@ -188,7 +185,7 @@ pub fn UserDetails() -> impl IntoView {
             {
                 Ok(_) => {
                     set_form_state.set(FormState::idle());
-                    is_editing.set(false);
+                    set_is_editing.set(false);
                     user_resource.refetch();
                 }
                 Err(e) => {
@@ -262,14 +259,11 @@ pub fn UserDetails() -> impl IntoView {
                             on_click=move |_| {
                                 if let Some(Ok(ref resp)) = user_resource.get() {
                                     if let Some(ref user) = resp.user {
-                                        let (_, set_n) = edit_name;
-                                        let (_, set_r) = edit_role;
-                                        let (_, set_s) = edit_status;
-                                        set_n.set(user.name.clone().unwrap_or_default());
-                                        set_r.set(user.role.clone());
-                                        set_s.set(user.status.clone());
+                                                                                set_edit_name.set(user.name.clone().unwrap_or_default());
+                                        set_edit_role.set(user.role.clone());
+                                        set_edit_status.set(user.status.clone());
                                         set_form_state.set(FormState::idle());
-                                        is_editing.set(true);
+                                        set_is_editing.set(true);
                                     }
                                 }
                             }
@@ -278,7 +272,7 @@ pub fn UserDetails() -> impl IntoView {
                             {move || t_string!(i18n, users.detail.edit)}
                         </Button>
                         <Button
-                            on_click=move |_| show_delete_confirm.set(true)
+                            on_click=move |_| set_show_delete_confirm.set(true)
                             class="border border-destructive/30 bg-transparent text-destructive hover:bg-destructive/10"
                         >
                             {move || t_string!(i18n, users.detail.delete)}
@@ -400,8 +394,8 @@ pub fn UserDetails() -> impl IntoView {
                                             >
                                                 <div class="mt-1">
                                                     <Input
-                                                        value=edit_name.0
-                                                        set_value=edit_name.1
+                                                        value=edit_name
+                                                        set_value=set_edit_name
                                                         placeholder="Full name"
                                                         label=move || String::new()
                                                     />
@@ -427,8 +421,8 @@ pub fn UserDetails() -> impl IntoView {
                                                             SelectOption::new("ADMIN", "Admin"),
                                                             SelectOption::new("SUPER_ADMIN", "Super Admin"),
                                                         ]
-                                                        value=Some(edit_role.0)
-                                                        set_value=Some(edit_role.1)
+                                                        value=edit_role
+                                                        set_value=set_edit_role
                                                     />
                                                 </div>
                                             </Show>
@@ -451,8 +445,8 @@ pub fn UserDetails() -> impl IntoView {
                                                             SelectOption::new("INACTIVE", "Inactive"),
                                                             SelectOption::new("BANNED", "Banned"),
                                                         ]
-                                                        value=Some(edit_status.0)
-                                                        set_value=Some(edit_status.1)
+                                                        value=edit_status
+                                                        set_value=set_edit_status
                                                     />
                                                 </div>
                                             </Show>

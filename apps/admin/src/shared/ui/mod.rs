@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 
 pub use leptos_ui::*;
+pub use leptos_ui::ui_success_message as SuccessMessage;
 
 pub mod page_header;
 pub use page_header::PageHeader;

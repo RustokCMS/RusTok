@@ -249,7 +249,7 @@ pub fn Dashboard() -> impl IntoView {
                                                 <div class="flex items-center justify-between border-b border-border py-3 last:border-b-0">
                                                     <div class="min-w-0 flex-1">
                                                         <div class="flex items-center gap-2">
-                                                            <activity_icon activity_type=item.r#type.clone() />
+                                                            <ActivityIcon activity_type=item.r#type.clone() />
                                                             <strong class="truncate text-foreground">{item.description}</strong>
                                                         </div>
                                                         <p class="mt-1 text-sm text-muted-foreground">
@@ -324,7 +324,7 @@ fn format_time_ago(timestamp: &str) -> String {
 }
 
 #[component]
-fn activity_icon(activity_type: String) -> impl IntoView {
+fn ActivityIcon(activity_type: String) -> impl IntoView {
     let (icon, color_class) = match activity_type.as_str() {
         "user.created" | "user.joined" => (
             "M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
