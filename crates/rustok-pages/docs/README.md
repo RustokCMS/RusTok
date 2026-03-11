@@ -19,3 +19,15 @@
 - `BlockService` валидирует `data` по `BlockType` (schema-first DTO payload) и отклоняет неизвестные поля.
 - Для `Video`/embed и URL-полей действует whitelist policy: `http/https` для ссылок, а embed только `https` + домены `youtube|youtu.be|vimeo|player.vimeo.com`.
 - Для `Html` блоков запрещены опасные теги/протоколы (`<script>`, `<iframe>`, `javascript:`) и inline event handlers (`on*=`).
+
+## Pages API (server adapters)
+
+В `apps/server` для модуля pages синхронизированы transport-контракты:
+
+- REST `api/admin/pages/{id}`: `PUT` (update page), `DELETE` (delete page).
+- REST блоки: `POST /api/admin/pages/{id}/blocks`, `PUT/DELETE /api/admin/pages/{page_id}/blocks/{block_id}`.
+- REST reorder: `POST /api/admin/pages/{id}/blocks/reorder` с `block_ids`.
+- GraphQL mutations: `createPage` (поддерживает `blocks`), `addBlock`, `updateBlock`, `deleteBlock`, `reorderBlocks`.
+- Для блоковых операций используется существующая RBAC-модель `pages:*` (`pages:update`/`pages:delete` + `pages:manage`).
+
+OpenAPI и GraphQL типы/мутации должны поддерживаться синхронно при дальнейших изменениях pages-контракта.

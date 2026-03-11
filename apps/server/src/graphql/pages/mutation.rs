@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use rustok_outbox::TransactionalEventBus;
 use rustok_pages::{
-    CreatePageInput, PageBodyInput, PageService, PageTranslationInput, UpdatePageInput,
+    BlockService, BlockTranslationInput, BlockType, CreateBlockInput, CreatePageInput,
+    PageBodyInput, PageService, PageTranslationInput, UpdateBlockInput, UpdatePageInput,
 };
 
 use crate::context::AuthContext;
@@ -71,7 +72,15 @@ impl PagesMutation {
                         format: b.format,
                         content_json: b.content_json,
                     }),
-                    blocks: None,
+                    blocks: input
+                        .blocks
+                        .map(|blocks| {
+                            blocks
+                                .into_iter()
+                                .map(map_create_block_input)
+                                .collect::<Result<Vec<_>>>()
+                        })
+                        .transpose()?,
                     publish: input.publish.unwrap_or(false),
                 },
             )
@@ -245,4 +254,163 @@ impl PagesMutation {
 
         Ok(true)
     }
+
+    async fn add_block(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        page_id: Uuid,
+        input: CreateGqlBlockInput,
+    ) -> Result<GqlBlock> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        ensure_pages_permission(db, &tenant_id, &auth.user_id, Permission::PAGES_UPDATE).await?;
+
+        let service = BlockService::new(db.clone(), event_bus.clone());
+        let block = service
+            .create(
+                tenant_id,
+                auth.security_context(),
+                page_id,
+                map_create_block_input(input)?,
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(block.into())
+    }
+
+    async fn update_block(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        block_id: Uuid,
+        input: UpdateGqlBlockInput,
+    ) -> Result<GqlBlock> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        ensure_pages_permission(db, &tenant_id, &auth.user_id, Permission::PAGES_UPDATE).await?;
+
+        let service = BlockService::new(db.clone(), event_bus.clone());
+        let block = service
+            .update(
+                tenant_id,
+                auth.security_context(),
+                block_id,
+                UpdateBlockInput {
+                    position: input.position,
+                    data: input.data,
+                    translations: input.translations.map(map_block_translations),
+                },
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(block.into())
+    }
+
+    async fn delete_block(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        block_id: Uuid,
+    ) -> Result<bool> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        ensure_pages_permission(db, &tenant_id, &auth.user_id, Permission::PAGES_DELETE).await?;
+
+        let service = BlockService::new(db.clone(), event_bus.clone());
+        service
+            .delete(tenant_id, auth.security_context(), block_id)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(true)
+    }
+
+    async fn reorder_blocks(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        page_id: Uuid,
+        input: ReorderBlocksInput,
+    ) -> Result<bool> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        ensure_pages_permission(db, &tenant_id, &auth.user_id, Permission::PAGES_UPDATE).await?;
+
+        let service = BlockService::new(db.clone(), event_bus.clone());
+        service
+            .reorder(tenant_id, auth.security_context(), page_id, input.block_ids)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(true)
+    }
+}
+
+async fn ensure_pages_permission(
+    db: &DatabaseConnection,
+    tenant_id: &Uuid,
+    user_id: &Uuid,
+    permission: Permission,
+) -> Result<()> {
+    let has_perm = AuthService::has_any_permission(
+        db,
+        tenant_id,
+        user_id,
+        &[permission, Permission::PAGES_MANAGE],
+    )
+    .await
+    .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
+
+    if !has_perm {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Permission denied: pages:* required",
+        ));
+    }
+
+    Ok(())
+}
+
+fn map_create_block_input(input: CreateGqlBlockInput) -> Result<CreateBlockInput> {
+    Ok(CreateBlockInput {
+        block_type: parse_block_type(&input.block_type)?,
+        position: input.position,
+        data: input.data,
+        translations: input.translations.map(map_block_translations),
+    })
+}
+
+fn map_block_translations(
+    translations: Vec<GqlBlockTranslationInput>,
+) -> Vec<BlockTranslationInput> {
+    translations
+        .into_iter()
+        .map(|t| BlockTranslationInput {
+            locale: t.locale,
+            data: t.data,
+        })
+        .collect()
+}
+
+fn parse_block_type(value: &str) -> Result<BlockType> {
+    serde_json::from_value::<BlockType>(serde_json::Value::String(value.to_string()))
+        .map_err(|_| async_graphql::Error::new(format!("Invalid block_type: {value}")))
 }

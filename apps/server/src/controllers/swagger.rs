@@ -56,6 +56,12 @@ use utoipa::OpenApi;
         // Pages
         crate::controllers::pages::get_page,
         crate::controllers::pages::create_page,
+        crate::controllers::pages::update_page,
+        crate::controllers::pages::delete_page,
+        crate::controllers::pages::create_block,
+        crate::controllers::pages::update_block,
+        crate::controllers::pages::delete_block,
+        crate::controllers::pages::reorder_blocks,
         // Commerce
         crate::controllers::commerce::products::list_products,
         crate::controllers::commerce::products::create_product,
@@ -144,8 +150,13 @@ use utoipa::OpenApi;
 
             // Pages
             rustok_pages::CreatePageInput,
+            rustok_pages::UpdatePageInput,
+            rustok_pages::CreateBlockInput,
+            rustok_pages::UpdateBlockInput,
+            rustok_pages::BlockResponse,
             rustok_pages::PageResponse,
             crate::controllers::pages::GetPageParams,
+            crate::controllers::pages::ReorderBlocksInput,
 
             // Commerce
             rustok_commerce::dto::CreateProductInput,

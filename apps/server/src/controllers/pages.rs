@@ -1,22 +1,33 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
 use loco_rs::prelude::*;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
 
-use rustok_pages::{CreatePageInput, PageResponse, PageService};
+use rustok_pages::{
+    BlockResponse, BlockService, CreateBlockInput, CreatePageInput, PageResponse, PageService,
+    UpdateBlockInput, UpdatePageInput,
+};
 
 use crate::context::TenantContext;
-use crate::extractors::rbac::{RequirePagesCreate, RequirePagesRead};
+use crate::extractors::rbac::{
+    RequirePagesCreate, RequirePagesDelete, RequirePagesRead, RequirePagesUpdate,
+};
 use crate::services::event_bus::transactional_event_bus_from_context;
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct GetPageParams {
     pub slug: Option<String>,
     pub locale: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReorderBlocksInput {
+    pub block_ids: Vec<Uuid>,
 }
 
 /// Get a page by slug
@@ -80,9 +91,193 @@ pub async fn create_page(
     Ok((StatusCode::CREATED, Json(page)))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/admin/pages/{id}",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    request_body = UpdatePageInput,
+    responses(
+        (status = 200, description = "Page updated", body = PageResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn update_page(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    RequirePagesUpdate(user): RequirePagesUpdate,
+    Path(id): Path<Uuid>,
+    Json(input): Json<UpdatePageInput>,
+) -> Result<Json<PageResponse>> {
+    let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let page = service
+        .update(tenant.id, user.security_context(), id, input)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(page))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/pages/{id}",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    responses(
+        (status = 204, description = "Page deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn delete_page(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    RequirePagesDelete(user): RequirePagesDelete,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode> {
+    let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    service
+        .delete(tenant.id, user.security_context(), id)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/pages/{id}/blocks",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    request_body = CreateBlockInput,
+    responses(
+        (status = 201, description = "Block created", body = BlockResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn create_block(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    RequirePagesUpdate(user): RequirePagesUpdate,
+    Path(id): Path<Uuid>,
+    Json(input): Json<CreateBlockInput>,
+) -> Result<(StatusCode, Json<BlockResponse>)> {
+    let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let block = service
+        .create(tenant.id, user.security_context(), id, input)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok((StatusCode::CREATED, Json(block)))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/pages/{page_id}/blocks/{block_id}",
+    tag = "pages",
+    params(
+        ("page_id" = Uuid, Path, description = "Page ID"),
+        ("block_id" = Uuid, Path, description = "Block ID")
+    ),
+    request_body = UpdateBlockInput,
+    responses(
+        (status = 200, description = "Block updated", body = BlockResponse),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn update_block(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    RequirePagesUpdate(user): RequirePagesUpdate,
+    Path((_, block_id)): Path<(Uuid, Uuid)>,
+    Json(input): Json<UpdateBlockInput>,
+) -> Result<Json<BlockResponse>> {
+    let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let block = service
+        .update(tenant.id, user.security_context(), block_id, input)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(block))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/admin/pages/{page_id}/blocks/{block_id}",
+    tag = "pages",
+    params(
+        ("page_id" = Uuid, Path, description = "Page ID"),
+        ("block_id" = Uuid, Path, description = "Block ID")
+    ),
+    responses(
+        (status = 204, description = "Block deleted"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn delete_block(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    RequirePagesDelete(user): RequirePagesDelete,
+    Path((_, block_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    service
+        .delete(tenant.id, user.security_context(), block_id)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/pages/{id}/blocks/reorder",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    request_body = ReorderBlocksInput,
+    responses(
+        (status = 204, description = "Blocks reordered"),
+        (status = 400, description = "Invalid input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn reorder_blocks(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    RequirePagesUpdate(user): RequirePagesUpdate,
+    Path(id): Path<Uuid>,
+    Json(input): Json<ReorderBlocksInput>,
+) -> Result<StatusCode> {
+    let service = BlockService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    service
+        .reorder(tenant.id, user.security_context(), id, input.block_ids)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("api")
         .add("/pages", axum::routing::get(get_page))
         .add("/admin/pages", axum::routing::post(create_page))
+        .add(
+            "/admin/pages/{id}",
+            axum::routing::put(update_page).delete(delete_page),
+        )
+        .add(
+            "/admin/pages/{id}/blocks",
+            axum::routing::post(create_block),
+        )
+        .add(
+            "/admin/pages/{page_id}/blocks/{block_id}",
+            axum::routing::put(update_block).delete(delete_block),
+        )
+        .add(
+            "/admin/pages/{id}/blocks/reorder",
+            axum::routing::post(reorder_blocks),
+        )
 }
