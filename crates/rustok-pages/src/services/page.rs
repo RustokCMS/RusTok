@@ -130,10 +130,7 @@ impl PageService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<PageResponse> {
-        let node = self.nodes.get_node(tenant_id, page_id).await?;
-        if node.kind != PAGE_KIND {
-            return Err(PagesError::PageNotFound(page_id));
-        }
+        let node = self.ensure_page_kind(tenant_id, page_id).await?;
 
         let blocks = self
             .blocks
@@ -226,10 +223,7 @@ impl PageService {
         page_id: Uuid,
         input: UpdatePageInput,
     ) -> PagesResult<PageResponse> {
-        let existing = self.nodes.get_node(tenant_id, page_id).await?;
-        if existing.kind != PAGE_KIND {
-            return Err(PagesError::PageNotFound(page_id));
-        }
+        let existing = self.ensure_page_kind(tenant_id, page_id).await?;
 
         let template = input.template.clone().unwrap_or_else(|| {
             existing
@@ -322,6 +316,7 @@ impl PageService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<PageResponse> {
+        self.ensure_page_kind(tenant_id, page_id).await?;
         self.nodes
             .publish_node(tenant_id, page_id, security.clone())
             .await?;
@@ -335,6 +330,7 @@ impl PageService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<PageResponse> {
+        self.ensure_page_kind(tenant_id, page_id).await?;
         self.nodes
             .unpublish_node(tenant_id, page_id, security.clone())
             .await?;
@@ -347,11 +343,25 @@ impl PageService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<()> {
+        self.ensure_page_kind(tenant_id, page_id).await?;
         self.blocks
             .delete_all_for_page(tenant_id, security.clone(), page_id)
             .await?;
         self.nodes.delete_node(tenant_id, page_id, security).await?;
         Ok(())
+    }
+
+    async fn ensure_page_kind(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<rustok_content::dto::NodeResponse> {
+        let node = self.nodes.get_node(tenant_id, page_id).await?;
+        if node.kind != PAGE_KIND {
+            return Err(PagesError::PageNotFound(page_id));
+        }
+
+        Ok(node)
     }
 }
 
