@@ -97,8 +97,14 @@ default_enabled = ["content", "commerce", "pages"]
 
 Рекомендуемая структура и entry points:
 
-- `crates/rustok-<module>/ui/admin` → экспорт `adminNavItems` (или эквивалент контрактов для `registerAdminModule` / `AdminComponentRegistration`).
-- `crates/rustok-<module>/ui/frontend` → экспорт `frontendNavItems` (или эквивалент контрактов для `registerStorefrontModule` / `StorefrontComponentRegistration`).
+- `crates/rustok-<module>/ui/admin-next` → экспорт admin-контракта для `registerAdminModule`.
+- `crates/rustok-<module>/ui/admin-leptos` → экспорт admin-контракта для `AdminComponentRegistration`.
+- `crates/rustok-<module>/ui/frontend-next` → экспорт storefront-контракта для `registerStorefrontModule`.
+- `crates/rustok-<module>/ui/frontend-leptos` → экспорт storefront-контракта для `StorefrontComponentRegistration`.
+
+Допустимый transitional-вариант: `ui/admin` и `ui/frontend` при обязательной явной пометке target-runtime в README модуля.
+
+Референсный образец в текущем репозитории: UI-пакеты blog-модуля (`crates/rustok-blog/ui/admin`, `crates/rustok-blog/ui/frontend`) — это образец для Next runtime.
 
 Исключение:
 
@@ -111,6 +117,7 @@ default_enabled = ["content", "commerce", "pages"]
 
 - host-приложения должны явно зависеть от модульных UI-пакетов (workspace/file dependency), а не от временных локальных импортов;
 - отсутствие ожидаемого UI entry point для установленного optional-модуля считается несовместимой конфигурацией release и должно блокировать включение модуля по умолчанию до исправления контракта.
+- если модуль заявлен как dual-stack (Next + Leptos), отсутствие entry point хотя бы для одного runtime также считается несовместимой конфигурацией release.
 
 ## Deployment profiles (composable layers)
 

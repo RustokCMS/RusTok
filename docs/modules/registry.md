@@ -157,21 +157,25 @@ Core exceptions: `index`, `tenant`, `rbac`, and platform core crates (`rustok-co
 
 Recommended package shape:
 
-- `crates/rustok-<module>/ui/admin`
-- `crates/rustok-<module>/ui/frontend`
+- `crates/rustok-<module>/ui/admin-next`
+- `crates/rustok-<module>/ui/admin-leptos`
+- `crates/rustok-<module>/ui/frontend-next`
+- `crates/rustok-<module>/ui/frontend-leptos`
 
 Recommended entry-point exports:
 
-- `adminNavItems` (or equivalent admin contract)
-- `frontendNavItems` (or equivalent storefront contract)
+- `adminNavItems` (or equivalent admin contract; implemented per runtime: Next/Leptos)
+- `frontendNavItems` (or equivalent storefront contract; implemented per runtime: Next/Leptos)
 
 Admin and storefront runtimes (`apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`) should consume these packages through one modular contract/registry layer (e.g., `registerAdminModule` / `registerStorefrontModule` and Leptos registry equivalents).
 
 | Path | Module | UI Scope | Status |
 |------|--------|----------|--------|
-| `crates/rustok-blog/ui/admin` | Blog (+forum composition currently colocated) | Admin | Existing |
-| `crates/rustok-blog/ui/frontend` | Blog | Frontend | Existing |
+| `crates/rustok-blog/ui/admin` | Blog (+forum composition currently colocated) | Admin (Next) | Existing (reference sample for Next) |
+| `crates/rustok-blog/ui/frontend` | Blog | Frontend (Next) | Existing (reference sample for Next) |
 | `crates/rustok-<module>/ui/*` | Content/Commerce/Forum/Pages/Alloy scripting | Admin + Frontend | Planned / partial |
+
+Current reference sample in repository covers Next runtime: `crates/rustok-blog/ui/admin` and `crates/rustok-blog/ui/frontend`; Leptos-specific package pair remains a TODO for full dual-stack parity.
 
 ### Internal Frontend Libraries (`crates/`)
 
