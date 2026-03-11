@@ -94,6 +94,8 @@ graph TD
     BLOG_UI_FRONT --> NEXT_SF
     OPTIONAL_UI -. optional contracts .-> ADMIN
     OPTIONAL_UI -. optional contracts .-> NEXT_ADMIN
+    OPTIONAL_UI -. optional contracts .-> SF
+    OPTIONAL_UI -. optional contracts .-> NEXT_SF
 
     Domain Modules -.-> TELEMETRY
 ```
@@ -163,7 +165,7 @@ Recommended entry-point exports:
 - `adminNavItems` (or equivalent admin contract)
 - `frontendNavItems` (or equivalent storefront contract)
 
-Admin runtimes (`apps/admin`, `apps/next-admin`) should consume these packages through one modular contract/registry layer.
+Admin and storefront runtimes (`apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`) should consume these packages through one modular contract/registry layer (e.g., `registerAdminModule` / `registerStorefrontModule` and Leptos registry equivalents).
 
 | Path | Module | UI Scope | Status |
 |------|--------|----------|--------|

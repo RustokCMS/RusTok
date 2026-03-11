@@ -97,8 +97,8 @@ default_enabled = ["content", "commerce", "pages"]
 
 Рекомендуемая структура и entry points:
 
-- `crates/rustok-<module>/ui/admin` → экспорт `adminNavItems` (или эквивалент).
-- `crates/rustok-<module>/ui/frontend` → экспорт `frontendNavItems` (или эквивалент).
+- `crates/rustok-<module>/ui/admin` → экспорт `adminNavItems` (или эквивалент контрактов для `registerAdminModule` / `AdminComponentRegistration`).
+- `crates/rustok-<module>/ui/frontend` → экспорт `frontendNavItems` (или эквивалент контрактов для `registerStorefrontModule` / `StorefrontComponentRegistration`).
 
 Исключение:
 
@@ -106,6 +106,11 @@ default_enabled = ["content", "commerce", "pages"]
 - Платформенные core crate'ы (`rustok-core`, `rustok-outbox`, `rustok-telemetry`) и инфраструктурные слои.
 
 Эти компоненты могут оставаться на отдельном UI-подходе и не обязаны реализовывать `ui/admin`/`ui/frontend` пакеты.
+
+Операционное требование для корректной сборки пакетов:
+
+- host-приложения должны явно зависеть от модульных UI-пакетов (workspace/file dependency), а не от временных локальных импортов;
+- отсутствие ожидаемого UI entry point для установленного optional-модуля считается несовместимой конфигурацией release и должно блокировать включение модуля по умолчанию до исправления контракта.
 
 ## Deployment profiles (composable layers)
 
