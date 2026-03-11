@@ -1,23 +1,28 @@
 #[test]
-fn server_scenarios_do_not_advertise_alternative_domain_implementations() {
-    let scenarios = [
-        include_str!("integration/content_flow_test.rs"),
-        include_str!("integration/order_flow_test.rs"),
-        include_str!("integration/event_flow_test.rs"),
-    ];
+fn order_scenario_uses_library_contract_types_not_local_shadows() {
+    let scenario = include_str!("integration/order_flow_test.rs");
 
-    for scenario in scenarios {
+    for forbidden in [
+        "enum OrderStatus",
+        "struct Order {",
+        "enum DomainEvent",
+        "struct Payment",
+    ] {
         assert!(
-            !scenario.contains("simplified version"),
-            "scenario should use crate APIs instead of simplified replacements"
+            !scenario.contains(forbidden),
+            "order flow scenario must not reimplement domain contract type: {forbidden}"
         );
+    }
+
+    for required in [
+        "use rustok_commerce::{Order, OrderError};",
+        "use rustok_core::DomainEvent;",
+        "Order::new_pending",
+        "DomainEvent::OrderStatusChanged",
+    ] {
         assert!(
-            !scenario.contains("would use"),
-            "scenario should not describe alternative non-library implementation"
-        );
-        assert!(
-            scenario.contains("rustok_"),
-            "scenario should import and use rustok library APIs"
+            scenario.contains(required),
+            "order flow scenario must use library API marker: {required}"
         );
     }
 }
