@@ -215,9 +215,7 @@ impl ContentOrchestrationService {
 
         if let Some(primary) = translations.iter_mut().find(|tr| tr.locale == input.locale) {
             primary.title = Some(input.new_title.clone());
-            if primary.slug.is_none() {
-                primary.slug = Some(slug::slugify(&input.new_title));
-            }
+            primary.slug = Some(slug::slugify(&input.new_title));
         }
 
         let new_topic_id = self

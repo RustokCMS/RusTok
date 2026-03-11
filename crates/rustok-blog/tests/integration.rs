@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_blog::dto::CreateCommentInput;
-use rustok_blog::dto::{CreatePostInput, PostListQuery};
+use rustok_blog::dto::{CreatePostInput, ListCommentsFilter, PostListQuery, UpdateCommentInput};
 use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
 use rustok_blog::BlogError;
 use rustok_blog::{CommentService, PostService};
@@ -16,6 +16,7 @@ use rustok_core::{
     DomainEvent, EventTransport, MemoryTransport, ReliabilityLevel, SecurityContext, UserRole,
 };
 use rustok_outbox::TransactionalEventBus;
+use rustok_content::ContentError;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
 };
@@ -208,6 +209,19 @@ async fn ensure_blog_schema(db: &DatabaseConnection) {
     .expect("failed to create bodies table");
 }
 
+fn drain_event_types(receiver: &mut broadcast::Receiver<EventEnvelope>) -> Vec<String> {
+    let mut types = Vec::new();
+    loop {
+        match receiver.try_recv() {
+            Ok(envelope) => types.push(envelope.event.event_type().to_string()),
+            Err(broadcast::error::TryRecvError::Empty) => break,
+            Err(broadcast::error::TryRecvError::Closed) => break,
+            Err(broadcast::error::TryRecvError::Lagged(_)) => continue,
+        }
+    }
+    types
+}
+
 #[tokio::test]
 #[ignore = "Integration test requires database"]
 async fn test_create_comment_succeeds_with_required_translation() -> TestResult<()> {
@@ -275,6 +289,225 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
             panic!("comment creation failed unexpectedly: {message}");
         }
     }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestResult<()> {
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let mut receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+
+    let post_service = PostService::new(db.clone(), event_bus.clone());
+    let comment_service = CommentService::new(db.clone(), event_bus.clone());
+    let node_service = rustok_content::NodeService::new(db, event_bus);
+
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let outsider = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            admin.clone(),
+            CreatePostInput {
+                locale: "en".to_string(),
+                title: "Post with comments".to_string(),
+                body: "Body".to_string(),
+                excerpt: None,
+                slug: None,
+                publish: false,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                metadata: None,
+            },
+        )
+        .await?;
+
+    let parent = comment_service
+        .create_comment(
+            tenant_id,
+            admin.clone(),
+            post_id,
+            CreateCommentInput {
+                locale: "en".to_string(),
+                content: "Parent comment".to_string(),
+                parent_comment_id: None,
+            },
+        )
+        .await?;
+
+    let child = comment_service
+        .create_comment(
+            tenant_id,
+            admin.clone(),
+            post_id,
+            CreateCommentInput {
+                locale: "fr".to_string(),
+                content: "Réponse imbriquée".to_string(),
+                parent_comment_id: Some(parent.id),
+            },
+        )
+        .await?;
+    assert_eq!(child.parent_comment_id, Some(parent.id));
+
+    let fallback_en = comment_service.get_comment(tenant_id, child.id, "en").await?;
+    assert_eq!(fallback_en.content, "Réponse imbriquée");
+    assert_eq!(fallback_en.effective_locale, "fr");
+
+    node_service
+        .update_node(
+            tenant_id,
+            child.id,
+            admin.clone(),
+            rustok_content::UpdateNodeInput {
+                bodies: Some(vec![]),
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let fallback_first = comment_service.get_comment(tenant_id, child.id, "de").await?;
+    assert_eq!(fallback_first.content, "");
+    assert_eq!(fallback_first.effective_locale, "de");
+
+    let moderated_id = node_service
+        .create_node(
+            tenant_id,
+            admin.clone(),
+            rustok_content::CreateNodeInput {
+                kind: "comment".to_string(),
+                translations: vec![rustok_content::NodeTranslationInput {
+                    locale: "en".to_string(),
+                    title: Some("moderated".to_string()),
+                    slug: None,
+                    excerpt: None,
+                }],
+                bodies: vec![rustok_content::BodyInput {
+                    locale: "en".to_string(),
+                    body: Some("Spam candidate".to_string()),
+                    format: Some("markdown".to_string()),
+                }],
+                status: Some(rustok_content::entities::node::ContentStatus::Published),
+                parent_id: Some(post_id),
+                author_id: admin.user_id,
+                category_id: None,
+                position: None,
+                depth: None,
+                reply_count: None,
+                metadata: serde_json::json!({
+                    "comment_status": "spam",
+                    "parent_comment_id": parent.id,
+                }),
+            },
+        )
+        .await?
+        .id;
+
+    let updated = comment_service
+        .update_comment(
+            tenant_id,
+            parent.id,
+            admin.clone(),
+            UpdateCommentInput {
+                locale: "en".to_string(),
+                content: Some("Parent updated".to_string()),
+            },
+        )
+        .await?;
+    assert_eq!(updated.content, "Parent updated");
+
+    let forbidden = comment_service
+        .update_comment(
+            tenant_id,
+            parent.id,
+            outsider.clone(),
+            UpdateCommentInput {
+                locale: "en".to_string(),
+                content: Some("Should fail".to_string()),
+            },
+        )
+        .await
+        .expect_err("customer should not update чужой комментарий");
+    assert!(matches!(forbidden, BlogError::Content(ContentError::Forbidden(_))));
+
+    let not_found_update = comment_service
+        .update_comment(
+            tenant_id,
+            Uuid::new_v4(),
+            admin.clone(),
+            UpdateCommentInput {
+                locale: "en".to_string(),
+                content: Some("missing".to_string()),
+            },
+        )
+        .await
+        .expect_err("must return not found");
+    assert!(matches!(
+        not_found_update,
+        BlogError::Content(ContentError::NodeNotFound(_))
+    ));
+
+    comment_service
+        .delete_comment(tenant_id, moderated_id, admin.clone())
+        .await?;
+
+    let not_found_delete = comment_service
+        .delete_comment(tenant_id, Uuid::new_v4(), admin)
+        .await
+        .expect_err("must return not found on delete");
+    assert!(matches!(
+        not_found_delete,
+        BlogError::Content(ContentError::NodeNotFound(_))
+    ));
+
+    let (page_one, total) = comment_service
+        .list_for_post(
+            tenant_id,
+            SecurityContext::system(),
+            post_id,
+            ListCommentsFilter {
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 1,
+            },
+        )
+        .await?;
+    assert_eq!(total, 2);
+    assert_eq!(page_one.len(), 1);
+
+    let (page_two, _) = comment_service
+        .list_for_post(
+            tenant_id,
+            SecurityContext::system(),
+            post_id,
+            ListCommentsFilter {
+                locale: Some("en".to_string()),
+                page: 2,
+                per_page: 1,
+            },
+        )
+        .await?;
+    assert_eq!(page_two.len(), 1);
+    let statuses: Vec<String> = page_one
+        .iter()
+        .chain(page_two.iter())
+        .map(|c| c.status.clone())
+        .collect();
+    assert!(statuses.iter().any(|s| s == "pending"));
+    assert!(!statuses.iter().any(|s| s == "spam"));
+
+    let event_types = drain_event_types(&mut receiver);
+    assert!(event_types.iter().any(|et| et == "node.created"));
+    assert!(event_types.iter().any(|et| et == "node.updated"));
+    assert!(event_types.iter().any(|et| et == "node.deleted"));
 
     Ok(())
 }

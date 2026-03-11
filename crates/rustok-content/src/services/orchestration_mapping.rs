@@ -18,6 +18,7 @@ pub fn map_topic_to_post_input(
     translations: Vec<NodeTranslationInput>,
     bodies: Vec<BodyInput>,
 ) -> CreateNodeInput {
+    let translations = retarget_translations(translations, topic.id);
     CreateNodeInput {
         kind: KIND_POST.to_string(),
         status: map_topic_status_to_post_status(&topic.status, &topic.metadata),
@@ -38,6 +39,7 @@ pub fn map_post_to_topic_input(
     translations: Vec<NodeTranslationInput>,
     bodies: Vec<BodyInput>,
 ) -> CreateNodeInput {
+    let translations = retarget_translations(translations, post.id);
     CreateNodeInput {
         kind: KIND_TOPIC.to_string(),
         status: map_post_status_to_topic_status(&post.status, &post.metadata),
@@ -137,4 +139,28 @@ pub fn stamp_audit_metadata(metadata: &mut Value, stamp: AuditStamp<'_>) {
 
 fn as_object(value: Value) -> Map<String, Value> {
     value.as_object().cloned().unwrap_or_default()
+}
+
+fn retarget_translations(
+    translations: Vec<NodeTranslationInput>,
+    source_id: uuid::Uuid,
+) -> Vec<NodeTranslationInput> {
+    let suffix = source_id.simple().to_string();
+    let suffix = &suffix[..8];
+
+    translations
+        .into_iter()
+        .map(|mut tr| {
+            if let Some(slug) = tr.slug.as_ref() {
+                tr.slug = Some(format!("{slug}-{suffix}"));
+                return tr;
+            }
+
+            if let Some(title) = tr.title.as_ref() {
+                tr.slug = Some(format!("{}-{suffix}", slug::slugify(title)));
+            }
+
+            tr
+        })
+        .collect()
 }
