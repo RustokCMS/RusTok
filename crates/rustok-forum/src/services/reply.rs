@@ -38,12 +38,6 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyInput,
     ) -> ForumResult<ReplyResponse> {
-        if input.content.trim().is_empty() {
-            return Err(ForumError::Validation(
-                "Reply content cannot be empty".to_string(),
-            ));
-        }
-
         let topic_node = self.nodes.get_node(tenant_id, topic_id).await?;
         if topic_node.kind != KIND_TOPIC {
             return Err(ForumError::TopicNotFound(topic_id));
@@ -60,6 +54,13 @@ impl ReplyService {
         }
         if topic_status_value == topic_status::ARCHIVED {
             return Err(ForumError::TopicArchived);
+        }
+
+        let create_format = input.content_format.as_deref().unwrap_or("markdown");
+        if create_format != "rt_json_v1" && input.content.trim().is_empty() {
+            return Err(ForumError::Validation(
+                "Reply content cannot be empty".to_string(),
+            ));
         }
 
         let author_id = security.user_id;
@@ -184,7 +185,11 @@ impl ReplyService {
                 .map_err(ForumError::Validation)?;
                 content_validation.sanitized.to_string()
             } else {
-                input.content.clone().unwrap_or_default()
+                input.content.clone().ok_or_else(|| {
+                    ForumError::Validation(
+                        "content is required when content_format is markdown".to_string(),
+                    )
+                })?
             };
             Some(vec![BodyInput {
                 locale: input.locale.clone(),

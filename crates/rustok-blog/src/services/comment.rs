@@ -44,10 +44,6 @@ impl CommentService {
         post_id: Uuid,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
-        if input.content.trim().is_empty() {
-            return Err(BlogError::validation("Comment content cannot be empty"));
-        }
-
         let post_node = self
             .nodes
             .get_node(tenant_id, post_id)
@@ -55,6 +51,11 @@ impl CommentService {
             .map_err(BlogError::from)?;
         if post_node.kind != KIND_POST {
             return Err(BlogError::post_not_found(post_id));
+        }
+
+        let create_format = input.content_format.as_deref().unwrap_or("markdown");
+        if create_format != "rt_json_v1" && input.content.trim().is_empty() {
+            return Err(BlogError::validation("Comment content cannot be empty"));
         }
 
         let locale = input.locale.clone();
@@ -193,7 +194,9 @@ impl CommentService {
                 .map_err(BlogError::validation)?;
                 content_validation.sanitized.to_string()
             } else {
-                input.content.clone().unwrap_or_default()
+                input.content.clone().ok_or_else(|| {
+                    BlogError::validation("content is required when content_format is markdown")
+                })?
             };
             Some(vec![BodyInput {
                 locale: input.locale.clone(),

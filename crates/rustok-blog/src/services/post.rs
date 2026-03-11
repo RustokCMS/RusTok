@@ -48,14 +48,16 @@ impl PostService {
         if input.title.len() > 512 {
             return Err(BlogError::validation("Title cannot exceed 512 characters"));
         }
-        if input.body.trim().is_empty() {
-            return Err(BlogError::validation("Body cannot be empty"));
-        }
         if input.locale.trim().is_empty() {
             return Err(BlogError::validation("Locale cannot be empty"));
         }
         if input.tags.len() > 20 {
             return Err(BlogError::validation("Cannot have more than 20 tags"));
+        }
+
+        let create_format = input.body_format.as_deref().unwrap_or("markdown");
+        if create_format != "rt_json_v1" && input.body.trim().is_empty() {
+            return Err(BlogError::validation("Body cannot be empty"));
         }
 
         let author_id = security.user_id.ok_or(BlogError::AuthorRequired)?;
@@ -199,7 +201,9 @@ impl PostService {
                 .map_err(BlogError::validation)?;
                 body_validation.sanitized.to_string()
             } else {
-                input.body.clone().unwrap_or_default()
+                input.body.clone().ok_or_else(|| {
+                    BlogError::validation("body is required when body_format is markdown")
+                })?
             };
             update.bodies = Some(vec![BodyInput {
                 locale: locale.clone(),

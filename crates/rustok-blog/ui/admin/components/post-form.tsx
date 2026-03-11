@@ -18,7 +18,7 @@ const formSchema = z
     slug: z.string().optional(),
     locale: z.string().min(2).default('en'),
     bodyFormat: z.enum(['markdown', 'rt_json_v1']).default('markdown'),
-    body: z.string().min(1, 'Body is required.'),
+    body: z.string().default(''),
     contentJson: z.string().optional(),
     excerpt: z.string().optional(),
     tags: z.string().optional(),
@@ -28,6 +28,13 @@ const formSchema = z
     publish: z.boolean().default(false)
   })
   .superRefine((values, ctx) => {
+    if (values.bodyFormat === 'markdown' && !values.body.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['body'],
+        message: 'Body is required for markdown format.'
+      });
+    }
     if (values.bodyFormat === 'rt_json_v1' && !values.contentJson?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
