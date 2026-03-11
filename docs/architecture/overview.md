@@ -152,4 +152,39 @@ Interaction follows a strict hierarchy:
 6. The **Indexer** fetches the updated post, merges it with tags and author info, and saves it to the `index_content` table.
 7. **Storefront** users see the update near-instantly by querying the fast `index_content` table.
 
+---
+
+## ✅ Platform Definition of Done (Domain Scenarios)
+
+For every new domain scenario, the PR is considered done only when all items below are satisfied:
+
+1. The new domain scenario is implemented in `crates/rustok-*`, **or** (for platform foundation scope) in `apps/server` + core crates (`rustok-core` and other infrastructure core crates).
+2. The scenario has a public API contract (GraphQL/REST/module API) and tests.
+3. The app layer does not accumulate domain business logic: it orchestrates API/library calls.
+4. For frontend scope, duplication is extracted into shared frontend libraries (custom UI/contracts packages), not backend domain crates.
+
+If a point is not met, the PR is not considered done without an explicit architectural decision/approval.
+
+## 🔎 PR-review checklist (Architecture Governance)
+
+Mandatory review questions for architecture and module boundaries:
+
+- [ ] «Есть ли новый код в app-слое, который должен жить в библиотеке?»
+- [ ] «Есть ли изменения в docs модуля и `docs/index.md` при изменении контракта?»
+
+### Critical-domain exception policy
+
+If a PR intentionally bypasses the DoD rule above (domain logic stays in app-layer, temporary contract mismatch, etc.), then **architecture approval is mandatory** for critical domains:
+
+- `content`
+- `commerce`
+- `blog`
+- `forum`
+- `pages`
+- `index`
+- `rbac`
+- `tenant`
+
+Without explicit architecture sign-off, such PRs must not be merged.
+
 > **Статус документа:** Актуальный. При изменениях архитектуры обновляйте этот файл и `docs/index.md`.

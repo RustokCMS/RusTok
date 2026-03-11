@@ -83,3 +83,8 @@ Unit tests cover:
 Integration tests require:
 - Running Iggy server (for remote mode)
 - Or `iggy` feature enabled (for embedded mode)
+
+## Checklist
+
+- [x] контрактные тесты покрывают все публичные use-case.
+

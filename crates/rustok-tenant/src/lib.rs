@@ -47,3 +47,7 @@ impl RusToKModule for TenantModule {
         HealthStatus::Healthy
     }
 }
+
+
+#[cfg(test)]
+mod contract_tests;

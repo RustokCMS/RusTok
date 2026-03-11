@@ -79,3 +79,7 @@ impl RusToKModule for RbacModule {
         HealthStatus::Healthy
     }
 }
+
+
+#[cfg(test)]
+mod contract_tests;
