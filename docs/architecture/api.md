@@ -71,6 +71,27 @@ scripts/auth_release_gate.sh --require-all-gates \
 
 Для `rt_json_v1` backend выполняет обязательную server-side валидацию и sanitize через RT JSON pipeline перед записью.
 
+Для поэтапного перевода legacy-контента (markdown) в `rt_json_v1` используется server migration job `cargo run -p rustok-server --bin migrate_legacy_richtext -- --tenant-id=<uuid> [--dry-run]`:
+
+- выбирает только tenant-scoped записи `post/comment/forum_topic/forum_reply` с `format=markdown`;
+- конвертирует markdown → `rt_json_v1`, затем прогоняет через тот же server-side sanitize/validation gate (`validate_and_sanitize_rt_json`);
+- выполняет safe update с retry (optimistic guard по `id + updated_at + format`), чтобы не перетирать конкурентные изменения;
+- публикует счётчики прогона: `processed/succeeded/failed/skipped`;
+- поддерживает idempotent restart через checkpoint-файл (`--checkpoint-file`, по умолчанию `scripts/checkpoints/legacy_richtext.json`).
+
+### Rollout/rollback для migration job (tenant-by-tenant)
+
+1. `dry-run` для одного tenant, проверить `failed=0` и выборку только ожидаемых kind/locale.
+2. apply для этого же tenant с выделенным checkpoint-файлом.
+3. smoke-read (GraphQL/API) по post/comment/topic/reply и проверка формата `rt_json_v1`.
+4. повторить цикл для следующего tenant; не запускать multi-tenant bulk без checkpoint isolation.
+
+Rollback стратегия:
+
+- кодовый rollback: остановить job и вернуть read/write трафик на legacy markdown (обратная совместимость сохраняется контрактом API);
+- data rollback: восстановить записи конкретного tenant из DB backup/snapshot, снятого перед apply;
+- при частичном падении возобновлять с того же checkpoint (идемпотентно) вместо ручного массового rewrite.
+
 ## GraphQL схема
 
 GraphQL схема формируется из per-domain объектов через `MergedObject`:
