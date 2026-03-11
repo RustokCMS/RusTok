@@ -37,7 +37,7 @@
 | Tasks (`cargo loco task`) | `apps/server` via Loco task runtime | Loco tasks API with server task registration | `apps/server/docs/README.md`; `docs/guides/quickstart.md` | Accepted | 2026-06-01 | `apps/server/src/tasks/mod.rs`; `apps/server/src/tasks/cleanup.rs`; `apps/server/src/app.rs` |
 | Initializers | `apps/server` via Loco initializer runtime | Loco initializer API + project initializers | `apps/server/docs/README.md`; `docs/guides/observability-quickstart.md` | Accepted | 2026-06-01 | `apps/server/src/initializers/mod.rs`; `apps/server/src/initializers/telemetry.rs`; `apps/server/src/app.rs` |
 | Mailer subsystem | `apps/server` (custom `EmailService` on `lettre`) | **Loco Mailer API** (+ provider config in `settings`) | `apps/server/docs/loco/README.md`; `docs/architecture/api.md` | Proposed | 2026-04-15 | `apps/server/src/services/email.rs`; `apps/server/src/graphql/auth/mutation.rs`; `apps/server/src/common/settings.rs` |
-| Workers/queue subsystem | `apps/server` + `rustok-outbox` | RusToK event-driven worker runtime (без Loco queue duplication) | `docs/architecture/event-flow-contract.md`; `docs/standards/transactional-outbox.md` | Accepted | 2026-05-01 | `apps/server/src/app.rs`; `apps/server/src/services/event_transport_factory.rs`; `crates/rustok-outbox/src/relay.rs` |
+| Workers/queue subsystem | `apps/server` + `rustok-outbox` | RusToK event-driven worker runtime (без Loco queue duplication) | `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`; `docs/architecture/event-flow-contract.md`; `docs/standards/transactional-outbox.md` | Accepted | 2026-05-01 | `apps/server/src/app.rs`; `apps/server/src/services/event_transport_factory.rs`; `crates/rustok-outbox/src/relay.rs` |
 | Storage abstraction (uploads/assets) | `apps/server` (частичные ad-hoc use-cases) | **Loco Storage** shared policy/adapters for modules | `apps/server/docs/loco/README.md`; `docs/architecture/modules.md` | Needs review | 2026-04-15 | `apps/server/src/app.rs`; `apps/server/src/controllers/content.rs`; `apps/server/src/controllers/pages.rs` |
 | Tenancy caching | `apps/server` + `rustok-core` cache backends | RusToK custom tenancy cache (`tenant.rs`) + shared cache backend contract | `docs/architecture/tenancy.md`; `docs/guides/observability-quickstart.md` | Accepted | 2026-05-01 | `apps/server/src/middleware/tenant.rs`; `apps/server/src/middleware/tenant_cache_v3.rs`; `crates/rustok-core/src/cache.rs` |
 | Event bus / transport (`memory|outbox|iggy`) | `apps/server` + `rustok-events` + `rustok-outbox` | RusToK event transport contract + transactional outbox flow | `DECISIONS/2026-02-19-rustok-events-canonical-contract.md`; `docs/architecture/events.md`; `apps/server/docs/event-transport.md` | Accepted | 2026-05-01 | `apps/server/src/services/event_transport_factory.rs`; `apps/server/src/services/build_request_events.rs`; `apps/server/src/workers/outbox_relay.rs` |
@@ -122,7 +122,7 @@
 ### 3.2 Workers/Queue (осознанно самопис)
 
 **Сейчас:** outbox relay worker + event-driven pipeline.  
-**Решение:** не дублировать это параллельной Loco queue-runtime реализацией; оставить собственную очередь/воркеры ради расширяемости и архитектурной консистентности.
+**Решение:** не дублировать это параллельной Loco queue-runtime реализацией; оставить собственную очередь/воркеры ради расширяемости и архитектурной консистентности. Policy anchor: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`.
 
 ### 3.3 Storage abstraction (должно быть едино через Loco)
 
