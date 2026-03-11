@@ -190,6 +190,10 @@
 - Core-модули не toggleable (`ModuleKind::Core`)
 - MCP tools используют `McpToolResponse` (не raw JSON)
 - Controller return types: `loco_rs::Result` (не custom)
+- Dependency guard (`cargo metadata` + allow/deny):
+  - backend apps (в текущей конфигурации: `rustok-server`) → только `rustok-*` crate-зависимости (кроме явных infra-исключений)
+  - deny новых междоменных `rustok-* -> rustok-*` связей вне allow-list
+  - deny nested imports внутренних модулей без явного разрешения
 
 **Severity:** CRITICAL. Модуль вне registry = не проходит health check.
 

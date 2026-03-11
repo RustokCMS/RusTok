@@ -255,6 +255,16 @@ else
     warn "No telemetry initialization found"
 fi
 
+# ─── 11. Dependency boundaries (cargo metadata + allow/deny rules) ───
+header "11. Dependency boundaries: apps/crates rules"
+
+if python3 scripts/architecture_dependency_guard.py >/tmp/architecture_guard.log 2>&1; then
+    pass "Architecture dependency guard passed"
+else
+    fail "Architecture dependency guard failed"
+    sed -n '1,80p' /tmp/architecture_guard.log
+fi
+
 # ─── Summary ───
 echo ""
 echo -e "${BOLD}━━━ Architecture Summary ━━━${NC}"

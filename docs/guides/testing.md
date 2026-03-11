@@ -28,3 +28,23 @@ These guidelines capture what we should take from the shared rules to keep tests
 - Avoid mocking internal persistence layers (e.g., SeaORM models) unless the test explicitly targets that integration boundary.  
 
 > **Статус документа:** Актуальный. Расширенные примеры — в [`docs/guides/testing-integration.md`](./testing-integration.md) и [`docs/guides/testing-property.md`](./testing-property.md).
+
+## Local quality gates (architecture boundaries)
+Run architecture checks locally before commit when changing crate/app dependencies:
+
+```bash
+# Full local gate set (includes architecture suite)
+./scripts/verify/verify-all.sh
+
+# Only architecture suite
+./scripts/verify/verify-all.sh architecture
+
+# Direct boundary guard (cargo metadata + import rules)
+python3 scripts/architecture_dependency_guard.py
+```
+
+The dependency guard enforces (backend scope):
+- target backend apps (currently `rustok-server`) may depend only on workspace crates `rustok-*`, except explicit infrastructure exceptions in `scripts/architecture_rules.toml`;
+- no new bypass dependencies between domain crates unless the edge is in `scripts/architecture_rules.toml` allow-list;
+- no nested imports of internal crate modules from target backend apps, except explicit allow-list exceptions in `scripts/architecture_rules.toml`;
+- frontend workspace libraries remain allowed for frontend apps and are not blocked by this backend-oriented guard.

@@ -540,6 +540,7 @@ cargo clippy --workspace -- -D warnings
 
 # Check before commit
 cargo fmt --all -- --check && cargo clippy --workspace
+./scripts/verify/verify-all.sh
 ```
 
 ### Release Checklist
