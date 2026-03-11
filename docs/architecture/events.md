@@ -316,6 +316,8 @@ See module READMEs for specific implementation details:
 
 **Status (2026-02-19):** Implemented in `apps/server` event runtime (outbox relay target + retry policy wiring).
 
+**Policy anchor (2026-03-11):** queue runtime source-of-truth и запрет parallel production-path через Loco jobs зафиксированы в ADR [`DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`](../../DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md).
+
 Планируемый production-паттерн: write-side всегда использует outbox (L1), а relay target задаётся отдельно (`memory` для local/dev, `iggy` для highload/replay).
 
 ```toml

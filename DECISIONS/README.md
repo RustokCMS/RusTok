@@ -15,6 +15,7 @@ All significant architectural choices should be recorded as ADRs.
 | [2026-02-19](./2026-02-19-module-kind-core-vs-optional.md) | Разделение модулей на Core и Optional | Accepted & Implemented |
 | [2026-02-26](./2026-02-26-auth-lifecycle-unification-session-invalidation.md) | Унификация auth lifecycle и policy инвалидирования сессий | Accepted |
 | [2026-02-26](./2026-02-26-rbac-relation-source-of-truth-cutover.md) | RBAC source of truth: relation-модель и staged cutover | Accepted |
+| [2026-03-11](./2026-03-11-queue-runtime-source-of-truth-outbox.md) | Queue runtime source of truth: rustok-outbox + event_transport_factory | Accepted |
 | [2026-03-07](./2026-03-07-deployment-profiles-and-ui-stack.md) | Deployment Profiles: composable layers (monolith / hybrid / headless) | Proposed (v2) |
 | [2026-03-07](../docs/concepts/plan-oauth2-app-connections.md) | OAuth2 App Connections: подключение внешних приложений к API | Draft |
 | [2026-03-07](./2026-03-07-admin-module-ui-unification.md) | Унификация UI модулей между Next.js и Leptos Admin | Accepted & Implemented |
