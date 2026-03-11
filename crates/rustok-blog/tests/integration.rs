@@ -696,7 +696,7 @@ mod unit_tests {
     }
 
     #[tokio::test]
-    async fn test_publish_with_failing_transport_returns_error_and_does_not_deliver_event() {
+    async fn test_publish_returns_error_and_does_not_deliver_event_with_failing_transport() {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let failing_transport = FailingTransport::new();
@@ -720,10 +720,13 @@ mod unit_tests {
             receiver.try_recv(),
             Err(broadcast::error::TryRecvError::Empty)
         ));
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(100), receiver.recv())
+            .await
+            .is_err());
     }
 
     #[tokio::test]
-    async fn test_publish_with_memory_transport_delivers_blog_event() {
+    async fn test_publish_delivers_blog_event_with_memory_transport() {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let transport = MemoryTransport::new();
