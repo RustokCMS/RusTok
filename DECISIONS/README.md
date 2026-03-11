@@ -18,3 +18,4 @@ All significant architectural choices should be recorded as ADRs.
 | [2026-03-07](./2026-03-07-deployment-profiles-and-ui-stack.md) | Deployment Profiles: composable layers (monolith / hybrid / headless) | Proposed (v2) |
 | [2026-03-07](../docs/concepts/plan-oauth2-app-connections.md) | OAuth2 App Connections: подключение внешних приложений к API | Draft |
 | [2026-03-07](./2026-03-07-admin-module-ui-unification.md) | Унификация UI модулей между Next.js и Leptos Admin | Accepted & Implemented |
+| [2026-03-11](./2026-03-11-loco-mailer-storage-as-server-infra.md) | Loco Mailer и Storage как server-infra слой (без отдельного модуля) | Accepted |
