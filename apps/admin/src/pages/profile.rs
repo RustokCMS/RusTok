@@ -187,8 +187,8 @@ pub fn Profile() -> impl IntoView {
                                 SelectOption::new("America/New_York", "America/New_York"),
                                 SelectOption::new("Asia/Dubai", "Asia/Dubai"),
                             ]
-                            value=Some(timezone)
-                            set_value=Some(set_timezone)
+                            value=timezone
+                            set_value=set_timezone
                         />
                     </div>
                     <div class="flex flex-col gap-2">

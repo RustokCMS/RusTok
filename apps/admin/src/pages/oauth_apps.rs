@@ -35,7 +35,7 @@ pub fn OAuthAppsPage() -> impl IntoView {
                 </Button>
             </div>
 
-            <OAuthAppsList apps=apps.get() on_rotate_secret=on_rotate on_revoke_app=on_revoke />
+            <OAuthAppsList apps=apps.get() on_rotate_secret=Callback::new(on_rotate) on_revoke_app=Callback::new(on_revoke) />
 
             <Show when=move || modal_state.get() != ModalState::None>
                 <div class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center">
@@ -43,15 +43,15 @@ pub fn OAuthAppsPage() -> impl IntoView {
                         {move || match modal_state.get() {
                             ModalState::CreateApp => {
                                 let close = close_modal.clone();
-                                view! { <CreateAppForm on_success=move |res: CreateOAuthAppResult| { set_apps.update(|a| a.push(res.app.clone())); set_modal_state.set(ModalState::SecretRevealed(res.client_secret)); } on_cancel=move || close() /> }.into_any()
+                                view! { <CreateAppForm on_success=Callback::new(move |res: CreateOAuthAppResult| { set_apps.update(|a| a.push(res.app.clone())); set_modal_state.set(ModalState::SecretRevealed(res.client_secret)); }) on_cancel=Callback::new(move |_| close()) /> }.into_any()
                             }
                             ModalState::RotateSecret(app) => {
                                 let close = close_modal.clone();
-                                view! { <RotateSecretDialog app=app on_success=move |new_secret| set_modal_state.set(ModalState::SecretRevealed(new_secret)) on_cancel=move || close() /> }.into_any()
+                                view! { <RotateSecretDialog app=app on_success=Callback::new(move |new_secret| set_modal_state.set(ModalState::SecretRevealed(new_secret))) on_cancel=Callback::new(move |_| close()) /> }.into_any()
                             }
                             ModalState::RevokeApp(app) => {
                                 let close = close_modal.clone();
-                                view! { <RevokeAppDialog app=app on_success=move || close() on_cancel=move || close() /> }.into_any()
+                                view! { <RevokeAppDialog app=app on_success=Callback::new(move |_| close()) on_cancel=Callback::new(move |_| close()) /> }.into_any()
                             }
                             ModalState::SecretRevealed(secret) => {
                                 let close = close_modal.clone();

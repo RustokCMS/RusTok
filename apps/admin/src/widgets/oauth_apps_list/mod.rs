@@ -6,9 +6,11 @@ use leptos::prelude::*;
 #[component]
 pub fn OAuthAppsList(
     apps: Vec<OAuthApp>,
-    on_rotate_secret: impl Fn(OAuthApp) + 'static + Clone,
-    on_revoke_app: impl Fn(OAuthApp) + 'static + Clone,
+    on_rotate_secret: Callback<OAuthApp>,
+    on_revoke_app: Callback<OAuthApp>,
 ) -> impl IntoView {
+    let apps_for_table = apps.clone();
+
     view! {
         <div class="overflow-x-auto rounded-md border">
             <table class="w-full text-left text-sm whitespace-nowrap">
@@ -17,7 +19,7 @@ pub fn OAuthAppsList(
                 </thead>
                 <tbody class="divide-y">
                     <For
-                        each=move || apps.clone()
+                        each=move || apps_for_table.clone()
                         key=|app| app.id
                         children=move |app| {
                             let app_clone1 = app.clone();
@@ -31,8 +33,8 @@ pub fn OAuthAppsList(
                                     <td class="px-4 py-3 text-slate-500 font-mono text-xs">{app.client_id.to_string()}</td>
                                     <td class="px-4 py-3 text-slate-500">{app.active_token_count}</td>
                                     <td class="px-4 py-3 text-right space-x-2">
-                                        <Button on_click=move |_| on_rotate_secret(app_clone1.clone())>"Rotate Secret"</Button>
-                                        <Button on_click=move |_| on_revoke_app(app_clone2.clone())>"Revoke"</Button>
+                                        <Button on_click=move |_| on_rotate_secret.run(app_clone1.clone())>"Rotate Secret"</Button>
+                                        <Button on_click=move |_| on_revoke_app.run(app_clone2.clone())>"Revoke"</Button>
                                     </td>
                                 </tr>
                             }
