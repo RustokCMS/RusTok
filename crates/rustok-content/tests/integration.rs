@@ -462,6 +462,14 @@ async fn test_orchestration_topic_post_split_merge_and_idempotency_with_events()
         .await
         .expect("promoted post should exist");
     assert_eq!(promoted_post.kind, "blog_post");
+    assert_eq!(
+        promoted_post
+            .metadata
+            .get("canonical_node_id")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        Some(topic.id.to_string())
+    );
 
     let reply1_after = node_service.get_node(tenant_id, reply1.id).await.unwrap();
     assert_eq!(reply1_after.parent_id, Some(promoted.target_id));
@@ -486,6 +494,14 @@ async fn test_orchestration_topic_post_split_merge_and_idempotency_with_events()
         .await
         .unwrap();
     assert_eq!(demoted_topic.kind, "forum_topic");
+    assert_eq!(
+        demoted_topic
+            .metadata
+            .get("canonical_node_id")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        Some(promoted.target_id.to_string())
+    );
 
     node_service
         .update_node(
@@ -544,6 +560,19 @@ async fn test_orchestration_topic_post_split_merge_and_idempotency_with_events()
     assert_eq!(reply1_split.parent_id, Some(split.target_id));
     assert_eq!(reply2_stays.parent_id, Some(demoted.target_id));
 
+    let split_topic = node_service
+        .get_node(tenant_id, split.target_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        split_topic
+            .metadata
+            .get("canonical_node_id")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        Some(demoted.target_id.to_string())
+    );
+
     let merge = orchestration
         .merge_topics(
             tenant_id,
@@ -561,6 +590,39 @@ async fn test_orchestration_topic_post_split_merge_and_idempotency_with_events()
 
     let reply1_merged = node_service.get_node(tenant_id, reply1.id).await.unwrap();
     assert_eq!(reply1_merged.parent_id, Some(demoted.target_id));
+
+    let merge_target = node_service
+        .get_node(tenant_id, demoted.target_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        merge_target
+            .metadata
+            .get("canonical_node_id")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned),
+        Some(demoted.target_id.to_string())
+    );
+
+    let operations_rows = node_service
+        .db()
+        .query_all(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT id FROM content_orchestration_operations".to_string(),
+        ))
+        .await
+        .expect("operations table should be queryable");
+    assert_eq!(operations_rows.len(), 4);
+
+    let audit_rows = node_service
+        .db()
+        .query_all(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT id FROM content_orchestration_audit_logs".to_string(),
+        ))
+        .await
+        .expect("audit table should be queryable");
+    assert_eq!(audit_rows.len(), 4);
 
     let events = drain_event_envelopes(&mut receiver);
     assert!(events.iter().any(|e| {

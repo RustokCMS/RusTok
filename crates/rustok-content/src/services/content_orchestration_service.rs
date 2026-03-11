@@ -79,6 +79,7 @@ impl ContentOrchestrationService {
     ) -> ContentResult<OrchestrationResult> {
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Moderate)?;
         self.ensure_scope(security.clone(), Resource::BlogPosts, Action::Create)?;
+        self.ensure_idempotency_key(&input.idempotency_key)?;
 
         let txn = self.node_service.db().begin().await?;
         if let Some(existing) = self
@@ -169,6 +170,7 @@ impl ContentOrchestrationService {
     ) -> ContentResult<OrchestrationResult> {
         self.ensure_scope(security.clone(), Resource::BlogPosts, Action::Moderate)?;
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Create)?;
+        self.ensure_idempotency_key(&input.idempotency_key)?;
 
         let txn = self.node_service.db().begin().await?;
         if let Some(existing) = self
@@ -258,6 +260,7 @@ impl ContentOrchestrationService {
         input: SplitTopicInput,
     ) -> ContentResult<OrchestrationResult> {
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Moderate)?;
+        self.ensure_idempotency_key(&input.idempotency_key)?;
         if input.reply_ids.is_empty() {
             return Err(ContentError::Validation(
                 "split_topic requires at least one reply/comment id".to_string(),
@@ -318,6 +321,16 @@ impl ContentOrchestrationService {
             )
             .await?;
 
+        self.mark_source_metadata(
+            &txn,
+            topic.clone(),
+            "topic.split_into",
+            new_topic_id,
+            security.user_id,
+            input.reason.as_deref(),
+        )
+        .await?;
+
         self.mark_target_cross_link(&txn, new_topic_id, topic.id)
             .await?;
 
@@ -370,6 +383,7 @@ impl ContentOrchestrationService {
         input: MergeTopicsInput,
     ) -> ContentResult<OrchestrationResult> {
         self.ensure_scope(security.clone(), Resource::ForumTopics, Action::Moderate)?;
+        self.ensure_idempotency_key(&input.idempotency_key)?;
         if input.source_topic_ids.is_empty() {
             return Err(ContentError::Validation(
                 "merge_topics requires at least one source topic".to_string(),
@@ -410,6 +424,9 @@ impl ContentOrchestrationService {
             )
             .await?;
         }
+
+        self.mark_target_cross_link(&txn, target.id, target.id)
+            .await?;
 
         self.node_service
             .event_bus()
@@ -463,6 +480,16 @@ impl ContentOrchestrationService {
             }
             PermissionScope::None => Err(ContentError::Forbidden("Permission denied".to_string())),
         }
+    }
+
+    fn ensure_idempotency_key(&self, idempotency_key: &str) -> ContentResult<()> {
+        if idempotency_key.trim().is_empty() {
+            return Err(ContentError::Validation(
+                "idempotency_key must not be empty".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 
     async fn fetch_idempotent_result(
