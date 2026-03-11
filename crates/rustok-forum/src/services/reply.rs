@@ -3,7 +3,9 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_content::{BodyInput, CreateNodeInput, ListNodesFilter, NodeService, UpdateNodeInput};
-use rustok_core::{DomainEvent, SecurityContext};
+use rustok_core::{
+    validate_and_sanitize_rt_json, DomainEvent, RtJsonValidationConfig, SecurityContext,
+};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::constants::{reply_status, topic_status, KIND_REPLY, KIND_TOPIC};
@@ -63,6 +65,16 @@ impl ReplyService {
         let author_id = security.user_id;
         let locale = input.locale.clone();
 
+        let content_json: serde_json::Value =
+            serde_json::from_str(&input.content).map_err(|_| {
+                ForumError::Validation("Reply content must be valid rt_json payload".to_string())
+            })?;
+        let content_validation = validate_and_sanitize_rt_json(
+            &content_json,
+            &RtJsonValidationConfig::for_locale(&locale),
+        )
+        .map_err(ForumError::Validation)?;
+
         let metadata = serde_json::json!({
             "parent_reply_id": input.parent_reply_id,
             "reply_status": reply_status::APPROVED,
@@ -89,8 +101,8 @@ impl ReplyService {
                     translations: Vec::new(),
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
-                        body: Some(input.content),
-                        format: Some("markdown".to_string()),
+                        body: Some(content_validation.sanitized.to_string()),
+                        format: Some("rt_json".to_string()),
                     }],
                 },
             )
@@ -141,13 +153,27 @@ impl ReplyService {
         input: UpdateReplyInput,
     ) -> ForumResult<ReplyResponse> {
         let existing = self.get(tenant_id, reply_id, &input.locale).await?;
-        let bodies = input.content.map(|content| {
-            vec![BodyInput {
-                locale: input.locale.clone(),
-                body: Some(content),
-                format: Some("markdown".to_string()),
-            }]
-        });
+        let bodies = input
+            .content
+            .map(|content| {
+                let content_json: serde_json::Value =
+                    serde_json::from_str(&content).map_err(|_| {
+                        ForumError::Validation(
+                            "Reply content must be valid rt_json payload".to_string(),
+                        )
+                    })?;
+                let content_validation = validate_and_sanitize_rt_json(
+                    &content_json,
+                    &RtJsonValidationConfig::for_locale(&input.locale),
+                )
+                .map_err(ForumError::Validation)?;
+                Ok(vec![BodyInput {
+                    locale: input.locale.clone(),
+                    body: Some(content_validation.sanitized.to_string()),
+                    format: Some("rt_json".to_string()),
+                }])
+            })
+            .transpose()?;
 
         let node = self
             .nodes

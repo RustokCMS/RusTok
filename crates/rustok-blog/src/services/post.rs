@@ -5,7 +5,9 @@ use uuid::Uuid;
 use rustok_content::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::{DomainEvent, SecurityContext};
+use rustok_core::{
+    validate_and_sanitize_rt_json, DomainEvent, RtJsonValidationConfig, SecurityContext,
+};
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
 
@@ -58,6 +60,12 @@ impl PostService {
 
         let author_id = security.user_id.ok_or(BlogError::AuthorRequired)?;
         let locale = input.locale.clone();
+
+        let body_json: Value = serde_json::from_str(&input.body)
+            .map_err(|_| BlogError::validation("Body must be valid rt_json JSON payload"))?;
+        let body_validation =
+            validate_and_sanitize_rt_json(&body_json, &RtJsonValidationConfig::for_locale(&locale))
+                .map_err(BlogError::validation)?;
 
         let mut metadata = input.metadata.unwrap_or_else(|| serde_json::json!({}));
         if let Value::Object(map) = &mut metadata {
@@ -116,8 +124,8 @@ impl PostService {
                     }],
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
-                        body: Some(input.body),
-                        format: Some("markdown".to_string()),
+                        body: Some(body_validation.sanitized.to_string()),
+                        format: Some("rt_json".to_string()),
                     }],
                 },
             )
@@ -164,10 +172,17 @@ impl PostService {
         }
 
         if let Some(body) = input.body {
+            let body_json: Value = serde_json::from_str(&body)
+                .map_err(|_| BlogError::validation("Body must be valid rt_json JSON payload"))?;
+            let body_validation = validate_and_sanitize_rt_json(
+                &body_json,
+                &RtJsonValidationConfig::for_locale(&locale),
+            )
+            .map_err(BlogError::validation)?;
             update.bodies = Some(vec![BodyInput {
                 locale: locale.clone(),
-                body: Some(body),
-                format: Some("markdown".to_string()),
+                body: Some(body_validation.sanitized.to_string()),
+                format: Some("rt_json".to_string()),
             }]);
         }
 

@@ -5,7 +5,9 @@ use uuid::Uuid;
 use rustok_content::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::{DomainEvent, SecurityContext};
+use rustok_core::{
+    validate_and_sanitize_rt_json, DomainEvent, RtJsonValidationConfig, SecurityContext,
+};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::constants::{topic_status, KIND_TOPIC};
@@ -52,6 +54,13 @@ impl TopicService {
         let category_id = input.category_id;
         let locale = input.locale.clone();
 
+        let body_json: serde_json::Value = serde_json::from_str(&input.body).map_err(|_| {
+            ForumError::Validation("Topic body must be valid rt_json payload".to_string())
+        })?;
+        let body_validation =
+            validate_and_sanitize_rt_json(&body_json, &RtJsonValidationConfig::for_locale(&locale))
+                .map_err(ForumError::Validation)?;
+
         let metadata = serde_json::json!({
             "tags": input.tags,
             "is_pinned": false,
@@ -86,8 +95,8 @@ impl TopicService {
                     }],
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
-                        body: Some(input.body),
-                        format: Some("markdown".to_string()),
+                        body: Some(body_validation.sanitized.to_string()),
+                        format: Some("rt_json".to_string()),
                     }],
                 },
             )
@@ -157,13 +166,24 @@ impl TopicService {
             None
         };
 
-        let bodies = input.body.map(|body| {
-            vec![BodyInput {
-                locale: input.locale.clone(),
-                body: Some(body),
-                format: Some("markdown".to_string()),
-            }]
-        });
+        let bodies = input
+            .body
+            .map(|body| {
+                let body_json: serde_json::Value = serde_json::from_str(&body).map_err(|_| {
+                    ForumError::Validation("Topic body must be valid rt_json payload".to_string())
+                })?;
+                let body_validation = validate_and_sanitize_rt_json(
+                    &body_json,
+                    &RtJsonValidationConfig::for_locale(&input.locale),
+                )
+                .map_err(ForumError::Validation)?;
+                Ok(vec![BodyInput {
+                    locale: input.locale.clone(),
+                    body: Some(body_validation.sanitized.to_string()),
+                    format: Some("rt_json".to_string()),
+                }])
+            })
+            .transpose()?;
 
         let node = self
             .nodes

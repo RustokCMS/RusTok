@@ -121,6 +121,7 @@ graph TD
 - [OpenTelemetry Integration](./standards/opentelemetry-integration.md)
 - [Instrumentation Examples](./standards/instrumentation-examples.md)
 - [Transactional Outbox](./standards/transactional-outbox.md)
+- [Спецификация rt_json_v1](./standards/rt-json-v1.md)
 
 ### AI (`docs/ai/`)
 

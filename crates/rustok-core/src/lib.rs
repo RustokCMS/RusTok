@@ -15,6 +15,7 @@ pub mod permissions;
 pub mod rbac;
 pub mod registry;
 pub mod resilience;
+pub mod rt_json;
 pub mod scripting;
 pub mod security;
 pub mod state_machine;
@@ -68,6 +69,7 @@ pub use resilience::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError, CircuitState, RetryPolicy,
     RetryStrategy,
 };
+pub use rt_json::{validate_and_sanitize_rt_json, RtJsonValidationConfig, RtJsonValidationResult};
 pub use scripting::ScriptingContext;
 pub use security::{
     audit::AuditEventType, headers::FrameOptions, run_security_audit, AuditEvent, AuditLogger,
