@@ -224,6 +224,11 @@ When upgrading existing systems:
 4. **Monitor outbox backlog** - set up alerts for stuck events
 5. **Test rollback scenarios** - ensure events are not lost on failures
 
+## Operational runbook links
+
+- Loco Mailer/Storage migration incident & rollback playbook: [`apps/server/docs/LOCO_FEATURE_SUPPORT.md` (section "Loco Mailer + Storage roadmap")](../../apps/server/docs/LOCO_FEATURE_SUPPORT.md#6-loco-mailer--storage-roadmap-release-phases).
+- Use this runbook during dual-run/cutover phases to apply release gates, fallback toggles, and rollback triggers consistently.
+
 ## Troubleshooting
 
 ### Events not being persisted

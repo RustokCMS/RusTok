@@ -170,16 +170,62 @@
 
 ---
 
-## 6) Быстрый roadmap по замечаниям ревью
+## 6) Loco Mailer + Storage roadmap (release phases)
 
-1. **Mailer migration:** перевести password reset delivery на Loco Mailer API.
-2. **Storage unification:** внедрить Loco storage abstraction как обязательный слой для модульных upload/use-cases.
-3. **Queue consistency:** задокументировать (ADR/архдок) окончательное правило «queue/workers только самопис» и не дублировать Loco job queue.
-4. **Caching clarity:** при следующих изменениях tenancy cache — обновлять этот документ и `apps/server/docs/README.md` одновременно.
+Ниже фиксируется единый rollout-план для `Mailer` и `Storage`, чтобы не поддерживать параллельные production-потоки без явных gate-критериев.
+
+| Phase | Цель | Mailer (code points + config keys) | Storage (code points + config keys) | Release gates / metrics |
+|---|---|---|---|---|
+| 0. Contract freeze | Зафиксировать integration contracts и schema ожидания до реализации адаптеров | Freeze API для password reset delivery в `apps/server/src/services/email.rs`; зафиксировать mapping `settings.rustok.email.*` (`enabled`, `from`, `reset_base_url`, `smtp.host`, `smtp.port`, `smtp.username`) в `apps/server/src/common/settings.rs` и `apps/server/config/development.yaml` | Freeze контракт `StorageAdapter` и policy-level SLA для upload/download; зафиксировать будущие ключи `settings.rustok.storage.*` и Loco `storage.*` как config source of truth | Gate: PR checklist подтверждает отсутствие breaking changes. Success: `delivery_error_rate` baseline собран; `p95_mailer_latency_ms` и `p95_storage_latency_ms` baseline собраны |
+| 1. Adapter implementation | Реализовать Loco-based adapters без cutover трафика | Добавить Loco mailer adapter рядом с текущим SMTP sender (bridge в `apps/server/src/services/email.rs`) и feature flag `settings.rustok.email.provider=loco|smtp` | Ввести storage adapters (директория `apps/server/src/services/storage_adapters/`) и policy resolver из config (`settings.rustok.storage.provider`, `settings.rustok.storage.bucket`, `settings.rustok.storage.prefix`) | Gate: unit/integration tests для adapter parity. Success: functional parity == 100%, `fallback_rate < 5%` на тестовом трафике |
+| 2. Dual-run / shadow | Запустить shadow-доставку и сравнить результаты | Основной send идёт через legacy SMTP path, Loco mailer выполняется shadow mode; расхождения логируются с correlation id | Основной storage path остаётся legacy, Loco adapter выполняет shadow upload/read-check без consumer impact | Gate: минимум 7 дней shadow без деградации. Success: `delivery_error_rate_delta <= 0.2pp`, `p95_latency_delta <= 10%`, `fallback_rate <= 2%` |
+| 3. Cutover | Перевести production трафик на Loco adapters | Включить `settings.rustok.email.provider=loco` + rollback toggle в runtime config; наблюдение через `email_delivery_errors_total`, `email_send_latency_ms` | Включить `settings.rustok.storage.provider=loco` + rollback toggle; наблюдение через `storage_operation_errors_total`, `storage_operation_latency_ms` | Gate: SRE approval + on-call readiness. Success: 14 дней стабильности, `fallback_rate <= 1%`. Rollback trigger: 3 consecutive 5m windows с `delivery_error_rate > 2%` или `p95_latency_ms > 2x baseline` |
+| 4. Legacy removal | Удалить legacy paths после стабилизации | Удалить legacy SMTP-only send path и флаги совместимости из `apps/server/src/services/email.rs`/`apps/server/src/common/settings.rs` | Удалить legacy storage branches в adapters/policy; оставить единый Loco storage runtime path | Gate: post-cutover retrospective + ADR update. Success: `fallback_rate = 0` 30 дней; rollback trigger деактивирован после cleanup window |
+
+### Release gates (детализация по Mailer/Storage)
+
+#### Mailer
+
+- **Primary metrics:**
+  - `delivery_error_rate` (доля неуспешных отправок password reset / transactional email),
+  - `p95_mailer_latency_ms`,
+  - `fallback_rate` (доля запросов, ушедших на legacy SMTP path).
+- **Hard release gate для cutover:**
+  - `delivery_error_rate <= 1.0%` в течение 24h,
+  - `p95_mailer_latency_ms <= baseline * 1.25`,
+  - `fallback_rate <= 1.0%`.
+- **Rollback trigger:**
+  - `delivery_error_rate > 2.0%` 3 окна подряд по 5 минут,
+  - или `p95_mailer_latency_ms > baseline * 2.0`,
+  - или spike 5xx от provider API > 3%.
+
+#### Storage
+
+- **Primary metrics:**
+  - `storage_error_rate` (upload/download/list failures),
+  - `p95_storage_latency_ms`,
+  - `fallback_rate` (доля операций, ушедших в legacy storage path).
+- **Hard release gate для cutover:**
+  - `storage_error_rate <= 0.5%` в течение 24h,
+  - `p95_storage_latency_ms <= baseline * 1.30`,
+  - `fallback_rate <= 1.0%`.
+- **Rollback trigger:**
+  - `storage_error_rate > 1.0%` 3 окна подряд по 5 минут,
+  - или `p95_storage_latency_ms > baseline * 2.0`,
+  - или рост timeout-rate > 2%.
+
+## 7) Operational runbook (incidents / rollback)
+
+- Incident/rollback runbook для фаз 2–4: [`LOCO_FEATURE_SUPPORT.md#6-loco-mailer--storage-roadmap-release-phases`](./LOCO_FEATURE_SUPPORT.md#6-loco-mailer--storage-roadmap-release-phases).
+- Обязательная процедура при тревогах по gate-метрикам:
+  1. Зафиксировать инцидент с phase ID (`mailer-shadow`, `mailer-cutover`, `storage-cutover`).
+  2. Включить rollback toggle (provider=`smtp` или legacy storage provider) в runtime config.
+  3. Проверить восстановление SLA в 2 последовательных окнах наблюдения.
+  4. Сохранить post-incident summary и обновить этот roadmap перед повторным rollout.
 
 ---
 
-## 7) Sources
+## 8) Sources
 
 - `apps/server/src/app.rs`
 - `apps/server/src/controllers/mod.rs`
