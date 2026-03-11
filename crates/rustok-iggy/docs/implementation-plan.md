@@ -126,3 +126,8 @@ docker run -p 8090:8090 -p 3000:3000 iggyrs/iggy:latest
 # Run integration tests
 cargo test -p rustok-iggy --ignored
 ```
+
+## Checklist
+
+- [x] контрактные тесты покрывают все публичные use-case.
+

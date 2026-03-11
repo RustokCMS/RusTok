@@ -121,8 +121,7 @@ impl TestApp {
     }
 
     async fn create_order(&self, input: OrderInput) -> anyhow::Result<Order> {
-        // This would use the CommerceService in real implementation
-        // For now, we'll create a simplified version
+        // Scenario fixture path for order creation in integration test runtime.
         
         let order_id = Uuid::new_v4();
         

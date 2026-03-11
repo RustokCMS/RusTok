@@ -45,3 +45,7 @@ impl MigrationSource for IndexModule {
         Vec::new()
     }
 }
+
+
+#[cfg(test)]
+mod contract_tests;

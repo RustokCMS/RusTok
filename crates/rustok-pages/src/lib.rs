@@ -144,3 +144,7 @@ mod tests {
         assert!(module.migrations().is_empty());
     }
 }
+
+
+#[cfg(test)]
+mod contract_tests;
