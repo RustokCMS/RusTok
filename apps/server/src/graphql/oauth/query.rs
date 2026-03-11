@@ -1,13 +1,17 @@
 //! GraphQL queries for OAuth App management
 
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result};
 use uuid::Uuid;
 
 use crate::context::AuthContext;
+use crate::graphql::errors::GraphQLError;
 use crate::services::oauth_app::OAuthAppService;
 use sea_orm::DatabaseConnection;
 
-use super::types::{AppType, OAuthAppGql};
+use super::{
+    ensure_oauth_admin,
+    types::{AppType, OAuthAppGql},
+};
 
 #[derive(Default)]
 pub struct OAuthQuery;
@@ -20,14 +24,13 @@ impl OAuthQuery {
         ctx: &Context<'_>,
         app_type: Option<AppType>,
     ) -> Result<Vec<OAuthAppGql>> {
-        let auth = ctx.data::<AuthContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         // Require admin permissions
-        let sc = auth.security_context();
-        if !sc.is_admin() {
-            return Err("Admin access required".into());
-        }
+        ensure_oauth_admin(auth, db).await?;
 
         let apps = OAuthAppService::list_by_tenant(db, auth.tenant_id)
             .await
@@ -47,13 +50,12 @@ impl OAuthQuery {
 
     /// Get a specific OAuth app by ID (admin only)
     async fn oauth_app(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<OAuthAppGql>> {
-        let auth = ctx.data::<AuthContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let db = ctx.data::<DatabaseConnection>()?;
 
-        let sc = auth.security_context();
-        if !sc.is_admin() {
-            return Err("Admin access required".into());
-        }
+        ensure_oauth_admin(auth, db).await?;
 
         let app = crate::models::oauth_apps::Entity::find_by_id(id)
             .one(db)
@@ -71,7 +73,9 @@ impl OAuthQuery {
         &self,
         ctx: &Context<'_>,
     ) -> Result<Vec<super::types::AuthorizedAppGql>> {
-        let auth = ctx.data::<AuthContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let db = ctx.data::<DatabaseConnection>()?;
 
         // Require authenticated user
