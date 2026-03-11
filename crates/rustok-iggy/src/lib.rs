@@ -80,3 +80,7 @@ pub use replay::{ActiveReplay, ReplayConfig, ReplayManager, ReplayStatus};
 pub use serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
 pub use topology::TopologyManager;
 pub use transport::IggyTransport;
+
+
+#[cfg(test)]
+mod contract_tests;

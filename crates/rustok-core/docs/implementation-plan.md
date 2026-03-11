@@ -51,3 +51,8 @@ or observability expectations:
 2. Update `crates/rustok-core/README.md` and `crates/rustok-core/docs/README.md` when public behavior changes.
 3. Update `docs/index.md` links if documentation structure changes.
 4. If module responsibilities change, update `docs/modules/registry.md` accordingly.
+
+## Checklist
+
+- [x] контрактные тесты покрывают все публичные use-case.
+

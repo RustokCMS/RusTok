@@ -871,3 +871,7 @@ mod tests {
         assert_eq!(remote.protocol, "tcp");
     }
 }
+
+
+#[cfg(test)]
+mod contract_tests;

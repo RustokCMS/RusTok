@@ -44,3 +44,7 @@ impl MigrationSource for ForumModule {
         Vec::new()
     }
 }
+
+
+#[cfg(test)]
+mod contract_tests;

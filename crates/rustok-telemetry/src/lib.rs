@@ -243,3 +243,7 @@ pub fn current_trace_id() -> Option<String> {
     let span = tracing::Span::current();
     span.id().map(|id| id.into_u64().to_string())
 }
+
+
+#[cfg(test)]
+mod contract_tests;

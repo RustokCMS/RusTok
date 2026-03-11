@@ -75,3 +75,7 @@ impl MigrationSource for CommerceModule {
         Vec::new()
     }
 }
+
+
+#[cfg(test)]
+mod contract_tests;

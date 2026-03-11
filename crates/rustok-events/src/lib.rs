@@ -6,3 +6,7 @@
 
 pub use rustok_core::events::{DomainEvent, EventEnvelope};
 pub use rustok_core::{DomainEvent as RootDomainEvent, EventEnvelope as RootEventEnvelope};
+
+
+#[cfg(test)]
+mod contract_tests;
