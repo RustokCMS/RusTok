@@ -12,6 +12,8 @@ pub struct CreatePostInput {
     #[schema(max_length = 512)]
     pub title: String,
     pub body: String,
+    pub body_format: Option<String>,
+    pub content_json: Option<Value>,
     #[schema(max_length = 1000)]
     pub excerpt: Option<String>,
     #[schema(max_length = 255)]
@@ -32,6 +34,8 @@ pub struct UpdatePostInput {
     #[schema(max_length = 512)]
     pub title: Option<String>,
     pub body: Option<String>,
+    pub body_format: Option<String>,
+    pub content_json: Option<Value>,
     #[schema(max_length = 1000)]
     pub excerpt: Option<String>,
     #[schema(max_length = 255)]

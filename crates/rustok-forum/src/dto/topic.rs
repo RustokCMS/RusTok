@@ -9,6 +9,8 @@ pub struct CreateTopicInput {
     pub title: String,
     pub slug: Option<String>,
     pub body: String,
+    pub body_format: Option<String>,
+    pub content_json: Option<serde_json::Value>,
     pub tags: Vec<String>,
 }
 
@@ -17,6 +19,8 @@ pub struct UpdateTopicInput {
     pub locale: String,
     pub title: Option<String>,
     pub body: Option<String>,
+    pub body_format: Option<String>,
+    pub content_json: Option<serde_json::Value>,
     pub tags: Option<Vec<String>>,
 }
 

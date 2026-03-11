@@ -38,12 +38,6 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyInput,
     ) -> ForumResult<ReplyResponse> {
-        if input.content.trim().is_empty() {
-            return Err(ForumError::Validation(
-                "Reply content cannot be empty".to_string(),
-            ));
-        }
-
         let topic_node = self.nodes.get_node(tenant_id, topic_id).await?;
         if topic_node.kind != KIND_TOPIC {
             return Err(ForumError::TopicNotFound(topic_id));
@@ -62,18 +56,35 @@ impl ReplyService {
             return Err(ForumError::TopicArchived);
         }
 
+        let create_format = input.content_format.as_deref().unwrap_or("markdown");
+        if create_format != "rt_json_v1" && input.content.trim().is_empty() {
+            return Err(ForumError::Validation(
+                "Reply content cannot be empty".to_string(),
+            ));
+        }
+
         let author_id = security.user_id;
         let locale = input.locale.clone();
 
-        let content_json: serde_json::Value =
-            serde_json::from_str(&input.content).map_err(|_| {
-                ForumError::Validation("Reply content must be valid rt_json payload".to_string())
+        let content_format = input
+            .content_format
+            .clone()
+            .unwrap_or_else(|| "markdown".to_string());
+        let content_value = if content_format == "rt_json_v1" {
+            let content_json = input.content_json.clone().ok_or_else(|| {
+                ForumError::Validation(
+                    "content_json is required when content_format is rt_json_v1".to_string(),
+                )
             })?;
-        let content_validation = validate_and_sanitize_rt_json(
-            &content_json,
-            &RtJsonValidationConfig::for_locale(&locale),
-        )
-        .map_err(ForumError::Validation)?;
+            let content_validation = validate_and_sanitize_rt_json(
+                &content_json,
+                &RtJsonValidationConfig::for_locale(&locale),
+            )
+            .map_err(ForumError::Validation)?;
+            content_validation.sanitized.to_string()
+        } else {
+            input.content.clone()
+        };
 
         let metadata = serde_json::json!({
             "parent_reply_id": input.parent_reply_id,
@@ -101,8 +112,8 @@ impl ReplyService {
                     translations: Vec::new(),
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
-                        body: Some(content_validation.sanitized.to_string()),
-                        format: Some("rt_json".to_string()),
+                        body: Some(content_value),
+                        format: Some(content_format),
                     }],
                 },
             )
@@ -153,27 +164,41 @@ impl ReplyService {
         input: UpdateReplyInput,
     ) -> ForumResult<ReplyResponse> {
         let existing = self.get(tenant_id, reply_id, &input.locale).await?;
-        let bodies = input
-            .content
-            .map(|content| {
-                let content_json: serde_json::Value =
-                    serde_json::from_str(&content).map_err(|_| {
-                        ForumError::Validation(
-                            "Reply content must be valid rt_json payload".to_string(),
-                        )
-                    })?;
+        let bodies = if input.content.is_some()
+            || input.content_format.is_some()
+            || input.content_json.is_some()
+        {
+            let content_format = input
+                .content_format
+                .clone()
+                .unwrap_or_else(|| "markdown".to_string());
+            let content_value = if content_format == "rt_json_v1" {
+                let content_json = input.content_json.clone().ok_or_else(|| {
+                    ForumError::Validation(
+                        "content_json is required when content_format is rt_json_v1".to_string(),
+                    )
+                })?;
                 let content_validation = validate_and_sanitize_rt_json(
                     &content_json,
                     &RtJsonValidationConfig::for_locale(&input.locale),
                 )
                 .map_err(ForumError::Validation)?;
-                Ok(vec![BodyInput {
-                    locale: input.locale.clone(),
-                    body: Some(content_validation.sanitized.to_string()),
-                    format: Some("rt_json".to_string()),
-                }])
-            })
-            .transpose()?;
+                content_validation.sanitized.to_string()
+            } else {
+                input.content.clone().ok_or_else(|| {
+                    ForumError::Validation(
+                        "content is required when content_format is markdown".to_string(),
+                    )
+                })?
+            };
+            Some(vec![BodyInput {
+                locale: input.locale.clone(),
+                body: Some(content_value),
+                format: Some(content_format),
+            }])
+        } else {
+            None
+        };
 
         let node = self
             .nodes

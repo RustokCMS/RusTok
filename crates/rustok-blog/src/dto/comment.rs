@@ -6,6 +6,8 @@ use uuid::Uuid;
 pub struct CreateCommentInput {
     pub locale: String,
     pub content: String,
+    pub content_format: Option<String>,
+    pub content_json: Option<serde_json::Value>,
     pub parent_comment_id: Option<Uuid>,
 }
 
@@ -13,6 +15,8 @@ pub struct CreateCommentInput {
 pub struct UpdateCommentInput {
     pub locale: String,
     pub content: Option<String>,
+    pub content_format: Option<String>,
+    pub content_json: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]

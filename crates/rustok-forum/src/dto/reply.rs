@@ -6,6 +6,8 @@ use uuid::Uuid;
 pub struct CreateReplyInput {
     pub locale: String,
     pub content: String,
+    pub content_format: Option<String>,
+    pub content_json: Option<serde_json::Value>,
     pub parent_reply_id: Option<Uuid>,
 }
 
@@ -13,6 +15,8 @@ pub struct CreateReplyInput {
 pub struct UpdateReplyInput {
     pub locale: String,
     pub content: Option<String>,
+    pub content_format: Option<String>,
+    pub content_json: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]

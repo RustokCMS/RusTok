@@ -12,6 +12,7 @@
 
 ## Rich-text contract
 
-- Blog/Forum backend принимает только `rt_json_v1` payload и выполняет обязательные `schema validation + sanitize` на сервере.
+- Blog/Forum backend поддерживает два режима payload: legacy `markdown` и rich `rt_json_v1`.
+- При `rt_json_v1` поле `content_json` обязательно; backend выполняет `schema validation + sanitize` на сервере.
 - Клиентские валидаторы считаются advisory-only и не являются источником истины.
 - Детали спецификации: [docs/standards/rt-json-v1.md](../../../docs/standards/rt-json-v1.md).

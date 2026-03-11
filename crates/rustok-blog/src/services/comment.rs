@@ -5,7 +5,9 @@ use uuid::Uuid;
 use rustok_content::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
-use rustok_core::{DomainEvent, SecurityContext};
+use rustok_core::{
+    validate_and_sanitize_rt_json, DomainEvent, RtJsonValidationConfig, SecurityContext,
+};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
@@ -42,10 +44,6 @@ impl CommentService {
         post_id: Uuid,
         input: CreateCommentInput,
     ) -> BlogResult<CommentResponse> {
-        if input.content.trim().is_empty() {
-            return Err(BlogError::validation("Comment content cannot be empty"));
-        }
-
         let post_node = self
             .nodes
             .get_node(tenant_id, post_id)
@@ -55,8 +53,29 @@ impl CommentService {
             return Err(BlogError::post_not_found(post_id));
         }
 
+        let create_format = input.content_format.as_deref().unwrap_or("markdown");
+        if create_format != "rt_json_v1" && input.content.trim().is_empty() {
+            return Err(BlogError::validation("Comment content cannot be empty"));
+        }
+
         let locale = input.locale.clone();
-        let content = input.content;
+        let content_format = input
+            .content_format
+            .clone()
+            .unwrap_or_else(|| "markdown".to_string());
+        let content = if content_format == "rt_json_v1" {
+            let content_json = input.content_json.clone().ok_or_else(|| {
+                BlogError::validation("content_json is required when content_format is rt_json_v1")
+            })?;
+            let content_validation = validate_and_sanitize_rt_json(
+                &content_json,
+                &RtJsonValidationConfig::for_locale(&locale),
+            )
+            .map_err(BlogError::validation)?;
+            content_validation.sanitized.to_string()
+        } else {
+            input.content
+        };
         let translation_title = Self::build_comment_translation_title(&content);
         let metadata = serde_json::json!({
             "parent_comment_id": input.parent_comment_id,
@@ -90,7 +109,7 @@ impl CommentService {
                     bodies: vec![BodyInput {
                         locale: locale.clone(),
                         body: Some(content),
-                        format: Some("markdown".to_string()),
+                        format: Some(content_format),
                     }],
                 },
             )
@@ -154,13 +173,39 @@ impl CommentService {
         let existing = self
             .get_comment(tenant_id, comment_id, &input.locale)
             .await?;
-        let bodies = input.content.map(|content| {
-            vec![BodyInput {
+        let bodies = if input.content.is_some()
+            || input.content_format.is_some()
+            || input.content_json.is_some()
+        {
+            let content_format = input
+                .content_format
+                .clone()
+                .unwrap_or_else(|| "markdown".to_string());
+            let content_value = if content_format == "rt_json_v1" {
+                let content_json = input.content_json.clone().ok_or_else(|| {
+                    BlogError::validation(
+                        "content_json is required when content_format is rt_json_v1",
+                    )
+                })?;
+                let content_validation = validate_and_sanitize_rt_json(
+                    &content_json,
+                    &RtJsonValidationConfig::for_locale(&input.locale),
+                )
+                .map_err(BlogError::validation)?;
+                content_validation.sanitized.to_string()
+            } else {
+                input.content.clone().ok_or_else(|| {
+                    BlogError::validation("content is required when content_format is markdown")
+                })?
+            };
+            Some(vec![BodyInput {
                 locale: input.locale.clone(),
-                body: Some(content),
-                format: Some("markdown".to_string()),
-            }]
-        });
+                body: Some(content_value),
+                format: Some(content_format),
+            }])
+        } else {
+            None
+        };
 
         let node = self
             .nodes
