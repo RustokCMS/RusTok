@@ -6,6 +6,8 @@
 use validator::ValidationError;
 
 /// Custom validator for body format
+///
+/// `rt_json_v1` is canonical rich-text format; `rt_json` is an existing compatibility alias.
 pub fn validate_body_format(format: &str) -> Result<(), ValidationError> {
     match format {
         "markdown" | "html" | "plain" | "json" | "rt_json_v1" | "rt_json" => Ok(()),

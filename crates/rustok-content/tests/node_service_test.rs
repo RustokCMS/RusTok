@@ -1145,7 +1145,7 @@ async fn test_create_node_accepts_rt_json_v1_and_keeps_canonical_format() {
     assert_eq!(body_json["version"], "rt_json_v1");
 }
 #[tokio::test]
-async fn test_create_node_legacy_rt_json_payload_gets_wrapped_to_v1() {
+async fn test_create_node_rt_json_alias_payload_gets_wrapped_to_v1() {
     let (_db, service) = setup().await;
     let tenant_id = Uuid::new_v4();
     let security = admin_context();
@@ -1156,7 +1156,7 @@ async fn test_create_node_legacy_rt_json_payload_gets_wrapped_to_v1() {
         body: Some(
             serde_json::json!({
                 "type":"doc",
-                "content":[{"type":"paragraph","content":[{"type":"text","text":"legacy"}]}]
+                "content":[{"type":"paragraph","content":[{"type":"text","text":"compat-alias"}]}]
             })
             .to_string(),
         ),
