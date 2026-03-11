@@ -15,6 +15,12 @@
 
 - `ContentOrchestrationService` реализует кросс-доменные use-case операции: `promote_topic_to_post`, `demote_post_to_topic`, `split_topic`, `merge_topics` с транзакционным переносом reply/comment узлов через node-layer и публикацией доменных событий.
 - Для orchestration-операций добавлены RBAC checks, idempotency key (через `content_orchestration_operations`), audit log (`content_orchestration_audit_logs`) и обновление canonical/cross-link метаданных узлов.
+- Runtime enforcement RBAC в `ensure_scope(...)` фактически требует следующие permissions:
+  - `promote_topic_to_post`: `forum_topics:moderate` + `blog_posts:create`.
+  - `demote_post_to_topic`: `blog_posts:moderate` + `forum_topics:create`.
+  - `split_topic`: `forum_topics:moderate`.
+  - `merge_topics`: `forum_topics:moderate`.
+  Эти permissions должны присутствовать в `ContentModule::permissions()` (включая полный CRUD+List наборы для `ForumTopics` и `BlogPosts`, а также `Moderate` для orchestration).
 - Mapping статусов/метаданных вынесен в `src/services/orchestration_mapping.rs` для переиспользования без дублирования в API handlers.
 
 ## Canonical URL policy после конвертаций

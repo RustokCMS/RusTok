@@ -67,6 +67,20 @@ impl RusToKModule for ContentModule {
             Permission::new(Resource::Comments, Action::Update),
             Permission::new(Resource::Comments, Action::Delete),
             Permission::new(Resource::Comments, Action::List),
+            // Forum topics (used by orchestration runtime checks)
+            Permission::new(Resource::ForumTopics, Action::Create),
+            Permission::new(Resource::ForumTopics, Action::Read),
+            Permission::new(Resource::ForumTopics, Action::Update),
+            Permission::new(Resource::ForumTopics, Action::Delete),
+            Permission::new(Resource::ForumTopics, Action::List),
+            Permission::new(Resource::ForumTopics, Action::Moderate),
+            // Blog posts (used by orchestration runtime checks)
+            Permission::new(Resource::BlogPosts, Action::Create),
+            Permission::new(Resource::BlogPosts, Action::Read),
+            Permission::new(Resource::BlogPosts, Action::Update),
+            Permission::new(Resource::BlogPosts, Action::Delete),
+            Permission::new(Resource::BlogPosts, Action::List),
+            Permission::new(Resource::BlogPosts, Action::Moderate),
         ]
     }
 }
