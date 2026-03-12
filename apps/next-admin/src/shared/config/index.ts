@@ -1,2 +1,2 @@
-export { navItems } from '@/config/nav-config';
+export { navItems } from './nav-config';
 export * from '@/config/data-table';

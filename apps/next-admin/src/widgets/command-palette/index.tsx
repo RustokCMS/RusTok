@@ -1,5 +1,5 @@
 'use client';
-import { navItems } from '@/config/nav-config';
+import { navItems } from '@/shared/config/nav-config';
 import {
   KBarAnimator,
   KBarPortal,

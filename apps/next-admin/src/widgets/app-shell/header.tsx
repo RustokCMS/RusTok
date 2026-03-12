@@ -1,11 +1,11 @@
 import React from 'react';
-import { SidebarTrigger } from '../ui/sidebar';
-import { Separator } from '../ui/separator';
-import { Breadcrumbs } from '../breadcrumbs';
-import SearchInput from '../search-input';
+import { SidebarTrigger } from '@/shared/ui/shadcn/sidebar';
+import { Separator } from '@/shared/ui/shadcn/separator';
+import { Breadcrumbs } from '@/shared/ui/breadcrumbs';
+import SearchInput from '@/shared/ui/search-input';
 import { UserNav } from './user-nav';
-import { ThemeSelector } from '../themes/theme-selector';
-import { ThemeModeToggle } from '../themes/theme-mode-toggle';
+import { ThemeSelector } from '@/shared/lib/themes/theme-selector';
+import { ThemeModeToggle } from '@/shared/lib/themes/theme-mode-toggle';
 import CtaGithub from './cta-github';
 
 export default function Header() {

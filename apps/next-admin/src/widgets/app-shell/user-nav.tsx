@@ -4,7 +4,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger
 } from '@/shared/ui/shadcn/dropdown-menu';
-import { UserAvatarProfile } from '@/components/user-avatar-profile';
+import { UserAvatarProfile } from './user-avatar-profile';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 

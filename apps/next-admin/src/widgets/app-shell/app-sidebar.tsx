@@ -11,8 +11,8 @@ import {
   SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarRail
 } from '@/shared/ui/shadcn/sidebar';
-import { UserAvatarProfile } from '@/components/user-avatar-profile';
-import { navItems } from '@/config/nav-config';
+import { UserAvatarProfile } from './user-avatar-profile';
+import { navItems } from '@/shared/config/nav-config';
 import { useMediaQuery } from '@/shared/hooks/use-media-query';
 import { useFilteredNavItems } from '@/shared/hooks/use-nav';
 import {
@@ -22,8 +22,8 @@ import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';
-import { Icons } from '../icons';
-import { OrgSwitcher } from '../org-switcher';
+import { Icons } from '@/shared/ui/icons';
+import { OrgSwitcher } from './org-switcher';
 
 export default function AppSidebar() {
   const pathname = usePathname();
