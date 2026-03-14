@@ -380,17 +380,48 @@ apps/server ── Loco + Axum, оркестрирует всё
 - Зависит от core (→ получает storage), events, outbox
 - Доменные модули (content, commerce) зависят от него
 
-**Почему storage — leaf, а не модуль:**
+**Storage — leaf crate, но видим как модуль в платформе:**
 
-1. **Нет доменной семантики.** Storage = «положи байты по пути». Не знает про media, thumbnails, quota, permissions. Это уровень `std::fs`, но с S3/GCP.
+`rustok-storage` crate не зависит от `rustok-core` (не может — циклическая зависимость, `RusToKModule` определён в core). Но для платформы storage — полноценная подсистема, которая будет обрастать функционалом: backends (Local, S3, GCP, Azure), миграции между провайдерами, health checks, метрики.
 
-2. **Нет БД.** Storage не требует миграций — он работает с файловыми системами и object stores.
+**Решение: паттерн AlloyModule** — adapter в server:
 
-3. **Нет permissions.** Permissions на файлы — это ответственность `rustok-media` (`Resource::Media`). Storage не знает о RBAC.
+```rust
+// apps/server/src/modules/storage.rs
+// Аналогично AlloyModule оборачивает alloy-scripting
 
-4. **Паттерн проекта.** `rustok-events` — leaf, не модуль. Определяет контракт, core агрегирует. Storage — точно такой же случай.
+pub struct StorageModule {
+    backend: Arc<dyn StorageBackend>,
+}
 
-5. **Переиспользуемость.** Leaf crate можно использовать в CLI-утилитах, migration tools, backup скриптах — без core.
+impl MigrationSource for StorageModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        vec![] // Storage не требует ORM-таблиц
+    }
+}
+
+#[async_trait]
+impl RusToKModule for StorageModule {
+    fn slug(&self) -> &'static str { "storage" }
+    fn name(&self) -> &'static str { "File Storage" }
+    fn kind(&self) -> ModuleKind { ModuleKind::Core }
+
+    async fn health(&self) -> HealthStatus {
+        // Проверяет доступность backend (write test file, read, delete)
+        match self.backend.exists(&StoragePath::health_check()).await {
+            Ok(_) => HealthStatus::Healthy,
+            Err(_) => HealthStatus::Unhealthy,
+        }
+    }
+}
+```
+
+Это даёт:
+- Storage виден в `ModuleRegistry` как Core-модуль
+- Health check в дашборде (backend доступен?)
+- `slug`, `version`, `description` — для UI модулей
+- Leaf crate остаётся лёгким (без зависимости от core)
+- Тот же паттерн, что Alloy — проверенный подход
 
 ### 4.4 Итоговая архитектура: два новых crate
 
