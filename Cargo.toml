@@ -144,6 +144,7 @@ rustok-pages = { path = "crates/rustok-pages" }
 rustok-index = { path = "crates/rustok-index" }
 rustok-auth = { path = "crates/rustok-auth" }
 rustok-cache = { path = "crates/rustok-cache" }
+rustok-email = { path = "crates/rustok-email" }
 rustok-outbox = { path = "crates/rustok-outbox" }
 rustok-iggy = { path = "crates/rustok-iggy" }
 rustok-iggy-connector = { path = "crates/rustok-iggy-connector" }

@@ -30,6 +30,7 @@ stack = "leptos"             # "leptos" | "next"
 # Core modules (required)
 auth = { crate = "rustok-auth", source = "path", path = "crates/rustok-auth", required = true }
 cache = { crate = "rustok-cache", source = "path", path = "crates/rustok-cache", required = true }
+email = { crate = "rustok-email", source = "path", path = "crates/rustok-email", required = true }
 index = { crate = "rustok-index", source = "path", path = "crates/rustok-index", required = true }
 outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbox", required = true }
 
