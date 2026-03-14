@@ -389,8 +389,42 @@ impl EventHandler for FlexIndexer {
 
 ---
 
+## 13. Связь с Field Schema (rustok-core)
+
+> **Решение от 2026-03-14**: Flex разделён на два слоя.
+
+### 13.1 Attached mode → `rustok-core::field_schema`
+
+Кастомные поля для существующих сущностей (users, products, nodes) реализуются через:
+- `FieldType`, `ValidationRule`, `FieldDefinition` — типы в `rustok-core/src/field_schema.rs`
+- `HasCustomFields` trait — реализуется каждым модулем
+- `create_field_definitions_table()` — migration helper, создаёт `{entity}_field_definitions`
+- `CustomFieldsSchema::validate()` — валидация metadata
+
+Каждый модуль создаёт **свою таблицу** через helper, данные в **своём** `metadata` JSONB.
+
+### 13.2 Standalone mode → `rustok-flex` модуль
+
+Произвольные схемы и записи (лендинги, формы, справочники):
+- `flex_schemas` + `flex_entries` — собственные таблицы Flex
+- Переиспользует `FieldType`, `ValidationRule`, `CustomFieldsSchema` из core
+- Опциональный модуль, removal-safe
+
+### 13.3 Принцип: одна катана, два стиля
+
+```
+field_schema в core = blade (лезвие)
+attached mode       = iaijutsu (быстрый удар — расширение существующей сущности)
+standalone mode     = kenjutsu (полноценный бой — создание новых сущностей)
+```
+
+Подробный план: `crates/rustok-custom-fields/docs/implementation-plan.md`
+
+---
+
 ## См. также
 
 - [ARCHITECTURE_GUIDE.md](../ARCHITECTURE_GUIDE.md) — общая архитектура
 - [ROADMAP.md](../ROADMAP.md) — фазы разработки
+- [Field Schema Plan](../../crates/rustok-custom-fields/docs/implementation-plan.md) — план реализации
 

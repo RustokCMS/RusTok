@@ -1,109 +1,157 @@
-# Field Schema & Custom Fields — Implementation Plan
+# Field Schema & Flex — Implementation Plan
 
-## Scope and objective
-
-Система кастомных полей в RusToK состоит из **двух уровней**:
-
-1. **`rustok-core/src/field_schema.rs`** — типы, валидация, trait. Часть ядра платформы,
-   аналогично `i18n.rs` или `types.rs`. Не модуль, не крейт — просто ещё один контракт в core.
-2. **`apps/server`** — таблица `custom_field_definitions`, сервис CRUD, интеграция с users.
-   Расширение существующих сущностей, не отдельный модуль.
-
-### Связь с Flex
-
-`rustok-flex` (docs/modules/flex.md) — это **прокачанная версия** того же механизма:
-- Flex использует **те же `FieldType` / `ValidationRule`** из `rustok-core`
-- Flex добавляет **своё хранилище** (`flex_schemas`, `flex_entries`) для standalone сущностей
-- Flex — опциональный модуль; field_schema в core — обязательная часть платформы
-
-```
-rustok-core (контракт платформы)
-│
-├── src/field_schema.rs          ← FieldType, ValidationRule, FieldDefinition,
-│                                   HasCustomFields trait, CustomFieldsSchema,
-│                                   validate(), apply_defaults()
-│
-├── src/i18n.rs                  ← (аналогия: тоже "просто типы в core")
-├── src/types.rs                 ← (аналогия: UserRole, UserStatus)
-│
-│   ┌─────────────────────────────────────────────────────┐
-│   │  ПОТРЕБИТЕЛИ field_schema (зависят только от core)  │
-│   └─────────────────────────────────────────────────────┘
-│
-├── apps/server                      (users живут тут)
-│   ├── migration/
-│   │   └── m20260315_create_custom_field_definitions.rs
-│   ├── models/_entities/
-│   │   └── custom_field_definitions.rs   ← SeaORM entity
-│   ├── services/
-│   │   └── custom_field_service.rs       ← CRUD для определений
-│   ├── graphql/
-│   │   └── custom_fields.rs             ← Admin API
-│   └── models/users.rs                  ← impl HasCustomFields for User
-│
-├── rustok-commerce                  (зависит от core)
-│   └── products.metadata            ← impl HasCustomFields for Product
-│
-├── rustok-content                   (зависит от core)
-│   └── nodes.metadata               ← impl HasCustomFields for Node
-│
-└── rustok-flex                      (опциональный модуль, зависит от core)
-    ├── flex_schemas.fields_config   ← переиспользует FieldType/ValidationRule
-    ├── flex_entries.data            ← своё хранилище (standalone + attached)
-    └── validate_entry()             ← вызывает core::field_schema::validate()
-```
-
-### Принципы
-
-- **Типы в core, данные в модулях** — field_schema не знает о конкретных сущностях.
-- **Flex Hard Laws соблюдены** — стандартные модули не зависят от Flex, только от core.
-- **Schema-first** — админ тенанта определяет схему полей, данные валидируются при записи.
-- **Tenant isolation** — схемы полей привязаны к тенанту.
-- **JSONB storage** — значения в существующих `metadata` колонках, без EAV.
-- **Backward compatible** — существующие `metadata` без схемы продолжают работать.
-
-### Удаление крейта `rustok-custom-fields`
-
-Отдельный крейт `rustok-custom-fields` **НЕ создаётся**. Вместо него:
-- Типы и валидация → `rustok-core/src/field_schema.rs`
-- Таблица и сервис → `apps/server/`
-- Этот документ остаётся в `crates/rustok-custom-fields/docs/` как архитектурное решение,
-  а при реализации переносится в `docs/architecture/field-schema.md`.
+> **Статус:** Draft v3 (2026-03-14)
+> **Архитектурное решение:** Flex — библиотека-инструмент, не модуль.
 
 ---
 
-## Part 1: `rustok-core/src/field_schema.rs`
+## 1. Философия
 
-### 1.1 FieldType enum
+**Flex — это катана, а не склад мечей.**
+
+Flex не хранит ничего в себе. У него нет своих таблиц, нет своих данных, нет своего
+состояния. Flex — это набор типов, валидаторов, хелперов для миграций и SeaORM, которые
+позволяют **любому модулю** добавить кастомные поля за минимум кода.
+
+Когда модуль подключает Flex, происходит следующее:
+- В **миграциях модуля** появляется таблица `{entity}_field_definitions` (через хелпер)
+- В **entity модуля** появляется `impl HasCustomFields` (через trait из core)
+- В **мутациях модуля** появляется валидация metadata (через `CustomFieldsSchema`)
+- **Данные остаются в модуле**, в его `metadata` JSONB колонке
+
+Flex — это как `serde`: derive + trait, а реализация у каждого своя.
+
+---
+
+## 2. Архитектура: два слоя
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     rustok-core (ядро)                          │
+│                                                                 │
+│  src/field_schema.rs                                           │
+│  ├── FieldType enum (Text, Integer, Select, ...)               │
+│  ├── ValidationRule { min, max, pattern, options }              │
+│  ├── FieldDefinition (portable DTO)                            │
+│  ├── CustomFieldsSchema (валидатор)                            │
+│  │   ├── validate(metadata) → Vec<Error>                       │
+│  │   ├── apply_defaults(metadata)                              │
+│  │   └── strip_unknown(metadata)                               │
+│  ├── HasCustomFields trait                                     │
+│  ├── FieldValidationError, FieldErrorCode                      │
+│  └── migration helpers:                                        │
+│      └── create_field_definitions_table(manager, table, fk)    │
+│                                                                 │
+│  Аналоги в core: i18n.rs, types.rs — просто контракт.          │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ зависят от core
+          ┌────────────────┼────────────────────┐
+          │                │                    │
+          ▼                ▼                    ▼
+┌─────────────────┐ ┌──────────────┐  ┌─────────────────┐
+│  apps/server    │ │ rustok-      │  │ rustok-         │
+│  (users)        │ │ commerce     │  │ content         │
+│                 │ │              │  │                 │
+│  Migration:     │ │  Migration:  │  │  Migration:     │
+│  user_field_    │ │  product_    │  │  node_field_    │
+│  definitions    │ │  field_defs  │  │  definitions    │
+│  (helper!)      │ │  (helper!)   │  │  (helper!)      │
+│                 │ │              │  │                 │
+│  users.metadata │ │  products.   │  │  nodes.metadata │
+│  (JSONB)        │ │  metadata    │  │  (JSONB)        │
+│                 │ │  (JSONB)     │  │                 │
+│  impl Has       │ │  impl Has   │  │  impl Has       │
+│  CustomFields   │ │  Custom...  │  │  CustomFields   │
+│  for User       │ │  for Product│  │  for Node       │
+└─────────────────┘ └──────────────┘  └─────────────────┘
+```
+
+### Ключевые свойства
+
+| Свойство | Значение |
+|----------|----------|
+| Flex имеет свои таблицы? | **НЕТ** — таблицы создаются внутри модулей |
+| Flex — модуль (`RusToKModule`)? | **НЕТ** — это часть `rustok-core`, набор типов |
+| Модули зависят от Flex? | **НЕТ** — зависят от `rustok-core` (который уже в deps) |
+| Flex зависит от модулей? | **НЕТ** — не знает о конкретных сущностях |
+| Удаление Flex ломает платформу? | **НЕТ** — модули просто теряют кастомные поля |
+| Данные изолированы? | **ДА** — каждый модуль хранит своё |
+
+### Соответствие Flex Hard Laws (docs/modules/flex.md)
+
+| # | Правило | Соблюдено? | Как |
+|---|---------|------------|-----|
+| 1 | Standard modules NEVER depend on Flex | ✅ | Зависят от core, не от flex |
+| 2 | Flex depends only on rustok-core | ✅ | Flex IS core |
+| 3 | Removal-safe | ✅ | Удали field_schema.rs — всё работает без custom fields |
+| 4 | Read через indexer | ✅ | Metadata в entity, read без JOIN |
+| 5 | No Flex in critical domains | ✅ | Модуль сам решает, подключать ли |
+
+---
+
+## 3. Part 1 — `rustok-core/src/field_schema.rs`
+
+### 3.1 FieldType enum
 
 ```rust
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Supported field types for custom fields and Flex schemas.
-/// Shared contract: used by custom_field_definitions, flex_schemas,
-/// and any module that needs runtime-defined field types.
+/// Supported field types for custom fields.
+/// Shared platform contract — used by any module that needs
+/// runtime-defined field types.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldType {
+    /// Single-line text
     Text,
+    /// Multi-line text
     Textarea,
+    /// Integer number (i64)
     Integer,
+    /// Decimal number (f64)
     Decimal,
+    /// true/false
     Boolean,
+    /// ISO 8601 date (YYYY-MM-DD)
     Date,
+    /// ISO 8601 date-time
     DateTime,
+    /// URL (format validated)
     Url,
+    /// Email (format validated)
     Email,
+    /// Phone (free-form with optional regex)
     Phone,
+    /// Single select from options list
     Select,
+    /// Multi select from options list
     MultiSelect,
+    /// Color hex (#RRGGBB)
     Color,
+    /// Arbitrary JSON
     Json,
+}
+
+impl FieldType {
+    /// Returns true if this type requires `options` in ValidationRule.
+    pub fn requires_options(&self) -> bool {
+        matches!(self, Self::Select | Self::MultiSelect)
+    }
+
+    /// Returns true if this type supports min/max as string length.
+    pub fn min_max_is_length(&self) -> bool {
+        matches!(self, Self::Text | Self::Textarea | Self::Url | Self::Email | Self::Phone)
+    }
+
+    /// Returns true if this type supports regex pattern.
+    pub fn supports_pattern(&self) -> bool {
+        matches!(self, Self::Text | Self::Textarea | Self::Phone)
+    }
 }
 ```
 
-### 1.2 ValidationRule
+### 3.2 ValidationRule & SelectOption
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -128,16 +176,16 @@ pub struct SelectOption {
 }
 ```
 
-### 1.3 FieldDefinition (DTO)
+### 3.3 FieldDefinition (portable DTO)
 
 ```rust
-/// Runtime field definition. Not a DB entity — a portable DTO
-/// that both custom_field_definitions rows and flex_schemas.fields_config
-/// elements can be converted into.
+/// Runtime field definition. Portable DTO that DB rows, config files,
+/// and JSONB fields_config can all be converted into.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldDefinition {
     pub field_key: String,
     pub field_type: FieldType,
+    /// Localized labels: {"en": "Phone", "ru": "Телефон"}
     pub label: HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<HashMap<String, String>>,
@@ -152,33 +200,30 @@ pub struct FieldDefinition {
     #[serde(default = "default_true")]
     pub is_active: bool,
 }
-
-fn default_true() -> bool { true }
 ```
 
-### 1.4 HasCustomFields trait
+### 3.4 HasCustomFields trait
 
 ```rust
-/// Trait for entities that support custom fields via `metadata` JSONB column.
+/// Trait for entities that support custom fields via metadata JSONB column.
 /// Each module implements this for its own entities.
 pub trait HasCustomFields {
-    /// Entity type key for looking up field definitions.
-    /// Examples: "user", "product", "node", "topic".
+    /// Entity type key, e.g. "user", "product", "node".
     fn entity_type() -> &'static str;
 
-    /// Returns current metadata as JSON.
+    /// Current metadata as JSON.
     fn metadata(&self) -> &serde_json::Value;
 
-    /// Sets metadata.
+    /// Set metadata.
     fn set_metadata(&mut self, value: serde_json::Value);
 }
 ```
 
-### 1.5 CustomFieldsSchema (валидатор)
+### 3.5 CustomFieldsSchema (валидатор)
 
 ```rust
-/// Schema-based validator for custom field values.
-/// Constructed from a list of FieldDefinitions (loaded from DB or config).
+/// Schema-based validator. Constructed from FieldDefinitions
+/// loaded from any source (DB table, config file, JSONB column).
 pub struct CustomFieldsSchema {
     definitions: Vec<FieldDefinition>,
 }
@@ -190,7 +235,7 @@ pub struct FieldValidationError {
     pub error_code: FieldErrorCode,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldErrorCode {
     Required,
@@ -207,13 +252,13 @@ pub enum FieldErrorCode {
 impl CustomFieldsSchema {
     pub fn new(definitions: Vec<FieldDefinition>) -> Self;
 
-    /// Validate metadata against schema. Returns errors (empty = valid).
+    /// Validate metadata. Returns errors (empty = valid).
     pub fn validate(&self, metadata: &serde_json::Value) -> Vec<FieldValidationError>;
 
-    /// Fill in default values for missing fields.
+    /// Fill in defaults for missing fields.
     pub fn apply_defaults(&self, metadata: &mut serde_json::Value);
 
-    /// Remove fields not defined in schema.
+    /// Remove fields not in schema.
     pub fn strip_unknown(&self, metadata: &mut serde_json::Value);
 
     /// Active definitions only.
@@ -221,192 +266,207 @@ impl CustomFieldsSchema {
 }
 ```
 
-### 1.6 validate_field_value (внутренняя функция)
+### 3.6 Migration helper — ключевая часть "Flex как катана"
 
 ```rust
-/// Validate a single field value against its type and rules.
-fn validate_field_value(
-    key: &str,
-    value: &serde_json::Value,
-    field_type: FieldType,
-    validation: Option<&ValidationRule>,
-) -> Vec<FieldValidationError>;
+use sea_orm_migration::prelude::*;
+
+/// Helper to create a `{prefix}_field_definitions` table in any module's migration.
+///
+/// # Example
+///
+/// ```rust
+/// // In apps/server/migration/src/m20260315_..._create_user_field_definitions.rs
+/// use rustok_core::field_schema::create_field_definitions_table;
+///
+/// async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+///     create_field_definitions_table(
+///         manager,
+///         "user",        // prefix → creates "user_field_definitions"
+///         "users",       // parent table (not used as FK — just for naming)
+///     ).await
+/// }
+/// ```
+///
+/// Creates table with columns:
+///   id, tenant_id, field_key, field_type, label, description,
+///   is_required, default_value, validation, position, is_active,
+///   created_at, updated_at
+///
+/// Creates indexes:
+///   UNIQUE (tenant_id, field_key)
+///   idx_{prefix}_fd_tenant_active (tenant_id, is_active)
+pub async fn create_field_definitions_table(
+    manager: &SchemaManager<'_>,
+    prefix: &str,
+    _parent_table: &str,
+) -> Result<(), DbErr>;
+
+/// Corresponding drop helper.
+pub async fn drop_field_definitions_table(
+    manager: &SchemaManager<'_>,
+    prefix: &str,
+) -> Result<(), DbErr>;
 ```
 
-Правила валидации по типу:
+**Это то, что делает Flex "катаной":** одна функция — и модуль получает полноценную
+таблицу кастомных полей с правильной структурой, индексами, tenant isolation.
 
-| FieldType   | JSON type        | min/max семантика      | pattern | options |
-|-------------|------------------|------------------------|---------|---------|
-| Text        | String           | длина строки           | да      | нет     |
-| Textarea    | String           | длина строки           | да      | нет     |
-| Integer     | Number (i64)     | значение               | нет     | нет     |
-| Decimal     | Number (f64)     | значение               | нет     | нет     |
-| Boolean     | Boolean          | —                      | нет     | нет     |
-| Date        | String (ISO)     | —                      | нет     | нет     |
-| DateTime    | String (ISO)     | —                      | нет     | нет     |
-| Url         | String           | длина строки           | нет     | нет     |
-| Email       | String           | длина строки           | нет     | нет     |
-| Phone       | String           | длина строки           | да      | нет     |
-| Select      | String           | —                      | нет     | да      |
-| MultiSelect | Array of String  | кол-во элементов       | нет     | да      |
-| Color       | String (#RRGGBB) | —                      | нет     | нет     |
-| Json        | Any              | —                      | нет     | нет     |
-
-### 1.7 Интеграция в lib.rs
+### 3.7 SeaORM entity macro (опционально, Phase 2+)
 
 ```rust
-// rustok-core/src/lib.rs — добавить:
+/// Macro to generate SeaORM entity for a field_definitions table.
+/// Eliminates boilerplate — каждый модуль получает entity за одну строку.
+///
+/// ```rust
+/// rustok_core::define_field_definitions_entity!("user_field_definitions");
+/// ```
+///
+/// Generates: Entity, Model, ActiveModel, Column, Relation, PrimaryKey
+/// with the correct table name and standard column set.
+macro_rules! define_field_definitions_entity { ... }
+```
+
+### 3.8 JSONB Query Helpers
+
+```rust
+/// Helpers for filtering/sorting entities by custom field values in metadata JSONB.
+/// Database-agnostic (PostgreSQL JSONB operators).
+
+/// metadata->>'key' = 'value'
+pub fn json_field_eq(column: impl Into<SimpleExpr>, key: &str, value: &str) -> Condition;
+
+/// metadata ? 'key' (key exists)
+pub fn json_field_exists(column: impl Into<SimpleExpr>, key: &str) -> Condition;
+
+/// metadata->>'key' (for ORDER BY)
+pub fn json_field_extract(column: impl Into<SimpleExpr>, key: &str) -> SimpleExpr;
+
+/// metadata @> '{"key": value}' (contains)
+pub fn json_field_contains(column: impl Into<SimpleExpr>, key: &str, value: serde_json::Value) -> Condition;
+```
+
+### 3.9 Validation rules per type
+
+| FieldType   | JSON type        | min/max              | pattern | options |
+|-------------|------------------|----------------------|---------|---------|
+| Text        | String           | string length        | ✅      | —       |
+| Textarea    | String           | string length        | ✅      | —       |
+| Integer     | Number (i64)     | numeric value        | —       | —       |
+| Decimal     | Number (f64)     | numeric value        | —       | —       |
+| Boolean     | Boolean          | —                    | —       | —       |
+| Date        | String (ISO)     | —                    | —       | —       |
+| DateTime    | String (ISO)     | —                    | —       | —       |
+| Url         | String           | string length        | —       | —       |
+| Email       | String           | string length        | —       | —       |
+| Phone       | String           | string length        | ✅      | —       |
+| Select      | String           | —                    | —       | ✅      |
+| MultiSelect | Array\<String\>  | array items count    | —       | ✅      |
+| Color       | String (#RRGGBB) | —                    | —       | —       |
+| Json        | Any              | —                    | —       | —       |
+
+### 3.10 Exports в lib.rs
+
+```rust
+// rustok-core/src/lib.rs
 pub mod field_schema;
 
-// в pub use:
+// pub use:
 pub use field_schema::{
     CustomFieldsSchema, FieldDefinition, FieldErrorCode, FieldType,
     FieldValidationError, HasCustomFields, SelectOption, ValidationRule,
+    create_field_definitions_table, drop_field_definitions_table,
 };
 
-// в prelude:
-pub use crate::field_schema::{FieldType, HasCustomFields, CustomFieldsSchema};
+// prelude:
+pub use crate::field_schema::{
+    FieldType, FieldDefinition, HasCustomFields, CustomFieldsSchema,
+};
 ```
 
-### 1.8 Тесты в core
+### 3.11 Unit Tests
 
-```rust
-// rustok-core/tests/ или src/field_schema.rs #[cfg(test)]
-
-#[test] fn validate_required_field_missing() { ... }
-#[test] fn validate_text_min_max_length() { ... }
-#[test] fn validate_integer_range() { ... }
-#[test] fn validate_select_valid_option() { ... }
-#[test] fn validate_select_invalid_option() { ... }
-#[test] fn validate_multiselect() { ... }
-#[test] fn validate_email_format() { ... }
-#[test] fn validate_url_format() { ... }
-#[test] fn validate_date_iso8601() { ... }
-#[test] fn validate_color_hex() { ... }
-#[test] fn validate_boolean_type() { ... }
-#[test] fn apply_defaults_fills_missing() { ... }
-#[test] fn apply_defaults_preserves_existing() { ... }
-#[test] fn strip_unknown_removes_extra_keys() { ... }
-#[test] fn empty_schema_accepts_anything() { ... }
+```
+validate_required_field_missing
+validate_required_field_present
+validate_text_min_length
+validate_text_max_length
+validate_text_pattern_match
+validate_text_pattern_mismatch
+validate_integer_in_range
+validate_integer_below_minimum
+validate_integer_above_maximum
+validate_decimal_precision
+validate_select_valid_option
+validate_select_invalid_option
+validate_multiselect_valid
+validate_multiselect_invalid_option
+validate_multiselect_too_many
+validate_email_valid
+validate_email_invalid
+validate_url_valid
+validate_url_invalid
+validate_date_iso8601_valid
+validate_date_iso8601_invalid
+validate_datetime_valid
+validate_color_hex_valid
+validate_color_hex_invalid
+validate_boolean_type_mismatch
+validate_phone_with_pattern
+validate_json_accepts_anything
+apply_defaults_fills_missing
+apply_defaults_preserves_existing
+strip_unknown_removes_extra_keys
+strip_unknown_keeps_defined
+empty_schema_accepts_anything
+field_type_requires_options
 ```
 
 ---
 
-## Part 2: `apps/server` — Database & Service Layer
+## 4. Part 2 — Модуль подключает Flex (на примере Users)
 
-### 2.1 Миграция: `custom_field_definitions`
-
-**Файл:** `apps/server/migration/src/m20260315_000001_create_custom_field_definitions.rs`
-
-| Column          | Type           | Notes                                      |
-|-----------------|----------------|--------------------------------------------|
-| `id`            | UUID PK        |                                            |
-| `tenant_id`     | UUID FK        | → tenants.id, ON DELETE CASCADE            |
-| `entity_type`   | String(64)     | "user", "product", "node", "order"         |
-| `field_key`     | String(128)    | snake_case, e.g. `phone_number`            |
-| `field_type`    | String(32)     | FieldType as string                        |
-| `label`         | JSONB NOT NULL | `{"en": "Phone", "ru": "Телефон"}`         |
-| `description`   | JSONB nullable | localized description                      |
-| `is_required`   | Boolean        | default false                              |
-| `default_value` | JSONB nullable | default value                              |
-| `validation`    | JSONB nullable | ValidationRule serialized                  |
-| `position`      | i32            | display order, default 0                   |
-| `is_active`     | Boolean        | default true                               |
-| `created_at`    | TimestampTZ    |                                            |
-| `updated_at`    | TimestampTZ    |                                            |
-
-**Indexes:**
-- `UNIQUE (tenant_id, entity_type, field_key)` — одно определение на ключ
-- `idx_cfd_tenant_entity_active (tenant_id, entity_type, is_active)` — lookup
-
-### 2.2 SeaORM Entity
-
-**Файл:** `apps/server/src/models/_entities/custom_field_definitions.rs`
-
-Стандартный SeaORM entity, маппинг 1:1 с таблицей. Relation к `tenants`.
-
-### 2.3 CustomFieldDefinitionService
-
-**Файл:** `apps/server/src/services/custom_field_service.rs`
+### 4.1 Шаг 1: Миграция (в apps/server)
 
 ```rust
-pub struct CustomFieldDefinitionService;
+// apps/server/migration/src/m20260315_000001_create_user_field_definitions.rs
 
-impl CustomFieldDefinitionService {
-    /// Load all active definitions for entity type → CustomFieldsSchema
-    pub async fn get_schema(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        entity_type: &str,
-    ) -> Result<CustomFieldsSchema>;
+use sea_orm_migration::prelude::*;
+use rustok_core::field_schema::create_field_definitions_table;
 
-    /// List definitions (including inactive) for admin
-    pub async fn list(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        entity_type: &str,
-    ) -> Result<Vec<FieldDefinitionRow>>;
+#[derive(DeriveMigrationName)]
+pub struct Migration;
 
-    /// Create new definition
-    pub async fn create(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        input: CreateFieldDefinitionInput,
-    ) -> Result<FieldDefinitionRow>;
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // Одна строка — и таблица user_field_definitions готова!
+        create_field_definitions_table(manager, "user", "users").await
+    }
 
-    /// Update definition
-    pub async fn update(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        id: Uuid,
-        input: UpdateFieldDefinitionInput,
-    ) -> Result<FieldDefinitionRow>;
-
-    /// Soft-delete (is_active = false)
-    pub async fn deactivate(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        id: Uuid,
-    ) -> Result<()>;
-
-    /// Reorder definitions
-    pub async fn reorder(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        entity_type: &str,
-        ordered_ids: Vec<Uuid>,
-    ) -> Result<()>;
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_field_definitions_table(manager, "user").await
+    }
 }
 ```
 
-### 2.4 JSONB Query Helpers
+Результат: таблица `user_field_definitions` с полной структурой.
 
-**Файл:** `apps/server/src/services/custom_field_query.rs`
+### 4.2 Шаг 2: SeaORM Entity
 
 ```rust
-use sea_orm::*;
+// apps/server/src/models/_entities/user_field_definitions.rs
+// Либо через макрос:
+rustok_core::define_field_definitions_entity!("user_field_definitions");
 
-/// Build a condition to filter entities by a custom field value in metadata.
-/// Example: json_eq("metadata", "company", json!("Acme")) →
-///   metadata->>'company' = 'Acme'
-pub fn json_eq(column: &str, key: &str, value: serde_json::Value) -> Condition;
-
-/// Check if a key exists in metadata JSONB.
-pub fn json_has_key(column: &str, key: &str) -> Condition;
-
-/// Extract a value for sorting.
-pub fn json_extract(column: &str, key: &str) -> SimpleExpr;
+// Либо вручную (стандартный SeaORM entity) — структура идентична
+// для всех модулей, отличается только имя таблицы.
 ```
 
----
-
-## Part 3: Users Integration (первый потребитель)
-
-### 3.1 HasCustomFields для User
-
-**Файл:** `apps/server/src/models/users.rs`
+### 4.3 Шаг 3: HasCustomFields для User
 
 ```rust
+// apps/server/src/models/users.rs
 use rustok_core::field_schema::HasCustomFields;
 
 impl HasCustomFields for Model {
@@ -422,80 +482,72 @@ impl HasCustomFields for Model {
 }
 ```
 
-### 3.2 GraphQL — расширение User inputs
-
-**Файл:** `apps/server/src/graphql/types.rs`
-
-```graphql
-# Добавить в существующие inputs:
-input CreateUserInput {
-    email: String!
-    password: String!
-    name: String
-    role: GqlUserRole
-    status: GqlUserStatus
-    customFields: JSON            # ← NEW
-}
-
-input UpdateUserInput {
-    email: String
-    password: String
-    name: String
-    role: GqlUserRole
-    status: GqlUserStatus
-    customFields: JSON            # ← NEW
-}
-
-# Добавить в User type:
-type User {
-    # ... existing fields ...
-    customFields: JSON            # ← NEW: returns metadata
-    customFieldDefinitions: [CustomFieldDefinition!]!  # ← NEW: schema for this entity
-}
-```
-
-### 3.3 Validation flow в мутациях
+### 4.4 Шаг 4: Service (в apps/server)
 
 ```rust
-// В create_user / update_user mutation:
-async fn create_user(ctx: &Context<'_>, input: CreateUserInput) -> Result<User> {
-    let db = ctx.data::<DatabaseConnection>()?;
-    let tenant_id = ctx.data::<RequestContext>()?.tenant_id;
+// apps/server/src/services/user_field_service.rs
+use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition};
 
-    // 1. Load schema for "user" entity type
-    let schema = CustomFieldDefinitionService::get_schema(db, tenant_id, "user").await?;
+pub struct UserFieldService;
 
-    // 2. Prepare metadata
-    let mut metadata = input.custom_fields.unwrap_or(json!({}));
+impl UserFieldService {
+    /// Load schema from user_field_definitions table.
+    pub async fn get_schema(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+    ) -> Result<CustomFieldsSchema> {
+        let rows = user_field_definitions::Entity::find()
+            .filter(user_field_definitions::Column::TenantId.eq(tenant_id))
+            .filter(user_field_definitions::Column::IsActive.eq(true))
+            .order_by_asc(user_field_definitions::Column::Position)
+            .all(db)
+            .await?;
 
-    // 3. Apply defaults
-    schema.apply_defaults(&mut metadata);
+        let definitions: Vec<FieldDefinition> = rows.into_iter()
+            .map(|r| r.into_field_definition())  // conversion from DB row to DTO
+            .collect();
 
-    // 4. Validate
-    let errors = schema.validate(&metadata);
-    if !errors.is_empty() {
-        return Err(custom_field_validation_error(errors));
+        Ok(CustomFieldsSchema::new(definitions))
     }
 
-    // 5. Save user with validated metadata
-    let user = ActiveModel {
-        metadata: Set(metadata),
-        // ... other fields
-    };
-    // ...
+    // CRUD methods: create, update, deactivate, reorder...
+    // Same pattern for every module — could be extracted into
+    // a generic FieldDefinitionCrud<E: EntityTrait> helper in core.
 }
 ```
 
----
+### 4.5 Шаг 5: Validation в мутациях
 
-## Part 4: Admin API для управления определениями
+```rust
+// В create_user mutation:
+let schema = UserFieldService::get_schema(db, tenant_id).await?;
+let mut metadata = input.custom_fields.unwrap_or(json!({}));
+schema.apply_defaults(&mut metadata);
+let errors = schema.validate(&metadata);
+if !errors.is_empty() {
+    return Err(custom_field_validation_error(errors));
+}
+// Save user with metadata
+```
 
-### 4.1 GraphQL types
+### 4.6 Шаг 6: GraphQL расширение
 
 ```graphql
-type CustomFieldDefinition {
+# Добавить в User:
+type User {
+    # ... existing ...
+    customFields: JSON
+    fieldDefinitions: [FieldDefinition!]!
+}
+
+input CreateUserInput {
+    # ... existing ...
+    customFields: JSON
+}
+
+# FieldDefinition type — один на всю платформу:
+type FieldDefinition {
     id: UUID!
-    entityType: String!
     fieldKey: String!
     fieldType: String!
     label: JSON!
@@ -505,177 +557,212 @@ type CustomFieldDefinition {
     validation: JSON
     position: Int!
     isActive: Boolean!
-    createdAt: String!
-    updatedAt: String!
-}
-
-input CreateCustomFieldDefinitionInput {
-    entityType: String!       # "user", "product", etc.
-    fieldKey: String!          # snake_case
-    fieldType: String!         # FieldType variant
-    label: JSON!               # {"en": "Phone", "ru": "Телефон"}
-    description: JSON
-    isRequired: Boolean
-    defaultValue: JSON
-    validation: JSON
-    position: Int
-}
-
-input UpdateCustomFieldDefinitionInput {
-    label: JSON
-    description: JSON
-    isRequired: Boolean
-    defaultValue: JSON
-    validation: JSON
-    position: Int
-    isActive: Boolean
 }
 ```
 
-### 4.2 GraphQL queries & mutations
+---
+
+## 5. Паттерн для других модулей
+
+Когда `rustok-commerce` захочет кастомные поля для products:
+
+```rust
+// 1. Миграция (в rustok-commerce или apps/server/migration):
+create_field_definitions_table(manager, "product", "products").await?;
+
+// 2. Entity:
+rustok_core::define_field_definitions_entity!("product_field_definitions");
+
+// 3. Trait:
+impl HasCustomFields for product::Model {
+    fn entity_type() -> &'static str { "product" }
+    fn metadata(&self) -> &serde_json::Value { &self.metadata }
+    fn set_metadata(&mut self, value: serde_json::Value) { self.metadata = value.into(); }
+}
+
+// 4. Service — копипаст минимален, т.к. 90% логики в core.
+// 5. Validate в мутациях — идентично users.
+```
+
+**Каждый модуль = 5 шагов, ~50 строк нового кода.** Всё остальное — в core.
+
+### Таблицы, создаваемые модулями
+
+| Модуль          | Таблица                         | entity_type  | metadata column      |
+|-----------------|---------------------------------|--------------|----------------------|
+| apps/server     | `user_field_definitions`        | `"user"`     | `users.metadata`     |
+| rustok-commerce | `product_field_definitions`     | `"product"`  | `products.metadata`  |
+| rustok-commerce | `order_field_definitions`       | `"order"`    | `orders.metadata`    |
+| rustok-content  | `node_field_definitions`        | `"node"`     | `nodes.metadata`     |
+| rustok-forum    | `topic_field_definitions`       | `"topic"`    | `topics.metadata`    |
+
+Все таблицы **структурно идентичны**, но **физически изолированы** в своём модуле.
+
+---
+
+## 6. Связь с Flex standalone mode (docs/modules/flex.md)
+
+Flex-спецификация описывает два режима:
+1. **Attached mode** — кастомные поля к существующим сущностям → **это то, что описано выше**
+2. **Standalone mode** — произвольные схемы и записи (лендинги, формы, справочники)
+
+Standalone mode — это **отдельный модуль `rustok-flex`**, который:
+- Имеет свои таблицы (`flex_schemas`, `flex_entries`) — это его "domain"
+- Использует `FieldType`, `ValidationRule`, `CustomFieldsSchema` из core
+- Является **опциональным** — можно не подключать
+- НЕ пересекается с attached mode
+
+```
+Attached mode (field_schema в core):
+  "Дай мне кастомные поля для users" → user_field_definitions + users.metadata
+
+Standalone mode (rustok-flex модуль):
+  "Дай мне произвольную сущность 'landing-page'" → flex_schemas + flex_entries
+```
+
+Оба используют **одну и ту же катану** — типы и валидацию из `rustok-core::field_schema`.
+
+---
+
+## 7. Admin API (общий для всех модулей)
+
+### 7.1 GraphQL mutations
 
 ```graphql
-type Query {
-    customFieldDefinitions(entityType: String!): [CustomFieldDefinition!]!
-    customFieldDefinition(id: UUID!): CustomFieldDefinition
-}
-
 type Mutation {
-    createCustomFieldDefinition(input: CreateCustomFieldDefinitionInput!): CustomFieldDefinition!
-    updateCustomFieldDefinition(id: UUID!, input: UpdateCustomFieldDefinitionInput!): CustomFieldDefinition!
-    deleteCustomFieldDefinition(id: UUID!): Boolean!
-    reorderCustomFieldDefinitions(entityType: String!, ids: [UUID!]!): [CustomFieldDefinition!]!
+    # entityType определяет, в какую таблицу пишем:
+    # "user" → user_field_definitions
+    # "product" → product_field_definitions
+    createFieldDefinition(input: CreateFieldDefinitionInput!): FieldDefinition!
+    updateFieldDefinition(id: UUID!, input: UpdateFieldDefinitionInput!): FieldDefinition!
+    deleteFieldDefinition(id: UUID!): Boolean!
+    reorderFieldDefinitions(entityType: String!, ids: [UUID!]!): [FieldDefinition!]!
+}
+
+type Query {
+    fieldDefinitions(entityType: String!): [FieldDefinition!]!
+    fieldDefinition(id: UUID!): FieldDefinition
+}
+
+input CreateFieldDefinitionInput {
+    entityType: String!
+    fieldKey: String!
+    fieldType: String!
+    label: JSON!
+    description: JSON
+    isRequired: Boolean
+    defaultValue: JSON
+    validation: JSON
+    position: Int
 }
 ```
 
-### 4.3 RBAC
-
-- `custom_fields.definitions.read` — Admin, SuperAdmin
-- `custom_fields.definitions.write` — Admin, SuperAdmin
-- `custom_fields.definitions.delete` — SuperAdmin only
-- Заполнение custom fields — по правам на саму entity (кто может edit user, тот может edit custom fields)
-
-### 4.4 Кеширование
+### 7.2 Routing по entityType
 
 ```rust
-/// In-memory cache: (tenant_id, entity_type) → CustomFieldsSchema
-/// Invalidated on create/update/delete definition.
-/// TTL: 5 minutes as safety net.
-type SchemaCache = DashMap<(Uuid, String), (Instant, CustomFieldsSchema)>;
-```
-
----
-
-## Part 5: Расширение на другие модули
-
-Каждый модуль самостоятельно:
-
-1. Добавляет `rustok-core` в зависимости (уже есть)
-2. Реализует `impl HasCustomFields for Product { entity_type() -> "product" }`
-3. В своих мутациях вызывает `CustomFieldsSchema::validate()`
-4. Данные хранятся в своём `metadata`
-
-**Никакого нового крейта не нужно.** Модуль видит только `rustok-core::field_schema`.
-
-| Модуль           | Entity   | `entity_type`  | metadata column        |
-|------------------|----------|----------------|------------------------|
-| apps/server      | User     | `"user"`       | `users.metadata`       |
-| rustok-commerce  | Product  | `"product"`    | `products.metadata`    |
-| rustok-commerce  | Order    | `"order"`      | `orders.metadata`      |
-| rustok-content   | Node     | `"node"`       | `nodes.metadata`       |
-| rustok-forum     | Topic    | `"topic"`      | `topics.metadata`      |
-
----
-
-## Part 6: Связь с Flex
-
-Когда `rustok-flex` будет реализован, он:
-
-1. **Импортирует** `FieldType`, `ValidationRule`, `FieldDefinition` из `rustok-core::field_schema`
-2. **Хранит** `fields_config` в `flex_schemas` как `Vec<FieldDefinition>` (сериализовано в JSONB)
-3. **Валидирует** `flex_entries.data` через `CustomFieldsSchema::validate()`
-4. **Не дублирует** логику валидации — вся она в core
-
-```rust
-// В rustok-flex:
-use rustok_core::field_schema::{FieldDefinition, CustomFieldsSchema};
-
-fn validate_entry(schema: &FlexSchema, data: &serde_json::Value) -> Result<()> {
-    let definitions: Vec<FieldDefinition> = serde_json::from_value(schema.fields_config.clone())?;
-    let validator = CustomFieldsSchema::new(definitions);
-    let errors = validator.validate(data);
-    if !errors.is_empty() {
-        return Err(FlexError::ValidationFailed(errors));
+// В GraphQL resolver:
+fn resolve_table(entity_type: &str) -> Result<Box<dyn FieldDefinitionRepository>> {
+    match entity_type {
+        "user" => Ok(Box::new(UserFieldRepo)),
+        "product" => Ok(Box::new(ProductFieldRepo)),
+        "node" => Ok(Box::new(NodeFieldRepo)),
+        _ => Err(Error::UnknownEntityType(entity_type)),
     }
-    Ok(())
 }
 ```
 
-Таким образом:
-- Custom fields для users = определения в `custom_field_definitions` + значения в `users.metadata`
-- Flex entries = определения в `flex_schemas.fields_config` + значения в `flex_entries.data`
-- **Валидация одна и та же** — `CustomFieldsSchema` из core
+Или через trait object / registry pattern — модули регистрируют свои entity_types при старте.
+
+### 7.3 RBAC
+
+- Управление определениями: `Admin`, `SuperAdmin`
+- Заполнение кастомных полей: по правам на entity (edit user → edit user custom fields)
+
+### 7.4 Кеширование
+
+```rust
+/// Per (tenant_id, entity_type) cache with TTL invalidation.
+/// Invalidated on any definition CRUD operation.
+type SchemaCache = DashMap<(Uuid, &'static str), (Instant, CustomFieldsSchema)>;
+```
 
 ---
 
-## Delivery phases (summary)
+## 8. Delivery Phases
 
-### Phase 0 — Core types & validation
+### Phase 0 — Core types & validation ⭐ START HERE
 - [ ] Создать `rustok-core/src/field_schema.rs`
-- [ ] Реализовать FieldType, ValidationRule, FieldDefinition, HasCustomFields
-- [ ] Реализовать CustomFieldsSchema с validate(), apply_defaults(), strip_unknown()
-- [ ] Unit-тесты (15+ test cases)
-- [ ] Добавить exports в lib.rs и prelude
+- [ ] `FieldType`, `ValidationRule`, `SelectOption`, `FieldDefinition`
+- [ ] `HasCustomFields` trait
+- [ ] `CustomFieldsSchema` с `validate()`, `apply_defaults()`, `strip_unknown()`
+- [ ] `FieldValidationError`, `FieldErrorCode`
+- [ ] `validate_field_value()` внутренняя функция
+- [ ] Unit-тесты (30+ test cases)
+- [ ] Exports в `lib.rs` и `prelude`
 
-### Phase 1 — Database layer (apps/server)
-- [ ] Миграция `custom_field_definitions`
-- [ ] SeaORM entity
-- [ ] CustomFieldDefinitionService (CRUD + get_schema)
+### Phase 1 — Migration helper (делает Flex "катаной")
+- [ ] `create_field_definitions_table()` helper
+- [ ] `drop_field_definitions_table()` helper
+- [ ] `define_field_definitions_entity!()` macro (опционально)
 - [ ] JSONB query helpers
+- [ ] Integration test: создать таблицу, записать definition, провалидировать
 
-### Phase 2 — Users integration
+### Phase 2 — Users (первый потребитель)
+- [ ] Миграция `user_field_definitions` (через helper — одна строка!)
+- [ ] SeaORM entity
 - [ ] `impl HasCustomFields for User`
-- [ ] Расширить GraphQL inputs (customFields)
-- [ ] Validation flow в мутациях
+- [ ] `UserFieldService`
+- [ ] Validation flow в create/update user
+- [ ] GraphQL: `customFields` в User, `fieldDefinitions` resolver
 - [ ] Тесты
 
 ### Phase 3 — Admin API
-- [ ] GraphQL queries/mutations для определений
+- [ ] GraphQL queries/mutations для управления определениями
+- [ ] Routing по entityType (registry pattern)
 - [ ] RBAC
-- [ ] Schema caching с инвалидацией
+- [ ] Schema caching
 
-### Phase 4 — Other modules (по мере необходимости)
-- [ ] Commerce: Product, Order
-- [ ] Content: Node
-- [ ] Forum: Topic
+### Phase 4 — Commerce, Content, Forum
+- [ ] `product_field_definitions` (через helper)
+- [ ] `node_field_definitions` (через helper)
+- [ ] `topic_field_definitions` (через helper)
+- [ ] Каждый модуль: 5 шагов, ~50 строк
 
-### Phase 5 — Flex alignment
-- [ ] Flex переиспользует core::field_schema
-- [ ] Убрать дублирование типов в flex_schemas
+### Phase 5 — Flex standalone (rustok-flex модуль)
+- [ ] `flex_schemas` + `flex_entries` — свои таблицы
+- [ ] Использует `FieldType`, `ValidationRule` из core
+- [ ] Standalone CRUD + attached mode
+- [ ] Events integration
+- [ ] Indexer handler
 
 ### Phase 6 — Advanced (future)
-- [ ] Conditional fields
+- [ ] Conditional fields (show B if A = X)
 - [ ] Computed fields
-- [ ] Field groups
-- [ ] Import/export schemas
-- [ ] Search indexing
+- [ ] Field groups (UI sections)
+- [ ] Import/export schemas between tenants
+- [ ] Full-text search via rustok-index
 - [ ] Audit events
 
 ---
 
-## Risks and mitigations
+## 9. Risks and Mitigations
 
-| Risk                                  | Mitigation                                             |
-|---------------------------------------|--------------------------------------------------------|
-| JSONB performance на больших объёмах  | GIN индекс на `metadata`, лимит 50 полей per entity    |
-| Несогласованность схемы и данных      | Валидация при записи; CLI tool для ретро-валидации      |
-| Flex дублирует custom fields логику   | Shared types в core, Flex импортирует                   |
-| Breaking changes в FieldType          | FieldType extensible через `#[serde(other)]` Unknown   |
+| Risk | Mitigation |
+|------|------------|
+| JSONB performance | GIN index на metadata, лимит 50 полей per entity |
+| Schema-data inconsistency | Validate on write; CLI tool для retro-validation |
+| Too many tables | Convention-based naming, helper ensures consistency |
+| Breaking changes in FieldType | `#[serde(other)]` Unknown variant for forward compat |
+| Macro complexity | Macro is optional — manual entity always works |
+| N+1 schema loads | Cache per (tenant, entity_type) with TTL |
 
-## Tracking and updates
+---
+
+## 10. Tracking and Updates
 
 When updating field schema architecture:
 
 1. Update this file first.
-2. Coordinate with `docs/modules/flex.md` to keep alignment.
-3. Ensure Flex Hard Laws remain satisfied (Rule #1: standard modules NEVER depend on Flex).
+2. Coordinate with `docs/modules/flex.md` for standalone mode alignment.
+3. Ensure all migration helpers produce identical table structures.
+4. Run `cargo test -p rustok-core` — field_schema tests must pass.
