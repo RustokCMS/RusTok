@@ -8768,6 +8768,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-auth"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "async-trait",
+ "chrono",
+ "hex",
+ "jsonwebtoken 10.3.0",
+ "password-hash",
+ "rand 0.10.0",
+ "rustok-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-benchmarks"
 version = "0.1.0"
 dependencies = [
@@ -8804,6 +8825,18 @@ dependencies = [
  "tracing",
  "utoipa",
  "uuid",
+]
+
+[[package]]
+name = "rustok-cache"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "moka",
+ "redis 1.0.4",
+ "rustok-core",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -8893,6 +8926,18 @@ dependencies = [
  "utoipa",
  "uuid",
  "v_htmlescape",
+]
+
+[[package]]
+name = "rustok-email"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "lettre",
+ "rustok-core",
+ "serde",
+ "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]
@@ -9069,7 +9114,6 @@ dependencies = [
  "futures-util",
  "hex",
  "jsonwebtoken 10.3.0",
- "lettre",
  "loco-rs",
  "migration",
  "mime_guess",
@@ -9082,10 +9126,13 @@ dependencies = [
  "rhai",
  "rust-embed",
  "rust_decimal",
+ "rustok-auth",
  "rustok-blog",
+ "rustok-cache",
  "rustok-commerce",
  "rustok-content",
  "rustok-core",
+ "rustok-email",
  "rustok-events",
  "rustok-forum",
  "rustok-iggy",

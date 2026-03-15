@@ -1,4 +1,4 @@
-use crate::auth::{decode_access_token, AuthConfig};
+use crate::auth::{auth_config_from_ctx, decode_access_token};
 use crate::context::{infer_user_role_from_permissions, TenantContextExt};
 use crate::models::{
     sessions::Entity as Sessions,
@@ -55,7 +55,7 @@ where
             .await
             .map_err(|_| (StatusCode::UNAUTHORIZED, "Missing or invalid token"))?;
 
-    let auth_config = AuthConfig::from_ctx(&ctx).map_err(|_| {
+    let auth_config = auth_config_from_ctx(&ctx).map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "JWT secret not configured",

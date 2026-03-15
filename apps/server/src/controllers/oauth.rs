@@ -11,7 +11,7 @@ use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::auth::AuthConfig;
+use crate::auth::auth_config_from_ctx;
 use crate::context::TenantContext;
 use crate::extractors::auth::CurrentUser;
 use crate::services::oauth_app::OAuthAppService;
@@ -193,7 +193,7 @@ async fn handle_client_credentials(
         .unwrap_or_default();
 
     // 7. Issue token
-    let auth_config = AuthConfig::from_ctx(ctx).map_err(|_| TokenErrorResponse {
+    let auth_config = auth_config_from_ctx(ctx).map_err(|_| TokenErrorResponse {
         error: "invalid_client".to_string(),
         error_description: "Server configuration error".to_string(),
     })?;
@@ -288,7 +288,7 @@ async fn handle_authorization_code(
     }
 
     // 3. Exchange code for tokens
-    let auth_config = AuthConfig::from_ctx(ctx).map_err(|_| TokenErrorResponse {
+    let auth_config = auth_config_from_ctx(ctx).map_err(|_| TokenErrorResponse {
         error: "server_error".to_string(),
         error_description: "Server configuration error".to_string(),
     })?;
@@ -370,7 +370,7 @@ async fn handle_refresh_token(
     }
 
     // 3. Process refresh logic
-    let auth_config = AuthConfig::from_ctx(ctx).map_err(|_| TokenErrorResponse {
+    let auth_config = auth_config_from_ctx(ctx).map_err(|_| TokenErrorResponse {
         error: "server_error".to_string(),
         error_description: "Server configuration error".to_string(),
     })?;

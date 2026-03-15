@@ -22,9 +22,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
+use rustok_cache::CacheService;
+
 use crate::auth::{decode_access_token, AuthConfig};
 use crate::common::settings::RateLimitBackendKind;
-use crate::services::redis_runtime::resolve_redis_client;
 
 /// Configuration for rate limiting
 #[derive(Clone, Debug)]
@@ -414,6 +415,7 @@ return {current, ttl}
         backend: RateLimitBackendKind,
         redis_key_prefix: &str,
         namespace: &str,
+        cache_service: &CacheService,
     ) -> Result<Self, String> {
         if !config.enabled {
             return Ok(Self::new_with_namespace(config, namespace));
@@ -422,7 +424,7 @@ return {current, ttl}
         match backend {
             RateLimitBackendKind::Memory => Ok(Self::new_with_namespace(config, namespace)),
             RateLimitBackendKind::Redis => {
-                let client = resolve_redis_client().ok_or_else(|| {
+                let client = cache_service.redis_client().cloned().ok_or_else(|| {
                     "rate_limit.backend=redis requires a configured Redis runtime".to_string()
                 })?;
                 Ok(Self::with_redis_in_namespace(

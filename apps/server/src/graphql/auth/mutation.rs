@@ -1,12 +1,14 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use loco_rs::prelude::*;
 
-use crate::auth::{encode_password_reset_token, AuthConfig};
+use crate::auth::{auth_config_from_ctx, encode_password_reset_token};
 use crate::context::{infer_user_role_from_permissions, TenantContext};
 use crate::graphql::errors::{ErrorCode, GraphQLError};
 use crate::models::users;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
-use crate::services::email::{EmailService, PasswordResetEmail, PasswordResetEmailSender};
+use crate::services::email::{
+    email_service_from_ctx, password_reset_url, PasswordResetEmail, PasswordResetEmailSender,
+};
 
 use crate::context::AuthContext;
 
@@ -142,7 +144,7 @@ impl AuthMutation {
     ) -> Result<ForgotPasswordPayload> {
         let app_ctx = ctx.data::<AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let config = AuthConfig::from_ctx(app_ctx)
+        let config = auth_config_from_ctx(app_ctx)
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
         // Check if user exists
@@ -166,10 +168,9 @@ impl AuthMutation {
         )
         .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
-        let email_service = EmailService::from_ctx(app_ctx)
+        let email_service = email_service_from_ctx(app_ctx)
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
-        let reset_url = email_service
-            .password_reset_url(app_ctx, &reset_token)
+        let reset_url = password_reset_url(app_ctx, &reset_token)
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
         email_service

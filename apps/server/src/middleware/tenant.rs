@@ -11,10 +11,9 @@ use axum::{
 use loco_rs::app::AppContext;
 #[cfg(feature = "redis-cache")]
 use redis::AsyncCommands;
+use rustok_cache::CacheService;
 use rustok_core::tenant_validation::TenantIdentifierValidator;
-#[cfg(feature = "redis-cache")]
-use rustok_core::RedisCacheBackend;
-use rustok_core::{CacheBackend, EventConsumerRuntime, InMemoryCacheBackend};
+use rustok_core::{CacheBackend, EventConsumerRuntime};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
@@ -26,7 +25,6 @@ use uuid::Uuid;
 use crate::common::settings::RustokSettings;
 use crate::context::{TenantContext, TenantContextExtension};
 use crate::models::tenants;
-use crate::services::redis_runtime::{resolve_redis_client, resolve_redis_url};
 
 const TENANT_CACHE_VERSION: &str = "v1";
 const TENANT_INVALIDATION_CHANNEL: &str = "tenant.cache.invalidate";
@@ -115,10 +113,10 @@ struct TenantInvalidationPublisher {
 }
 
 impl TenantInvalidationPublisher {
-    fn new() -> Self {
+    fn new(cache_service: &CacheService) -> Self {
         Self {
             #[cfg(feature = "redis-cache")]
-            redis_client: resolve_redis_client(),
+            redis_client: cache_service.redis_client().cloned(),
         }
     }
 
@@ -241,7 +239,7 @@ impl TenantInvalidationListenerState {
 }
 
 impl TenantCacheMetricsStore {
-    fn new() -> Self {
+    fn new(cache_service: &CacheService) -> Self {
         Self {
             local_hits: Arc::new(AtomicU64::new(0)),
             local_misses: Arc::new(AtomicU64::new(0)),
@@ -250,7 +248,7 @@ impl TenantCacheMetricsStore {
             local_negative_inserts: Arc::new(AtomicU64::new(0)),
             coalesced_requests: Arc::new(AtomicU64::new(0)),
             #[cfg(feature = "redis-cache")]
-            redis_client: resolve_redis_client(),
+            redis_client: cache_service.redis_client().cloned(),
         }
     }
 
@@ -311,13 +309,25 @@ impl TenantCacheMetricsStore {
 }
 
 impl TenantCacheInfrastructure {
-    async fn new() -> Self {
+    async fn new(cache_service: &CacheService) -> Self {
         Self {
-            tenant_cache: build_tenant_cache_backend().await,
-            tenant_negative_cache: build_negative_tenant_cache_backend().await,
-            metrics: Arc::new(TenantCacheMetricsStore::new()),
+            tenant_cache: cache_service
+                .backend(
+                    &format!("tenant-cache:{}:data", TENANT_CACHE_VERSION),
+                    TENANT_CACHE_TTL,
+                    TENANT_CACHE_MAX_CAPACITY,
+                )
+                .await,
+            tenant_negative_cache: cache_service
+                .backend(
+                    &format!("tenant-cache:{}:negative", TENANT_CACHE_VERSION),
+                    TENANT_NEGATIVE_CACHE_TTL,
+                    TENANT_CACHE_MAX_CAPACITY,
+                )
+                .await,
+            metrics: Arc::new(TenantCacheMetricsStore::new(cache_service)),
             key_builder: TenantCacheKeyBuilder::new(TENANT_CACHE_VERSION),
-            invalidation_publisher: Arc::new(TenantInvalidationPublisher::new()),
+            invalidation_publisher: Arc::new(TenantInvalidationPublisher::new(cache_service)),
             invalidation_listener_state: Arc::new(TenantInvalidationListenerState::new()),
             in_flight: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -458,47 +468,7 @@ impl TenantCacheInfrastructure {
     }
 }
 
-async fn build_tenant_cache_backend() -> Arc<dyn CacheBackend> {
-    #[cfg(feature = "redis-cache")]
-    if let Some(url) = resolve_redis_url() {
-        if let Ok(redis_cache) = RedisCacheBackend::new(
-            &url,
-            format!("tenant-cache:{}:data", TENANT_CACHE_VERSION),
-            TENANT_CACHE_TTL,
-        )
-        .await
-        {
-            return Arc::new(redis_cache);
-        }
-    }
-
-    Arc::new(InMemoryCacheBackend::new(
-        TENANT_CACHE_TTL,
-        TENANT_CACHE_MAX_CAPACITY,
-    ))
-}
-
-async fn build_negative_tenant_cache_backend() -> Arc<dyn CacheBackend> {
-    #[cfg(feature = "redis-cache")]
-    if let Some(url) = resolve_redis_url() {
-        if let Ok(redis_cache) = RedisCacheBackend::new(
-            &url,
-            format!("tenant-cache:{}:negative", TENANT_CACHE_VERSION),
-            TENANT_NEGATIVE_CACHE_TTL,
-        )
-        .await
-        {
-            return Arc::new(redis_cache);
-        }
-    }
-
-    Arc::new(InMemoryCacheBackend::new(
-        TENANT_NEGATIVE_CACHE_TTL,
-        TENANT_CACHE_MAX_CAPACITY,
-    ))
-}
-
-pub async fn init_tenant_cache_infrastructure(ctx: &AppContext) {
+pub async fn init_tenant_cache_infrastructure(ctx: &AppContext, cache_service: &CacheService) {
     if ctx
         .shared_store
         .contains::<Arc<TenantCacheInfrastructure>>()
@@ -506,10 +476,10 @@ pub async fn init_tenant_cache_infrastructure(ctx: &AppContext) {
         return;
     }
 
-    let infra = Arc::new(TenantCacheInfrastructure::new().await);
+    let infra = Arc::new(TenantCacheInfrastructure::new(cache_service).await);
     ctx.shared_store.insert(infra.clone());
 
-    if let Some(task) = spawn_invalidation_listener(infra.clone()).await {
+    if let Some(task) = spawn_invalidation_listener(infra.clone(), cache_service).await {
         ctx.shared_store.insert(task);
     } else {
         infra
@@ -521,10 +491,11 @@ pub async fn init_tenant_cache_infrastructure(ctx: &AppContext) {
 
 async fn spawn_invalidation_listener(
     infra: Arc<TenantCacheInfrastructure>,
+    cache_service: &CacheService,
 ) -> Option<JoinHandle<()>> {
     #[cfg(feature = "redis-cache")]
     {
-        let client = resolve_redis_client()?;
+        let client = cache_service.redis_client()?.clone();
         let listener_state = infra.invalidation_listener_state.clone();
         let task = tokio::spawn(async move {
             let runtime = EventConsumerRuntime::new("tenant_invalidation_listener");

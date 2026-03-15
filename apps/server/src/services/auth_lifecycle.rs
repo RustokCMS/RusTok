@@ -5,7 +5,7 @@ use sea_orm::{
     Set,
 };
 
-use crate::auth::{
+use crate::auth::{auth_config_from_ctx, 
     decode_password_reset_token, encode_access_token, generate_refresh_token, hash_password,
     hash_refresh_token, verify_password, AuthConfig,
 };
@@ -43,6 +43,12 @@ impl From<Error> for AuthLifecycleError {
 impl From<sea_orm::DbErr> for AuthLifecycleError {
     fn from(value: sea_orm::DbErr) -> Self {
         Self::Internal(value.into())
+    }
+}
+
+impl From<rustok_auth::AuthError> for AuthLifecycleError {
+    fn from(value: rustok_auth::AuthError) -> Self {
+        Self::Internal(crate::auth::auth_err(value))
     }
 }
 
@@ -217,7 +223,7 @@ impl AuthLifecycleService {
         password: &str,
         name: Option<String>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        let config = AuthConfig::from_ctx(ctx).map_err(AuthLifecycleError::from)?;
+        let config = auth_config_from_ctx(ctx).map_err(AuthLifecycleError::from)?;
         let user = Self::create_user(
             ctx,
             tenant_id,
@@ -243,7 +249,7 @@ impl AuthLifecycleService {
         ip_address: Option<String>,
         user_agent: Option<String>,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        let config = AuthConfig::from_ctx(ctx).map_err(AuthLifecycleError::from)?;
+        let config = auth_config_from_ctx(ctx).map_err(AuthLifecycleError::from)?;
 
         Self::login_with_config(
             &ctx.db, &config, tenant_id, email, password, ip_address, user_agent,
@@ -295,7 +301,7 @@ impl AuthLifecycleService {
         tenant_id: uuid::Uuid,
         refresh_token: &str,
     ) -> std::result::Result<(users::Model, AuthTokens), AuthLifecycleError> {
-        let config = AuthConfig::from_ctx(ctx).map_err(AuthLifecycleError::from)?;
+        let config = auth_config_from_ctx(ctx).map_err(AuthLifecycleError::from)?;
         Self::refresh_with_config_db(&ctx.db, &config, tenant_id, refresh_token).await
     }
 
@@ -368,7 +374,7 @@ impl AuthLifecycleService {
         token: &str,
         password: &str,
     ) -> std::result::Result<(), AuthLifecycleError> {
-        let config = AuthConfig::from_ctx(ctx).map_err(AuthLifecycleError::from)?;
+        let config = auth_config_from_ctx(ctx).map_err(AuthLifecycleError::from)?;
         Self::confirm_password_reset_with_config(&ctx.db, &config, tenant_id, token, password).await
     }
 

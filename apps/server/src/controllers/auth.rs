@@ -16,8 +16,8 @@ use std::net::SocketAddr;
 use utoipa::ToSchema;
 
 use crate::auth::{
-    decode_email_verification_token, decode_invite_token, encode_email_verification_token,
-    encode_password_reset_token, hash_refresh_token, AuthConfig,
+    auth_config_from_ctx, decode_email_verification_token, decode_invite_token,
+    encode_email_verification_token, encode_password_reset_token, hash_refresh_token,
 };
 use crate::common::settings::RustokSettings;
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
@@ -307,7 +307,7 @@ async fn accept_invite(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<AcceptInviteParams>,
 ) -> Result<Response> {
-    let config = AuthConfig::from_ctx(&ctx)?;
+    let config = auth_config_from_ctx(&ctx)?;
     let claims = decode_invite_token(&config, &params.token)?;
 
     if claims.tenant_id != tenant.id {
@@ -348,7 +348,7 @@ async fn request_reset(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RequestResetParams>,
 ) -> Result<Response> {
-    let config = AuthConfig::from_ctx(&ctx)?;
+    let config = auth_config_from_ctx(&ctx)?;
 
     let user_exists = Users::find_by_email(&ctx.db, tenant.id, &params.email)
         .await?
@@ -396,7 +396,7 @@ async fn request_verification(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<RequestVerificationParams>,
 ) -> Result<Response> {
-    let config = AuthConfig::from_ctx(&ctx)?;
+    let config = auth_config_from_ctx(&ctx)?;
     let settings = RustokSettings::from_settings(&ctx.config.settings)
         .map_err(|_| Error::InternalServerError)?;
 
@@ -438,7 +438,7 @@ async fn confirm_verification(
     CurrentTenant(tenant): CurrentTenant,
     Json(params): Json<ConfirmVerificationParams>,
 ) -> Result<Response> {
-    let config = AuthConfig::from_ctx(&ctx)?;
+    let config = auth_config_from_ctx(&ctx)?;
     let claims = decode_email_verification_token(&config, &params.token)?;
 
     if claims.tenant_id != tenant.id {

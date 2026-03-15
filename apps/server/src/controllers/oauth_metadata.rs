@@ -1,7 +1,7 @@
 //! OAuth 2.0 Authorization Server Metadata (RFC 8414)
 //! OpenID Connect Discovery 1.0
 
-use crate::auth::AuthConfig;
+use crate::auth::auth_config_from_ctx;
 use axum::{extract::State, routing::get, Json};
 use loco_rs::prelude::*;
 use serde::Serialize;
@@ -28,7 +28,7 @@ pub struct OAuthAuthorizationServerMetadata {
 async fn get_metadata(
     State(ctx): State<AppContext>,
 ) -> Result<Json<OAuthAuthorizationServerMetadata>, loco_rs::Error> {
-    let auth_config = AuthConfig::from_ctx(&ctx)
+    let auth_config = auth_config_from_ctx(&ctx)
         .map_err(|_| loco_rs::Error::Message("Auth config error".into()))?;
 
     // Generate issuer base URL
