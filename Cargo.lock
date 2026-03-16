@@ -8940,6 +8940,8 @@ dependencies = [
  "rustok-core",
  "sea-orm-migration",
  "serde",
+ "serde_json",
+ "tera",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -9157,6 +9159,7 @@ dependencies = [
  "sha2",
  "subtle",
  "tempfile",
+ "tera",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",

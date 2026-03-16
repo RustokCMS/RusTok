@@ -16,6 +16,9 @@ pub enum EmailError {
 
     #[error("Failed to send email: {0}")]
     Send(String),
+
+    #[error("Template error: {0}")]
+    Template(String),
 }
 
 pub type Result<T> = std::result::Result<T, EmailError>;

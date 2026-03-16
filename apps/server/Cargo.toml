@@ -41,6 +41,7 @@ sea-orm.workspace = true
 async-graphql = { workspace = true, features = ["dataloader"] }
 serde.workspace = true
 serde_json.workspace = true
+tera.workspace = true
 toml.workspace = true
 uuid.workspace = true
 chrono.workspace = true
