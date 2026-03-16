@@ -12,6 +12,7 @@ use rustok_media::{
     MediaError, MediaService,
 };
 use rustok_storage::StorageService;
+use rustok_telemetry::metrics;
 
 use crate::context::TenantContext;
 use crate::error::{Error, Result};
@@ -104,6 +105,11 @@ pub async fn upload(
         };
 
         let item = service.upload(input).await.map_err(media_error)?;
+        metrics::record_media_upload(
+            &tenant.id.to_string(),
+            &item.mime_type,
+            item.size as u64,
+        );
         return Ok((StatusCode::CREATED, Json(item)));
     }
 
@@ -152,6 +158,7 @@ pub async fn delete_media(
     let storage = storage_from_ctx(&ctx)?;
     let service = MediaService::new(ctx.db.clone(), storage);
     service.delete(tenant.id, id).await.map_err(media_error)?;
+    metrics::record_media_delete(&tenant.id.to_string());
     Ok(StatusCode::NO_CONTENT)
 }
 

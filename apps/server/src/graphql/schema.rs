@@ -36,6 +36,7 @@ use super::media::{MediaMutation, MediaQuery};
 use super::queries::RootQuery;
 use super::settings::{SettingsMutation, SettingsQuery};
 use super::subscriptions::BuildSubscription;
+use super::system::SystemQuery;
 use crate::services::build_event_hub::BuildEventHub;
 
 /// Slugs used for runtime `tenant_modules.is_enabled()` guards.
@@ -55,6 +56,7 @@ pub struct Query(
     AuthQuery,
     OAuthQuery,
     SettingsQuery,
+    SystemQuery,
     #[cfg(feature = "mod-commerce")] CommerceQuery,
     #[cfg(feature = "mod-content")]  ContentQuery,
     #[cfg(feature = "mod-blog")]     BlogQuery,

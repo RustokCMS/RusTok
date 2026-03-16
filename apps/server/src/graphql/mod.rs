@@ -25,6 +25,7 @@ pub mod queries;
 pub mod schema;
 pub mod settings;
 pub mod subscriptions;
+pub mod system;
 pub mod types;
 
 pub use schema::{build_schema, AppSchema, SharedGraphqlSchema};

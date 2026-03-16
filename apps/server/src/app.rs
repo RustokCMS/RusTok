@@ -14,6 +14,7 @@ use std::path::Path;
 use sea_orm::EntityTrait;
 
 use crate::common::settings::{EmailProvider, RustokSettings};
+use crate::channels;
 use crate::controllers;
 use crate::initializers;
 use crate::seeds;
@@ -118,6 +119,8 @@ impl Hooks for App {
             routes = routes.add_route(controllers::media::routes());
         }
 
+        routes = routes.add_route(channels::builds::routes());
+
         routes
     }
 
@@ -181,6 +184,18 @@ impl Hooks for App {
 
     async fn seed(ctx: &AppContext, path: &Path) -> Result<()> {
         seeds::seed(ctx, path).await
+    }
+
+    /// Graceful shutdown: stop background workers and flush telemetry.
+    async fn on_shutdown(ctx: &AppContext) {
+        use crate::services::app_lifecycle::StopHandle;
+
+        if let Some(handle) = ctx.shared_store.get::<StopHandle>() {
+            tracing::info!("Stopping background workers…");
+            handle.stop().await;
+        }
+
+        tracing::info!("RusTok server shut down cleanly");
     }
 }
 

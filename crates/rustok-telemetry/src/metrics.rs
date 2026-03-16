@@ -906,3 +906,67 @@ pub fn record_rate_limit_exceeded(namespace: &str) {
         .with_label_values(&[namespace])
         .inc();
 }
+
+// ============================================================================
+// Media Metrics
+// ============================================================================
+
+lazy_static! {
+    /// Total media files uploaded, by tenant and MIME category (image/video/…).
+    pub static ref MEDIA_UPLOADS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new("rustok_media_uploads_total", "Total media files uploaded"),
+        &["tenant_id", "mime_category"],
+    )
+    .expect("Failed to create media_uploads_total");
+
+    /// Total bytes uploaded, by tenant.
+    pub static ref MEDIA_UPLOAD_BYTES_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_media_upload_bytes_total",
+            "Total bytes of media uploaded",
+        ),
+        &["tenant_id"],
+    )
+    .expect("Failed to create media_upload_bytes_total");
+
+    /// Total media files deleted, by tenant.
+    pub static ref MEDIA_DELETES_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new("rustok_media_deletes_total", "Total media files deleted"),
+        &["tenant_id"],
+    )
+    .expect("Failed to create media_deletes_total");
+
+    /// Storage health status: 1 = healthy, 0 = unhealthy.
+    pub static ref MEDIA_STORAGE_HEALTH: IntGaugeVec = IntGaugeVec::new(
+        Opts::new(
+            "rustok_media_storage_health",
+            "Storage backend health: 1=healthy 0=unhealthy",
+        ),
+        &["driver"],
+    )
+    .expect("Failed to create media_storage_health");
+}
+
+/// Record a successful media upload.
+pub fn record_media_upload(tenant_id: &str, mime_type: &str, bytes: u64) {
+    let category = mime_type.split('/').next().unwrap_or("other");
+    MEDIA_UPLOADS_TOTAL
+        .with_label_values(&[tenant_id, category])
+        .inc();
+    MEDIA_UPLOAD_BYTES_TOTAL
+        .with_label_values(&[tenant_id])
+        .inc_by(bytes);
+}
+
+/// Record a media deletion.
+pub fn record_media_delete(tenant_id: &str) {
+    MEDIA_DELETES_TOTAL.with_label_values(&[tenant_id]).inc();
+}
+
+/// Update storage backend health.
+pub fn update_storage_health(driver: &str, healthy: bool) {
+    MEDIA_STORAGE_HEALTH
+        .with_label_values(&[driver])
+        .set(if healthy { 1 } else { 0 });
+}
+

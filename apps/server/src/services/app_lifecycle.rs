@@ -12,6 +12,27 @@ use crate::services::event_transport_factory::{
 };
 use crate::services::release_backend::ReleaseDeploymentService;
 
+// ── Graceful-shutdown handle ──────────────────────────────────────────────────
+
+/// Stored in `ctx.shared_store`; `on_shutdown` calls `stop()` to abort workers.
+#[derive(Clone)]
+pub struct StopHandle {
+    stop_tx: tokio::sync::watch::Sender<bool>,
+}
+
+impl StopHandle {
+    pub fn new() -> (Self, tokio::sync::watch::Receiver<bool>) {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        (Self { stop_tx: tx }, rx)
+    }
+
+    pub async fn stop(&self) {
+        let _ = self.stop_tx.send(true);
+        // Yield so spawned tasks have a chance to notice the signal.
+        tokio::task::yield_now().await;
+    }
+}
+
 static OUTBOX_RELAY_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 static BUILD_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
@@ -54,6 +75,12 @@ pub fn apply_boot_database_fallback(config: &mut Config) -> bool {
 pub async fn connect_runtime_workers(ctx: &AppContext) -> Result<()> {
     let settings = RustokSettings::from_settings(&ctx.config.settings)
         .map_err(|error| Error::Message(format!("Invalid rustok settings: {error}")))?;
+
+    // Register graceful-shutdown handle if not already present.
+    if !ctx.shared_store.contains::<StopHandle>() {
+        let (handle, _rx) = StopHandle::new();
+        ctx.shared_store.insert(handle);
+    }
 
     if ctx.shared_store.contains::<OutboxRelayWorkerHandle>() {
         // Keep going: build worker may still need to be attached.
