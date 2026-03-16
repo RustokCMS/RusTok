@@ -340,6 +340,27 @@ pub enum DomainEvent {
         tenant_id: Uuid,
         locale: String,
     },
+
+    // ════════════════════════════════════════════════════════════════
+    // FLEX — FIELD DEFINITION EVENTS
+    // ════════════════════════════════════════════════════════════════
+    FieldDefinitionCreated {
+        tenant_id: Uuid,
+        /// Entity type key, e.g. "user", "product", "node".
+        entity_type: String,
+        field_key: String,
+        field_type: String,
+    },
+    FieldDefinitionUpdated {
+        tenant_id: Uuid,
+        entity_type: String,
+        field_key: String,
+    },
+    FieldDefinitionDeleted {
+        tenant_id: Uuid,
+        entity_type: String,
+        field_key: String,
+    },
 }
 
 impl DomainEvent {
@@ -410,6 +431,11 @@ impl DomainEvent {
             Self::TenantUpdated { .. } => "tenant.updated",
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
+
+            // Flex field definition events
+            Self::FieldDefinitionCreated { .. } => "field_definition.created",
+            Self::FieldDefinitionUpdated { .. } => "field_definition.updated",
+            Self::FieldDefinitionDeleted { .. } => "field_definition.deleted",
         }
     }
 
@@ -496,6 +522,11 @@ impl DomainEvent {
             Self::TenantUpdated { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
+
+            // Flex field definition events (v1)
+            Self::FieldDefinitionCreated { .. } => 1,
+            Self::FieldDefinitionUpdated { .. } => 1,
+            Self::FieldDefinitionDeleted { .. } => 1,
         }
     }
 
@@ -1011,6 +1042,41 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
                 validators::validate_not_empty("locale", locale)?;
                 validators::validate_max_length("locale", locale, 10)?;
+                Ok(())
+            }
+
+            // ════════════════════════════════════════════════════════════════
+            // FLEX FIELD DEFINITION EVENTS
+            // ════════════════════════════════════════════════════════════════
+            Self::FieldDefinitionCreated {
+                tenant_id,
+                entity_type,
+                field_key,
+                field_type,
+            } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("entity_type", entity_type)?;
+                validators::validate_max_length("entity_type", entity_type, 64)?;
+                validators::validate_not_empty("field_key", field_key)?;
+                validators::validate_max_length("field_key", field_key, 128)?;
+                validators::validate_not_empty("field_type", field_type)?;
+                Ok(())
+            }
+            Self::FieldDefinitionUpdated {
+                tenant_id,
+                entity_type,
+                field_key,
+            }
+            | Self::FieldDefinitionDeleted {
+                tenant_id,
+                entity_type,
+                field_key,
+            } => {
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("entity_type", entity_type)?;
+                validators::validate_max_length("entity_type", entity_type, 64)?;
+                validators::validate_not_empty("field_key", field_key)?;
+                validators::validate_max_length("field_key", field_key, 128)?;
                 Ok(())
             }
         }

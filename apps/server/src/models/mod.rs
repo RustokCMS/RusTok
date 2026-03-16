@@ -10,6 +10,7 @@ pub mod release;
 pub mod sessions;
 pub mod tenant_modules;
 pub mod tenants;
+pub mod user_field_definitions;
 pub mod users;
 
 pub use build::Entity as Build;

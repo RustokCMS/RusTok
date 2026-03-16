@@ -6,6 +6,7 @@ pub mod common;
 pub mod connection;
 pub mod content;
 pub mod errors;
+pub mod flex;
 pub mod forum;
 pub mod loaders;
 pub mod mutations;

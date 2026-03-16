@@ -8,6 +8,7 @@ pub mod roles;
 pub mod sessions;
 pub mod tenant_modules;
 pub mod tenants;
+pub mod user_field_definitions;
 pub mod user_roles;
 pub mod users;
 

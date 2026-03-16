@@ -12,6 +12,7 @@ use super::auth::{AuthMutation, AuthQuery};
 use super::blog::{BlogMutation, BlogQuery};
 use super::commerce::{CommerceMutation, CommerceQuery};
 use super::content::{ContentMutation, ContentQuery};
+use super::flex::{FlexMutation, FlexQuery};
 use super::forum::{ForumMutation, ForumQuery};
 use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader, TenantNameLoader};
 use super::mutations::RootMutation;
@@ -33,6 +34,7 @@ pub struct Query(
     AlloyQuery,
     PagesQuery,
     OAuthQuery,
+    FlexQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -46,6 +48,7 @@ pub struct Mutation(
     AlloyMutation,
     PagesMutation,
     OAuthMutation,
+    FlexMutation,
 );
 
 #[derive(MergedSubscription, Default)]
