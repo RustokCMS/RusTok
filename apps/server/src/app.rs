@@ -97,7 +97,7 @@ impl Hooks for App {
     }
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
-        AppRoutes::with_default_routes()
+        let mut routes = AppRoutes::with_default_routes()
             .add_route(controllers::health::routes())
             .add_route(controllers::metrics::routes())
             .add_route(controllers::swagger::routes())
@@ -111,7 +111,14 @@ impl Hooks for App {
             .add_route(controllers::blog::routes())
             .add_route(controllers::forum::routes())
             .add_route(controllers::pages::routes())
-            .add_route(controllers::users::routes())
+            .add_route(controllers::users::routes());
+
+        #[cfg(feature = "mod-media")]
+        {
+            routes = routes.add_route(controllers::media::routes());
+        }
+
+        routes
     }
 
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {

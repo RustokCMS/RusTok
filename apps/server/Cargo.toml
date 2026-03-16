@@ -16,6 +16,7 @@ default = [
     "mod-forum",
     "mod-pages",
     "mod-alloy",
+    "mod-media",
 ]
 redis-cache = []
 embed-admin = ["embed-admin-assets"]
@@ -29,6 +30,7 @@ mod-blog     = ["dep:rustok-blog", "dep:rustok-content"]
 mod-forum    = ["dep:rustok-forum"]
 mod-pages    = ["dep:rustok-pages"]
 mod-alloy    = ["dep:alloy-scripting"]
+mod-media    = ["dep:rustok-media", "dep:rustok-storage"]
 
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache"] }
@@ -42,6 +44,8 @@ rustok-blog      = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }
 rustok-forum     = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }
+rustok-storage   = { workspace = true, optional = true }
+rustok-media     = { workspace = true, optional = true }
 rustok-index.workspace = true
 rustok-tenant.workspace = true
 rustok-rbac.workspace = true
@@ -88,6 +92,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "mul
 semver = "1.0"
 rand.workspace = true
 subtle = "2"
+bytes = "1.0"
 
 # Loco extras
 migration = { path = "migration" }

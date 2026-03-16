@@ -86,6 +86,9 @@ pub async fn bootstrap_app_runtime(
         .map_err(|error| Error::BadRequest(format!("modules.toml validation failed: {error}")))?;
     middleware::tenant::init_tenant_cache_infrastructure(ctx).await;
 
+    #[cfg(feature = "mod-media")]
+    init_storage(ctx, settings);
+
     let alloy = init_alloy_runtime(ctx);
     let graphql_schema = init_graphql_schema(ctx, alloy.graphql_state.clone());
     let rate_limits = init_rate_limit_layers(ctx, settings)?;
@@ -99,6 +102,15 @@ pub async fn bootstrap_app_runtime(
         auth_rate_limit_state: rate_limits.auth_state,
         oauth_rate_limit_state: rate_limits.oauth_state,
     })
+}
+
+#[cfg(feature = "mod-media")]
+fn init_storage(ctx: &AppContext, settings: &RustokSettings) {
+    use rustok_storage::StorageService;
+
+    let service = StorageService::from_config(&settings.storage);
+    tracing::info!(driver = ?settings.storage.driver, "Initialized storage backend");
+    ctx.shared_store.insert(service);
 }
 
 fn init_marketplace_catalog(ctx: &AppContext) {

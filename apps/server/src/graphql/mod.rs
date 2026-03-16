@@ -12,6 +12,8 @@ pub mod content;
 pub mod errors;
 #[cfg(feature = "mod-forum")]
 pub mod forum;
+#[cfg(feature = "mod-media")]
+pub mod media;
 pub mod loaders;
 pub mod mutations;
 pub mod oauth;

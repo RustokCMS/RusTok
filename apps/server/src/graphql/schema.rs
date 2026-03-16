@@ -7,6 +7,9 @@ use std::sync::Arc;
 use rustok_core::EventBus;
 use rustok_outbox::TransactionalEventBus;
 
+#[cfg(feature = "mod-media")]
+use rustok_storage::StorageService;
+
 #[cfg(feature = "mod-alloy")]
 use super::alloy::{AlloyMutation, AlloyQuery, AlloyState};
 #[cfg(not(feature = "mod-alloy"))]
@@ -28,6 +31,8 @@ use super::oauth::{OAuthMutation, OAuthQuery};
 use super::observability::GraphqlObservability;
 #[cfg(feature = "mod-pages")]
 use super::pages::{PagesMutation, PagesQuery};
+#[cfg(feature = "mod-media")]
+use super::media::{MediaMutation, MediaQuery};
 use super::queries::RootQuery;
 use super::settings::{SettingsMutation, SettingsQuery};
 use super::subscriptions::BuildSubscription;
@@ -41,6 +46,7 @@ pub mod module_slug {
     pub const FORUM: &str = "forum";
     pub const PAGES: &str = "pages";
     pub const ALLOY: &str = "alloy";
+    pub const MEDIA: &str = "media";
 }
 
 #[derive(MergedObject, Default)]
@@ -55,6 +61,7 @@ pub struct Query(
     #[cfg(feature = "mod-forum")]    ForumQuery,
     #[cfg(feature = "mod-pages")]    PagesQuery,
     #[cfg(feature = "mod-alloy")]    AlloyQuery,
+    #[cfg(feature = "mod-media")]    MediaQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -69,6 +76,7 @@ pub struct Mutation(
     #[cfg(feature = "mod-forum")]    ForumMutation,
     #[cfg(feature = "mod-pages")]    PagesMutation,
     #[cfg(feature = "mod-alloy")]    AlloyMutation,
+    #[cfg(feature = "mod-media")]    MediaMutation,
 );
 
 #[derive(MergedSubscription, Default)]
@@ -85,6 +93,7 @@ pub fn build_schema(
     transactional_event_bus: TransactionalEventBus,
     build_event_hub: Arc<BuildEventHub>,
     alloy_state: AlloyState,
+    #[cfg(feature = "mod-media")] storage: StorageService,
 ) -> AppSchema {
     let builder = Schema::build(
         Query::default(),
@@ -118,6 +127,9 @@ pub fn build_schema(
     let builder = builder.data(alloy_state);
     #[cfg(not(feature = "mod-alloy"))]
     let _ = alloy_state;
+
+    #[cfg(feature = "mod-media")]
+    let builder = builder.data(storage);
 
     builder.finish()
 }

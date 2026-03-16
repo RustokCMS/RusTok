@@ -18,9 +18,18 @@ pub fn init_graphql_schema(ctx: &AppContext, alloy_state: AlloyState) -> Arc<App
         transactional_event_bus_from_context(ctx),
         build_event_hub_from_context(ctx),
         alloy_state,
+        #[cfg(feature = "mod-media")]
+        storage_from_ctx(ctx),
     ));
 
     ctx.shared_store.insert(SharedGraphqlSchema(schema.clone()));
 
     schema
+}
+
+#[cfg(feature = "mod-media")]
+fn storage_from_ctx(ctx: &AppContext) -> rustok_storage::StorageService {
+    ctx.shared_store
+        .get::<rustok_storage::StorageService>()
+        .expect("StorageService not initialised — call init_storage() before init_graphql_schema()")
 }

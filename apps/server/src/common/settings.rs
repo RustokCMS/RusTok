@@ -2,6 +2,9 @@ use rustok_iggy::IggyConfig;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[cfg(feature = "mod-media")]
+use rustok_storage::StorageConfig;
+
 use crate::services::redis_runtime::resolve_redis_url;
 
 const DEFAULT_TENANT_ID: Uuid = Uuid::from_u128(1);
@@ -24,6 +27,9 @@ pub struct RustokSettings {
     pub email: EmailSettings,
     #[serde(default)]
     pub runtime: RuntimeSettings,
+    #[cfg(feature = "mod-media")]
+    #[serde(default)]
+    pub storage: StorageConfig,
 }
 
 /// Email transport provider selector.

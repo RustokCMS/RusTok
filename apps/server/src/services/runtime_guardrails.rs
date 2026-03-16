@@ -371,16 +371,8 @@ impl RuntimeGuardrailPolicy {
 
 fn load_runtime_guardrail_policy(ctx: &AppContext) -> RuntimeGuardrailPolicy {
     let settings =
-        RustokSettings::from_settings(&ctx.config.settings).unwrap_or_else(|_| RustokSettings {
-            tenant: Default::default(),
-            build: Default::default(),
-            search: Default::default(),
-            features: Default::default(),
-            rate_limit: Default::default(),
-            events: Default::default(),
-            email: Default::default(),
-            runtime: Default::default(),
-        });
+        RustokSettings::from_settings(&ctx.config.settings)
+            .unwrap_or_default();
     let guardrails = settings.runtime.guardrails;
     let thresholds = guardrails.rate_limit_memory_thresholds;
 

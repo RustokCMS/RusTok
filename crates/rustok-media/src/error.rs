@@ -1,0 +1,25 @@
+use thiserror::Error;
+use uuid::Uuid;
+
+#[derive(Debug, Error)]
+pub enum MediaError {
+    #[error("Media not found: {0}")]
+    NotFound(Uuid),
+
+    #[error("Access denied")]
+    Forbidden,
+
+    #[error("Unsupported media type: {0}")]
+    UnsupportedMimeType(String),
+
+    #[error("File too large: {size} bytes (max {max} bytes)")]
+    FileTooLarge { size: u64, max: u64 },
+
+    #[error("Storage error: {0}")]
+    Storage(#[from] rustok_storage::StorageError),
+
+    #[error("Database error: {0}")]
+    Db(#[from] sea_orm::DbErr),
+}
+
+pub type Result<T> = std::result::Result<T, MediaError>;

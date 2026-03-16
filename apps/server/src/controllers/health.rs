@@ -142,16 +142,8 @@ pub async fn ready(
     Extension(registry): Extension<ModuleRegistry>,
 ) -> Result<Response> {
     let settings =
-        RustokSettings::from_settings(&ctx.config.settings).unwrap_or_else(|_| RustokSettings {
-            tenant: Default::default(),
-            build: Default::default(),
-            search: Default::default(),
-            features: Default::default(),
-            rate_limit: Default::default(),
-            events: Default::default(),
-            email: Default::default(),
-            runtime: Default::default(),
-        });
+        RustokSettings::from_settings(&ctx.config.settings)
+            .unwrap_or_default();
 
     let mut checks = vec![
         run_guarded_check(
