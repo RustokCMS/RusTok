@@ -102,7 +102,7 @@ sea-orm-migration.workspace = true
 loco-rs = { workspace = true, features = ["testing"] }
 serial_test = "3.4"
 rustok-test-utils.workspace = true
-tempfile = "3.26"
+tempfile = "3.27"
 tower.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
