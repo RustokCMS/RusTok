@@ -25,7 +25,7 @@ graph TD
         TENANT[crates/rustok-tenant]
         ALLOY[crates/alloy-scripting]
         WORKFLOW[crates/rustok-workflow - planned]
-        MEDIA[crates/rustok-media - planned Core]
+        MEDIA[crates/rustok-media]
     end
 
     subgraph Module UI Packages
@@ -37,7 +37,7 @@ graph TD
     subgraph Platform Core Crates
         CORE[crates/rustok-core]
         EVENTS[crates/rustok-events]
-        STORAGE[crates/rustok-storage - planned leaf]
+        STORAGE[crates/rustok-storage]
         OUTBOX[crates/rustok-outbox - Core Infra]
         CACHE[crates/rustok-cache]
         IGGY[crates/rustok-iggy]
@@ -133,7 +133,7 @@ graph TD
 |------|------|-------------|
 | `crates/rustok-events` | **Events Contracts** | Модуль-библиотека (leaf). Stable import point for `DomainEvent`/`EventEnvelope`. Core re-exports. ([CRATE_API](../../crates/rustok-events/CRATE_API.md)) |
 | `crates/rustok-telemetry` | **Telemetry** | Модуль-библиотека (leaf). Observability setup (OTLP, Tracing, Prometheus metrics). Core re-exports. ([CRATE_API](../../crates/rustok-telemetry/CRATE_API.md)) |
-| `crates/rustok-storage` | **Storage** *(planned)* | Модуль-библиотека (leaf). `StorageBackend` trait + Local/S3/GCP/InMemory backends, `StoragePolicy`. Core will re-export. |
+| `crates/rustok-storage` | **Storage** | Модуль-библиотека (leaf). `StorageBackend` async trait + `LocalStorage` backend, `StorageService` wrapper, `StorageConfig`. ([docs](../../crates/rustok-storage/docs/README.md)) |
 
 #### Модуль-агрегатор (уровень 1)
 
@@ -168,7 +168,7 @@ graph TD
 | `crates/rustok-tenant` | **Tenant** | `Core` (mandatory, critical) | `rustok-core` ([CRATE_API](../../crates/rustok-tenant/CRATE_API.md)) |
 | `crates/rustok-rbac` | **RBAC** | `Core` (mandatory, critical) | `rustok-core` ([CRATE_API](../../crates/rustok-rbac/CRATE_API.md)) |
 | `crates/rustok-index` | **Index** | `Core` (mandatory, critical) | `rustok-core` ([CRATE_API](../../crates/rustok-index/CRATE_API.md)) |
-| `crates/rustok-media` | **Media** *(planned)* | `Core` (mandatory) | `rustok-core` → `rustok-storage`, `rustok-events`, `rustok-outbox`. `MediaService`, `ThumbnailService`, `QuotaService`. Зарегистрирован через `StorageModule`-паттерн. |
+| `crates/rustok-media` | **Media** | `Core` (mandatory, feature `mod-media`) | `rustok-core`, `rustok-storage`. `MediaService`: upload/get/list/delete + translations. SeaORM entities `media` + `media_translations`. ([docs](../../crates/rustok-media/docs/README.md)) |
 
 #### Optional-модули (уровень 3 — `ModuleKind::Optional`, toggle per-tenant)
 
@@ -183,9 +183,9 @@ graph TD
 | `crates/rustok-workflow` | **Workflow** *(planned)* | `Optional` | `rustok-core`, `alloy-scripting`. Визуальная автоматизация на платформенной очереди (outbox → iggy). Горизонтальный модуль. ([Plan](../architecture/workflow.md)) |
 
 > **4-уровневая архитектура платформы:**
-> - Уровень 0 (модули-библиотеки, leaf): `rustok-events`, `rustok-telemetry`, `rustok-storage` *(planned)*
+> - Уровень 0 (модули-библиотеки, leaf): `rustok-events`, `rustok-telemetry`, `rustok-storage`
 > - Уровень 1 (модуль-агрегатор): `rustok-core` (зависит от leaf, ре-экспортирует их)
-> - Уровень 2 (полноценные Core-модули, всегда активны): `rustok-tenant`, `rustok-rbac`, `rustok-index`, `rustok-media` *(planned)*
+> - Уровень 2 (полноценные Core-модули, всегда активны): `rustok-tenant`, `rustok-rbac`, `rustok-index`, `rustok-media`
 > - Уровень 3 (полноценные Optional-модули, toggle per-tenant): `content`, `commerce`, `blog`, `forum`, `pages`, `alloy-scripting`, `workflow` *(planned)*
 >
 > Обязательный базис платформы: `rustok-core`, `rustok-outbox`, `rustok-telemetry`, `rustok-tenant`, `rustok-rbac`, `rustok-index` + инфраструктурные модули (`rustok-cache`, `rustok-events`).
@@ -239,8 +239,8 @@ They are not published to crates.io. Treat them as first-party code — changes 
 | `crates/leptos-zustand` | **Leptos Zustand** | `apps/admin` | Lightweight state management utilities. |
 | `crates/utoipa-swagger-ui-vendored` | **Swagger UI** | `apps/server` | Vendored Swagger UI static assets. |
 | `crates/rustok-cache` | **Cache** | `apps/server` | Redis/Moka cache backends, `CacheModule`, `CacheService`. Выделен из `rustok-core`. |
-| `crates/rustok-storage` | **Storage** *(planned)* | `rustok-core` → `rustok-media` | Leaf crate: `StorageBackend` trait + Local/S3/GCP/InMemory backends, `StoragePolicy`. |
-| `crates/rustok-media` | **Media** *(planned)* | `apps/server`, `rustok-content`, `rustok-commerce` | Core module: `MediaService`, `ThumbnailService`, `QuotaService`, SeaORM entities. |
+| `crates/rustok-storage` | **Storage** | `rustok-media`, `apps/server` | Leaf crate: `StorageBackend` async trait + `LocalStorage` impl, `StorageService` wrapper. ([docs](../../crates/rustok-storage/docs/README.md)) |
+| `crates/rustok-media` | **Media** | `apps/server`, `rustok-content`, `rustok-commerce` | Core module: `MediaService`, SeaORM entities `media` + `media_translations`. Feature: `mod-media`. ([docs](../../crates/rustok-media/docs/README.md)) |
 | `crates/rustok-flex` | **Flex Standalone** *(planned, future)* | Optional modules | Отдельный crate для режима Standalone Flex (произвольные схемы, формы, справочники). Режим Attached уже в `rustok-core`. |
 
 ## Maintenance Rule

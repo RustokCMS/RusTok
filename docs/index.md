@@ -81,6 +81,7 @@ graph TD
 - [События и Outbox](./architecture/events.md) — событийная модель, outbox и runbook инцидентов для backlog/DLQ/reindex.
 - [Транзакционная публикация](./architecture/events-transactional.md)
 - [Контракт потока событий](./architecture/event-flow-contract.md) — канонический event-path и runtime-contract для consumer-loops.
+- [WebSocket-каналы](./architecture/channels.md)
 - [Многотенантность](./architecture/tenancy.md)
 - [Локализация (i18n)](./architecture/i18n.md)
 - [Принципы](./architecture/principles.md)
@@ -104,6 +105,7 @@ graph TD
 - [Аудит безопасности](./guides/security-audit.md)
 - [Устранение проблем lockfile](./guides/lockfile-troubleshooting.md)
 - [Подключение внешних приложений](./guides/connect-external-apps.md)
+- [Планировщик задач](./guides/scheduler.md)
 
 ### Модули (`docs/modules/`)
 
@@ -215,8 +217,8 @@ graph TD
 - [План реализации модуля Tenant](../crates/rustok-tenant/docs/implementation-plan.md)
 - [Документация модуля RBAC](../crates/rustok-rbac/docs/README.md)
 - [План реализации модуля RBAC](../crates/rustok-rbac/docs/implementation-plan.md)
-- Документация `rustok-storage` *(planned)* — `crates/rustok-storage/docs/README.md`
-- Документация `rustok-media` *(planned)* — `crates/rustok-media/docs/README.md`
+- [Документация rustok-storage](../crates/rustok-storage/docs/README.md) — `StorageBackend` trait + `LocalStorage`, `StorageService`
+- [Документация rustok-media](../crates/rustok-media/docs/README.md) — `MediaService`, upload/translations, REST + GraphQL API
 - [Документация crate-коннектора Iggy](../crates/rustok-iggy-connector/docs/README.md)
 - [План реализации коннектора Iggy](../crates/rustok-iggy-connector/docs/implementation-plan.md)
 - [Документация рантайма Iggy](../crates/rustok-iggy/docs/README.md)
@@ -311,8 +313,8 @@ graph TD
 - `rustok-test-utils`: [README](../crates/rustok-test-utils/README.md)
 - `utoipa-swagger-ui-vendored`: [README](../crates/utoipa-swagger-ui-vendored/README.md), [docs/README](../crates/utoipa-swagger-ui-vendored/docs/README.md)
 - `rustok-cache`: [README](../crates/rustok-cache/README.md), [docs/README](../crates/rustok-cache/docs/README.md), [docs/implementation-plan](../crates/rustok-cache/docs/implementation-plan.md)
-- `rustok-storage` *(planned)*: `crates/rustok-storage/` — leaf crate, `StorageBackend` trait + backends
-- `rustok-media` *(planned)*: `crates/rustok-media/` — Core module, `MediaService`/`ThumbnailService`/`QuotaService`
+- `rustok-storage`: [README](../crates/rustok-storage/README.md), [docs/README](../crates/rustok-storage/docs/README.md) — leaf crate, `StorageBackend` trait + `LocalStorage` backend
+- `rustok-media`: [docs/README](../crates/rustok-media/docs/README.md) — Core module, `MediaService` + SeaORM entities, REST + GraphQL API
 - `rustok-flex` *(planned, future)*: `crates/rustok-flex/` — Standalone Flex mode (произвольные схемы, формы); Attached mode уже в `rustok-core`
 
 ### Пакеты (`packages/*`)
