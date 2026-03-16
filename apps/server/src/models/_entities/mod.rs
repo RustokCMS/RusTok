@@ -1,25 +1,26 @@
 pub mod oauth_apps;
-pub mod platform_settings;
 pub mod oauth_authorization_codes;
 pub mod oauth_consents;
 pub mod oauth_tokens;
 pub mod permissions;
+pub mod platform_settings;
 pub mod product_field_definitions;
 pub mod role_permissions;
 pub mod roles;
 pub mod sessions;
 pub mod tenant_modules;
 pub mod tenants;
+pub mod topic_field_definitions;
 pub mod user_field_definitions;
 pub mod user_roles;
 pub mod users;
 
 pub use oauth_apps::Entity as OAuthApps;
-pub use platform_settings::Entity as PlatformSettings;
 pub use oauth_authorization_codes::Entity as OAuthAuthorizationCodes;
 pub use oauth_consents::Entity as OAuthConsents;
 pub use oauth_tokens::Entity as OAuthTokens;
 pub use permissions::Entity as Permissions;
+pub use platform_settings::Entity as PlatformSettings;
 pub use role_permissions::Entity as RolePermissions;
 pub use roles::Entity as Roles;
 pub use sessions::Entity as Sessions;
@@ -29,3 +30,5 @@ pub use user_roles::Entity as UserRoles;
 pub use users::Entity as Users;
 
 pub use product_field_definitions::Entity as ProductFieldDefinitions;
+
+pub use topic_field_definitions::Entity as TopicFieldDefinitions;

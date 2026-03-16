@@ -12,6 +12,7 @@ pub mod release;
 pub mod sessions;
 pub mod tenant_modules;
 pub mod tenants;
+pub mod topic_field_definitions;
 pub mod user_field_definitions;
 pub mod users;
 

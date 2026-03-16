@@ -1048,7 +1048,7 @@ impl SchemaCache {
 - [x] `product_field_definitions` (через helper; `apps/server/migration` `m20260316_000002`) + entity/model/service/registry в `apps/server`
 - [ ] `order_field_definitions` (через helper, после миграции)
 - [x] `node_field_definitions` (через helper; `apps/server/migration` `m20260316_000003`)
-- [ ] `topic_field_definitions` (через helper, после проверки)
+- [x] `topic_field_definitions` (через helper; `apps/server/migration` `m20260316_000004_create_topic_field_definitions`) + entity/model/service/registry в `apps/server`
 - [ ] Каждый модуль: 5 шагов, ~50 строк + регистрация в FieldDefRegistry
 
 ### Phase 5 — Flex standalone (rustok-flex крейт, future)
