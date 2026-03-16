@@ -13,8 +13,8 @@ use chrono::{Duration, Utc};
 use loco_rs::{
     app::AppContext,
     task::{Task, TaskInfo, Vars},
-    Error, Result,
 };
+use crate::error::{Error, Result};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, QueryOrder, Statement,
 };

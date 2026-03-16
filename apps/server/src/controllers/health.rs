@@ -5,7 +5,7 @@ use axum::Extension;
 use loco_rs::app::AppContext;
 use loco_rs::controller::format;
 use loco_rs::controller::Routes;
-use loco_rs::Result;
+use crate::error::Result;
 use axum::extract::State;
 use axum::response::Response;
 use once_cell::sync::Lazy;

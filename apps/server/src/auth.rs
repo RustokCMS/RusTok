@@ -4,7 +4,9 @@ pub use rustok_auth::{
     PasswordResetClaims,
 };
 
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::app::AppContext;
+
+use crate::error::{Error, Result};
 use serde::Deserialize;
 
 const DEFAULT_REFRESH_EXPIRATION_SECS: u64 = 60 * 60 * 24 * 30;

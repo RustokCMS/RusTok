@@ -3,7 +3,9 @@
 //! Seed data for development and testing.
 //! Run with: `cargo loco db seed`
 
-use loco_rs::{app::AppContext, Result};
+use loco_rs::app::AppContext;
+
+use crate::error::Result;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use std::path::Path;
 

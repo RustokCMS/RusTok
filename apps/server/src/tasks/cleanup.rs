@@ -8,8 +8,8 @@ use chrono::Utc;
 use loco_rs::{
     app::AppContext,
     task::{Task, TaskInfo, Vars},
-    Result,
 };
+use crate::error::{Error, Result};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::json;
 
@@ -93,10 +93,10 @@ fn write_rbac_report_file(
         "orphan_role_permissions_total": stats.orphan_role_permissions_total,
     }))
     .map_err(|error| {
-        loco_rs::Error::string(&format!("rbac report serialization failed: {error}"))
+        Error::string(&format!("rbac report serialization failed: {error}"))
     })?;
     std::fs::write(path, payload)
-        .map_err(|error| loco_rs::Error::string(&format!("rbac report write failed: {error}")))?;
+        .map_err(|error| Error::string(&format!("rbac report write failed: {error}")))?;
     Ok(())
 }
 

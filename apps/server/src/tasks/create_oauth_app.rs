@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use loco_rs::app::AppContext;
 use loco_rs::task::{Task, Vars};
+
+use crate::error::{Error, Result};
 use tracing::info;
 
 use crate::services::oauth_app::{CreateOAuthAppInput, OAuthAppService};
@@ -16,7 +18,7 @@ impl Task for CreateOAuthAppTask {
         }
     }
 
-    async fn run(&self, app_context: &AppContext, vars: &Vars) -> loco_rs::Result<()> {
+    async fn run(&self, app_context: &AppContext, vars: &Vars) -> Result<()> {
         let name = vars
             .cli_arg("name")
             .map(|value| value.to_string())
@@ -34,7 +36,7 @@ impl Task for CreateOAuthAppTask {
         use sea_orm::EntityTrait;
 
         let tenant = Tenants::find().one(db).await?.ok_or_else(|| {
-            loco_rs::Error::Message("No tenant found. Run seeds first.".to_string())
+            Error::Message("No tenant found. Run seeds first.".to_string())
         })?;
 
         let input = CreateOAuthAppInput {
@@ -60,7 +62,7 @@ impl Task for CreateOAuthAppTask {
 
         let result = OAuthAppService::create_app(db, tenant.id, input)
             .await
-            .map_err(|e| loco_rs::Error::Message(format!("Failed to create app: {}", e)))?;
+            .map_err(|e| Error::Message(format!("Failed to create app: {}", e)))?;
 
         println!("==================================================");
         println!("✅ OAuth Application created successfully!");

@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use axum::Router as AxumRouter;
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::app::AppContext;
+
+use crate::error::{Error, Result};
 use rustok_core::ModuleRegistry;
 
 use crate::auth::AuthConfig;

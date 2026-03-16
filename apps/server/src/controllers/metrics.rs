@@ -2,8 +2,11 @@ use axum::{
     extract::State,
     http::{header::CONTENT_TYPE, StatusCode},
     response::{IntoResponse, Response},
+    routing::get,
 };
-use loco_rs::{app::AppContext, controller::Routes, prelude::*, Result};
+use loco_rs::{app::AppContext, controller::Routes};
+
+use crate::error::Result;
 use rustok_outbox::entity::{Column as SysEventsColumn, Entity as SysEventsEntity, SysEventStatus};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,

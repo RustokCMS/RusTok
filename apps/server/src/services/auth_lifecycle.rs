@@ -1,7 +1,7 @@
 use chrono::{Duration, Utc};
 use loco_rs::app::AppContext;
-use loco_rs::Error;
-use loco_rs::Result;
+use crate::error::Error;
+use crate::error::Result;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     Set,

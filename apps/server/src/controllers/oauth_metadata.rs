@@ -5,6 +5,8 @@ use crate::auth::auth_config_from_ctx;
 use axum::{extract::State, routing::get, Json};
 use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
+
+use crate::error::Error;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -28,9 +30,9 @@ pub struct OAuthAuthorizationServerMetadata {
 
 async fn get_metadata(
     State(ctx): State<AppContext>,
-) -> Result<Json<OAuthAuthorizationServerMetadata>, loco_rs::Error> {
+) -> Result<Json<OAuthAuthorizationServerMetadata>, Error> {
     let auth_config = auth_config_from_ctx(&ctx)
-        .map_err(|_| loco_rs::Error::Message("Auth config error".into()))?;
+        .map_err(|_| Error::Message("Auth config error".into()))?;
 
     // Generate issuer base URL
     // In a real environment, this should be the public URL from config.

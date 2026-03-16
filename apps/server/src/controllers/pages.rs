@@ -5,8 +5,8 @@ use axum::{
 };
 use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
-use loco_rs::Error;
-use loco_rs::Result;
+use crate::error::Error;
+use crate::error::Result;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

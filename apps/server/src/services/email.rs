@@ -2,7 +2,9 @@
 pub use rustok_email::{EmailService, PasswordResetEmail, PasswordResetEmailSender};
 
 use crate::common::settings::RustokSettings;
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::app::AppContext;
+
+use crate::error::{Error, Result};
 
 /// Loco bridge: convert `EmailError` → `loco_rs::Error`.
 pub fn email_err(err: rustok_email::EmailError) -> Error {

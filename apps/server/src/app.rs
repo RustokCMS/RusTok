@@ -22,6 +22,8 @@ use crate::services::app_router::compose_application_router;
 use crate::services::app_runtime::bootstrap_app_runtime;
 use crate::tasks;
 use loco_rs::prelude::Queue;
+
+use crate::error::Error;
 use migration::Migrator;
 
 pub struct App;
@@ -77,7 +79,7 @@ impl Hooks for App {
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
         let rustok_settings =
             RustokSettings::from_settings(&ctx.config.settings).map_err(|error| {
-                loco_rs::Error::BadRequest(format!("Invalid rustok settings: {error}"))
+                Error::BadRequest(format!("Invalid rustok settings: {error}"))
             })?;
         let runtime = bootstrap_app_runtime(ctx, &rustok_settings).await?;
         connect_runtime_workers(ctx).await?;

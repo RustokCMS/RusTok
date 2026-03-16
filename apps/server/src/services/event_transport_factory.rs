@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use loco_rs::app::AppContext;
-use loco_rs::Result;
+use crate::error::{Error, Result};
 use rustok_core::events::{EventTransport, MemoryTransport};
 use rustok_iggy::{IggyConfig, IggyTransport};
 use rustok_outbox::{OutboxRelay, OutboxTransport, RelayConfig};
@@ -26,7 +26,7 @@ pub struct RelayRuntimeConfig {
 
 pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
     let settings = RustokSettings::from_settings(&ctx.config.settings)
-        .map_err(|error| loco_rs::Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
+        .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
 
     match settings.events.transport {
         EventTransportKind::Memory => Ok(EventRuntime {
@@ -65,7 +65,7 @@ pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
             let transport = IggyTransport::new(resolve_iggy_config(&settings))
                 .await
                 .map_err(|error| {
-                    loco_rs::Error::BadRequest(format!(
+                    Error::BadRequest(format!(
                         "Failed to initialize iggy transport: {error}"
                     ))
                 })?;
@@ -124,7 +124,7 @@ async fn resolve_relay_target(
                     );
                     Ok((Arc::new(MemoryTransport::new()), true))
                 } else {
-                    Err(loco_rs::Error::BadRequest(format!(
+                    Err(Error::BadRequest(format!(
                         "Failed to initialize relay_target=iggy and fallback is disabled: {error}"
                     )))
                 }

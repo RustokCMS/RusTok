@@ -4,8 +4,8 @@ use axum::{
     Json,
 };
 use loco_rs::app::AppContext;
-use loco_rs::Error;
-use loco_rs::Result;
+use crate::error::Error;
+use crate::error::Result;
 use rustok_forum::{
     CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, ReplyService,
     UpdateReplyInput,

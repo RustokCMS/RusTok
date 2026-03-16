@@ -10,7 +10,7 @@ use crate::models::oauth_consents::{
 };
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
 use chrono::Utc;
-use loco_rs::{Error, Result};
+use crate::error::{Error, Result};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use subtle::ConstantTimeEq;
 use uuid::Uuid;

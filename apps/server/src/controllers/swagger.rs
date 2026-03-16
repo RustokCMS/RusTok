@@ -3,7 +3,10 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use loco_rs::{controller::Routes, prelude::*};
+use axum::routing::get;
+use loco_rs::{controller::Routes, Result};
+
+use crate::error::Error;
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
@@ -221,7 +224,7 @@ pub struct ApiDoc;
 pub async fn openapi_json() -> Result<Response> {
     let spec = ApiDoc::openapi()
         .to_json()
-        .map_err(|e| loco_rs::Error::Message(format!("Failed to serialize OpenAPI spec: {e}")))?;
+        .map_err(|e| Error::Message(format!("Failed to serialize OpenAPI spec: {e}")))?;
     Ok((
         StatusCode::OK,
         [(CONTENT_TYPE, "application/json; charset=utf-8")],
@@ -241,7 +244,7 @@ pub async fn openapi_json() -> Result<Response> {
 )]
 pub async fn openapi_yaml() -> Result<Response> {
     let spec = ApiDoc::openapi().to_yaml().map_err(|e| {
-        loco_rs::Error::Message(format!("Failed to serialize OpenAPI spec to YAML: {e}"))
+        Error::Message(format!("Failed to serialize OpenAPI spec to YAML: {e}"))
     })?;
     Ok((
         StatusCode::OK,

@@ -1,4 +1,6 @@
-use loco_rs::{app::AppContext, config::Config, Error, Result};
+use loco_rs::{app::AppContext, config::Config};
+
+use crate::error::{Error, Result};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::task::JoinHandle;

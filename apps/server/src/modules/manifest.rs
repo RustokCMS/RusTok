@@ -6,6 +6,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+use crate::error::{Error as ServerError, Result as ServerResult};
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModulesManifest {
     #[serde(default)]
@@ -1106,15 +1108,15 @@ impl ManifestManager {
     }
 }
 
-pub fn validate_registry_vs_manifest(registry: &ModuleRegistry) -> loco_rs::Result<()> {
+pub fn validate_registry_vs_manifest(registry: &ModuleRegistry) -> ServerResult<()> {
     let manifest = ManifestManager::load().map_err(|error| {
-        loco_rs::Error::BadRequest(format!("modules.toml validation failed: {error}"))
+        ServerError::BadRequest(format!("modules.toml validation failed: {error}"))
     })?;
 
     ManifestManager::validate(&manifest)
         .and_then(|_| ManifestManager::validate_with_registry(&manifest, registry))
         .map_err(|error| {
-            loco_rs::Error::BadRequest(format!("modules.toml validation failed: {error}"))
+            ServerError::BadRequest(format!("modules.toml validation failed: {error}"))
         })
 }
 

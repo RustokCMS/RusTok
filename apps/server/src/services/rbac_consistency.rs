@@ -1,4 +1,6 @@
-use loco_rs::{app::AppContext, Error, Result};
+use loco_rs::app::AppContext;
+
+use crate::error::{Error, Result};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 

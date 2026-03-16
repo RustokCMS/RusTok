@@ -1,5 +1,5 @@
-use loco_rs::Error;
-use loco_rs::Result;
+use crate::error::Error;
+use crate::error::Result;
 use sea_orm::{
     sea_query::OnConflict, ActiveValue, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
 };
