@@ -12,7 +12,7 @@ use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
-use loco_rs::prelude::*;
+use loco_rs::app::AppContext;
 use rustok_core::{Permission, UserRole};
 use tracing::warn;
 

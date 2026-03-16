@@ -1,5 +1,6 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use loco_rs::prelude::*;
+use loco_rs::app::AppContext;
+use loco_rs::Error;
 
 use crate::auth::{auth_config_from_ctx, encode_password_reset_token};
 use crate::context::{infer_user_role_from_permissions, TenantContext};
