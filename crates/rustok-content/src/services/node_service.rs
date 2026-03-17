@@ -56,6 +56,8 @@ impl NodeService {
             "forum_category" => Ok(Resource::ForumCategories),
             "forum_topic" => Ok(Resource::ForumTopics),
             "forum_reply" => Ok(Resource::ForumReplies),
+            "category" => Ok(Resource::Categories),
+            "tag" => Ok(Resource::Tags),
             _ => Err(ContentError::Validation(format!(
                 "Unsupported kind for RBAC mapping: {kind}"
             ))),
