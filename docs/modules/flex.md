@@ -6,5 +6,5 @@
 
 Flex — модуль-библиотека для runtime-определяемых кастомных полей.
 Типы и валидаторы живут в `rustok-core/src/field_schema.rs`.
-Attached mode (Phases 0–4) реализован. Standalone mode (Phase 5) — не начат.
+Attached mode (Phases 0–4) реализован. Standalone mode (Phase 5) — начат: добавлены базовые transport-agnostic контракты в `crates/flex`.
 Server migration guide (Phase 4.5): [`apps/server/docs/flex-phase45-migration-guide.md`](../../apps/server/docs/flex-phase45-migration-guide.md).

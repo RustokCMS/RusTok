@@ -1,7 +1,7 @@
 # Flex — Custom Fields System
 
 > **Статус attached mode:** Phases 0–4 реализованы. Phase 4.5 (вынос в `crates/flex`) — в процессе.
-> **Статус standalone mode:** Phase 5 — не начат.
+> **Статус standalone mode:** Phase 5 — начат (добавлены transport-agnostic контракты в `crates/flex/src/standalone.rs`; persistence/API ещё не реализованы).
 > Нереализованное → [`implementation-plan.md`](./implementation-plan.md)
 
 ---
@@ -68,7 +68,7 @@ rustok-content  ←✗→ flex
   + users.metadata (JSONB с данными)
 ```
 
-### Standalone mode (Phase 5, не реализовано)
+### Standalone mode (Phase 5, частично реализовано: контракты)
 
 Произвольные схемы и записи без привязки к существующим сущностям:
 
@@ -456,7 +456,16 @@ pub enum FlexError {
 
 ---
 
-## 12. Standalone mode (Phase 5 — не реализовано)
+## 12. Standalone mode (Phase 5 — начат, persistence/API pending)
+
+На текущем этапе в `crates/flex` добавлены только transport-agnostic контракты:
+
+- `FlexSchemaView`, `FlexEntryView`
+- `CreateFlexSchemaCommand`, `UpdateFlexSchemaCommand`
+- `CreateFlexEntryCommand`, `UpdateFlexEntryCommand`
+- `FlexStandaloneService`
+- Guardrail validators: `validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command`
+- Orchestration helpers: `list/find/create/update/delete` для schemas и entries
 
 Спецификация для будущей реализации.
 

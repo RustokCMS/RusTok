@@ -4,6 +4,7 @@
 pub mod errors;
 pub mod orchestration;
 pub mod registry;
+pub mod standalone;
 
 pub use errors::{map_flex_error, FlexMappedError, FlexMappedErrorKind};
 pub use orchestration::{
@@ -14,4 +15,11 @@ pub use orchestration::{
 pub use registry::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
     UpdateFieldDefinitionCommand,
+};
+pub use standalone::{
+    create_entry, create_schema, delete_entry, delete_schema, find_entry, find_schema,
+    list_entries, list_schemas, update_entry, update_schema, validate_create_entry_command,
+    validate_create_schema_command, validate_update_entry_command, validate_update_schema_command,
+    CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
+    FlexStandaloneService, UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
 };

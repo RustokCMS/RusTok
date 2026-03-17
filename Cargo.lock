@@ -9703,19 +9703,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-flex"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "rustok-core",
- "rustok-events",
- "sea-orm",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "rustok-forum"
 version = "0.1.0"
 dependencies = [

@@ -15,7 +15,7 @@
 | Phase 3 | Admin API (GraphQL CRUD, RBAC, кеш, пагинация) | ✅ Done |
 | Phase 4 | Commerce, Content, Forum | 🔄 В основном выполнено, есть долги |
 | Phase 4.5 | Вынос в `crates/flex` | 🔄 В процессе |
-| Phase 5 | Standalone mode | ⬜ Не начат |
+| Phase 5 | Standalone mode | 🔄 Начат (контракты в `crates/flex`) |
 | Phase 6 | Advanced features | ⬜ Не начат |
 
 ---
@@ -66,7 +66,9 @@
   - `apps/server` использует mapping из agnostic-модуля
 - [x] Перевести `user/product/order/topic` сервисы на новый crate API
   - Bootstrap/GraphQL используют прямой API `flex` без изменения GraphQL-контрактов
-- [ ] Убрать дублирование между `apps/server` и `crates/flex`
+- [x] Удалён legacy-дубликат `crates/rustok-flex`
+  - В workspace остаётся единый agnostic модуль `crates/flex`
+- [x] Убрать дублирование между `apps/server` и `crates/flex`
 - [x] Написать migration guide: `apps/server/docs/` + cross-link в `docs/index.md`
 
 ---
@@ -74,6 +76,14 @@
 ## Phase 5 — Standalone mode
 
 Произвольные схемы и записи без привязки к существующим сущностям.
+
+### Что уже начато
+
+- [x] Добавлены transport-agnostic standalone контракты в `crates/flex/src/standalone.rs`
+  - DTO для схем/записей (`FlexSchemaView`, `FlexEntryView`)
+  - Commands и trait-контракт `FlexStandaloneService` для будущих adapter-реализаций
+  - Базовые guardrail validators для create/update-команд (`validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command`)
+  - Orchestration helpers (`list/find/create/update/delete` для schemas и entries), чтобы adapters не дублировали routing/pre-validation
 
 ### Таблицы
 
