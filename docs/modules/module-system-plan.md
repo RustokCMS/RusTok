@@ -1,206 +1,530 @@
-# RusTok — Система модулей: план доработки
+# RusTok — Система модулей: полная карта и план
 
-> **Статус**: Активный план (только незавершённые задачи)
 > **Дата**: 2026-03-17
+> **Назначение**: полная карта реализации — что сделано, где документировано,
+> что осталось. Служит основой для периодической верификации корректности.
 >
-> Справочная документация по реализованной части:
-> - `docs/architecture/modules.md` — архитектура модульной системы, два уровня операций
-> - `docs/modules/manifest.md` — формат `modules.toml` и `rustok-module.toml`
+> Легенда: ✅ реализовано · ⚠️ частично · ⬜ не начато
 
 ---
 
-## Что осталось сделать
+## Содержание
 
-### ⚠️ Частично реализовано
+1. [Стандарт модуля](#1-стандарт-модуля)
+2. [Tenant-level toggle](#2-tenant-level-toggle)
+3. [Platform-level install/uninstall](#3-platform-level-installuninstall)
+4. [Build pipeline](#4-build-pipeline)
+5. [Marketplace каталог](#5-marketplace-каталог)
+6. [Admin UI](#6-admin-ui)
+7. [Внешний реестр и публикация](#7-внешний-реестр-и-публикация)
+8. [Приоритет незавершённого](#8-приоритет-незавершённого)
 
 ---
 
-#### 1. Docker deploy в BuildExecutor
+## 1. Стандарт модуля
 
-**Текущее состояние**: `BuildExecutor` выполняет только `cargo build`. После успешной
-компиляции создаётся запись в `releases`, но реального деплоя не происходит.
+### ✅ `rustok-module.toml` — манифест модуля
 
-**Что нужно добавить** в `apps/server/src/services/build_executor.rs`:
+Каждый path-модуль обязан иметь `rustok-module.toml` в корне crate.
+Парсится в `ManifestManager::catalog_modules()` и `apply_module_package_manifest()`.
 
-```rust
-// После успешного cargo build:
-// Stage: Deploy (progress 85-99%)
+| Секция | Что содержит | Статус |
+|---|---|---|
+| `[module]` | slug, name, version, description, authors, license | ✅ парсится |
+| `[marketplace]` | icon, banner, screenshots, category, tags | ✅ парсится |
+| `[compatibility]` | rustok_min, rustok_max | ✅ парсится |
+| `[dependencies]` | depends_on с version_req | ⚠️ slug проверяется, version_req игнорируется |
+| `[conflicts]` | несовместимые модули | ⚠️ парсится, но не проверяется |
+| `[crate]` | name, entry_type | ✅ парсится |
+| `[provides]` | migrations, permissions, events, admin_nav, storefront_slots, graphql | ✅ парсится |
+| `[settings]` | схема настроек модуля (type, default, min, max) | ⚠️ парсится, но нет API для записи |
+| `[locales]` | supported, default | ✅ парсится |
 
-// 1. docker build -t rustok-server:{release_id} .
-// 2. docker push {registry}/{image}:{tag}
-// 3. Обновить release.container_image
-// 4. Rolling restart (или через оркестратор)
+**Файлы**:
+- `apps/server/src/modules/manifest.rs` — `apply_module_package_manifest()`
 
-// Для monolith-режима: просто перезапуск процесса
-// Для K8s: обновить image в deployment через kubectl / Helm
+**Документация**:
+- `docs/modules/manifest.md`
+
+---
+
+### ✅ Структура файлов модуля
+
+```
+crates/rustok-{slug}/
+├── rustok-module.toml       # обязательно для path-модулей
+├── Cargo.toml
+├── src/
+│   ├── lib.rs               # impl RusToKModule
+│   └── migrations/          # impl MigrationSource (после migration distribution)
+│       ├── mod.rs
+│       └── m20250101_*.rs
+├── admin/                   # Leptos-компоненты (опционально)
+└── storefront/              # Slot-виджеты (опционально)
 ```
 
-Поля `releases.container_image`, `releases.server_artifact_url` — есть в схеме,
-но не заполняются. `ReleaseStatus::Deploying` / `Active` — есть, но не используются
-корректно.
-
-**Конфигурация** (через env vars, по аналогии с `RUSTOK_BUILD_CARGO_BIN`):
-- `RUSTOK_BUILD_DOCKER_BIN` — путь к docker (default: `docker`)
-- `RUSTOK_BUILD_REGISTRY` — registry URL для push
-- `RUSTOK_DEPLOY_MODE` — `monolith` | `docker` | `k8s`
+**Документация**:
+- `docs/architecture/modules.md`
 
 ---
 
-#### 2. Build progress UI — подключить WebSocket subscription
-
-**Текущее состояние**: прогресс-бар в `/modules` обновляется polling'ом раз в 5 секунд
-(`use_interval_fn(refresh_live_state, 5000)`). `buildProgress` GraphQL subscription
-реализована на бэке (`apps/server/src/graphql/subscriptions.rs`), но UI к ней
-не подключён.
-
-**Что нужно** в `apps/admin/src/features/modules/components/modules_list.rs`:
+### ✅ Контракт `RusToKModule`
 
 ```rust
-// Заменить polling на subscription:
-
-// Вместо:
-use_interval_fn(refresh_live_state, 5000);
-
-// Использовать:
-let _sub = use_graphql_subscription::<BuildProgressSubscription>(
-    BuildProgressSubscriptionVariables { build_id: active_build_id },
-    move |event| set_build.set(Some(event.build_progress)),
-);
-```
-
-`leptos-graphql` уже поддерживает subscriptions — инфраструктура есть.
-
----
-
-#### 3. Semver-валидация зависимостей и конфликтов
-
-**Текущее состояние**: `ManifestManager::validate()` проверяет только факт наличия
-зависимости (slug присутствует в манифесте). Диапазоны версий (`>= 1.0.0`, `~2.0`)
-и секция `[conflicts]` в `rustok-module.toml` — игнорируются.
-
-**Что нужно** в `apps/server/src/modules/manifest.rs`:
-
-```rust
-// Сейчас:
-fn validate_dependencies(manifest: &ModulesManifest) -> Result<()> {
-    for (slug, spec) in &manifest.modules {
-        for dep in &spec.depends_on {
-            if !manifest.modules.contains_key(dep) {
-                return Err(MissingDependency { slug, dep });
-            }
-            // ← версия не проверяется
-        }
-    }
+pub trait RusToKModule: Send + Sync {
+    fn slug(&self) -> &'static str;
+    fn kind(&self) -> ModuleKind;          // Core | Optional
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>>;
+    fn on_enable(&self, ctx: &AppContext) -> Result<()>;
+    fn on_disable(&self, ctx: &AppContext) -> Result<()>;
+    fn health(&self) -> ModuleHealth;
+    fn event_listeners(&self) -> Vec<Box<dyn EventListener>>;
 }
-
-// Нужно:
-// 1. Парсить version_req из rustok-module.toml [dependencies]
-//    например: content = ">= 1.0.0"
-// 2. Парсить installed version из модуля
-// 3. semver::VersionReq::parse(req)?.matches(&installed_version)
-// 4. Проверять [conflicts]: если конфликтующий модуль установлен → ошибка
 ```
 
-Добавить зависимость `semver = "1"` в `apps/server/Cargo.toml`.
+**Файлы**:
+- `crates/rustok-core/src/module.rs`
+- `crates/rustok-core/src/registry.rs`
 
-Затронутые места:
-- `ManifestManager::validate()` — добавить semver-проверки
-- `ManifestManager::install_builtin_module()` — проверять конфликты перед добавлением
-- `ManifestManager::upgrade_module()` — проверять, не ломает ли новая версия dependents
-
----
-
-### ⬜ Не реализовано
+**Документация**:
+- `docs/architecture/modules.md`
 
 ---
 
-#### 4. API настроек модуля (`updateModuleSettings`)
+### ✅ Migration distribution
 
-**Текущее состояние**: колонка `settings JSON` в `tenant_modules` существует,
-`on_enable()` может записать дефолты — но нет GraphQL мутации для обновления
-настроек через UI.
+Каждый модуль несёт миграции внутри своего crate (`src/migrations/`).
+При старте бинарника `registry.migrations()` собирает миграции всех модулей
+и прогоняет их автоматически. Вручную добавлять файлы в `apps/server/migration/` не нужно.
 
-**Что нужно**:
+**Файлы**:
+- `crates/rustok-*/src/migrations/` — миграции каждого модуля
+- `crates/rustok-core/src/registry.rs` — `ModuleRegistry::migrations()`
+
+---
+
+## 2. Tenant-level toggle
+
+### ✅ Схема `tenant_modules`
+
+```sql
+CREATE TABLE tenant_modules (
+  id         UUID PRIMARY KEY,
+  tenant_id  UUID NOT NULL REFERENCES tenants(id),
+  module_slug VARCHAR(64) NOT NULL,
+  enabled    BOOLEAN NOT NULL DEFAULT true,
+  settings   JSON NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  UNIQUE(tenant_id, module_slug)
+)
+```
+
+**Файлы**:
+- `apps/server/migration/src/m20250101_000003_create_tenant_modules.rs`
+- `crates/rustok-tenant/src/entities/tenant_module.rs`
+- `apps/server/src/models/tenant_modules.rs`
+
+---
+
+### ✅ `ModuleLifecycleService::toggle_module`
+
+Flow:
+1. slug ∈ `ModuleRegistry` → иначе `UnknownModule`
+2. не `ModuleKind::Core` → иначе `CoreModuleCannotBeDisabled`
+3. `enabled=true`: все `depends_on` включены → иначе `MissingDependencies`
+4. `enabled=false`: нет зависящих от него → иначе `HasDependents`
+5. `BEGIN TRANSACTION` → UPDATE `tenant_modules` → `on_enable()` / `on_disable()`
+6. При `HookFailed` — откат состояния в транзакции
+
+**Файлы**:
+- `apps/server/src/services/module_lifecycle.rs`
+
+**Тесты**:
+- `apps/server/tests/module_lifecycle.rs`
+
+---
+
+### ✅ GraphQL `toggleModule`
 
 ```graphql
-type Mutation {
-  updateModuleSettings(moduleSlug: String!, settings: JSON!): TenantModule!
+mutation {
+  toggleModule(moduleSlug: "blog", enabled: true) {
+    moduleSlug enabled settings
+  }
+}
+```
+
+**Файлы**:
+- `apps/server/src/graphql/mutations.rs` — `async fn toggle_module`
+
+---
+
+### ✅ `EnabledModulesProvider` + `<ModuleGuard>` (Leptos)
+
+`EnabledModulesProvider` загружает включённые модули при старте и предоставляет
+контекст всему приложению. `<ModuleGuard slug="blog">` рендерит children только
+если модуль включён.
+
+**Файлы**:
+- `apps/admin/src/shared/context/enabled_modules.rs`
+
+---
+
+### ✅ Фильтрация slot-компонентов
+
+`components_for_slot(slot_id, enabled_modules)` фильтрует виджеты витрины
+по включённым модулям тенанта перед рендером.
+
+**Файлы**:
+- `apps/storefront/src/modules/registry.rs`
+
+---
+
+### ⚠️ Настройки модуля — нет API записи
+
+Колонка `settings JSON` в `tenant_modules` есть. `on_enable()` может записать
+дефолты. Но нет GraphQL мутации для обновления настроек через UI.
+
+**Что нужно**:
+```graphql
+mutation {
+  updateModuleSettings(moduleSlug: "blog", settings: { postsPerPage: 20 }): TenantModule!
 }
 ```
 
 Серверная сторона (`apps/server/src/graphql/mutations.rs`):
-
 ```rust
 async fn update_module_settings(
     &self, ctx: &Context<'_>,
     module_slug: String,
     settings: serde_json::Value,
 ) -> Result<TenantModule> {
-    // 1. Проверить, что модуль включён для тенанта
-    // 2. Валидировать settings по JSON Schema из rustok-module.toml [settings]
-    // 3. UPDATE tenant_modules SET settings = ? WHERE tenant_id = ? AND module_slug = ?
-    // 4. Return updated TenantModule
+    // 1. Проверить что модуль включён для тенанта
+    // 2. Валидировать по JSON Schema из [settings] rustok-module.toml
+    // 3. UPDATE tenant_modules SET settings = ?
 }
 ```
 
-UI (`apps/admin/src/features/modules/`):
-- Форма настроек генерируется из `[settings]` секции `rustok-module.toml`
-- Показывается в детальной панели модуля на `/modules`
+UI: форма из `[settings]` секции `rustok-module.toml`, в детальной панели `/modules`.
 
 ---
 
-#### 5. Внешний реестр `modules.rustok.dev`
+## 3. Platform-level install/uninstall
 
-Скелет `RegistryMarketplaceProvider` готов и делает HTTP-запросы, но сам сервис
-реестра не существует.
+### ✅ `ManifestManager`
 
-**Что входит в scope**:
+```rust
+ManifestManager::load()                     // парсить modules.toml
+ManifestManager::save(manifest)             // сохранить modules.toml
+ManifestManager::validate(manifest)         // проверить граф зависимостей
+ManifestManager::validate_with_registry()   // сверить с ModuleRegistry
+ManifestManager::install_builtin_module()   // добавить в modules.toml
+ManifestManager::uninstall_module()         // удалить из modules.toml
+ManifestManager::upgrade_module()           // обновить версию
+ManifestManager::catalog_modules()          // для MarketplaceCatalogService
+ManifestManager::build_modules()            // для BuildService
+ManifestManager::build_execution_plan()     // для BuildExecutor
+```
+
+**Файлы**:
+- `apps/server/src/modules/manifest.rs`
+
+**Документация**:
+- `docs/modules/manifest.md`
+- `docs/architecture/modules.md`
+
+---
+
+### ✅ GraphQL мутации install/uninstall/upgrade/rollback
+
+```graphql
+installModule(slug: String!, version: String): BuildJob!
+uninstallModule(slug: String!): BuildJob!
+upgradeModule(slug: String!, version: String!): BuildJob!
+rollbackBuild(buildId: ID!): BuildJob!
+```
+
+**Файлы**:
+- `apps/server/src/graphql/mutations.rs`
+
+---
+
+### ⚠️ Semver-валидация зависимостей и конфликтов
+
+`ManifestManager::validate()` проверяет только факт наличия slug в манифесте.
+Диапазоны версий в `[dependencies]` (`>= 1.0.0`, `~2.0`) не проверяются.
+Секция `[conflicts]` парсится, но нигде не проверяется.
+
+**Что нужно** в `apps/server/src/modules/manifest.rs`:
+```rust
+// Для каждой зависимости:
+let req = semver::VersionReq::parse(&dep.version_req)?;
+let installed = semver::Version::parse(&installed_spec.version)?;
+if !req.matches(&installed) {
+    return Err(IncompatibleDependencyVersion { ... });
+}
+
+// Для конфликтов:
+if manifest.modules.contains_key(&conflict_slug) {
+    return Err(ConflictingModule { slug, conflicts_with: conflict_slug });
+}
+```
+
+Добавить `semver = "1"` в `apps/server/Cargo.toml`.
+
+---
+
+## 4. Build pipeline
+
+### ✅ `BuildService`
+
+```rust
+BuildService::request_build(request)   // создать Build, хешировать, дедублировать
+BuildService::get_build(build_id)
+BuildService::active_build()           // следующий queued/running
+BuildService::running_build()
+```
+
+Дедупликация: если в очереди уже есть build с таким же SHA-256 `modules_delta` —
+возвращает существующий вместо создания нового.
+
+**Файлы**:
+- `apps/server/src/services/build_service.rs`
+- `apps/server/src/models/build.rs` — `BuildStatus`, `BuildStage`, `DeploymentProfile`
+- `apps/server/migration/src/m20250212_000001_create_builds_and_releases.rs`
+
+---
+
+### ✅ `BuildExecutor` — cargo build
+
+Выполняет `cargo build -p rustok-server` с feature flags из установленных модулей.
+Обновляет `builds.stage` и `builds.progress` по ходу выполнения.
+Создаёт запись в `releases` при успехе.
+
+**Файлы**:
+- `apps/server/src/services/build_executor.rs`
+
+**Env vars**:
+- `RUSTOK_BUILD_CARGO_BIN` — путь к cargo (default: `cargo`)
+
+---
+
+### ✅ `buildProgress` GraphQL subscription
+
+Истинный push через `tokio::sync::broadcast` канал.
+`BuildEventHub` рассылает события по мере выполнения build executor'а.
+
+```graphql
+subscription {
+  buildProgress(buildId: "...") { status stage progress logsUrl }
+}
+```
+
+**Файлы**:
+- `apps/server/src/graphql/subscriptions.rs`
+
+---
+
+### ✅ GraphQL queries для builds
+
+```graphql
+activeBuild: BuildJob
+buildHistory(limit: Int, offset: Int): [BuildJob!]!
+```
+
+**Файлы**:
+- `apps/server/src/graphql/queries.rs`
+
+---
+
+### ✅ `rollback_build`
+
+Проверяет цепочку релизов через `releases.previous_release_id`.
+Повторно активирует предыдущий `Release`. Полноценный откат, не просто смена статуса.
+
+**Файлы**:
+- `apps/server/src/graphql/mutations.rs` — `async fn rollback_build`
+- `apps/server/src/models/release.rs`
+
+---
+
+### ⚠️ Docker deploy — не реализован
+
+`BuildExecutor` выполняет только `cargo build`. После компиляции создаётся
+`Release` запись, но `container_image` и `server_artifact_url` остаются пустыми.
+`ReleaseStatus::Deploying` / `Active` не используются по назначению.
+
+**Что нужно** в `apps/server/src/services/build_executor.rs`:
+```
+Stage: Deploy (progress 85–99%)
+  1. docker build -t {registry}/rustok-server:{release_id} .
+  2. docker push
+  3. Заполнить releases.container_image
+  4. Rolling restart (monolith) | kubectl rollout (K8s)
+```
+
+**Новые env vars**:
+- `RUSTOK_BUILD_DOCKER_BIN` — путь к docker (default: `docker`)
+- `RUSTOK_BUILD_REGISTRY` — registry URL
+- `RUSTOK_DEPLOY_MODE` — `monolith` | `docker` | `k8s`
+
+---
+
+### ⚠️ Build progress UI — polling вместо subscription
+
+Прогресс-бар в `/modules` обновляется опросом каждые 5 секунд
+(`use_interval_fn(refresh_live_state, 5000)`).
+Бэкенд-subscription (`buildProgress`) реализована, но UI к ней не подключён.
+
+**Что нужно** в `apps/admin/src/features/modules/components/modules_list.rs`:
+```rust
+// Заменить:
+use_interval_fn(refresh_live_state, 5000);
+// На:
+let _sub = use_graphql_subscription::<BuildProgressSubscription>(
+    BuildProgressSubscriptionVariables { build_id: active_build_id },
+    move |event| set_build.set(Some(event.build_progress)),
+);
+```
+
+`leptos-graphql` уже поддерживает subscriptions.
+
+---
+
+## 5. Marketplace каталог
+
+### ✅ `MarketplaceCatalogService` — provider chain
 
 ```
+MarketplaceCatalogService
+  ├─ LocalManifestMarketplaceProvider   → встроенные path-модули из modules.toml
+  └─ RegistryMarketplaceProvider        → внешний реестр (RUSTOK_MARKETPLACE_REGISTRY_URL)
+       └─ moka cache (TTL: RUSTOK_MARKETPLACE_REGISTRY_CACHE_TTL_SECS, default 60s)
+```
+
+При недоступности реестра — graceful fallback на local-manifest.
+Дедупликация: побеждает первый провайдер.
+
+**Файлы**:
+- `apps/server/src/services/marketplace_catalog.rs`
+
+**Env vars**:
+- `RUSTOK_MARKETPLACE_REGISTRY_URL`
+- `RUSTOK_MARKETPLACE_REGISTRY_TIMEOUT_MS` (default: 3000)
+- `RUSTOK_MARKETPLACE_REGISTRY_CACHE_TTL_SECS` (default: 60)
+
+---
+
+### ✅ GraphQL `marketplace` + `marketplaceModule`
+
+```graphql
+marketplace(
+  search: String
+  category: String
+  source: String          # "local" | "registry"
+  installed: Boolean
+  trust_level: String     # "first_party" | "third_party" | "community"
+  compatible_only: Boolean
+): [MarketplaceModule!]!
+
+marketplaceModule(slug: String!): MarketplaceModule
+```
+
+**Файлы**:
+- `apps/server/src/graphql/queries.rs`
+
+---
+
+### ✅ Deep-link `?module=slug`
+
+Выбранный модуль в каталоге отражается в URL (`/modules?module=blog`).
+Прямая ссылка открывает детальную панель без перехода.
+
+**Файлы**:
+- `apps/admin/src/features/modules/components/modules_list.rs`
+
+---
+
+### ⬜ Внешний реестр `modules.rustok.dev`
+
+`RegistryMarketplaceProvider` делает HTTP-запросы, но сам сервис не существует.
+
+**Scope V1** (read-only, first-party модули):
+```
 modules.rustok.dev
-├── GraphQL API (каталог, версии, поиск)
+└── GET /v1/catalog → [{ slug, name, version, ... }]
+```
+Позволяет проверить весь `RegistryMarketplaceProvider` → AdminUI flow.
+
+**Scope V2** (полный):
+```
+modules.rustok.dev
+├── GraphQL API (каталог, версии, поиск, publish, yank)
 ├── Crate Storage (S3: .crate архивы + checksums)
 └── Validation Pipeline (static → audit → compile → test → metadata)
 ```
 
-Аутентификация: см. `docs/concepts/plan-oauth2-app-connections.md` (Приложение A).
-
-**Минимальный V1 реестра** — только read-only каталог для встроенных first-party
-модулей. Это позволяет проверить весь `RegistryMarketplaceProvider` → AdminUI flow
-без publish pipeline.
-
-**Полный V2** — publish pipeline, `rustok mod publish` CLI, третьесторонние модули.
+**Аутентификация**: `docs/concepts/plan-oauth2-app-connections.md` (Приложение A).
 
 ---
 
-#### 6. Publish pipeline и `rustok mod publish`
+## 6. Admin UI
 
-Зависит от п.5 (внешний реестр).
+### ✅ Страница `/modules`
+
+| Элемент | Статус |
+|---|---|
+| Список установленных модулей (`modules` query) | ✅ |
+| Каталог маркетплейса (`marketplace` query) | ✅ |
+| Фильтры: поиск, категория, trust level, compatibility | ✅ |
+| Детальная панель `marketplaceModule(slug)` | ✅ |
+| Deep-link `?module=slug` | ✅ |
+| Install / Uninstall кнопки → `installModule` / `uninstallModule` | ✅ |
+| Toggle switch → `toggleModule` | ✅ |
+| Секции: Installed / Marketplace / Updates | ✅ |
+| Прогресс-бар build (polling 5 сек) | ✅ (но не real-time) |
+| Прогресс-бар build (WebSocket subscription) | ⚠️ не подключён |
+| "Update available" badge + `upgradeModule` кнопка | ⬜ нет |
+| Форма настроек модуля (`updateModuleSettings`) | ⬜ нет |
+
+---
+
+## 7. Внешний реестр и публикация
+
+### ⬜ `rustok mod publish` CLI
 
 ```bash
-rustok mod init          # Создать шаблон с rustok-module.toml
+rustok mod init          # Шаблон модуля с rustok-module.toml
 rustok mod validate      # Локальная проверка манифеста
 rustok mod test          # Validation pipeline локально
 rustok mod publish       # Опубликовать в реестр
 rustok mod yank 1.2.0    # Отозвать версию
 ```
 
-Validation pipeline (5 стадий):
-1. **Static checks** — манифест, slug, semver, license, locales/en.json
-2. **Security audit** — cargo-audit, unsafe-check, отсутствие std::process::Command
-3. **Compilation** — с rustok_min..rustok_max версиями платформы
-4. **Runtime tests** — cargo test, миграции up/down, on_enable/on_disable
-5. **Metadata quality** — icon, description length, screenshots
+Зависит от п. [внешний реестр](#-внешний-реестр-modulesrustokdev).
 
 ---
 
-## Приоритет
+### ⬜ Validation pipeline для публикации
+
+| Стадия | Проверки |
+|---|---|
+| 1. Static | манифест валиден, slug уникален, semver, license, locales/en.json |
+| 2. Security | cargo-audit, отсутствие unsafe без обоснования, нет std::process::Command |
+| 3. Compilation | компилируется с rustok_min..rustok_max |
+| 4. Runtime | cargo test, миграции up/down идемпотентны, on_enable/on_disable |
+| 5. Metadata | icon.svg валиден, description >= 20 символов, screenshots |
+
+---
+
+## 8. Приоритет незавершённого
 
 | # | Задача | Сложность | Ценность |
 |---|---|---|---|
-| 1 | Semver-валидация | Малая | Высокая — защита от broken installs |
-| 2 | `updateModuleSettings` | Малая | Высокая — модули уже имеют `[settings]` |
-| 3 | Build progress subscription | Малая | Средняя — UX улучшение |
-| 4 | Docker deploy | Средняя | Высокая — без этого install не работает в prod |
-| 5 | Внешний реестр V1 | Большая | Высокая — основа marketplace |
-| 6 | Publish pipeline + CLI | Очень большая | Средняя — нужен только для 3rd party |
+| 1 | Semver + conflict валидация | Малая | Высокая — защита от broken installs |
+| 2 | `updateModuleSettings` мутация | Малая | Высокая — `[settings]` уже везде есть |
+| 3 | Build progress → subscription | Малая | Средняя — UX, инфраструктура уже есть |
+| 4 | Docker deploy в BuildExecutor | Средняя | Высокая — без этого install не prod-ready |
+| 5 | Внешний реестр V1 (read-only) | Большая | Высокая — основа marketplace |
+| 6 | Внешний реестр V2 + publish | Очень большая | Средняя — нужен для 3rd party |
