@@ -31,18 +31,18 @@ compatibility with platform-level contracts.
 - [x] Event/reindex integration wired for baseline domain events.
 - [x] Migration rollback plan captured for bootstrap schema setup.
 
-### Phase 1 — Contract hardening (in progress)
+### Phase 1 — Contract hardening (done)
 
-- [ ] Freeze public API expectations for the current module surface.
-- [ ] Align error/validation conventions with platform guidance.
-- [ ] Expand automated tests around core invariants and boundary behavior.
+- [x] Freeze public API expectations for the current module surface.
+- [x] Align error/validation conventions with platform guidance.
+- [x] Expand automated tests around core invariants and boundary behavior.
 
 **Exit criteria**
-- [ ] API contract frozen.
-- [ ] Sanitizer coverage is enforced for orchestration command payloads.
-- [ ] RBAC matrix is complete for moderation/create cross-domain actions.
-- [ ] Event/reindex integration is covered by minimal integration/e2e tests.
-- [ ] Migration rollback plan is validated for orchestration bookkeeping tables.
+- [x] API contract frozen. (`CRATE_API.md` with all required sections; verified by `contract_tests.rs`)
+- [x] Sanitizer coverage is enforced for orchestration command payloads. (`ensure_safe_text` / `ensure_safe_optional_text` / `ensure_idempotency_key` called on all inputs in `ContentOrchestrationService`)
+- [x] RBAC matrix is complete for moderation/create cross-domain actions. (`ensure_scope` enforces `Action::Moderate` + `Action::Create` on all four orchestration methods)
+- [x] Event/reindex integration is covered by minimal integration/e2e tests. (`tests/node_event_index_integration_test.rs`)
+- [x] Migration rollback plan is validated for orchestration bookkeeping tables. (`down()` in `m20260311_000001_create_content_orchestration_tables.rs` drops both tables)
 
 ### Phase 2 — Domain expansion (planned)
 
