@@ -17,7 +17,8 @@
 5. [Marketplace каталог](#5-marketplace-каталог)
 6. [Admin UI](#6-admin-ui)
 7. [Внешний реестр и публикация](#7-внешний-реестр-и-публикация)
-8. [Приоритет незавершённого](#8-приоритет-незавершённого)
+8. [Архитектурный долг](#8-архитектурный-долг)
+9. [Приоритет незавершённого](#9-приоритет-незавершённого)
 
 ---
 
@@ -518,7 +519,92 @@ rustok mod yank 1.2.0    # Отозвать версию
 
 ---
 
-## 8. Приоритет незавершённого
+## 8. Архитектурный долг
+
+### ⬜ GraphQL и REST модулей живут в сервере, а не в модульных крейтах
+
+**Текущее состояние**:
+
+GraphQL и REST адаптеры для каждого модуля сейчас в `apps/server/`:
+
+```
+apps/server/src/
+├── graphql/
+│   ├── blog/        (~535 строк)   ← знает о rustok_blog::PostService
+│   ├── content/     (~723 строк)   ← знает о rustok_content::NodeService
+│   ├── commerce/    (~682 строк)   ← знает о rustok_commerce::CatalogService
+│   ├── forum/       (~740 строк)   ← знает о rustok_forum::TopicService
+│   ├── pages/       (~823 строк)   ← знает о rustok_pages::PageService
+│   ├── workflow/    (~1071 строк)  ← знает о rustok_workflow::WorkflowService
+│   ├── alloy/       (~799 строк)   ← знает о alloy_scripting::ScriptRegistry
+│   └── media/       (~233 строк)   ← знает о rustok_media::MediaService
+└── controllers/
+    ├── blog/        (~271 строк)   ← то же самое для REST
+    ├── content/     (~199 строк)
+    ├── commerce/    (~1149 строк)
+    ├── forum/       (~638 строк)
+    ├── pages/       (~297 строк)
+    ├── workflow/    (~272 строк)
+    └── media/       (~191 строк)
+```
+
+**Почему это проблема**:
+Сторонний модуль из маркетплейса не может добавить свой GraphQL/REST без правки
+`apps/server/`. Это нарушает концепцию самодостаточного модуля.
+
+**Почему не в `rustok-core`**:
+`async-graphql`, `axum`, `loco_rs` — тяжёлые web-зависимости. Они не должны
+попадать в доменное ядро. Модульный крейт должен оставаться framework-agnostic.
+
+**Правильное решение — новый крейт `rustok-server-sdk`**:
+
+```
+crates/rustok-server-sdk/
+  └── src/
+      ├── context.rs       ← TenantContext, AuthContext (из apps/server/src/context/)
+      ├── graphql/
+      │   ├── common.rs    ← require_module_enabled, resolve_graphql_locale
+      │   └── errors.rs    ← GraphQLError
+      └── extractors/
+          └── rbac.rs      ← базовые RBAC extractor трейты
+  # зависит от: async-graphql, axum, loco_rs, rustok-core
+```
+
+После этого каждый модуль держит GraphQL + REST у себя:
+
+```
+crates/rustok-blog/src/
+├── graphql/      ← переехало из apps/server/src/graphql/blog/
+│   ├── mod.rs    ← pub struct BlogQuery; pub struct BlogMutation;
+│   ├── query.rs
+│   ├── mutation.rs
+│   └── types.rs
+└── controllers/  ← переехало из apps/server/src/controllers/blog/
+    ├── mod.rs    ← pub fn routes() -> Routes
+    └── posts.rs
+```
+
+Сервер — только composition root:
+```rust
+// apps/server/src/graphql/schema.rs
+#[cfg(feature = "mod-blog")]
+use rustok_blog::graphql::{BlogMutation, BlogQuery};
+```
+
+**Что нужно сделать**:
+1. Создать `crates/rustok-server-sdk/` с общими типами из сервера
+2. Перенести `graphql/{blog,content,commerce,forum,pages,workflow,alloy,media}/`
+   в соответствующие модульные крейты
+3. Перенести `controllers/{blog,content,commerce,forum,pages,workflow,media}/`
+   в соответствующие модульные крейты
+4. Обновить `apps/server/src/graphql/schema.rs` и `apps/server/src/app.rs`
+
+**Открытый вопрос**: точный состав `rustok-server-sdk` — что именно туда идёт,
+какие трейты нужны для абстракции `AppContext`.
+
+---
+
+## 9. Приоритет незавершённого
 
 | # | Задача | Сложность | Ценность |
 |---|---|---|---|
@@ -526,5 +612,6 @@ rustok mod yank 1.2.0    # Отозвать версию
 | 2 | `updateModuleSettings` мутация | Малая | Высокая — `[settings]` уже везде есть |
 | 3 | Build progress → subscription | Малая | Средняя — UX, инфраструктура уже есть |
 | 4 | Docker deploy в BuildExecutor | Средняя | Высокая — без этого install не prod-ready |
-| 5 | Внешний реестр V1 (read-only) | Большая | Высокая — основа marketplace |
-| 6 | Внешний реестр V2 + publish | Очень большая | Средняя — нужен для 3rd party |
+| 5 | `rustok-server-sdk` + перенос GraphQL/REST | Большая | Критическая — блокирует 3rd party |
+| 6 | Внешний реестр V1 (read-only) | Большая | Высокая — основа marketplace |
+| 7 | Внешний реестр V2 + publish | Очень большая | Средняя — нужен только для 3rd party |
