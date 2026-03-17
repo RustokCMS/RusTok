@@ -21,10 +21,6 @@ mod m20260316_000001_create_platform_settings;
 mod m20260316_000002_create_product_field_definitions;
 mod m20260316_000003_create_node_field_definitions;
 mod m20260316_000004_create_topic_field_definitions;
-mod m20260316_000005_create_order_field_definitions;
-mod m20260316_000006_create_workflows;
-mod m20260316_000007_alter_workflows_add_failure_tracking;
-mod m20260317_000001_create_flex_standalone_tables;
 
 pub struct Migrator;
 
@@ -49,23 +45,6 @@ impl MigratorTrait for Migrator {
             Box::new(m20260316_000002_create_product_field_definitions::Migration),
             Box::new(m20260316_000003_create_node_field_definitions::Migration),
             Box::new(m20260316_000004_create_topic_field_definitions::Migration),
-            Box::new(m20260316_000005_create_order_field_definitions::Migration),
-            Box::new(m20260316_000006_create_workflows::Migration),
-            Box::new(m20260316_000007_alter_workflows_add_failure_tracking::Migration),
-            Box::new(m20260317_000001_create_flex_standalone_tables::Migration),
-        ];
-
-        // Module-owned migrations — each module crate manages its own schema.
-        // To add a new module: implement migrations() in the crate's migrations/ submodule
-        // and add a call here.
-        let module_migrations: Vec<Box<dyn MigrationTrait>> = [
-            rustok_content::migrations::migrations(),
-            rustok_index::migrations::migrations(),
-            rustok_commerce::migrations::migrations(),
-            rustok_auth::migrations::migrations(),
-            alloy_scripting::migrations::migrations(),
-            rustok_forum::migrations::migrations(),
-            rustok_workflow::migrations::migrations(),
         ]
         .into_iter()
         .flatten()
