@@ -50,7 +50,11 @@ compatibility with platform-level contracts.
   - [x] `publish_node` / `unpublish_node` / `archive_node` / `restore_node` mutations added to `ContentMutation`.
   - [x] `CreateNodeInput` exposes `metadata` field (previously hardcoded as empty object).
   - [x] `UpdateNodeInput` exposes `expected_version` for optimistic locking; removed stale `published_at` field.
-- [ ] Integrate `state_machine.rs` into `NodeService` for compile-time status safety (P2.5).
+- [x] Integrate `state_machine.rs` into `NodeService` for runtime-enforced status safety (P2.5):
+  - [x] Added `unpublish()` transition to `ContentNode<Published>` (Published → Draft).
+  - [x] Added `validate_status_transition(current, target)` as single source of truth for allowed transitions.
+  - [x] `transition_status_in_tx` now calls `validate_status_transition` before any DB write; illegal moves (e.g. Draft → Archived) return `ContentError::Validation`.
+  - [x] Unit tests cover all valid paths and all known invalid paths.
 - [ ] Standardize cross-module integration points and events.
 - [ ] Document ownership and release gates for new capabilities.
 

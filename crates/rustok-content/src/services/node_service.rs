@@ -20,6 +20,7 @@ use crate::dto::{
 use crate::entities::{body, node, node_translation};
 use crate::error::{ContentError, ContentResult};
 use crate::locale::{resolve_by_locale_with_fallback, PLATFORM_FALLBACK_LOCALE};
+use crate::state_machine::validate_status_transition;
 
 pub struct NodeService {
     db: DatabaseConnection,
@@ -487,6 +488,9 @@ impl NodeService {
                 "Cannot change status of deleted node".to_string(),
             ));
         }
+
+        validate_status_transition(&node_model.status, &new_status)
+            .map_err(|e| ContentError::Validation(e.to_string()))?;
 
         let resource = Self::kind_to_resource(&node_model.kind)?;
         let scope = security.get_scope(resource, Action::Update);
