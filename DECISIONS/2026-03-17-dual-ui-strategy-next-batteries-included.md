@@ -1,4 +1,4 @@
-# Dual UI Strategy: Leptos (Primary) + Next.js (Batteries Included)
+# UI Strategy: Leptos (Primary) + Next.js (Batteries Included) + Deployment Modes
 
 - Date: 2026-03-17
 - Status: Accepted
@@ -13,41 +13,71 @@ RusTok поддерживает два UI стека:
 `@rustok/blog-frontend`) хранился как отдельные npm-пакеты внутри крейтов
 (`crates/rustok-blog/ui/admin/`, `crates/rustok-workflow/ui/admin/`, и т.д.).
 
-## Проблема
-
-Подход с npm-пакетами в крейтах создавал ложное ощущение "marketplace-auto-install"
-для Next.js, которого на самом деле нет — Next.js требует ручного npm install + rebuild.
-При этом:
-- Код жил в `crates/` среди Rust-кода (путаница)
-- Для добавления модуля нужно было менять два места (package.json + modules/index.ts)
-- Разрыв между "как выглядит" (отдельный пакет) и "как работает" (ручная сборка)
-
 ## Решение
 
-### Leptos (Primary) — WordPress-like auto-install
+### 1. Структура модульного крейта — всё в одном
 
-Модуль = Rust крейт. После установки через marketplace:
-1. Бинарник пересобирается на сервере (cargo build --features <module>)
-2. Модуль автоматически регистрирует свои маршруты и nav items через codegen
-3. Оператор не трогает код вручную
+Leptos UI живёт **прямо внутри модульного крейта**, рядом с backend-кодом.
+Изоляция через Cargo features — не через отдельные крейты.
 
-Структура:
 ```
-crates/rustok-blog/         ← backend + Leptos UI (всё в одном крейте)
-crates/leptos-blog-admin/   ← Leptos admin компоненты
-crates/leptos-blog-storefront/ ← Leptos storefront компоненты
+crates/rustok-blog/
+  src/
+    lib.rs              ← domain types, DTOs (всегда компилируется)
+    services/           ← backend logic   [feature = "server"]
+    admin/              ← Leptos admin UI  [feature = "leptos-admin"]
+    storefront/         ← Leptos SSR UI    [feature = "leptos-storefront"]
 ```
 
-### Next.js (Secondary) — "Batteries Included", ручная сборка
+```toml
+# crates/rustok-blog/Cargo.toml
+[features]
+server            = ["sea-orm", "tokio", "async-trait"]
+leptos-admin      = ["leptos", "leptos-router", "leptos-meta"]
+leptos-storefront = ["leptos", "leptos-router", "leptos-meta"]
+```
 
-Весь Next.js UI живёт **прямо в приложениях**, без отдельных npm-пакетов:
+Аналогия: WordPress плагин = одна папка, всё внутри.
+Разработчик модуля работает с **одним крейтом**.
+
+### 2. Режимы деплоя
+
+Один и тот же крейт поддерживает все режимы через features:
+
+| Режим | Features | Описание |
+|---|---|---|
+| **Monolith** | `server + leptos-admin + leptos-storefront` | Бинарник = API + все UI. WordPress-like авто-установка |
+| **Headless** | `server` | Только API (GraphQL/REST). UI отдельно (Next.js, любой клиент) |
+| **Storefront SSR** | `server + leptos-storefront` | API + Leptos SSR для публичных страниц, admin headless |
+| **Hybrid** | по необходимости | Любая комбинация |
+
+```bash
+# Monolith (WordPress-like, авто-установка через marketplace)
+cargo build --release --features "server,leptos-admin,leptos-storefront"
+
+# Headless (Next.js или любой frontend подключается к API)
+cargo build --release --features "server"
+
+# Storefront SSR + headless admin
+cargo build --release --features "server,leptos-storefront"
+```
+
+Оператор выбирает режим в `rustok.toml` или переменных окружения.
+Marketplace авто-установка работает для **всех режимов** — в headless просто
+не компилируются Leptos-компоненты.
+
+### 3. Next.js — "Batteries Included", ручная сборка
+
+Используется в **headless** режиме как альтернатива Leptos admin/storefront.
+Весь Next.js UI живёт прямо в приложениях, без отдельных npm-пакетов:
+
 ```
 apps/next-admin/src/features/
-  ├── blog/         ← blog + forum UI (перенесено из crates/rustok-blog/ui/admin/)
-  └── workflow/     ← workflow UI (перенесено из crates/rustok-workflow/ui/admin/)
+  ├── blog/       ← blog + forum UI
+  └── workflow/   ← workflow UI
 
 apps/next-frontend/src/features/
-  └── blog/         ← blog storefront UI (перенесено из crates/rustok-blog/ui/frontend/)
+  └── blog/       ← blog storefront UI
 ```
 
 Добавить новый модуль в Next.js:
@@ -56,42 +86,26 @@ apps/next-frontend/src/features/
 3. Добавить файловые маршруты в `src/app/dashboard/<name>/`
 4. `npm run build`
 
-Авто-установка модулей для Next.js **не предусмотрена** — JS-разработчики
-привыкли управлять зависимостями вручную.
+Авто-установка модулей для Next.js **не предусмотрена** — ручное управление.
 
 ## Следствия
 
 ### Позитивные
 
+- **Один крейт на модуль** — разработчик не распыляется на 3 репозитория
+- **Все режимы деплоя из коробки** — features переключают monolith ↔ headless
 - **Чёткое разделение**: Rust/Leptos в `crates/`, Next.js UI в `apps/`
-- **Нет путаницы**: Next.js разработчик сразу видит все фичи в `src/features/`
-- **Проще onboarding**: форкнул → поправил файлы → `npm run build`
-- **Нет ghost packages**: убраны `file:` зависимости в package.json
+- **WordPress-аналогия работает**: модуль = крейт = плагин
 
 ### Негативные
 
-- **Дублирование API-клиентов**: API вызовы дублируются между Leptos и Next.js UI
-  Митигация: общие OpenAPI-сгенерированные типы из `packages/rustok-api-client`
-- **Нет авто-установки для Next.js**: новый модуль требует ручных изменений в Next.js app
-  Митигация: это ожидаемое поведение, документировано
+- **Дублирование API-клиентов** между Leptos и Next.js UI
+  Митигация: OpenAPI-сгенерированные типы из `packages/rustok-api-client`
+- **Большой Cargo.toml** у модулей с UI
+  Митигация: workspace features и общие зависимости в workspace Cargo.toml
 
-## Структура до/после
+## Изменения от предыдущей версии этого документа
 
-```
-# ДО:
-crates/rustok-blog/ui/admin/    ← @rustok/blog-admin (npm пакет)
-crates/rustok-blog/ui/frontend/ ← @rustok/blog-frontend (npm пакет)
-crates/rustok-workflow/ui/admin/ ← @rustok/workflow-admin (npm пакет)
-
-apps/next-admin/package.json:
-  "@rustok/blog-admin": "file:../../crates/rustok-blog/ui/admin"
-
-# ПОСЛЕ:
-apps/next-admin/src/features/blog/      ← blog + forum UI
-apps/next-admin/src/features/workflow/  ← workflow UI
-apps/next-frontend/src/features/blog/   ← blog storefront UI
-
-apps/next-admin/src/modules/index.ts:
-  import '@/features/blog';      // регистрирует nav items
-  import '@/features/workflow';
-```
+- Убраны отдельные крейты `crates/leptos-blog-admin/` и `crates/leptos-blog-storefront/`
+- Добавлена секция режимов деплоя (monolith / headless / hybrid)
+- Уточнено: авто-установка работает для всех режимов, UI-features опциональны
