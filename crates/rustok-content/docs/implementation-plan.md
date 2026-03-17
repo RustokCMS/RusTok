@@ -44,9 +44,13 @@ compatibility with platform-level contracts.
 - [x] Event/reindex integration is covered by minimal integration/e2e tests. (`tests/node_event_index_integration_test.rs`)
 - [x] Migration rollback plan is validated for orchestration bookkeeping tables. (`down()` in `m20260311_000001_create_content_orchestration_tables.rs` drops both tables)
 
-### Phase 2 — Domain expansion (planned)
+### Phase 2 — Domain expansion (in progress)
 
-- [ ] Implement prioritized domain capabilities for `rustok-content`.
+- [x] Complete GraphQL mutation surface for `rustok-content`:
+  - [x] `publish_node` / `unpublish_node` / `archive_node` / `restore_node` mutations added to `ContentMutation`.
+  - [x] `CreateNodeInput` exposes `metadata` field (previously hardcoded as empty object).
+  - [x] `UpdateNodeInput` exposes `expected_version` for optimistic locking; removed stale `published_at` field.
+- [ ] Integrate `state_machine.rs` into `NodeService` for compile-time status safety (P2.5).
 - [ ] Standardize cross-module integration points and events.
 - [ ] Document ownership and release gates for new capabilities.
 
