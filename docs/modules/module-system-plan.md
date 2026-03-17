@@ -604,6 +604,64 @@ use rustok_blog::graphql::{BlogMutation, BlogQuery};
 
 ---
 
+### ⬜ Кодогенерация регистрации модулей (`build.rs`)
+
+**Текущее состояние** — три места прошиты вручную:
+
+```rust
+// 1. apps/server/src/modules/mod.rs — build_registry()
+registry.register(BlogModule);     // ← каждый модуль явно
+registry.register(CommerceModule); // ← сторонний сюда не попадёт
+
+// 2. apps/server/src/graphql/schema.rs — статический MergedObject
+#[derive(MergedObject, Default)]
+pub struct Query(
+    #[cfg(feature = "mod-blog")] BlogQuery,   // ← compile-time типы
+    // PodcastQuery стороннего модуля сюда не попадёт
+);
+
+// 3. apps/server/src/app.rs — маршруты
+.add_route(controllers::blog::routes()) // ← сторонний не добавится
+```
+
+Для установки стороннего модуля нужно вручную менять все три файла.
+Это не маркетплейс — это ручная интеграция.
+
+**Решение — `apps/server/build.rs`**:
+
+`build.rs` читает `modules.toml` и генерирует три файла:
+
+```
+apps/server/src/generated/
+├── registry.rs   ← вызовы register() для всех установленных модулей
+├── schema.rs     ← MergedObject с Query/Mutation всех модулей
+└── routes.rs     ← add_route() для всех модулей
+```
+
+Каждый модуль экспортирует стандартные точки входа (после переноса в крейт):
+```rust
+// crates/rustok-podcast/src/lib.rs
+pub mod graphql { pub struct PodcastQuery; pub struct PodcastMutation; }
+pub mod controllers { pub fn routes() -> Routes { ... } }
+```
+
+`build.rs` знает что генерировать из `rustok-module.toml`:
+```toml
+[provides.graphql]
+query_type = "PodcastQuery"
+mutation_type = "PodcastMutation"
+
+[provides.http]
+routes_fn = "controllers::routes"
+```
+
+**Итог**: сервер больше никогда не трогается вручную при установке модуля.
+`modules.toml` → кодогенерация → `cargo build` → бинарник с новым модулем.
+
+**Зависит от**: `rustok-api` + перенос GraphQL/REST в модульные крейты.
+
+---
+
 ## 9. Приоритет незавершённого
 
 | # | Задача | Сложность | Ценность |
@@ -613,5 +671,9 @@ use rustok_blog::graphql::{BlogMutation, BlogQuery};
 | 3 | Build progress → subscription | Малая | Средняя — UX, инфраструктура уже есть |
 | 4 | Docker deploy в BuildExecutor | Средняя | Высокая — без этого install не prod-ready |
 | 5 | `rustok-api` + перенос GraphQL/REST | Большая | Критическая — блокирует 3rd party |
-| 6 | Внешний реестр V1 (read-only) | Большая | Высокая — основа marketplace |
-| 7 | Внешний реестр V2 + publish | Очень большая | Средняя — нужен только для 3rd party |
+| 6 | Кодогенерация регистрации (`build.rs`) | Большая | Критическая — блокирует 3rd party |
+| 7 | Внешний реестр V1 (read-only) | Большая | Высокая — основа marketplace |
+| 8 | Внешний реестр V2 + publish | Очень большая | Средняя — нужен только для 3rd party |
+
+> Пп. 5 и 6 — взаимозависимы. `rustok-api` нужен для переноса GraphQL/REST,
+> `build.rs` нужен чтобы сервер не трогался вручную. Делать вместе.
