@@ -1,10 +1,16 @@
 //! Transport-agnostic contracts for Flex standalone mode (Phase 5).
 
 use async_trait::async_trait;
+
+use crate::events::{
+    flex_entry_created_event, flex_entry_deleted_event, flex_entry_updated_event,
+    flex_schema_created_event, flex_schema_deleted_event, flex_schema_updated_event,
+};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use rustok_core::field_schema::{is_valid_field_key, FieldDefinition, FlexError};
+use rustok_events::EventEnvelope;
 
 /// Standalone Flex schema view used by transport adapters.
 #[derive(Debug, Clone)]
@@ -258,6 +264,89 @@ pub async fn update_entry(
         .await
 }
 
+/// Orchestrates `create_schema` and builds `flex.schema.created` event envelope.
+pub async fn create_schema_with_event(
+    service: &dyn FlexStandaloneService,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    input: CreateFlexSchemaCommand,
+) -> Result<(FlexSchemaView, EventEnvelope), FlexError> {
+    let view = create_schema(service, tenant_id, actor_id, input).await?;
+    let event = flex_schema_created_event(tenant_id, actor_id, view.id, view.slug.clone());
+    Ok((view, event))
+}
+
+/// Orchestrates `update_schema` and builds `flex.schema.updated` event envelope.
+pub async fn update_schema_with_event(
+    service: &dyn FlexStandaloneService,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    schema_id: Uuid,
+    input: UpdateFlexSchemaCommand,
+) -> Result<(FlexSchemaView, EventEnvelope), FlexError> {
+    let view = update_schema(service, tenant_id, actor_id, schema_id, input).await?;
+    let event = flex_schema_updated_event(tenant_id, actor_id, view.id, view.slug.clone());
+    Ok((view, event))
+}
+
+/// Orchestrates `delete_schema` and builds `flex.schema.deleted` event envelope.
+pub async fn delete_schema_with_event(
+    service: &dyn FlexStandaloneService,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    schema_id: Uuid,
+) -> Result<EventEnvelope, FlexError> {
+    delete_schema(service, tenant_id, actor_id, schema_id).await?;
+    Ok(flex_schema_deleted_event(tenant_id, actor_id, schema_id))
+}
+
+/// Orchestrates `create_entry` and builds `flex.entry.created` event envelope.
+pub async fn create_entry_with_event(
+    service: &dyn FlexStandaloneService,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    input: CreateFlexEntryCommand,
+) -> Result<(FlexEntryView, EventEnvelope), FlexError> {
+    let view = create_entry(service, tenant_id, actor_id, input).await?;
+    let event = flex_entry_created_event(
+        tenant_id,
+        actor_id,
+        view.schema_id,
+        view.id,
+        view.entity_type.clone(),
+        view.entity_id,
+    );
+    Ok((view, event))
+}
+
+/// Orchestrates `update_entry` and builds `flex.entry.updated` event envelope.
+pub async fn update_entry_with_event(
+    service: &dyn FlexStandaloneService,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    schema_id: Uuid,
+    entry_id: Uuid,
+    input: UpdateFlexEntryCommand,
+) -> Result<(FlexEntryView, EventEnvelope), FlexError> {
+    let view = update_entry(service, tenant_id, actor_id, schema_id, entry_id, input).await?;
+    let event = flex_entry_updated_event(tenant_id, actor_id, view.schema_id, view.id);
+    Ok((view, event))
+}
+
+/// Orchestrates `delete_entry` and builds `flex.entry.deleted` event envelope.
+pub async fn delete_entry_with_event(
+    service: &dyn FlexStandaloneService,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    schema_id: Uuid,
+    entry_id: Uuid,
+) -> Result<EventEnvelope, FlexError> {
+    delete_entry(service, tenant_id, actor_id, schema_id, entry_id).await?;
+    Ok(flex_entry_deleted_event(
+        tenant_id, actor_id, schema_id, entry_id,
+    ))
+}
+
 fn validate_definition_keys(definitions: &[FieldDefinition]) -> Result<(), FlexError> {
     let mut unique = std::collections::HashSet::new();
     for def in definitions {
@@ -349,13 +438,16 @@ pub trait FlexStandaloneService: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::{
-        create_entry, create_schema, delete_entry, delete_schema, find_entry, find_schema,
-        list_entries, list_schemas, validate_create_entry_command, validate_create_schema_command,
+        create_entry, create_entry_with_event, create_schema, create_schema_with_event,
+        delete_entry, delete_entry_with_event, delete_schema, delete_schema_with_event, find_entry,
+        find_schema, list_entries, list_schemas, update_entry_with_event, update_schema_with_event,
+        validate_create_entry_command, validate_create_schema_command,
         validate_update_entry_command, validate_update_schema_command, CreateFlexEntryCommand,
         CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView, FlexStandaloneService,
         UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
     };
     use async_trait::async_trait;
+
     use rustok_core::field_schema::{FieldDefinition, FieldType, FlexError};
     use serde_json::json;
     use std::collections::HashMap;
@@ -484,13 +576,31 @@ mod tests {
 
     struct MockStandaloneService {
         create_schema_calls: Arc<AtomicUsize>,
-        create_entry_calls: Arc<AtomicUsize>,
+        update_schema_calls: Arc<AtomicUsize>,
+        delete_schema_calls: Arc<AtomicUsize>,
         list_schema_calls: Arc<AtomicUsize>,
         find_schema_calls: Arc<AtomicUsize>,
+
+        create_entry_calls: Arc<AtomicUsize>,
+        update_entry_calls: Arc<AtomicUsize>,
         delete_entry_calls: Arc<AtomicUsize>,
-        delete_schema_calls: Arc<AtomicUsize>,
         list_entries_calls: Arc<AtomicUsize>,
         find_entry_calls: Arc<AtomicUsize>,
+    }
+
+    fn mock_service() -> MockStandaloneService {
+        MockStandaloneService {
+            create_schema_calls: Arc::new(AtomicUsize::new(0)),
+            update_schema_calls: Arc::new(AtomicUsize::new(0)),
+            delete_schema_calls: Arc::new(AtomicUsize::new(0)),
+            list_schema_calls: Arc::new(AtomicUsize::new(0)),
+            find_schema_calls: Arc::new(AtomicUsize::new(0)),
+            create_entry_calls: Arc::new(AtomicUsize::new(0)),
+            update_entry_calls: Arc::new(AtomicUsize::new(0)),
+            delete_entry_calls: Arc::new(AtomicUsize::new(0)),
+            list_entries_calls: Arc::new(AtomicUsize::new(0)),
+            find_entry_calls: Arc::new(AtomicUsize::new(0)),
+        }
     }
 
     #[async_trait]
@@ -533,10 +643,21 @@ mod tests {
             &self,
             _tenant_id: Uuid,
             _actor_id: Option<Uuid>,
-            _schema_id: Uuid,
-            _input: UpdateFlexSchemaCommand,
+            schema_id: Uuid,
+            input: UpdateFlexSchemaCommand,
         ) -> Result<FlexSchemaView, FlexError> {
-            Err(FlexError::Database("not used".to_string()))
+            self.update_schema_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(FlexSchemaView {
+                id: schema_id,
+                slug: "landing_page".to_string(),
+                name: input.name.unwrap_or_else(|| "Landing".to_string()),
+                description: input.description,
+                fields_config: input.fields_config.unwrap_or_default(),
+                settings: input.settings.unwrap_or_else(|| json!({})),
+                is_active: input.is_active.unwrap_or(true),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                updated_at: "2026-01-02T00:00:00Z".to_string(),
+            })
         }
 
         async fn delete_schema(
@@ -591,11 +712,21 @@ mod tests {
             &self,
             _tenant_id: Uuid,
             _actor_id: Option<Uuid>,
-            _schema_id: Uuid,
-            _entry_id: Uuid,
-            _input: UpdateFlexEntryCommand,
+            schema_id: Uuid,
+            entry_id: Uuid,
+            input: UpdateFlexEntryCommand,
         ) -> Result<FlexEntryView, FlexError> {
-            Err(FlexError::Database("not used".to_string()))
+            self.update_entry_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(FlexEntryView {
+                id: entry_id,
+                schema_id,
+                entity_type: None,
+                entity_id: None,
+                data: input.data.unwrap_or_else(|| json!({"title": "Updated"})),
+                status: input.status.unwrap_or_else(|| "published".to_string()),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                updated_at: "2026-01-02T00:00:00Z".to_string(),
+            })
         }
 
         async fn delete_entry(
@@ -615,7 +746,9 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let service = MockStandaloneService {
             create_schema_calls: calls.clone(),
+            update_schema_calls: Arc::new(AtomicUsize::new(0)),
             create_entry_calls: Arc::new(AtomicUsize::new(0)),
+            update_entry_calls: Arc::new(AtomicUsize::new(0)),
             list_schema_calls: Arc::new(AtomicUsize::new(0)),
             find_schema_calls: Arc::new(AtomicUsize::new(0)),
             delete_entry_calls: Arc::new(AtomicUsize::new(0)),
@@ -648,7 +781,9 @@ mod tests {
         let calls = Arc::new(AtomicUsize::new(0));
         let service = MockStandaloneService {
             create_schema_calls: Arc::new(AtomicUsize::new(0)),
+            update_schema_calls: Arc::new(AtomicUsize::new(0)),
             create_entry_calls: calls.clone(),
+            update_entry_calls: Arc::new(AtomicUsize::new(0)),
             list_schema_calls: Arc::new(AtomicUsize::new(0)),
             find_schema_calls: Arc::new(AtomicUsize::new(0)),
             delete_entry_calls: Arc::new(AtomicUsize::new(0)),
@@ -682,7 +817,9 @@ mod tests {
         let find_calls = Arc::new(AtomicUsize::new(0));
         let service = MockStandaloneService {
             create_schema_calls: Arc::new(AtomicUsize::new(0)),
+            update_schema_calls: Arc::new(AtomicUsize::new(0)),
             create_entry_calls: Arc::new(AtomicUsize::new(0)),
+            update_entry_calls: Arc::new(AtomicUsize::new(0)),
             list_schema_calls: list_calls.clone(),
             find_schema_calls: find_calls.clone(),
             delete_entry_calls: Arc::new(AtomicUsize::new(0)),
@@ -705,7 +842,9 @@ mod tests {
         let delete_calls = Arc::new(AtomicUsize::new(0));
         let service = MockStandaloneService {
             create_schema_calls: Arc::new(AtomicUsize::new(0)),
+            update_schema_calls: Arc::new(AtomicUsize::new(0)),
             create_entry_calls: Arc::new(AtomicUsize::new(0)),
+            update_entry_calls: Arc::new(AtomicUsize::new(0)),
             list_schema_calls: Arc::new(AtomicUsize::new(0)),
             find_schema_calls: Arc::new(AtomicUsize::new(0)),
             delete_entry_calls: delete_calls.clone(),
@@ -733,7 +872,9 @@ mod tests {
         let find_calls = Arc::new(AtomicUsize::new(0));
         let service = MockStandaloneService {
             create_schema_calls: Arc::new(AtomicUsize::new(0)),
+            update_schema_calls: Arc::new(AtomicUsize::new(0)),
             create_entry_calls: Arc::new(AtomicUsize::new(0)),
+            update_entry_calls: Arc::new(AtomicUsize::new(0)),
             list_schema_calls: Arc::new(AtomicUsize::new(0)),
             find_schema_calls: Arc::new(AtomicUsize::new(0)),
             delete_entry_calls: Arc::new(AtomicUsize::new(0)),
@@ -758,7 +899,9 @@ mod tests {
         let delete_calls = Arc::new(AtomicUsize::new(0));
         let service = MockStandaloneService {
             create_schema_calls: Arc::new(AtomicUsize::new(0)),
+            update_schema_calls: Arc::new(AtomicUsize::new(0)),
             create_entry_calls: Arc::new(AtomicUsize::new(0)),
+            update_entry_calls: Arc::new(AtomicUsize::new(0)),
             list_schema_calls: Arc::new(AtomicUsize::new(0)),
             find_schema_calls: Arc::new(AtomicUsize::new(0)),
             delete_entry_calls: Arc::new(AtomicUsize::new(0)),
@@ -777,5 +920,184 @@ mod tests {
         .expect("delete schema");
 
         assert_eq!(delete_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn create_schema_with_event_returns_event_envelope() {
+        let service = mock_service();
+
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Some(Uuid::new_v4());
+        let (view, event) = create_schema_with_event(
+            &service,
+            tenant_id,
+            actor_id,
+            CreateFlexSchemaCommand {
+                slug: "landing_page".to_string(),
+                name: "Landing".to_string(),
+                description: None,
+                fields_config: vec![],
+                settings: None,
+                is_active: None,
+            },
+        )
+        .await
+        .expect("create schema with event");
+
+        assert_eq!(event.event_type, "flex.schema.created");
+        assert_eq!(event.tenant_id, tenant_id);
+        assert_eq!(view.slug, "landing_page");
+    }
+
+    #[tokio::test]
+    async fn delete_entry_with_event_returns_event_envelope() {
+        let service = mock_service();
+
+        let tenant_id = Uuid::new_v4();
+        let schema_id = Uuid::new_v4();
+        let entry_id = Uuid::new_v4();
+        let event = delete_entry_with_event(
+            &service,
+            tenant_id,
+            Some(Uuid::new_v4()),
+            schema_id,
+            entry_id,
+        )
+        .await
+        .expect("delete entry with event");
+
+        assert_eq!(event.event_type, "flex.entry.deleted");
+        assert_eq!(event.tenant_id, tenant_id);
+    }
+
+    #[tokio::test]
+    async fn update_schema_with_event_returns_event_envelope() {
+        let service = mock_service();
+
+        let tenant_id = Uuid::new_v4();
+        let schema_id = Uuid::new_v4();
+        let (_view, event) = update_schema_with_event(
+            &service,
+            tenant_id,
+            Some(Uuid::new_v4()),
+            schema_id,
+            UpdateFlexSchemaCommand {
+                name: Some("Landing v2".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update schema with event");
+
+        assert_eq!(event.event_type, "flex.schema.updated");
+        assert_eq!(event.tenant_id, tenant_id);
+    }
+
+    #[tokio::test]
+    async fn delete_schema_with_event_returns_event_envelope() {
+        let service = mock_service();
+
+        let tenant_id = Uuid::new_v4();
+        let schema_id = Uuid::new_v4();
+        let event = delete_schema_with_event(&service, tenant_id, Some(Uuid::new_v4()), schema_id)
+            .await
+            .expect("delete schema with event");
+
+        assert_eq!(event.event_type, "flex.schema.deleted");
+        assert_eq!(event.tenant_id, tenant_id);
+    }
+
+    #[tokio::test]
+    async fn create_entry_with_event_returns_event_envelope() {
+        let service = mock_service();
+
+        let tenant_id = Uuid::new_v4();
+        let (_view, event) = create_entry_with_event(
+            &service,
+            tenant_id,
+            Some(Uuid::new_v4()),
+            CreateFlexEntryCommand {
+                schema_id: Uuid::new_v4(),
+                entity_type: None,
+                entity_id: None,
+                data: json!({"title": "Hello"}),
+                status: Some("draft".to_string()),
+            },
+        )
+        .await
+        .expect("create entry with event");
+
+        assert_eq!(event.event_type, "flex.entry.created");
+        assert_eq!(event.tenant_id, tenant_id);
+    }
+
+    #[tokio::test]
+    async fn update_entry_with_event_returns_event_envelope() {
+        let service = mock_service();
+
+        let tenant_id = Uuid::new_v4();
+        let schema_id = Uuid::new_v4();
+        let entry_id = Uuid::new_v4();
+        let (_view, event) = update_entry_with_event(
+            &service,
+            tenant_id,
+            Some(Uuid::new_v4()),
+            schema_id,
+            entry_id,
+            UpdateFlexEntryCommand {
+                data: Some(json!({"title": "Updated"})),
+                status: Some("published".to_string()),
+            },
+        )
+        .await
+        .expect("update entry with event");
+
+        assert_eq!(event.event_type, "flex.entry.updated");
+        assert_eq!(event.tenant_id, tenant_id);
+    }
+
+    #[tokio::test]
+    async fn update_schema_with_event_skips_service_on_invalid_input() {
+        let update_calls = Arc::new(AtomicUsize::new(0));
+        let mut service = mock_service();
+        service.update_schema_calls = update_calls.clone();
+
+        let res = update_schema_with_event(
+            &service,
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            Uuid::new_v4(),
+            UpdateFlexSchemaCommand {
+                name: Some("   ".to_string()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+        assert!(res.is_err());
+        assert_eq!(update_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn update_entry_with_event_skips_service_on_invalid_input() {
+        let update_calls = Arc::new(AtomicUsize::new(0));
+        let mut service = mock_service();
+        service.update_entry_calls = update_calls.clone();
+
+        let res = update_entry_with_event(
+            &service,
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            UpdateFlexEntryCommand {
+                data: None,
+                status: Some("   ".to_string()),
+            },
+        )
+        .await;
+
+        assert!(res.is_err());
+        assert_eq!(update_calls.load(Ordering::SeqCst), 0);
     }
 }

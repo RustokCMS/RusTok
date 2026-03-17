@@ -1,7 +1,7 @@
 # Flex — Custom Fields System
 
 > **Статус attached mode:** Phases 0–4 реализованы. Phase 4.5 (вынос в `crates/flex`) — в процессе.
-> **Статус standalone mode:** Phase 5 — начат (добавлены transport-agnostic контракты в `crates/flex/src/standalone.rs`; persistence/API ещё не реализованы).
+> **Статус standalone mode:** Phase 5 — начат (добавлены transport-agnostic контракты в `crates/flex/src/standalone.rs`, event envelope helper-ы в `crates/flex/src/events.rs` и orchestration helper-ы `*_with_event()`; persistence/API ещё не реализованы).
 > Нереализованное → [`implementation-plan.md`](./implementation-plan.md)
 
 ---

@@ -125,7 +125,7 @@ CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
 - [ ] SeaORM entities
 - [ ] Validation service (использует `CustomFieldsSchema` из core)
 - [ ] CRUD services
-- [ ] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted`
+- [~] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; в `crates/flex` добавлены transport-agnostic envelope helper-ы и orchestration helper-ы `*_with_event()`, emission wiring в adapters pending)*
 - [ ] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/:slug/entries`
 - [ ] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations
 - [ ] RBAC permissions: `flex.schemas.*`, `flex.entries.*` → добавить в `RusToKModule::permissions()`
@@ -138,12 +138,12 @@ CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
 ### События standalone mode
 
 ```rust
-DomainEvent::FlexSchemaCreated { schema_id, slug }
-DomainEvent::FlexSchemaUpdated { schema_id, slug }
-DomainEvent::FlexSchemaDeleted { schema_id }
-DomainEvent::FlexEntryCreated { schema_id, entry_id, entity_type, entity_id }
-DomainEvent::FlexEntryUpdated { schema_id, entry_id }
-DomainEvent::FlexEntryDeleted { schema_id, entry_id }
+DomainEvent::FlexSchemaCreated { tenant_id, schema_id, slug }
+DomainEvent::FlexSchemaUpdated { tenant_id, schema_id, slug }
+DomainEvent::FlexSchemaDeleted { tenant_id, schema_id }
+DomainEvent::FlexEntryCreated { tenant_id, schema_id, entry_id, entity_type, entity_id }
+DomainEvent::FlexEntryUpdated { tenant_id, schema_id, entry_id }
+DomainEvent::FlexEntryDeleted { tenant_id, schema_id, entry_id }
 ```
 
 ### Read model (indexer)
