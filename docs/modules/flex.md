@@ -1,424 +1,505 @@
-# Flex Module Specification
+# Flex — Custom Fields System
 
-> **Новый концепт из архитектурного обсуждения 2026-02-06**  
-> **Статус:** Concept / Draft (standalone) + Attached mode в активной реализации через `apps/server`  
-> **План выноса:** Phase 4.5 начат — создан `crates/flex` для shared attached-mode contracts; дальнейший перенос orchestration/adapter-слоёв продолжается по `docs/architecture/flex.md`.
-
----
-
-## 1. Обзор
-
-### 1.1 Что такое Flex?
-
-**Flex (Generic Content Builder / Data Builder)** — опциональный вспомогательный модуль-конструктор данных, созданный по итогам архитектурного обсуждения.
-
-Flex нужен для редких кастомных кейсов, когда:
-
-- Стандартных доменных модулей (content, commerce, blog) **недостаточно**
-- Создавать отдельный доменный модуль **нецелесообразно**
-- Бизнес хочет "кастомные поля/структуры" без программирования
-
-### 1.2 Происхождение
-
-Идея Flex появилась в ходе обсуждения архитектуры RusToK с AI-ассистентами. Основной вопрос был: "Как добавить гибкость системе (как Strapi/Directus), но не превратить её в помойку JSONB и не потерять производительность?"
-
-**Решение:** Flex существует **рядом** со стандартными модулями, а не **вместо** них. Это "запасной выход" для edge-cases, а не основа платформы.
+> **Статус attached mode:** Phases 0–4 реализованы. Phase 4.5 (вынос в `crates/flex`) — в процессе.
+> **Статус standalone mode:** Phase 5 — не начат.
+> Нереализованное → [`docs/architecture/flex.md`](../architecture/flex.md)
 
 ---
 
-## 2. Purpose & Non-Goals
+## 1. Что такое Flex
 
-### 2.1 Purpose (для чего)
+**Flex — это катана, а не склад мечей.**
 
-✅ Runtime-определяемые схемы данных  
-✅ Хранение записей в JSONB  
-✅ Attached behavior — прикрепление данных к сущностям других модулей  
-✅ Интеграция через события и индексатор  
-✅ Маркетинговые лендинги, формы, баннеры  
-✅ Справочники с произвольными полями  
+Flex — модуль-библиотека: набор типов, валидаторов и хелперов для миграций внутри `rustok-core`, который позволяет **любому модулю** добавить runtime-определяемые кастомные поля за минимум кода.
 
-### 2.2 Non-Goals (для чего НЕ)
+Flex существует **рядом** со стандартными модулями, а не **вместо** них. Это «запасной выход» для edge-cases:
+- Стандартных доменных модулей (content, commerce, blog) недостаточно
+- Создавать отдельный доменный модуль нецелесообразно
+- Бизнес хочет кастомные поля без программирования
 
-❌ Замена стандартных модулей (content, commerce, blog)  
-❌ Хранение критических данных (заказы, платежи, инвентарь)  
-❌ Создание сложных реляционных связей  
-❌ Альтернатива нормализованным таблицам  
+### Для чего Flex
+
+✅ Кастомные поля к существующим сущностям (attached mode)
+✅ Runtime-определяемые схемы данных
+✅ Хранение дополнительных данных в JSONB
+✅ Маркетинговые лендинги, формы, справочники (standalone mode, Phase 5)
+
+### Для чего Flex НЕ предназначен
+
+❌ Замена стандартных модулей (content, commerce, blog)
+❌ Хранение критических данных (заказы, платежи, инвентарь)
+❌ Создание сложных реляционных связей
+❌ Альтернатива нормализованным таблицам
 
 ---
 
-## 3. Architectural Rules (HARD LAWS)
-
-> Эти правила **не подлежат обсуждению**.
+## 2. Архитектурные законы (HARD LAWS)
 
 | # | Правило | Обоснование |
 |---|---------|-------------|
-| **1** | **Standard modules NEVER depend on Flex** | Flex — опция, не зависимость |
-| **2** | Flex depends only on `rustok-core` | Минимальный surface area |
-| **3** | **Removal-safe** | Удаление Flex не ломает платформу |
-| **4** | Read через indexer, не runtime JOIN | Performance storefront |
-| **5** | No Flex in critical domains | Orders/payments/inventory — запрещено |
-
-### 3.1 Dependency Diagram
+| 1 | **Standard modules NEVER depend on Flex** | Flex — опция, не зависимость |
+| 2 | **Flex зависит только от `rustok-core`** | Модули зависят только от core |
+| 3 | **Removal-safe** | Удалить `field_schema.rs` — платформа работает (теряются custom fields) |
+| 4 | **Данные остаются в модуле** | Таблицы и metadata JSONB в модуле-потребителе |
+| 5 | **Schema-first** | Все данные валидируются по схеме при записи |
+| 6 | **Tenant isolation** | Определения полей per-tenant |
+| 7 | **No Flex in critical domains** | Orders/payments/inventory — нормализованные поля |
 
 ```text
-rustok-core
+rustok-core  ←  зависят все
     ↑
-flex (optional)
-    
-rustok-commerce ←✗→ flex  (NO dependency!)
-rustok-content  ←✗→ flex  (NO dependency!)
+field_schema.rs (библиотека типов)
+
+rustok-commerce ←✗→ flex  (НЕТ зависимости от flex!)
+rustok-content  ←✗→ flex
 ```
 
 ---
 
-## 4. Use Cases
+## 3. Два режима
 
-### 4.1 Когда использовать Flex
+### Attached mode (реализовано, Phases 0–4)
 
-| Сценарий | Пример |
-|----------|--------|
-| Кастомные поля к товарам | Дополнительные характеристики для специфической ниши |
-| Маркетинговые лендинги | Страницы с кастомной структурой |
-| Простые формы | Feedback, опросы без кода |
-| Внутренние справочники | База знаний с уникальной таксономией |
-| A/B тестирование | Кастомные баннеры/блоки |
+Кастомные поля прикрепляются к существующим сущностям через JSONB-колонку `metadata`:
 
-### 4.2 Когда НЕ использовать Flex
+```
+"Дай мне кастомные поля для users"
+  → user_field_definitions (таблица определений)
+  + users.metadata (JSONB с данными)
+```
 
-| Сценарий | Что использовать |
-|----------|------------------|
-| Блог | `rustok-blog` |
-| Страницы | `rustok-pages` |
-| Товары | `rustok-commerce` |
-| SEO-данные | Стандартные поля в модулях |
-| Заказы/оплаты | `rustok-commerce` |
+### Standalone mode (Phase 5, не реализовано)
 
-**Правило:** Если кейс закрывается стандартным модулем — используй стандартный модуль.
+Произвольные схемы и записи без привязки к существующим сущностям:
+
+```
+"Дай мне произвольную сущность 'landing-page'"
+  → flex_schemas (определение схемы)
+  + flex_entries (записи данных)
+```
+
+Оба режима используют одну и ту же библиотеку типов из `rustok-core::field_schema`.
 
 ---
 
-## 5. Data Model
+## 4. Core types (`rustok-core/src/field_schema.rs`)
 
-### 5.1 Schemas (определения типов)
+### 4.1 FieldType — 14 типов полей
 
-```sql
-CREATE TABLE flex_schemas (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    slug            VARCHAR(64) NOT NULL,      -- 'landing-page', 'feedback-form'
-    name            VARCHAR(255) NOT NULL,
-    description     TEXT,
-    fields_config   JSONB NOT NULL,            -- Описание полей
-    settings        JSONB NOT NULL DEFAULT '{}',
-    is_active       BOOLEAN NOT NULL DEFAULT true,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
-    UNIQUE (tenant_id, slug)
-);
+```rust
+pub enum FieldType {
+    Text,        // Однострочный текст
+    Textarea,    // Многострочный текст
+    Integer,     // i64
+    Decimal,     // f64
+    Boolean,     // true/false
+    Date,        // ISO 8601 дата (YYYY-MM-DD)
+    DateTime,    // ISO 8601 дата-время
+    Url,         // URL с проверкой формата
+    Email,       // Email с проверкой формата
+    Phone,       // Телефон (с опциональным regex)
+    Select,      // Один вариант из списка
+    MultiSelect, // Несколько вариантов (массив)
+    Color,       // Hex-цвет (#RRGGBB)
+    Json,        // Произвольный JSON (с guardrail на глубину)
+}
 ```
 
-### 5.2 Entries (записи данных)
+### 4.2 Правила валидации по типу
 
-```sql
-CREATE TABLE flex_entries (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL,
-    schema_id       UUID NOT NULL REFERENCES flex_schemas(id) ON DELETE CASCADE,
-    
-    -- Attached behavior (полиморфная связь)
-    entity_type     VARCHAR(64),               -- 'product', 'user', 'order', NULL
-    entity_id       UUID,                      -- ID сущности, NULL если standalone
-    
-    data            JSONB NOT NULL,            -- Сами данные
-    status          VARCHAR(32) NOT NULL DEFAULT 'draft',
-    
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
-    UNIQUE (tenant_id, schema_id, entity_type, entity_id) 
-        WHERE entity_type IS NOT NULL AND entity_id IS NOT NULL
-);
+| FieldType   | JSON type        | min/max              | pattern | options |
+|-------------|------------------|----------------------|---------|---------|
+| Text        | String           | длина строки         | ✅      | —       |
+| Textarea    | String           | длина строки         | ✅      | —       |
+| Integer     | Number (i64)     | числовое значение    | —       | —       |
+| Decimal     | Number (f64)     | числовое значение    | —       | —       |
+| Boolean     | Boolean          | —                    | —       | —       |
+| Date        | String (ISO)     | —                    | —       | —       |
+| DateTime    | String (ISO)     | —                    | —       | —       |
+| Url         | String           | длина строки         | —       | —       |
+| Email       | String           | длина строки         | —       | —       |
+| Phone       | String           | длина строки         | ✅      | —       |
+| Select      | String           | —                    | —       | ✅      |
+| MultiSelect | Array\<String\>  | кол-во элементов     | —       | ✅      |
+| Color       | String (#RRGGBB) | —                    | —       | —       |
+| Json        | Any              | — (см. глубина)      | —       | —       |
 
-CREATE INDEX idx_flex_entries_data ON flex_entries USING GIN (data);
-CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
-CREATE INDEX idx_flex_entries_tenant_schema ON flex_entries (tenant_id, schema_id);
+### 4.3 ValidationRule и SelectOption
+
+```rust
+pub struct ValidationRule {
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub pattern: Option<String>,
+    pub options: Option<Vec<SelectOption>>,
+    pub error_message: Option<HashMap<String, String>>, // локализованные сообщения
+}
+
+pub struct SelectOption {
+    pub value: String,
+    pub label: HashMap<String, String>, // {"en": "Active", "ru": "Активен"}
+}
 ```
 
-### 5.3 Fields Config Structure
+### 4.4 FieldDefinition — переносимый DTO
 
-```json
-{
-  "fields": [
-    {
-      "name": "hero_title",
-      "type": "string",
-      "required": true,
-      "max_length": 255
-    },
-    {
-      "name": "hero_image",
-      "type": "media",
-      "required": false
-    },
-    {
-      "name": "price",
-      "type": "number",
-      "required": false,
-      "min": 0
-    },
-    {
-      "name": "features",
-      "type": "array",
-      "items": { "type": "string" },
-      "max_items": 20
-    }
-  ]
+```rust
+pub struct FieldDefinition {
+    pub field_key: String,                              // snake_case, уникальный в scope tenant+entity
+    pub field_type: FieldType,
+    pub label: HashMap<String, String>,                 // {"en": "Phone", "ru": "Телефон"}
+    pub description: Option<HashMap<String, String>>,
+    pub is_required: bool,
+    pub default_value: Option<serde_json::Value>,
+    pub validation: Option<ValidationRule>,
+    pub position: i32,
+    pub is_active: bool,
+}
+```
+
+### 4.5 CustomFieldsSchema — валидатор
+
+```rust
+impl CustomFieldsSchema {
+    /// Построить схему из списка определений (из БД, конфига, JSONB)
+    pub fn new(definitions: Vec<FieldDefinition>) -> Self;
+
+    /// Валидировать metadata. Пустой список = валидно.
+    pub fn validate(&self, metadata: &serde_json::Value) -> Vec<FieldValidationError>;
+
+    /// Заполнить default_value для отсутствующих полей
+    pub fn apply_defaults(&self, metadata: &mut serde_json::Value);
+
+    /// Удалить поля, не входящие в схему
+    pub fn strip_unknown(&self, metadata: &mut serde_json::Value);
+
+    /// Только активные определения в порядке position
+    pub fn active_definitions(&self) -> Vec<&FieldDefinition>;
+}
+```
+
+### 4.6 HasCustomFields trait
+
+```rust
+pub trait HasCustomFields {
+    fn entity_type() -> &'static str;          // "user", "product", "node"
+    fn metadata(&self) -> &serde_json::Value;
+    fn set_metadata(&mut self, value: serde_json::Value);
+}
+```
+
+### 4.7 Migration helper
+
+```rust
+/// Создать таблицу `{prefix}_field_definitions` в миграции любого модуля.
+/// Одна строка кода — и модуль получает полноценную таблицу кастомных полей.
+pub async fn create_field_definitions_table(
+    manager: &SchemaManager<'_>,
+    prefix: &str,       // "user" → создаёт "user_field_definitions"
+    _parent_table: &str,
+) -> Result<(), DbErr>;
+
+pub async fn drop_field_definitions_table(
+    manager: &SchemaManager<'_>,
+    prefix: &str,
+) -> Result<(), DbErr>;
+```
+
+Создаёт таблицу с колонками: `id`, `tenant_id`, `field_key`, `field_type`, `label`,
+`description`, `is_required`, `default_value`, `validation`, `position`, `is_active`,
+`created_at`, `updated_at`.
+Индексы: `UNIQUE(tenant_id, field_key)`, `idx_{prefix}_fd_tenant_active`.
+
+### 4.8 SeaORM entity macro
+
+```rust
+/// Генерирует SeaORM entity для таблицы field_definitions одной строкой.
+rustok_core::define_field_definitions_entity!("user_field_definitions");
+// Генерирует: Entity, Model, ActiveModel, Column, Relation, PrimaryKey
+```
+
+### 4.9 JSONB query helpers
+
+```rust
+/// metadata->>'key' = 'value'
+pub fn json_field_eq(column, key: &str, value: &str) -> Condition;
+
+/// metadata ? 'key'  (ключ существует)
+pub fn json_field_exists(column, key: &str) -> Condition;
+
+/// metadata->>'key'  (для ORDER BY)
+pub fn json_field_extract(column, key: &str) -> SimpleExpr;
+
+/// metadata @> '{"key": value}'  (contains)
+pub fn json_field_contains(column, key: &str, value: serde_json::Value) -> Condition;
+```
+
+---
+
+## 5. Guardrails
+
+| Guardrail | Значение | Статус | Где проверяется |
+|-----------|----------|--------|-----------------|
+| Max fields per entity type per tenant | **50** | ⬜ service-layer TODO | `create_definition()` до вставки |
+| Max nesting depth (`FieldType::Json`) | **2** | ✅ реализовано | `validate_field_value()` |
+| Validation on write | **Строгая** | ✅ реализовано | `CustomFieldsSchema::validate()` |
+| `field_key` format | `^[a-z][a-z0-9_]{0,127}$` | ✅ реализовано | `is_valid_field_key()` |
+| Locale key format | BCP 47 short | ✅ реализовано | `is_valid_locale_key()` |
+| Mandatory pagination | Да | ✅ реализовано | `fieldDefinitions` GraphQL query |
+| Timeout for JSONB operations | 5s | ⬜ TODO | DB query timeout |
+
+### 5.1 Метод счёта глубины JSON — Variant A (массивы прозрачны)
+
+Для `FieldType::Json` считаются только уровни JSON-объектов `{…}`. Массивы `[…]` не создают уровень.
+
+| Значение | Object-depth | Разрешено? |
+|----------|-------------|-----------|
+| `42` / `"hello"` / `true` / `null` | 0 | ✅ |
+| `[1, 2, 3]` | 0 | ✅ |
+| `{"key": "value"}` | 1 | ✅ |
+| `{"items": [1, 2, 3]}` | 1 | ✅ |
+| `{"address": {"city": "NY"}}` | 2 | ✅ (граница) |
+| `{"items": [{"id": 1, "name": "x"}]}` | 2 | ✅ (массив прозрачен) |
+| `{"a": {"b": {"c": 1}}}` | 3 | ❌ `NestingTooDeep` |
+
+**Почему Variant A:** паттерн `{"items": [{"id":1}]}` встречается в любой CMS постоянно. При счёте массивов он давал бы depth=3 и блокировался без пользы. Variant A при лимите 2 запрещает именно тройную вложенность объектов.
+
+**Реализация:** `json_object_depth()` + `MAX_JSON_NESTING_DEPTH = 2` в `rustok-core/src/field_schema.rs`.
+**Ошибка:** `FieldErrorCode::NestingTooDeep` с текущей глубиной и лимитом в message.
+
+---
+
+## 6. Как подключить Flex к модулю (5 шагов)
+
+Каждый модуль = ~50 строк нового кода. Всё остальное — в core.
+
+### Шаг 1: Миграция
+
+```rust
+// apps/server/migration/src/m20260315_000001_create_user_field_definitions.rs
+use rustok_core::field_schema::create_field_definitions_table;
+
+async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    create_field_definitions_table(manager, "user", "users").await
+}
+async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    drop_field_definitions_table(manager, "user").await
+}
+```
+
+### Шаг 2: SeaORM Entity
+
+```rust
+rustok_core::define_field_definitions_entity!("user_field_definitions");
+```
+
+### Шаг 3: HasCustomFields для сущности
+
+```rust
+impl HasCustomFields for user::Model {
+    fn entity_type() -> &'static str { "user" }
+    fn metadata(&self) -> &serde_json::Value { &self.metadata }
+    fn set_metadata(&mut self, value: serde_json::Value) { self.metadata = value.into(); }
+}
+```
+
+### Шаг 4: Service
+
+```rust
+pub async fn get_schema(db: &DatabaseConnection, tenant_id: Uuid) -> Result<CustomFieldsSchema> {
+    let rows = user_field_definitions::Entity::find()
+        .filter(Column::TenantId.eq(tenant_id))
+        .filter(Column::IsActive.eq(true))
+        .order_by_asc(Column::Position)
+        .all(db).await?;
+
+    Ok(CustomFieldsSchema::new(rows.into_iter().map(|r| r.into_field_definition()).collect()))
+}
+```
+
+### Шаг 5: Валидация в мутациях
+
+```rust
+let schema = UserFieldService::get_schema(db, tenant_id).await?;
+let mut metadata = input.custom_fields.unwrap_or(json!({}));
+schema.apply_defaults(&mut metadata);
+let errors = schema.validate(&metadata);
+if !errors.is_empty() {
+    return Err(custom_field_validation_error(errors));
 }
 ```
 
 ---
 
-## 6. Guardrails (обязательные ограничения)
+## 7. Текущие потребители (attached mode)
 
-| Guardrail | Значение | Статус |
-|-----------|----------|--------|
-| Max fields per schema | 50 | ⬜ TODO (service-layer) |
-| Max nesting depth (FieldType::Json) | 2 | ✅ реализовано в `rustok-core` |
-| Max relation depth | 1 (no recursive populate) | ⬜ TODO (Phase 5 standalone) |
-| Mandatory pagination | Да | ⬜ TODO (GraphQL layer) |
-| Validation on write | Строгая по schema | ✅ реализовано (`CustomFieldsSchema::validate`) |
-| Timeout for operations | 5s | ⬜ TODO |
+| Модуль | Таблица | entity_type | metadata column |
+|--------|---------|-------------|-----------------|
+| apps/server | `user_field_definitions` | `"user"` | `users.metadata` |
+| apps/server | `product_field_definitions` | `"product"` | `products.metadata` |
+| apps/server | `order_field_definitions` | `"order"` | `orders.metadata` |
+| apps/server | `node_field_definitions` | `"node"` | `nodes.metadata` |
+| apps/server | `topic_field_definitions` | `"topic"` | `nodes.metadata` (kind=topic) |
 
-### 6.1 Метод счёта глубины JSON — Variant A
-
-Реализован в `rustok-core/src/field_schema.rs`: функция `json_object_depth()`, константа `MAX_JSON_NESTING_DEPTH = 2`.
-
-**Правило:** считаются только объекты `{…}`. Массивы `[…]` прозрачны и не создают уровень.
-
-```
-{"items": [{"id": 1}]}  →  depth 2  ✅  (массив прозрачен)
-{"a": {"b": {"c": 1}}}  →  depth 3  ❌
-```
-
-Ошибка: `FieldErrorCode::NestingTooDeep` — содержит текущую глубину и лимит.
-
-**Почему Variant A выбран вместо Variant B** (массивы тоже считают):
-Паттерн `{"items": [{"id":1}]}` — стандартный для списков в любой CMS. При Variant B он давал бы depth=3 и блокировался бы, что неудобно без реальной пользы для безопасности. Variant A при лимите 2 запрещает именно тройную вложенность объектов.
-
-### 6.2 Max relation depth = 1 (Phase 5, standalone mode)
-
-Это отдельное ограничение для standalone Flex-модуля (не для attached mode Phase 2–4). Означает:
-- FlexEntry A может ссылаться на другую сущность (User, Product) — `depth 1` ✅
-- FlexEntry A → FlexEntry B → FlexEntry C — рекурсивный populate запрещён ❌
-
-Цель: предотвратить N+1 при populate и циклические ссылки. Не реализовано — ждёт Phase 5.
-
-### 6.3 Validation Contract
-
-```rust
-// Текущий контракт (attached mode, Phase 2–4):
-let errors = schema.validate(&metadata_json);
-// validate() проверяет: required, типы, constraints, nesting depth для Json
-
-// Будущий контракт (standalone mode, Phase 5):
-pub fn validate_entry(schema: &FlexSchema, data: &serde_json::Value) -> Result<(), ValidationError> {
-    // 1. Проверить required fields
-    // 2. Проверить типы
-    // 3. Проверить constraints (max_length, min, max_items)
-    // 4. НЕ допускать лишних полей
-    // 5. Проверить relation depth <= 1
-}
-```
+Все таблицы структурно идентичны, физически изолированы в своём модуле.
 
 ---
 
-## 7. Events
+## 8. Admin API (GraphQL)
 
-### 7.1 Emitted Events
-
-```rust
-// В rustok-core/src/events/types.rs
-
-// FLEX EVENTS
-FlexSchemaCreated { schema_id: Uuid, slug: String },
-FlexSchemaUpdated { schema_id: Uuid, slug: String },
-FlexSchemaDeleted { schema_id: Uuid },
-
-FlexEntryCreated { 
-    schema_id: Uuid, 
-    entry_id: Uuid, 
-    entity_type: Option<String>,
-    entity_id: Option<Uuid>,
-},
-FlexEntryUpdated { schema_id: Uuid, entry_id: Uuid },
-FlexEntryDeleted { schema_id: Uuid, entry_id: Uuid },
-```
-
-### 7.2 Consumed Events
-
-Flex может слушать события других модулей для автоматической привязки:
-
-```rust
-// Когда удаляется product, удаляем attached flex entries
-ProductDeleted { product_id } => {
-    flex_service.delete_attached(entity_type: "product", entity_id: product_id)
-}
-```
-
-- ⬜ TODO: Определить политику cascade delete
-
----
-
-## 8. APIs
-
-### 8.1 REST Endpoints
-
-```
-# Schemas
-GET    /api/v1/flex/schemas
-POST   /api/v1/flex/schemas
-GET    /api/v1/flex/schemas/:slug
-PUT    /api/v1/flex/schemas/:slug
-DELETE /api/v1/flex/schemas/:slug
-
-# Entries
-GET    /api/v1/flex/schemas/:slug/entries
-POST   /api/v1/flex/schemas/:slug/entries
-GET    /api/v1/flex/schemas/:slug/entries/:id
-PUT    /api/v1/flex/schemas/:slug/entries/:id
-DELETE /api/v1/flex/schemas/:slug/entries/:id
-
-# Attached entries
-GET    /api/v1/flex/attached/:entity_type/:entity_id
-```
-
-### 8.2 GraphQL
+### Queries
 
 ```graphql
-type FlexSchema {
-  id: ID!
-  slug: String!
-  name: String!
-  fieldsConfig: JSON!
-}
-
-type FlexEntry {
-  id: ID!
-  schema: FlexSchema!
-  data: JSON!
-  entityType: String
-  entityId: ID
-}
-
-type Query {
-  flexSchemas: [FlexSchema!]!
-  flexSchema(slug: String!): FlexSchema
-  flexEntries(schemaSlug: String!, pagination: Pagination): FlexEntryConnection!
-  flexEntry(schemaSlug: String!, id: ID!): FlexEntry
-}
-
-type Mutation {
-  createFlexSchema(input: CreateFlexSchemaInput!): FlexSchema!
-  updateFlexSchema(slug: String!, input: UpdateFlexSchemaInput!): FlexSchema!
-  deleteFlexSchema(slug: String!): Boolean!
-  
-  createFlexEntry(schemaSlug: String!, input: CreateFlexEntryInput!): FlexEntry!
-  updateFlexEntry(schemaSlug: String!, id: ID!, input: UpdateFlexEntryInput!): FlexEntry!
-  deleteFlexEntry(schemaSlug: String!, id: ID!): Boolean!
-}
+fieldDefinitions(entityType: String): [FieldDefinition!]!
+fieldDefinition(entityType: String, id: UUID!): FieldDefinition
 ```
 
----
+### Mutations
 
-## 9. RBAC Permissions
+```graphql
+createFieldDefinition(input: CreateFieldDefinitionInput!): FieldDefinition!
+updateFieldDefinition(id: UUID!, input: UpdateFieldDefinitionInput!): FieldDefinition!
+deleteFieldDefinition(entityType: String, id: UUID!): Boolean!
+reorderFieldDefinitions(entityType: String, ids: [UUID!]!): [FieldDefinition!]!
+```
+
+### Routing по entityType
+
+Запросы маршрутизируются через `FieldDefRegistry` — модули регистрируют свои репозитории при старте:
 
 ```rust
-Permission::new("flex.schemas.read"),
-Permission::new("flex.schemas.write"),
-Permission::new("flex.schemas.delete"),
-Permission::new("flex.entries.read"),
-Permission::new("flex.entries.write"),
-Permission::new("flex.entries.delete"),
+let mut registry = FieldDefRegistry::new();
+registry.register(Box::new(UserFieldRepo));
+registry.register(Box::new(ProductFieldRepo));
+// ...
+
+// В resolver:
+let repo = registry.get(entity_type)?; // → FlexError::UnknownEntityType если не найден
 ```
 
-- ⬜ TODO: Добавить в RusToKModule::permissions()
+### RBAC
+
+| Действие | Роли |
+|----------|------|
+| Просмотр определений | Admin, SuperAdmin |
+| Создание / обновление | Admin, SuperAdmin |
+| Удаление (soft: is_active=false) | SuperAdmin |
+
+Заполнение кастомных полей — по правам на саму сущность: `Resource::Users + Action::Update`.
 
 ---
 
-## 10. Indexing Strategy
+## 9. События
 
-### 10.1 Read Model Table
+### Эмитируемые события
+
+```rust
+DomainEvent::FieldDefinitionCreated { tenant_id, entity_type, field_key, field_type }
+DomainEvent::FieldDefinitionUpdated { tenant_id, entity_type, field_key }
+DomainEvent::FieldDefinitionDeleted { tenant_id, entity_type, field_key }
+```
+
+### Consumers
+
+```rust
+// Инвалидация кеша схемы
+FieldDefinitionCreated | FieldDefinitionUpdated | FieldDefinitionDeleted => {
+    schema_cache.invalidate(tenant_id, entity_type);
+}
+
+// Аудит
+FieldDefinition* => {
+    audit_logger.log(AuditEventType::ConfigurationChange, ...);
+}
+```
+
+### Cascade policy
+
+- Удаление entity (user, product) → metadata удаляется вместе (CASCADE на уровне row)
+- Soft delete field definition (`is_active=false`) → данные в metadata не трогаем
+- Hard delete field definition → `strip_unknown()` при следующей записи
+
+---
+
+## 10. Кеширование схемы
+
+```rust
+const SCHEMA_CACHE_TTL: Duration = Duration::from_secs(300); // safety net
+
+/// Per (tenant_id, entity_type) кеш.
+/// Основная инвалидация: через события FieldDefinition*.
+/// Вторичная: TTL как страховка.
+pub struct SchemaCache {
+    inner: DashMap<(Uuid, String), (Instant, CustomFieldsSchema)>,
+}
+```
+
+Реализация: Moka cache + event-driven invalidation на мутациях + listener на `FieldDefinition*` событиях EventBus.
+
+---
+
+## 11. Error Handling
+
+```rust
+pub enum FlexError {
+    UnknownEntityType(String),                        // → "UNKNOWN_ENTITY_TYPE"
+    TooManyFields { entity_type: String, max: usize },// → "TOO_MANY_FIELDS"
+    InvalidFieldKey(String),                          // → "BAD_USER_INPUT"
+    DuplicateFieldKey(String),                        // → "BAD_USER_INPUT"
+    NotFound(Uuid),                                   // → "NOT_FOUND"
+    ValidationFailed(Vec<FieldValidationError>),       // → "VALIDATION_FAILED" + fields
+    Database(String),                                 // → "INTERNAL_ERROR"
+}
+```
+
+Все ошибки маппятся через `map_flex_error()` в GraphQL-резолверах с соответствующими кодами в error extensions.
+
+---
+
+## 12. Standalone mode (Phase 5 — не реализовано)
+
+Спецификация для будущей реализации.
+
+### Data model
 
 ```sql
-CREATE TABLE index_flex_entries (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL,
-    schema_slug     VARCHAR(64) NOT NULL,
-    schema_name     VARCHAR(255) NOT NULL,
-    entity_type     VARCHAR(64),
-    entity_id       UUID,
-    data_preview    JSONB,                     -- Сжатое представление
-    search_vector   TSVECTOR,                  -- Для поиска
-    indexed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
-    UNIQUE (tenant_id, id)
+-- Определения произвольных схем
+CREATE TABLE flex_schemas (
+    id          UUID PRIMARY KEY,
+    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    slug        VARCHAR(64) NOT NULL,       -- 'landing-page', 'feedback-form'
+    name        VARCHAR(255) NOT NULL,
+    fields_config JSONB NOT NULL,
+    is_active   BOOLEAN NOT NULL DEFAULT true,
+    UNIQUE (tenant_id, slug)
 );
 
-CREATE INDEX idx_index_flex_search ON index_flex_entries USING GIN (search_vector);
+-- Записи данных
+CREATE TABLE flex_entries (
+    id          UUID PRIMARY KEY,
+    tenant_id   UUID NOT NULL,
+    schema_id   UUID NOT NULL REFERENCES flex_schemas(id) ON DELETE CASCADE,
+    entity_type VARCHAR(64),               -- NULL = standalone
+    entity_id   UUID,                      -- NULL = standalone
+    data        JSONB NOT NULL,
+    status      VARCHAR(32) NOT NULL DEFAULT 'draft'
+);
+CREATE INDEX idx_flex_entries_data   ON flex_entries USING GIN (data);
+CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
 ```
 
-### 10.2 Indexer Handler
+### Guardrails standalone mode
 
-```rust
-impl EventHandler for FlexIndexer {
-    async fn handle(&self, envelope: &EventEnvelope) -> Result<()> {
-        match &envelope.event {
-            DomainEvent::FlexEntryCreated { entry_id, .. } |
-            DomainEvent::FlexEntryUpdated { entry_id, .. } => {
-                self.index_entry(*entry_id).await
-            }
-            DomainEvent::FlexEntryDeleted { entry_id, .. } => {
-                self.remove_from_index(*entry_id).await
-            }
-            _ => Ok(())
-        }
-    }
-}
-```
+- Max relation depth = 1 (нет рекурсивного populate)
+- FlexEntry A может ссылаться на User/Product ✅
+- FlexEntry A → FlexEntry B → FlexEntry C ❌
 
----
-
-## 11. Implementation Checklist
-
-| # | Задача | Статус |
-|---|--------|--------|
-| 11.1 | Создать crate `flex` | ✅ Done (Phase 4.5 bootstrap) |
-| 11.2 | Миграции для `flex_schemas`, `flex_entries` | ⬜ TODO |
-| 11.3 | SeaORM entities | ⬜ TODO |
-| 11.4 | Validation service | ⬜ TODO |
-| 11.5 | CRUD services | ⬜ TODO |
-| 11.6 | Events integration | ⬜ TODO |
-| 11.7 | REST controllers | ⬜ TODO |
-| 11.8 | GraphQL resolvers | ⬜ TODO |
-| 11.9 | Indexer handler | ⬜ TODO |
-| 11.10 | Admin UI integration | ⬜ TODO |
-| 11.11 | Tests: unit + integration | ⬜ TODO |
-| 11.12 | Documentation | ⬜ TODO |
-
----
-
-## 12. Open Questions
-
-1. **Versioning schemas:** Нужна ли история изменений схем?
-2. **Migration on schema change:** Как мигрировать данные при изменении полей?
-3. **Rich text fields:** Поддерживать ли Markdown/HTML в text полях?
-4. **Computed fields:** Нужны ли поля, вычисляемые на лету?
+Подробности реализации — в [`docs/architecture/flex.md`](../architecture/flex.md).
 
 ---
 
 ## См. также
 
-- [ARCHITECTURE_GUIDE.md](../ARCHITECTURE_GUIDE.md) — общая архитектура
-- [ROADMAP.md](../ROADMAP.md) — фазы разработки
-
+- [`docs/architecture/flex.md`](../architecture/flex.md) — implementation plan (нереализованное)
+- [`rustok-core/src/field_schema.rs`](../../crates/rustok-core/src/field_schema.rs) — исходный код
+- [`RUSTOK_MANIFEST.md`](../../RUSTOK_MANIFEST.md) — архитектурные решения
