@@ -9652,6 +9652,7 @@ dependencies = [
  "rand 0.10.0",
  "redis 1.0.5",
  "regex",
+ "reqwest 0.13.2",
  "rhai",
  "rustok-events",
  "rustok-outbox",
@@ -9697,6 +9698,19 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "ulid",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-flex"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-core",
+ "rustok-events",
+ "sea-orm",
+ "serde_json",
+ "tokio",
  "uuid",
 ]
 
