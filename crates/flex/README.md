@@ -27,4 +27,5 @@
 
 ## Docs
 
-- Architecture plan: `docs/architecture/flex.md`
+- Module documentation: [`docs/README.md`](./docs/README.md)
+- Implementation plan: [`docs/implementation-plan.md`](./docs/implementation-plan.md)

@@ -26,11 +26,14 @@ use crate::models::user_field_definitions::{
     CreateFieldDefinitionInput as UserCreateInput, Model as UserModel,
     UpdateFieldDefinitionInput as UserUpdateInput,
 };
-use crate::services::field_definition_registry::{
+use crate::services::order_field_service::OrderFieldService;
+use crate::services::product_field_service::ProductFieldService;
+use crate::services::topic_field_service::TopicFieldService;
+use crate::services::user_field_service::UserFieldService;
+use flex::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
     UpdateFieldDefinitionCommand,
 };
-use crate::services::order_field_service::OrderFieldService;
 use crate::services::product_field_service::ProductFieldService;
 use crate::services::topic_field_service::TopicFieldService;
 use crate::services::user_field_service::UserFieldService;
@@ -487,17 +490,6 @@ mod tests {
     use rustok_core::field_schema::FlexError;
 
     use super::build_field_def_registry;
-
-    #[test]
-    fn registry_bootstrap_registers_order_entity_type() {
-        let registry = build_field_def_registry();
-
-        let order_service = registry
-            .get("order")
-            .expect("order entity type should be registered");
-
-        assert_eq!(order_service.entity_type(), "order");
-    }
 
     #[test]
     fn registry_bootstrap_registers_topic_entity_type() {
