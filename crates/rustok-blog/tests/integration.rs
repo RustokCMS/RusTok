@@ -339,16 +339,13 @@ async fn test_category_crud() -> TestResult<()> {
     let db = setup_blog_test_db().await;
     ensure_blog_schema(&db).await;
 
-    let transport = MemoryTransport::new();
-    let _receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let category_service = CategoryService::new(db.clone(), event_bus.clone());
+    let category_service = CategoryService::new(db.clone());
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
 
     let category_id = category_service
-        .create_category(
+        .create(
             tenant_id,
             admin.clone(),
             CreateCategoryInput {
@@ -357,19 +354,19 @@ async fn test_category_crud() -> TestResult<()> {
                 slug: None,
                 description: Some("Tech articles".to_string()),
                 parent_id: None,
+                position: None,
+                settings: serde_json::json!({}),
             },
         )
         .await?;
 
-    let category = category_service
-        .get_category(tenant_id, category_id, "en")
-        .await?;
+    let category = category_service.get(tenant_id, category_id, "en").await?;
     assert_eq!(category.name, "Technology");
     assert_eq!(category.slug, "technology");
     assert_eq!(category.description.as_deref(), Some("Tech articles"));
 
     let (list, total) = category_service
-        .list_categories(
+        .list(
             tenant_id,
             admin.clone(),
             ListCategoriesFilter {
@@ -383,16 +380,16 @@ async fn test_category_crud() -> TestResult<()> {
     assert_eq!(list[0].name, "Technology");
 
     category_service
-        .delete_category(tenant_id, category_id, admin.clone())
+        .delete(tenant_id, category_id, admin.clone())
         .await?;
 
     let not_found = category_service
-        .get_category(tenant_id, category_id, "en")
+        .get(tenant_id, category_id, "en")
         .await
         .expect_err("deleted category should not be found");
     assert!(matches!(
         not_found,
-        BlogError::Content(rustok_content::ContentError::NodeNotFound(_))
+        ContentError::CategoryNotFound(_)
     ));
 
     Ok(())
@@ -406,7 +403,7 @@ async fn test_tag_crud_and_slug_normalization() -> TestResult<()> {
     let transport = MemoryTransport::new();
     let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-    let tag_service = TagService::new(db.clone(), event_bus.clone());
+    let tag_service = TagService::new(db.clone());
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -562,6 +559,84 @@ async fn ensure_blog_schema(db: &DatabaseConnection) {
     ))
     .await
     .expect("failed to create bodies table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS categories (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            parent_id TEXT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            depth INTEGER NOT NULL DEFAULT 0,
+            node_count INTEGER NOT NULL DEFAULT 0,
+            settings TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create categories table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS category_translations (
+            id TEXT PRIMARY KEY,
+            category_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            description TEXT NULL,
+            FOREIGN KEY(category_id) REFERENCES categories(id)
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create category_translations table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS tags (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            use_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create tags table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS tag_translations (
+            id TEXT PRIMARY KEY,
+            tag_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            FOREIGN KEY(tag_id) REFERENCES tags(id)
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create tag_translations table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS taggables (
+            tag_id TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(tag_id, target_type, target_id)
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create taggables table");
 }
 
 fn drain_event_types(receiver: &mut broadcast::Receiver<EventEnvelope>) -> Vec<String> {

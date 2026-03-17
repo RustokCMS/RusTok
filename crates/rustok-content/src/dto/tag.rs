@@ -4,54 +4,48 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateCategoryInput {
-    /// Locale for the name and description
+pub struct CreateTagInput {
     pub locale: String,
-    #[schema(max_length = 255)]
+    #[schema(max_length = 100)]
     pub name: String,
-    #[schema(max_length = 255)]
+    #[schema(max_length = 100)]
     pub slug: Option<String>,
-    #[schema(max_length = 1000)]
-    pub description: Option<String>,
-    pub parent_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
-pub struct UpdateCategoryInput {
+pub struct UpdateTagInput {
     pub locale: String,
-    #[schema(max_length = 255)]
+    #[schema(max_length = 100)]
     pub name: Option<String>,
-    #[schema(max_length = 255)]
+    #[schema(max_length = 100)]
     pub slug: Option<String>,
-    #[schema(max_length = 1000)]
-    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CategoryResponse {
+pub struct TagResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub locale: String,
+    pub effective_locale: String,
     pub name: String,
     pub slug: String,
-    pub description: Option<String>,
-    pub parent_id: Option<Uuid>,
+    pub use_count: i32,
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CategoryListItem {
+pub struct TagListItem {
     pub id: Uuid,
     pub locale: String,
+    pub effective_locale: String,
     pub name: String,
     pub slug: String,
-    pub parent_id: Option<Uuid>,
+    pub use_count: i32,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
-pub struct ListCategoriesFilter {
+pub struct ListTagsFilter {
     pub locale: Option<String>,
     #[serde(default = "default_page")]
     pub page: u64,

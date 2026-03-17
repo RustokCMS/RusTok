@@ -53,9 +53,10 @@ pub mod state_machine;
 mod state_machine_proptest;
 
 pub use dto::{
-    CategoryListItem, CategoryResponse, CreateCategoryInput, CreatePostInput, CreateTagInput,
-    ListCategoriesFilter, ListTagsFilter, PostListQuery, PostListResponse, PostResponse,
-    PostSummary, TagListItem, TagResponse, UpdateCategoryInput, UpdatePostInput, UpdateTagInput,
+    CategoryListItem, CategoryResponse, CommentListItem, CommentResponse, CreateCategoryInput,
+    CreateCommentInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
+    ListTagsFilter, PostListQuery, PostListResponse, PostResponse, PostSummary, TagListItem,
+    TagResponse, UpdateCategoryInput, UpdateCommentInput, UpdatePostInput, UpdateTagInput,
 };
 pub use error::{BlogError, BlogResult};
 pub use services::{CategoryService, CommentService, PostService, TagService};
