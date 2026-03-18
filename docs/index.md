@@ -28,6 +28,9 @@ graph TD
     D --> DUI[docs/UI/*]
     D --> DSTD[docs/standards/*]
 
+    %% Next.js UI packages inside apps:
+    NEXT_ADMIN --> ADMIN_P1["packages/blog/ (@rustok/blog-admin)"]
+    NEXT_SF --> SF_P1["packages/blog/ (@rustok/blog-frontend)"]
     A --> ASRV[apps/server/docs/*]
     A --> AADMIN[apps/admin/docs/*]
     A --> ASF[apps/storefront/README.md]
@@ -57,6 +60,7 @@ graph TD
 - [Системный манифест](../RUSTOK_MANIFEST.md) — философия, принципы и архитектурные инварианты платформы.
 - [Правила агентов](../AGENTS.md) — правила для AI-агентов и контрибьюторов.
 - [Архитектурные решения](../DECISIONS/README.md) — реестр архитектурных решений (ADR).
+  - [ADR: Dual UI Strategy — Leptos primary, Next.js modular packages](../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md)
 - [Участие в разработке](../CONTRIBUTING.md) — инструкция по участию в разработке.
 - [Журнал изменений](../CHANGELOG.md) — история версий и релизов.
 - [Дорожная карта](./roadmap.md) — текущая дорожная карта и история релизов.
@@ -136,7 +140,7 @@ graph TD
 ### AI (`docs/ai/`)
 
 - [Шаблон сессии](./ai/SESSION_TEMPLATE.md)
-- [Известные подводные камни](./ai/KNOWN_PITFALLS.md)
+- [Известные подводные камни](./ai/KNOWN_PITFALL.md)
 
 ### Alloy (`docs/`)
 
@@ -176,7 +180,7 @@ graph TD
 - [Реестр Loco governance](../apps/server/docs/LOCO_FEATURE_SUPPORT.md#governance-register) — входная точка для архитектурных решений по возможностям Loco в server runtime.
 - [Документация Leptos Admin](../apps/admin/docs/README.md)
 - [План реализации Leptos Admin](../apps/admin/docs/implementation-plan.md)
-- [README Next.js Admin](../apps/next-admin/README.md)
+- [README Next.js Admin](../apps/next-admin/README.md) — экспериментальная headless-альтернатива, ручная сборка
 - [Документация Next.js Admin](../apps/next-admin/docs/README.md)
 - [План реализации Next.js Admin](../apps/next-admin/docs/implementation-plan.md)
 - [Документ Next.js Admin RBAC](../apps/next-admin/docs/nav-rbac.md)
@@ -185,7 +189,7 @@ graph TD
 - [README Leptos Storefront](../apps/storefront/README.md)
 - [Документация Leptos Storefront](../apps/storefront/docs/README.md)
 - [План реализации Leptos Storefront](../apps/storefront/docs/implementation-plan.md)
-- [Документация Next.js Storefront](../apps/next-frontend/docs/README.md)
+- [Документация Next.js Storefront](../apps/next-frontend/docs/README.md) — экспериментальный headless, ручная сборка
 - [План реализации Next.js Storefront](../apps/next-frontend/docs/implementation-plan.md)
 - [Документация crate `rustok-mcp`](../crates/rustok-mcp/docs/README.md)
 - [Документация crate `rustok-cache`](../crates/rustok-cache/docs/README.md)
@@ -205,7 +209,7 @@ graph TD
 - [Документация модуля Commerce](../crates/rustok-commerce/docs/README.md)
 - [План реализации модуля Commerce](../crates/rustok-commerce/docs/implementation-plan.md)
 - [Документация модуля Blog](../crates/rustok-blog/docs/README.md)
-- [Пакет админского UI для Blog](../crates/rustok-blog/ui/admin/README.md) *(если присутствует в ветке)*
+- [Пакет админского UI для Blog](../crates/rustok-blog/admin/README.md)
 - [План реализации модуля Blog](../crates/rustok-blog/docs/implementation-plan.md)
 - [Документация модуля Forum](../crates/rustok-forum/docs/README.md)
 - [План реализации модуля Forum](../crates/rustok-forum/docs/implementation-plan.md)
@@ -246,12 +250,21 @@ graph TD
 
 **JavaScript/TypeScript (в `packages/`)** — внутренние пакеты, используемые `apps/next-admin` и `apps/next-frontend`:
 
+- [`apps/next-admin/packages/*`](../apps/next-admin/packages/) — модульные npm-пакеты для админки (например, `@rustok/blog-admin`).
+- [`apps/next-frontend/packages/*`](../apps/next-frontend/packages/) — модульные npm-пакеты для витрины.
 - [packages/leptos-auth](../packages/leptos-auth/README.md)
 - [packages/leptos-graphql](../packages/leptos-graphql/README.md) — общие GraphQL-хелперы для всех фронтендов
 - [packages/leptos-hook-form](../packages/leptos-hook-form/README.md)
 - [packages/leptos-table](../packages/leptos-table/README.md)
 - [packages/leptos-zod](../packages/leptos-zod/README.md)
 - [packages/leptos-zustand](../packages/leptos-zustand/README.md)
+
+### Доменные npm-пакеты модулей (Next.js UI)
+
+UI-пакеты Next.js публикуются локально и живут внутри директорий соответствующих приложений:
+
+- `apps/next-admin/packages/<module>/`
+- `apps/next-frontend/packages/<module>/`
 
 ## Полный реестр распределённой документации (по всему репозиторию)
 
@@ -322,7 +335,8 @@ graph TD
 
 ### Пакеты (`packages/*`)
 
-Внутренние пакеты JavaScript/TypeScript для приложений Next.js:
+Внутренние пакеты JavaScript/TypeScript — **internal shared libs** для `apps/next-admin` и `apps/next-frontend`.
+Не являются модульными UI-пакетами (module UI packages) и не участвуют в module install pipeline.
 
 - `leptos-auth`: [README](../packages/leptos-auth/README.md)
 - `leptos-graphql`: [README](../packages/leptos-graphql/README.md)

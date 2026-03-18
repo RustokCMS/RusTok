@@ -1,5 +1,14 @@
 [module]
-ownership = "first_party"
-trust_level = "verified"
-recommended_admin_surfaces = ["leptos-admin"]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+description = "Blog and news module"
+
+[provides.admin_ui]
+leptos_crate = "rustok-blog-admin"
+next_package = "@rustok/blog-admin"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-blog-storefront"
+next_package = "@rustok/blog-frontend"
 showcase_admin_surfaces = ["next-admin"]

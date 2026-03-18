@@ -1,0 +1,10 @@
+[package]
+name = "rustok-blog-storefront"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+leptos.workspace = true
+rustok-core.workspace = true
+rustok-blog.workspace = true

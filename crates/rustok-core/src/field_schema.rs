@@ -1175,11 +1175,13 @@ pub async fn drop_field_definitions_table(
 #[macro_export]
 macro_rules! define_field_definitions_entity {
     ($table_name:literal) => {
+        use sea_orm::entity::prelude::*;
+
         #[derive(
             Clone,
             Debug,
             PartialEq,
-            sea_orm::entity::prelude::DeriveEntityModel,
+            DeriveEntityModel,
             serde::Serialize,
             serde::Deserialize,
         )]
@@ -1202,11 +1204,11 @@ macro_rules! define_field_definitions_entity {
         }
 
         #[derive(
-            Copy, Clone, Debug, sea_orm::entity::prelude::EnumIter, sea_orm::DeriveRelation,
+            Copy, Clone, Debug, EnumIter, DeriveRelation,
         )]
         pub enum Relation {}
 
-        impl sea_orm::entity::prelude::ActiveModelBehavior for ActiveModel {}
+        impl ActiveModelBehavior for ActiveModel {}
     };
 }
 
@@ -1956,7 +1958,7 @@ mod tests {
 
     #[test]
     fn define_field_definitions_entity_macro_sets_table_name() {
-        use sea_orm::entity::base_entity::EntityName;
+        use sea_orm::EntityName;
 
         assert_eq!(
             macro_smoke::Entity.table_name(),

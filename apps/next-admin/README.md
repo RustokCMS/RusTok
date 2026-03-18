@@ -1,23 +1,29 @@
 # RusToK Next Admin
 
-`apps/next-admin` — основная Next.js админка RusToK, развиваемая параллельно с `apps/admin` (Leptos) с общими UI/API контрактами.
+`apps/next-admin` — Next.js админка RusToK в headless-режиме, экспериментальная альтернатива `apps/admin` (Leptos).
+
+> [!IMPORTANT]
+> **Next.js не участвует в авто-деплое модулей.** При установке/удалении модуля через marketplace приложение пересобирается **вручную**.
+> Авто-деплой (BuildExecutor) работает только для примарного Leptos-стека (`apps/admin`, `apps/storefront`).
 
 ## Роль в платформе
 
-- интерфейс управления контентом, пользователями, каталогом и модулями;
+- headless-альтернатива для JS-разработчиков, предпочитающих React-экосистему;
 - реализация Next.js App Router варианта админки;
 - референс для FSD-структуры в React/Next фронтендах RusToK.
+
+> **Примарный стек** для авто-деплоя модулей: `apps/admin` (Leptos). Сей Next.js-вариант — экспериментальный, управляется независимо.
 
 ## FSD ориентир
 
 Текущее направление структуры:
 
 - `src/app/*` — app-layer (роутинг, layouts, route-level orchestration);
-- `src/features/*` — пользовательские сценарии и feature-блоки;
-- `src/widgets/*` / `src/components/*` — композиционные UI-блоки;
+- `packages/*` — **модульные UI-пакеты** (бизнес-сценарии модулей @rustok/*-admin);
+- `src/widgets/*` / `src/components/*` — композиционные UI-блоки приложения;
 - `src/shared/*` — общие утилиты, API-клиенты, типы, UI primitives.
 
-> При рефакторинге приоритет: выносить интеграционный код в `shared`, бизнес-сценарии в `features`, экранную композицию в `app`/`widgets`.
+> Приоритет: модульный код живет в `packages/`, интеграционный код приложения — в `src/app` и `src/shared`.
 
 ## Соглашения об именовании (Naming Conventions)
 
@@ -60,9 +66,19 @@
 - доменные модули `crates/rustok-*` через backend
 - shared UI workspace `UI/next` для паритета компонентов с другими фронтендами
 
+## Управление модулями
+
+Установка нового модуля через marketplace автоматически пересобирает только Leptos-стек (`apps/admin`, `apps/storefront`).
+Для `apps/next-admin` требуется ручная интеграция:
+
+1. Добавить UI-модуль как npm-пакет в `apps/next-admin/packages/<slug>/`.
+2. Пакет должен иметь имя `@rustok/<slug>-admin`.
+3. Убедиться, что корневой `package.json` зависит от этого пакета (`workspace:*`).
+4. Запустить `npm install && npm run build`.
+
 ## Документация
 
 - Локальные docs: `apps/next-admin/docs/*`
 - Платформенные UI docs: `docs/UI/*`
 - Карта документации: `docs/index.md`
-
+- ADR: [`DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md`](../../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md)

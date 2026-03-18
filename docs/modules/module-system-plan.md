@@ -51,17 +51,17 @@
 
 ### ✅ Структура файлов модуля
 
-```
+```text
 crates/rustok-{slug}/
 ├── rustok-module.toml       # обязательно для path-модулей
 ├── Cargo.toml
 ├── src/
-│   ├── lib.rs               # impl RusToKModule
-│   └── migrations/          # impl MigrationSource (после migration distribution)
+│   ├── lib.rs               # impl RusToKModule (backend)
+│   └── migrations/          # impl MigrationSource
 │       ├── mod.rs
 │       └── m20250101_*.rs
-├── admin/                   # Leptos-компоненты (опционально)
-└── storefront/              # Slot-виджеты (опционально)
+├── admin/                   # [NEW] Leptos-admin sub-crate
+└── storefront/              # [NEW] Leptos-storefront sub-crate
 ```
 
 **Документация**:
@@ -662,13 +662,18 @@ routes_fn = "controllers::routes"
 
 ---
 
-### ⬜ UI тоже должен пересобираться — admin WASM и storefront WASM
+### ⬜ UI тоже должен пересобираться — admin WASM и storefront WASM (Leptos)
 
 **Ключевой факт**: Leptos компилируется в WASM. Как сервер → бинарник,
 так admin и storefront → `.wasm`. Динамически подгрузить новый Rust-код
 в runtime невозможно. Любой новый модуль = пересборка WASM.
 
-**Что прошито вручную в admin**:
+> [!IMPORTANT]
+> **Next.js** (`apps/next-admin`, `apps/next-frontend`) **не входит** в build pipeline
+> при install/uninstall модуля. Пересборка Next.js — только вручную.
+> Авто-установка через marketplace работает исключительно для **Leptos**-стека.
+
+**Что прошито вручную в admin** (Leptos):
 
 ```
 apps/admin/src/
@@ -693,16 +698,18 @@ apps/admin/src/
 
 **Что нужно сделать**:
 
-1. **Перенести UI в модульные крейты** (аналогично GraphQL/REST):
-```
+1. **UI в подпапках модуля** (напр. `crates/rustok-workflow/admin/`):
+
+```text
 crates/rustok-workflow/
-└── ui/
-    ├── admin/
-    │   ├── pages/          ← WorkflowsPage, WorkflowDetailPage
-    │   ├── features/       ← компоненты
-    │   └── mod.rs          ← pub fn register_routes() + pub fn register_components()
-    └── storefront/
-        └── mod.rs          ← pub fn register_slot_components()
+├── Cargo.toml          # rustok-workflow (backend)
+├── src/                # backend logic
+├── admin/
+│   ├── Cargo.toml      # rustok-workflow-admin (publishable)
+│   └── src/            # Leptos components & register_routes()
+└── storefront/
+    ├── Cargo.toml      # rustok-workflow-storefront (publishable)
+    └── src/            # Leptos SSR components
 ```
 
 2. **`apps/admin/build.rs`** генерирует из `modules.toml`:
@@ -715,7 +722,7 @@ crates/rustok-workflow/
 3. **`apps/storefront/build.rs`** генерирует вызовы `register_component()`:
 ```rust
 // generated/registrations.rs
-rustok_workflow::ui::storefront::register_slot_components();
+rustok_workflow::storefront::register_slot_components();
 ```
 
 4. **`BuildExecutor`** собирает три артефакта:
@@ -728,11 +735,13 @@ cargo build -p rustok-storefront      // storefront         (⬜ не реали
 **`rustok-module.toml`** объявляет UI точки входа:
 ```toml
 [provides.admin_ui]
-routes_fn    = "ui::admin::register_routes"
-components_fn = "ui::admin::register_components"
+leptos_crate  = "rustok-workflow-admin"
+routes_fn     = "register_routes"
+components_fn = "register_components"
 
 [provides.storefront_ui]
-components_fn = "ui::storefront::register_slot_components"
+leptos_crate  = "rustok-workflow-storefront"
+components_fn = "register_slot_components"
 ```
 
 **Зависит от**: кодогенерации `build.rs` (п.6 выше).
@@ -758,27 +767,13 @@ components_fn = "ui::storefront::register_slot_components"
 > Пп. 6, 7, 8, 9 — единый блок. Все четыре нужны вместе, чтобы
 > сторонний модуль полноценно заработал (сервер + UI).
 
-### Что изменилось (2026-03-17) — ориентир для audit документации
+### Что изменилось (2026-03-18) — финальный ориентир
 
-Принятые решения, которые расходятся с текущей документацией:
+Принятые решения по структуре UI:
 
-1. **UI в одном крейте** — Leptos UI (admin + storefront) живёт внутри `crates/rustok-<module>/src/`
-   через feature flags, не в `crates/rustok-<module>/ui/` и не в отдельных крейтах:
-   ```
-   crates/rustok-blog/src/
-     services/    [feature = "server"]
-     admin/       [feature = "leptos-admin"]
-     storefront/  [feature = "leptos-storefront"]
-   ```
+1. **Leptos UI** — вынесен в отдельные publishable суб-крейты `admin/` и `storefront/` внутри папки модуля. Это позволяет публиковать их в crates.io и минимизировать зависимости основного бекенд-крейта.
+2. **Next.js UI** — перенёсён в `apps/*/packages/<module>/` в виде локальных npm-пакетов. Это обеспечивает изоляцию кода модулей от основного приложения при сохранении возможности публикации в npm.
+3. **Авто-деплой** — работает **только для Leptos** через BuildExecutor. Next.js приложения требуют ручной сборки/обновления `package.json`.
+4. **Манифест** — `rustok-module.toml` теперь должен явно указывать имена UI-пакетов (`leptos_crate`, `next_package`).
 
-2. **Next.js — "batteries included"** — весь Next.js UI перенесён из `crates/` в приложения:
-   ```
-   apps/next-admin/src/features/blog/
-   apps/next-admin/src/features/workflow/
-   apps/next-frontend/src/features/blog/
-   ```
-   Нет отдельных npm-пакетов `@rustok/*`. Авто-установка только для Leptos.
-
-3. **Режимы деплоя** — любая комбинация features, не фиксированный список сценариев.
-
-Связанный DECISION: `DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md`
+Связанный ADR: `DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md` (обновлен 2026-03-18).

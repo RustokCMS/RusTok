@@ -7,11 +7,13 @@ This document provides a comprehensive map of all components within the RusToK e
 ```mermaid
 graph TD
     subgraph Applications
-        SERVER[apps/server - Loco Server]
-        ADMIN[apps/admin - Leptos Admin]
-        SF[apps/storefront - Leptos Storefront]
-        NEXT_ADMIN[apps/next-admin - Next.js Admin]
-        NEXT_SF[apps/next-frontend - Next.js Storefront]
+        SERVER["apps/server — Loco Server"]
+        ADMIN["apps/admin — Leptos Admin (primary)"]
+        SF["apps/storefront — Leptos Storefront (primary)"]
+        NEXT_ADMIN["apps/next-admin — Next.js Admin (experimental headless)"]
+        NEXT_SF["apps/next-frontend — Next.js Storefront (experimental headless)"]
+        ADMIN_PKGS["apps/next-admin/packages/* — @rustok/*-admin"]
+        SF_PKGS["apps/next-frontend/packages/* — @rustok/*-frontend"]
     end
 
     subgraph Domain Modules
@@ -28,17 +30,11 @@ graph TD
         MEDIA[crates/rustok-media]
     end
 
-    subgraph Module UI Packages
-        BLOG_UI_ADMIN[crates/rustok-blog/ui/admin]
-        BLOG_UI_FRONT[crates/rustok-blog/ui/frontend]
-        OPTIONAL_UI[crates/rustok-<module>/ui/* (target)]
-    end
-
     subgraph Platform Core Crates
         CORE[crates/rustok-core]
         EVENTS[crates/rustok-events]
         STORAGE[crates/rustok-storage]
-        OUTBOX[crates/rustok-outbox - Core Infra]
+        OUTBOX["crates/rustok-outbox — Core Infra"]
         CACHE[crates/rustok-cache]
         IGGY[crates/rustok-iggy]
         IGGY_CONN[crates/rustok-iggy-connector]
@@ -80,7 +76,6 @@ graph TD
     SF --> L_UI
     SF --> L_GRAPHQL
 
-
     COMMERCE --> CORE
     COMMERCE --> EVENTS
     COMMERCE --> OUTBOX
@@ -104,14 +99,17 @@ graph TD
     MEDIA --> OUTBOX
     FLEX --> CORE
 
-    BLOG --> BLOG_UI_ADMIN
-    BLOG --> BLOG_UI_FRONT
-    BLOG_UI_ADMIN --> NEXT_ADMIN
-    BLOG_UI_FRONT --> NEXT_SF
-    OPTIONAL_UI -. optional contracts .-> ADMIN
-    OPTIONAL_UI -. optional contracts .-> NEXT_ADMIN
-    OPTIONAL_UI -. optional contracts .-> SF
-    OPTIONAL_UI -. optional contracts .-> NEXT_SF
+    %% Leptos UI lives inside module crate folders as sub-crates:
+    BLOG --> BLOG_ADMIN["admin/ (rustok-blog-admin)"]
+    BLOG --> BLOG_SF["storefront/ (rustok-blog-storefront)"]
+    BLOG_ADMIN -. "active via feature flags" .-> ADMIN
+    BLOG_SF -. "active via feature flags" .-> SF
+
+    %% Next.js UI lives in apps/*/packages/ as modular npm packages:
+    ADMIN_PKGS -. imports .-> BLOG
+    SF_PKGS -. imports .-> BLOG
+    NEXT_ADMIN --> ADMIN_PKGS
+    NEXT_SF --> SF_PKGS
 
     Domain Modules -.-> TELEMETRY
 ```
@@ -123,10 +121,10 @@ graph TD
 | Path | Name | Description |
 |------|------|-------------|
 | `apps/server` | **Server** | Main API server built on Loco.rs. Orchestrates all domain modules. ([CRATE_API](../../apps/server/CRATE_API.md)) |
-| `apps/admin` | **Leptos Admin** | Back-office management interface built with Leptos (CSR/WASM). ([CRATE_API](../../apps/admin/CRATE_API.md)) |
-| `apps/storefront` | **Leptos Storefront** | Customer-facing web interface built with Leptos (SSR). ([CRATE_API](../../apps/storefront/CRATE_API.md)) |
-| `apps/next-admin` | **Next.js Admin** | Modern React-based admin interface (Next.js). Primary admin dashboard. ([CRATE_API](../../apps/next-admin/CRATE_API.md)) |
-| `apps/next-frontend` | **Next.js Storefront** | Modern React-based storefront (Next.js). ([CRATE_API](../../apps/next-frontend/CRATE_API.md)) |
+| `apps/admin` | **Leptos Admin** (primary) | Back-office management interface built with Leptos (CSR/WASM). Participates in auto-deploy on module install/uninstall. ([CRATE_API](../../apps/admin/CRATE_API.md)) |
+| `apps/storefront` | **Leptos Storefront** (primary) | Customer-facing web interface built with Leptos (SSR). Participates in auto-deploy on module install/uninstall. ([CRATE_API](../../apps/storefront/CRATE_API.md)) |
+| `apps/next-admin` | **Next.js Admin** | Alternative React-based admin interface. UI packages live in `packages/`. Manual rebuild; not in module pipeline. ([CRATE_API](../../apps/next-admin/CRATE_API.md)) |
+| `apps/next-frontend` | **Next.js Storefront** | Alternative React-based storefront. UI packages live in `packages/`. Manual rebuild; not in module pipeline. ([CRATE_API](../../apps/next-frontend/CRATE_API.md)) |
 
 ### Core Platform Crates (`crates/`)
 
@@ -197,34 +195,60 @@ graph TD
 >
 > **Граница подвижна:** модуль-библиотека может получить таблицы и стать полноценным модулем.
 
-### Module UI Packages Layer (`crates/*/ui/*`)
+### Module UI Architecture (updated 2026-03-18)
 
-This layer contains UI packages shipped by domain modules.
-For `ModuleKind::Optional`, UI composition must come from module-owned UI packages (screens, nav items, guards, editors) instead of hardcoded app-level features.
+> [!IMPORTANT]
+> See [ADR: Dual UI Strategy](../../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md) for rationale.
 
-Core exceptions: `index`, `tenant`, `rbac`, and platform core crates (`rustok-core`, `rustok-outbox`, `rustok-telemetry`) are not required to follow this UI packaging pattern.
+#### Leptos UI — separate sub-crates, publishable to crates.io
 
-Recommended package shape:
+Each module crate contains Leptos UI as dedicated sub-crates:
 
-- `crates/rustok-<module>/ui/admin-next`
-- `crates/rustok-<module>/ui/admin-leptos`
-- `crates/rustok-<module>/ui/frontend-next`
-- `crates/rustok-<module>/ui/frontend-leptos`
+```text
+crates/rustok-<module>/
+  Cargo.toml           # rustok-<module> (backend, publishable)
+  src/
+    lib.rs             # domain types (always compiled)
+    services/          # backend
+  admin/
+    Cargo.toml         # rustok-<module>-admin → crates.io
+    src/lib.rs         # Leptos admin components + registration fn
+  storefront/
+    Cargo.toml         # rustok-<module>-storefront → crates.io
+    src/lib.rs         # Leptos SSR components + registration fn
+```
 
-Recommended entry-point exports:
+`apps/admin/Cargo.toml` lists each `rustok-<m>-admin` as a dependency.
+Auto-installation via marketplace triggers Leptos WASM rebuild automatically (BuildExecutor).
 
-- `adminNavItems` (or equivalent admin contract; implemented per runtime: Next/Leptos)
-- `frontendNavItems` (or equivalent storefront contract; implemented per runtime: Next/Leptos)
+#### Next.js UI — modular packages inside apps
 
-Admin and storefront runtimes (`apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`) should consume these packages through one modular contract/registry layer (e.g., `registerAdminModule` / `registerStorefrontModule` and Leptos registry equivalents).
+```text
+apps/next-admin/
+  packages/
+    blog/              # @rustok/blog-admin
+    commerce/          # @rustok/commerce-admin
+  src/                 # app itself, imports from packages/*
+  package.json
 
-| Path | Module | UI Scope | Status |
-|------|--------|----------|--------|
-| `crates/rustok-blog/ui/admin` | Blog (+forum composition currently colocated) | Admin (Next) | Existing (reference sample for Next) |
-| `crates/rustok-blog/ui/frontend` | Blog | Frontend (Next) | Existing (reference sample for Next) |
-| `crates/rustok-<module>/ui/*` | Content/Commerce/Forum/Pages/Alloy scripting | Admin + Frontend | Planned / partial |
+apps/next-frontend/
+  packages/
+    blog/              # @rustok/blog-frontend
+    commerce/          # @rustok/commerce-frontend
+  src/
+  package.json
+```
 
-Current reference sample in repository covers Next runtime: `crates/rustok-blog/ui/admin` and `crates/rustok-blog/ui/frontend`; Leptos-specific package pair remains a TODO for full dual-stack parity.
+To remove a module from Next.js: delete `packages/<module>/`, remove from `package.json`, then `npm install && npm run build`. Not part of the auto-install pipeline.
+
+#### Legacy paths
+
+| Old path | Migrate to |
+|----------|------------|
+| `crates/rustok-blog/ui/admin` | `crates/rustok-blog/admin/` (Leptos sub-crate) |
+| `crates/rustok-blog/ui/frontend` | `crates/rustok-blog/storefront/` (Leptos sub-crate) |
+| `apps/next-admin/src/features/blog/` | `apps/next-admin/packages/blog/` |
+| `apps/next-frontend/src/features/blog/` | `apps/next-frontend/packages/blog/` |
 
 ### Internal Frontend Libraries (`crates/`)
 

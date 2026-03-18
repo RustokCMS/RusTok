@@ -4,12 +4,23 @@ This section documents frontend applications and shared UI integration patterns 
 
 ## Current frontend landscape
 
-RusToK currently has four UI applications:
+RusToK has four UI applications across two stacks:
 
-- `apps/next-admin` — primary Next.js admin dashboard.
-- `apps/admin` — Leptos admin panel (legacy/parallel implementation).
-- `apps/next-frontend` — Next.js storefront.
-- `apps/storefront` — Leptos storefront.
+### Primary (Leptos) — авто-деплой при install/uninstall модулей
+
+- `apps/admin` — **primary Leptos admin panel** (CSR/WASM). Участвует в пересборке WASM при установке/удалении модулей.
+- `apps/storefront` — **primary Leptos storefront** (SSR). Участвует в пересборке WASM при установке/удалении модулей.
+
+Leptos UI-код модулей находится в отдельных publishable sub-crates рядом с бекенд-крейтом (`admin/`, `storefront/`).
+
+### Experimental headless (Next.js) — ручная сборка
+
+- `apps/next-admin` — альтернативная Next.js админка (headless-режим). Пересборка **вручную** (`npm run build`). Не участвует в module install pipeline.
+- `apps/next-frontend` — альтернативный Next.js storefront (headless-режим). Пересборка **вручную**. Не участвует в module install pipeline.
+
+Next.js UI-код модулей находится в виде отдельных npm-пакетов внутри директории самого приложения (`apps/next-admin/packages/<module>/` и `apps/next-frontend/packages/<module>/`).
+
+> See [ADR: Dual UI Strategy — Next.js modular packages](../../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md) for the rationale.
 
 For platform-wide app ownership and dependencies, see [`docs/modules/registry.md`](../modules/registry.md).
 

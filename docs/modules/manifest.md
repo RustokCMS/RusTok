@@ -90,21 +90,17 @@ default_enabled = ["content", "commerce", "pages"]
 
 ## UI-контракты модулей в манифесте и сборке
 
-Для `ModuleKind::Optional` модулей действует правило композиции UI через модульные пакеты:
+- **Leptos UI** поставляется из суб-крейтов модуля: `crates/rustok-<module>/admin/` и `crates/rustok-<module>/storefront/`.
+- **Next.js UI** поставляется из npm-пакетов приложений: `apps/next-admin/packages/<module>/` и `apps/next-frontend/packages/<module>/`.
 
-- UI (экраны, меню, nav items, guards, редакторы) поставляется из `crates/rustok-<module>/ui/*`.
-- Приложения (`apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`) подключают эти пакеты через единый модульный контракт/registry, без хардкода optional-domain UI внутри приложений.
+Рантайм-контракты и entry-points:
 
-Рекомендуемая структура и entry points:
+- `leptos_crate` (в `rustok-module.toml`) — указывает имя Rust-субкрейта для админки или витрины.
+- `next_package` (в `rustok-module.toml`) — указывает имя npm-пакета.
 
-- `crates/rustok-<module>/ui/admin-next` → экспорт admin-контракта для `registerAdminModule`.
-- `crates/rustok-<module>/ui/admin-leptos` → экспорт admin-контракта для `AdminComponentRegistration`.
-- `crates/rustok-<module>/ui/frontend-next` → экспорт storefront-контракта для `registerStorefrontModule`.
-- `crates/rustok-<module>/ui/frontend-leptos` → экспорт storefront-контракта для `StorefrontComponentRegistration`.
+Приложения (`apps/admin`, `apps/storefront`) подключают Leptos-пакеты автоматически через `BuildExecutor`. Приложения Next.js требуют ручного добавления зависимостей в `package.json` и ручной пересборки.
 
-Допустимый transitional-вариант: `ui/admin` и `ui/frontend` при обязательной явной пометке target-runtime в README модуля.
-
-Референсный образец в текущем репозитории: UI-пакеты blog-модуля (`crates/rustok-blog/ui/admin`, `crates/rustok-blog/ui/frontend`) — это образец для Next runtime.
+Референсный образец для Leptos: модуль blog (`crates/rustok-blog/admin/` и `crates/rustok-blog/storefront/`).
 
 Исключение:
 
