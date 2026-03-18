@@ -3,7 +3,6 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use axum::routing::get;
 use loco_rs::{controller::Routes, Result};
 
 use crate::error::Error;

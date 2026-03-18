@@ -4,7 +4,7 @@ use crate::error::Error;
 use crate::error::Result;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 
 use crate::auth::{auth_config_from_ctx, 
