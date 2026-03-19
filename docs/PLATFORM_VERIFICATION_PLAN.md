@@ -150,7 +150,7 @@
 
 ### 1.3 Категоризация компонентов
 
-**Проверяем соответствие Категориям A/B/C из `docs/architecture/improvement-recommendations.md`:**
+**Проверяем соответствие текущей taxonomy модулей из `docs/architecture/principles.md` и `docs/modules/manifest.md`:**
 
 - [x] **Категория A (Compile-time, не модули):** `rustok-core`, `rustok-outbox`, `rustok-events`, `rustok-telemetry`, `rustok-test-utils`, `rustok-iggy`, `rustok-iggy-connector`, `rustok-mcp`, `utoipa-swagger-ui-vendored`, `tailwind-*` — НЕ имеют `impl RusToKModule`
 - [x] **Категория B (Core modules):** `rustok-index`, `rustok-tenant`, `rustok-rbac` — имеют `impl RusToKModule` с `kind() -> ModuleKind::Core`
@@ -624,7 +624,7 @@
 - [x] `RbacModule` зарегистрирован как `ModuleKind::Core` (в `crates/rustok-rbac/src/lib.rs`)
 - [x] Entities в `entities/` — role, permission, user_role сущности
 - [x] DTOs в `dto/`
-- [x] Services: `permission_resolver`, `permission_authorizer`, `permission_evaluator`, `permission_policy`, `relation_permission_resolver`, `runtime_permission_resolver`, `shadow_decision`, `shadow_runtime`, `casbin_shadow_evaluator`, `authz_mode`
+- [x] Services: `permission_resolver`, `permission_authorizer`, `permission_evaluator`, `permission_policy`, `relation_permission_resolver`, `runtime_permission_resolver`, `permission_check`, `casbin_evaluator`, `authz_mode`
 - [x] Health check работает — `health()` возвращает `HealthStatus::Healthy`
 - [x] Integration events: `RbacRoleAssignmentEvent` для cross-module RBAC notifications
 - [~] Миграции: `migrations()` возвращает `Vec::new()` — таблицы управляются через главный migration сервер
@@ -1130,7 +1130,7 @@
 - [ ] `modules.md` — перечень модулей актуален
 - [ ] `routing.md` — policy GraphQL vs REST актуальна
 - [ ] `dataloader.md` — описание DataLoader актуально
-- [ ] `improvement-recommendations.md` — статусы рекомендаций актуальны
+- [ ] `principles.md` — архитектурные инварианты и active runtime contracts актуальны
 
 ### 16.2 docs/guides/
 
@@ -1643,7 +1643,7 @@
 - [RBAC Enforcement](./architecture/rbac.md)
 - [Tenancy](./architecture/tenancy.md)
 - [Events & Outbox](./architecture/events.md)
-- [Improvement Recommendations](./architecture/improvement-recommendations.md)
+- [Architecture Principles](./architecture/principles.md)
 - [Module Registry](./modules/registry.md)
 - [Documentation Map](./index.md)
 - [Testing Guidelines](./guides/testing.md)

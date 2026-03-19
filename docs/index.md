@@ -62,8 +62,6 @@ graph TD
 - [Архитектурные решения](../DECISIONS/README.md) — реестр архитектурных решений (ADR).
   - [ADR: Dual UI Strategy — Leptos primary, Next.js modular packages](../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md)
 - [Участие в разработке](../CONTRIBUTING.md) — инструкция по участию в разработке.
-- [Журнал изменений](../CHANGELOG.md) — история версий и релизов.
-- [Дорожная карта](./roadmap.md) — текущая дорожная карта и история релизов.
 - [Лицензия](../LICENSE) — лицензия MIT.
 
 ## Централизованная документация (`docs/`)
@@ -89,8 +87,7 @@ graph TD
 - [Многотенантность](./architecture/tenancy.md)
 - [Локализация (i18n)](./architecture/i18n.md)
 - [Принципы](./architecture/principles.md)
-- [Рекомендации по улучшению](./architecture/improvement-recommendations.md) (живой backlog архитектурных улучшений, обновлено 2026-03-08).
-- [План интеграции Loco + Core](../apps/server/docs/loco-core-integration-plan.md) — план интеграции Loco RS и Core с управлением из админки (7 фаз).
+- [Состояние server/Loco integration](../apps/server/docs/loco-core-integration-plan.md) — текущий server/runtime contract, live capabilities и остаточный scope.
 - [Верификация ядра](../apps/server/docs/CORE_VERIFICATION_PLAN.md) — периодический чеклист проверки целостности ядра (13 секций).
 
 ### Руководства (`docs/guides/`)
@@ -145,7 +142,6 @@ graph TD
 ### Alloy (`docs/`)
 
 - [Концепция Alloy](./alloy-concept.md) — стратегическое видение: Self-Evolving Integration Runtime.
-- [Техническое ревью Alloy](./alloy-review.md) — обзор текущей реализации `alloy-scripting`, проблемы и рекомендации.
 
 ### Справочные материалы (`docs/references/`)
 
@@ -331,7 +327,7 @@ UI-пакеты Next.js публикуются локально и живут в
 - `flex`: [README](../crates/flex/README.md), [docs/README](../crates/flex/docs/README.md) — extracted attached-mode registry contracts
 - `rustok-storage`: [README](../crates/rustok-storage/README.md), [docs/README](../crates/rustok-storage/docs/README.md) — leaf crate, `StorageBackend` trait + `LocalStorage` backend
 - `rustok-media`: [docs/README](../crates/rustok-media/docs/README.md) — Core module, `MediaService` + SeaORM entities, REST + GraphQL API
-- `flex`: `crates/flex/` — optional crate, Phase 4.5 extraction target for Attached-mode contracts; Standalone mode planned later
+- `flex`: `crates/flex/` — optional crate with extracted Attached-mode contracts; Standalone mode remains a later step
 
 ### Пакеты (`packages/*`)
 

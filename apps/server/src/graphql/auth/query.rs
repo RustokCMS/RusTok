@@ -57,15 +57,14 @@ impl AuthQuery {
             .map(|l| l.clamp(1, 100) as u64)
             .unwrap_or(DEFAULT_SESSION_LIMIT);
 
-        let rows =
-            AuthLifecycleService::list_sessions(app_ctx, tenant.id, auth.user_id, cap)
-                .await
-                .map_err(|e| match e {
-                    AuthLifecycleError::Internal(err) => {
-                        <FieldError as GraphQLError>::internal_error(&err.to_string())
-                    }
-                    other => <FieldError as GraphQLError>::internal_error(&format!("{other:?}")),
-                })?;
+        let rows = AuthLifecycleService::list_sessions(app_ctx, tenant.id, auth.user_id, cap)
+            .await
+            .map_err(|e| match e {
+                AuthLifecycleError::Internal(err) => {
+                    <FieldError as GraphQLError>::internal_error(&err.to_string())
+                }
+                other => <FieldError as GraphQLError>::internal_error(&format!("{other:?}")),
+            })?;
 
         let sessions = rows
             .into_iter()

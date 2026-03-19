@@ -14,6 +14,7 @@ use axum_extra::{
 };
 use loco_rs::app::AppContext;
 use rustok_core::{Permission, UserRole};
+use sea_orm::EntityTrait;
 use tracing::warn;
 
 use crate::services::rbac_service::RbacService;
@@ -31,7 +32,11 @@ pub struct CurrentUser {
 
 impl CurrentUser {
     pub fn security_context(&self) -> rustok_core::SecurityContext {
-        rustok_core::SecurityContext::new(self.inferred_role.clone(), Some(self.user.id))
+        rustok_core::SecurityContext::from_permissions(
+            self.inferred_role,
+            Some(self.user.id),
+            self.permissions.iter().copied(),
+        )
     }
 }
 

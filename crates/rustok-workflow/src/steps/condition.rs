@@ -62,7 +62,12 @@ impl WorkflowStep for ConditionStep {
             }
         };
 
-        debug!(field = field, operator = operator, result = result, "Condition evaluated");
+        debug!(
+            field = field,
+            operator = operator,
+            result = result,
+            "Condition evaluated"
+        );
 
         let output = serde_json::json!({ "field": field, "result": result });
 
@@ -76,7 +81,6 @@ impl WorkflowStep for ConditionStep {
 
 /// Resolves a dot-notation path like "event.status" against a JSON value.
 fn resolve_field<'a>(path: &str, data: &'a Value) -> Option<&'a Value> {
-    path.split('.').fold(Some(data), |current, key| {
-        current.and_then(|v| v.get(key))
-    })
+    path.split('.')
+        .fold(Some(data), |current, key| current.and_then(|v| v.get(key)))
 }

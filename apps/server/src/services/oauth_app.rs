@@ -1,6 +1,7 @@
 //! OAuth App Service — CRUD operations and credential management
 
 use crate::auth::{self, AuthConfig};
+use crate::error::{Error, Result};
 use crate::models::oauth_apps::{self, ActiveModel as OAuthAppActiveModel, Entity as OAuthApps};
 use crate::models::oauth_authorization_codes::{
     ActiveModel as OAuthCodeActiveModel, Entity as OAuthCodes,
@@ -10,7 +11,6 @@ use crate::models::oauth_consents::{
 };
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
 use chrono::Utc;
-use crate::error::{Error, Result};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use subtle::ConstantTimeEq;
 use uuid::Uuid;

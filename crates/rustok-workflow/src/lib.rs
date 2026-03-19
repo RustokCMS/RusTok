@@ -35,9 +35,11 @@ pub mod templates;
 pub use dto::*;
 pub use error::{WorkflowError, WorkflowResult};
 pub use migration::{WorkflowPhase4Migration, WorkflowsMigration};
+pub use services::{
+    WorkflowCronScheduler, WorkflowEngine, WorkflowService, WorkflowTriggerHandler,
+};
+pub use steps::{AlloyScriptStep, NotificationSender, NotifyStep, ScriptRunner};
 pub use templates::{WorkflowTemplate, BUILTIN_TEMPLATES};
-pub use services::{WorkflowCronScheduler, WorkflowEngine, WorkflowService, WorkflowTriggerHandler};
-pub use steps::{AlloyScriptStep, NotifyStep, ScriptRunner, NotificationSender};
 
 pub struct WorkflowModule;
 
@@ -60,7 +62,7 @@ impl RusToKModule for WorkflowModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["core"]
+        &["alloy"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

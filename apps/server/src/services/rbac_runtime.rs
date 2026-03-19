@@ -1,21 +1,17 @@
-use async_trait::async_trait;
 use crate::error::Error;
 use crate::error::Result;
+use async_trait::async_trait;
 use moka::future::Cache;
 use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use tracing::warn;
 
 use rustok_core::{Action, Permission, Resource, UserRole};
 use rustok_rbac::{
-    authorize_all_permissions_for_mode, authorize_any_permission_for_mode,
-    authorize_permission_for_mode, evaluate_shadow_runtime_for_mode, invalidate_cached_permissions,
-    observe_shadow_runtime, shadow_runtime_runs_casbin, AuthorizationDecision,
-    CasbinShadowMismatchRecord, DeniedReasonKind, PermissionCache, RbacAuthzMode,
-    RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver, ShadowCheck,
-    ShadowRuntimeContext, ShadowRuntimeInput, ShadowRuntimeObserver,
+    authorize_all_permissions, authorize_any_permission, authorize_permission,
+    invalidate_cached_permissions, AuthorizationDecision, DeniedReasonKind, PermissionCache,
+    RelationPermissionStore, RoleAssignmentStore, RuntimePermissionResolver,
 };
 
 use crate::models::_entities::{permissions, role_permissions, roles, user_roles};
@@ -39,16 +35,6 @@ pub(crate) enum AuthorizationCheck<'a> {
     All(&'a [Permission]),
 }
 
-impl<'a> AuthorizationCheck<'a> {
-    pub(crate) fn shadow_check(self) -> ShadowCheck<'a> {
-        match self {
-            Self::Single(permission) => ShadowCheck::Single(permission),
-            Self::Any(permissions) => ShadowCheck::Any(permissions),
-            Self::All(permissions) => ShadowCheck::All(permissions),
-        }
-    }
-}
-
 pub(crate) struct AuthorizationRuntimeOutcome {
     pub decision: AuthorizationDecision,
     pub latency_ms: u64,
@@ -68,10 +54,7 @@ pub struct RbacResolverMetricsSnapshot {
     pub denied_missing_permissions: u64,
     pub denied_unknown: u64,
     pub claim_role_mismatch_total: u64,
-    pub shadow_compare_failures_total: u64,
-    pub engine_decisions_relation_total: u64,
     pub engine_decisions_casbin_total: u64,
-    pub engine_mismatch_total: u64,
     pub engine_eval_duration_ms_total: u64,
     pub engine_eval_duration_samples: u64,
 }
@@ -88,10 +71,7 @@ static RBAC_DENIED_NO_PERMISSIONS_RESOLVED: AtomicU64 = AtomicU64::new(0);
 static RBAC_DENIED_MISSING_PERMISSIONS: AtomicU64 = AtomicU64::new(0);
 static RBAC_DENIED_UNKNOWN: AtomicU64 = AtomicU64::new(0);
 static RBAC_CLAIM_ROLE_MISMATCH_TOTAL: AtomicU64 = AtomicU64::new(0);
-static RBAC_SHADOW_COMPARE_FAILURES_TOTAL: AtomicU64 = AtomicU64::new(0);
-static RBAC_ENGINE_DECISIONS_RELATION_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_DECISIONS_CASBIN_TOTAL: AtomicU64 = AtomicU64::new(0);
-static RBAC_ENGINE_MISMATCH_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_EVAL_DURATION_MS_TOTAL: AtomicU64 = AtomicU64::new(0);
 static RBAC_ENGINE_EVAL_DURATION_SAMPLES: AtomicU64 = AtomicU64::new(0);
 
@@ -102,40 +82,6 @@ static USER_PERMISSION_CACHE: Lazy<Cache<(uuid::Uuid, uuid::Uuid), Vec<Permissio
             .time_to_live(Duration::from_secs(60))
             .build()
     });
-
-pub(crate) struct ServerShadowRuntimeObserver;
-
-impl ShadowRuntimeObserver for ServerShadowRuntimeObserver {
-    fn record_engine_decision_deltas(&self, relation_delta: u64, casbin_delta: u64) {
-        record_engine_decision_deltas(relation_delta, casbin_delta);
-    }
-
-    fn record_engine_mismatch_delta(&self, delta: u64) {
-        record_engine_mismatch_delta(delta);
-    }
-
-    fn record_engine_eval_duration(&self, latency_ms: u64) {
-        record_engine_eval_duration(latency_ms);
-    }
-
-    fn on_casbin_mismatch(
-        &self,
-        context: ShadowRuntimeContext<'_>,
-        mismatch: &CasbinShadowMismatchRecord,
-    ) {
-        warn!(
-            tenant_id = %context.tenant_id,
-            user_id = %context.user_id,
-            shadow_check = mismatch.shadow_check,
-            checked_permissions_total = mismatch.checked_permissions_total,
-            resource = %mismatch.permission.resource,
-            action = %mismatch.permission.action,
-            relation_decision = mismatch.relation_allowed,
-            casbin_decision = mismatch.casbin_allowed,
-            "rbac_engine_mismatch"
-        );
-    }
-}
 
 pub(crate) async fn invalidate_user_permissions_cache(
     tenant_id: &uuid::Uuid,
@@ -149,38 +95,6 @@ pub(crate) async fn invalidate_user_rbac_caches(tenant_id: &uuid::Uuid, user_id:
     invalidate_user_permissions_cache(tenant_id, user_id).await;
 }
 
-pub(crate) fn authz_mode() -> RbacAuthzMode {
-    RbacAuthzMode::from_env()
-}
-
-pub(crate) async fn compare_shadow_runtime(
-    _db: &DatabaseConnection,
-    tenant_id: &uuid::Uuid,
-    user_id: &uuid::Uuid,
-    resolved_permissions: &[Permission],
-    shadow_check: ShadowCheck<'_>,
-    relation_allowed: bool,
-) -> Result<()> {
-    let authz_mode = authz_mode();
-    let casbin_started_at = shadow_runtime_runs_casbin(authz_mode).then(std::time::Instant::now);
-    let evaluation = evaluate_shadow_runtime_for_mode(ShadowRuntimeInput {
-        authz_mode,
-        tenant_id,
-        resolved_permissions,
-        shadow_check,
-        relation_allowed,
-    });
-    let observer = ServerShadowRuntimeObserver;
-    observe_shadow_runtime(
-        &observer,
-        ShadowRuntimeContext { tenant_id, user_id },
-        &evaluation,
-        casbin_started_at.map(|started_at| started_at.elapsed().as_millis() as u64),
-    );
-
-    Ok(())
-}
-
 pub(crate) async fn authorize_request(
     db: &DatabaseConnection,
     tenant_id: &uuid::Uuid,
@@ -188,32 +102,16 @@ pub(crate) async fn authorize_request(
     check: AuthorizationCheck<'_>,
 ) -> Result<AuthorizationRuntimeOutcome> {
     let started_at = Instant::now();
-    let authz_mode = authz_mode();
     let resolver = resolver(db);
     let decision = match check {
         AuthorizationCheck::Single(permission) => {
-            authorize_permission_for_mode(&resolver, authz_mode, tenant_id, user_id, permission)
-                .await?
+            authorize_permission(&resolver, tenant_id, user_id, permission).await?
         }
         AuthorizationCheck::Any(permissions) => {
-            authorize_any_permission_for_mode(
-                &resolver,
-                authz_mode,
-                tenant_id,
-                user_id,
-                permissions,
-            )
-            .await?
+            authorize_any_permission(&resolver, tenant_id, user_id, permissions).await?
         }
         AuthorizationCheck::All(permissions) => {
-            authorize_all_permissions_for_mode(
-                &resolver,
-                authz_mode,
-                tenant_id,
-                user_id,
-                permissions,
-            )
-            .await?
+            authorize_all_permissions(&resolver, tenant_id, user_id, permissions).await?
         }
     };
 
@@ -223,35 +121,16 @@ pub(crate) async fn authorize_request(
     })
 }
 
-pub(crate) async fn observe_authorization_decision(
-    db: &DatabaseConnection,
-    tenant_id: &uuid::Uuid,
-    user_id: &uuid::Uuid,
-    decision: &AuthorizationDecision,
-    shadow_check: ShadowCheck<'_>,
-    latency_ms: u64,
-) -> Result<()> {
+pub(crate) fn observe_authorization_decision(decision: &AuthorizationDecision, latency_ms: u64) {
     record_permission_cache_result(decision.cache_hit);
     record_permission_check_result(decision.allowed);
     record_permission_check_latency(latency_ms);
+    record_engine_decision();
+    record_engine_eval_duration(latency_ms);
 
     if let Some((denied_reason_kind, _)) = decision.denied_reason.as_ref() {
         record_denied_reason_bucket(*denied_reason_kind);
     }
-
-    compare_shadow_runtime(
-        db,
-        tenant_id,
-        user_id,
-        &decision.resolved_permissions,
-        shadow_check,
-        decision.allowed,
-    )
-    .await
-    .map_err(|error| {
-        record_shadow_compare_failure();
-        error
-    })
 }
 
 pub(crate) fn resolver(db: &DatabaseConnection) -> ServerRuntimePermissionResolver {
@@ -306,23 +185,8 @@ pub(crate) fn record_claim_role_mismatch() {
     RBAC_CLAIM_ROLE_MISMATCH_TOTAL.fetch_add(1, Ordering::Relaxed);
 }
 
-pub(crate) fn record_shadow_compare_failure() {
-    RBAC_SHADOW_COMPARE_FAILURES_TOTAL.fetch_add(1, Ordering::Relaxed);
-}
-
-pub(crate) fn record_engine_decision_deltas(relation_delta: u64, casbin_delta: u64) {
-    if relation_delta > 0 {
-        RBAC_ENGINE_DECISIONS_RELATION_TOTAL.fetch_add(relation_delta, Ordering::Relaxed);
-    }
-    if casbin_delta > 0 {
-        RBAC_ENGINE_DECISIONS_CASBIN_TOTAL.fetch_add(casbin_delta, Ordering::Relaxed);
-    }
-}
-
-pub(crate) fn record_engine_mismatch_delta(delta: u64) {
-    if delta > 0 {
-        RBAC_ENGINE_MISMATCH_TOTAL.fetch_add(delta, Ordering::Relaxed);
-    }
+pub(crate) fn record_engine_decision() {
+    RBAC_ENGINE_DECISIONS_CASBIN_TOTAL.fetch_add(1, Ordering::Relaxed);
 }
 
 pub(crate) fn record_engine_eval_duration(latency_ms: u64) {
@@ -348,11 +212,7 @@ pub(crate) fn metrics_snapshot() -> RbacResolverMetricsSnapshot {
         denied_missing_permissions: RBAC_DENIED_MISSING_PERMISSIONS.load(Ordering::Relaxed),
         denied_unknown: RBAC_DENIED_UNKNOWN.load(Ordering::Relaxed),
         claim_role_mismatch_total: RBAC_CLAIM_ROLE_MISMATCH_TOTAL.load(Ordering::Relaxed),
-        shadow_compare_failures_total: RBAC_SHADOW_COMPARE_FAILURES_TOTAL.load(Ordering::Relaxed),
-        engine_decisions_relation_total: RBAC_ENGINE_DECISIONS_RELATION_TOTAL
-            .load(Ordering::Relaxed),
         engine_decisions_casbin_total: RBAC_ENGINE_DECISIONS_CASBIN_TOTAL.load(Ordering::Relaxed),
-        engine_mismatch_total: RBAC_ENGINE_MISMATCH_TOTAL.load(Ordering::Relaxed),
         engine_eval_duration_ms_total: RBAC_ENGINE_EVAL_DURATION_MS_TOTAL.load(Ordering::Relaxed),
         engine_eval_duration_samples: RBAC_ENGINE_EVAL_DURATION_SAMPLES.load(Ordering::Relaxed),
     }
@@ -372,10 +232,7 @@ pub(crate) fn reset_metrics_for_tests() {
     RBAC_DENIED_MISSING_PERMISSIONS.store(0, Ordering::Relaxed);
     RBAC_DENIED_UNKNOWN.store(0, Ordering::Relaxed);
     RBAC_CLAIM_ROLE_MISMATCH_TOTAL.store(0, Ordering::Relaxed);
-    RBAC_SHADOW_COMPARE_FAILURES_TOTAL.store(0, Ordering::Relaxed);
-    RBAC_ENGINE_DECISIONS_RELATION_TOTAL.store(0, Ordering::Relaxed);
     RBAC_ENGINE_DECISIONS_CASBIN_TOTAL.store(0, Ordering::Relaxed);
-    RBAC_ENGINE_MISMATCH_TOTAL.store(0, Ordering::Relaxed);
     RBAC_ENGINE_EVAL_DURATION_MS_TOTAL.store(0, Ordering::Relaxed);
     RBAC_ENGINE_EVAL_DURATION_SAMPLES.store(0, Ordering::Relaxed);
 }

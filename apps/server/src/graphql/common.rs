@@ -1,7 +1,6 @@
 use async_graphql::{Context, ErrorExtensions, InputObject, Result, SimpleObject};
 use rustok_content::PLATFORM_FALLBACK_LOCALE;
 use sea_orm::DatabaseConnection;
-use uuid::Uuid;
 
 use crate::common::RequestContext;
 use crate::context::TenantContext;

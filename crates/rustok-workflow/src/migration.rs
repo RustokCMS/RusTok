@@ -14,7 +14,12 @@ impl MigrationTrait for WorkflowsMigration {
                 Table::create()
                     .table(Workflows::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(Workflows::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(Workflows::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(Workflows::TenantId).uuid().not_null())
                     .col(ColumnDef::new(Workflows::Name).string_len(255).not_null())
                     .col(ColumnDef::new(Workflows::Description).text())
@@ -81,16 +86,8 @@ impl MigrationTrait for WorkflowsMigration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(WorkflowSteps::WorkflowId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(WorkflowSteps::Position)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(WorkflowSteps::WorkflowId).uuid().not_null())
+                    .col(ColumnDef::new(WorkflowSteps::Position).integer().not_null())
                     .col(
                         ColumnDef::new(WorkflowSteps::StepType)
                             .string_len(32)
@@ -355,8 +352,20 @@ impl MigrationTrait for WorkflowPhase4Migration {
             .alter_table(
                 Table::alter()
                     .table(WorkflowsV2::Table)
-                    .add_column_if_not_exists(ColumnDef::new(WorkflowsV2::WebhookSlug).string_len(128))
-                    .add_column_if_not_exists(ColumnDef::new(WorkflowsV2::WebhookSecret).string_len(128))
+                    .add_column_if_not_exists(
+                        ColumnDef::new(WorkflowsV2::WebhookSlug).string_len(128),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(WorkflowsV2::Table)
+                    .add_column_if_not_exists(
+                        ColumnDef::new(WorkflowsV2::WebhookSecret).string_len(128),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -380,17 +389,38 @@ impl MigrationTrait for WorkflowPhase4Migration {
                 Table::create()
                     .table(WorkflowVersions::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(WorkflowVersions::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(WorkflowVersions::WorkflowId).uuid().not_null())
-                    .col(ColumnDef::new(WorkflowVersions::Version).integer().not_null())
-                    .col(ColumnDef::new(WorkflowVersions::Snapshot).json_binary().not_null())
+                    .col(
+                        ColumnDef::new(WorkflowVersions::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(WorkflowVersions::WorkflowId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(WorkflowVersions::Version)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(WorkflowVersions::Snapshot)
+                            .json_binary()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(WorkflowVersions::CreatedBy).uuid())
-                    .col(ColumnDef::new(WorkflowVersions::CreatedAt).timestamp_with_time_zone().not_null())
+                    .col(
+                        ColumnDef::new(WorkflowVersions::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_workflow_versions_workflow_id")
                             .from(WorkflowVersions::Table, WorkflowVersions::WorkflowId)
-                            .to(WorkflowsV2::Table, WorkflowVersions::WorkflowId)
+                            .to(WorkflowsV2::Table, Workflows::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .index(
@@ -424,6 +454,13 @@ impl MigrationTrait for WorkflowPhase4Migration {
                 Table::alter()
                     .table(WorkflowsV2::Table)
                     .drop_column(WorkflowsV2::WebhookSlug)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(WorkflowsV2::Table)
                     .drop_column(WorkflowsV2::WebhookSecret)
                     .to_owned(),
             )
@@ -433,6 +470,7 @@ impl MigrationTrait for WorkflowPhase4Migration {
 
 #[derive(DeriveIden)]
 enum WorkflowsV2 {
+    #[sea_orm(iden = "workflows")]
     Table,
     TenantId,
     WebhookSlug,

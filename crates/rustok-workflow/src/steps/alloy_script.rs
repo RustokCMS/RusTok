@@ -12,11 +12,7 @@ use crate::error::{WorkflowError, WorkflowResult};
 pub trait ScriptRunner: Send + Sync {
     /// Run a script by name with the provided JSON params.
     /// Returns the script output as a JSON value.
-    async fn run_script(
-        &self,
-        script_name: &str,
-        params: Value,
-    ) -> WorkflowResult<Value>;
+    async fn run_script(&self, script_name: &str, params: Value) -> WorkflowResult<Value>;
 }
 
 /// Workflow step that executes a Rhai script via the Alloy scripting engine.
@@ -34,7 +30,9 @@ pub struct AlloyScriptStep {
 
 impl AlloyScriptStep {
     pub fn new(runner: std::sync::Arc<dyn ScriptRunner>) -> Self {
-        Self { runner: Some(runner) }
+        Self {
+            runner: Some(runner),
+        }
     }
 
     /// Creates a stub step that logs a warning when no runner is registered.
@@ -54,9 +52,7 @@ impl WorkflowStep for AlloyScriptStep {
             .get("script_name")
             .and_then(Value::as_str)
             .ok_or_else(|| {
-                WorkflowError::InvalidStepConfig(
-                    "alloy_script: missing 'script_name'".into(),
-                )
+                WorkflowError::InvalidStepConfig("alloy_script: missing 'script_name'".into())
             })?;
 
         let params = config

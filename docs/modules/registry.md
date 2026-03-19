@@ -169,7 +169,7 @@ graph TD
 | Path | Name | Kind | Depends on |
 |------|------|------|-----------|
 | `crates/rustok-tenant` | **Tenant** | `Core` (mandatory, critical) | `rustok-core` ([CRATE_API](../../crates/rustok-tenant/CRATE_API.md)) |
-| `crates/rustok-rbac` | **RBAC** | `Core` (mandatory, critical) | `rustok-core` ([CRATE_API](../../crates/rustok-rbac/CRATE_API.md)) |
+| `crates/rustok-rbac` | **RBAC** | `Core` (mandatory, critical) | `rustok-core`. Владеет resolver contracts, permission policy и Casbin-backed authorization runtime; `apps/server` держит только adapter/wiring слой и `RbacService`. ([CRATE_API](../../crates/rustok-rbac/CRATE_API.md)) |
 | `crates/rustok-index` | **Index** | `Core` (mandatory, critical) | `rustok-core` ([CRATE_API](../../crates/rustok-index/CRATE_API.md)) |
 | `crates/rustok-media` | **Media** | `Core` (mandatory, feature `mod-media`) | `rustok-core`, `rustok-storage`. `MediaService`: upload/get/list/delete + translations. SeaORM entities `media` + `media_translations`. ([docs](../../crates/rustok-media/docs/README.md)) |
 

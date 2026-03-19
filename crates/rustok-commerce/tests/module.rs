@@ -14,7 +14,10 @@ fn module_metadata() {
 fn module_has_migrations() {
     let module = CommerceModule;
     let migrations = module.migrations();
-    assert!(!migrations.is_empty(), "CommerceModule must own its migrations");
+    assert!(
+        !migrations.is_empty(),
+        "CommerceModule must own its migrations"
+    );
     let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
     assert!(names.iter().any(|n| n.contains("create_commerce_products")));
 }

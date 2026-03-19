@@ -34,9 +34,6 @@ use flex::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
     UpdateFieldDefinitionCommand,
 };
-use crate::services::product_field_service::ProductFieldService;
-use crate::services::topic_field_service::TopicFieldService;
-use crate::services::user_field_service::UserFieldService;
 
 struct UserFieldDefinitionService;
 struct OrderFieldDefinitionService;
@@ -506,9 +503,10 @@ mod tests {
     fn registry_bootstrap_keeps_unknown_entity_type_error() {
         let registry = build_field_def_registry();
 
-        let err = registry
-            .get("unknown")
-            .expect_err("unknown entity type should return error");
+        let err = match registry.get("unknown") {
+            Ok(_) => panic!("unknown entity type should return error"),
+            Err(err) => err,
+        };
 
         assert!(matches!(err, FlexError::UnknownEntityType(_)));
     }

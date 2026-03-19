@@ -1,11 +1,11 @@
+use crate::error::Error;
+use crate::error::Result;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
 use loco_rs::app::AppContext;
-use crate::error::Error;
-use crate::error::Result;
 use rustok_telemetry::metrics;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

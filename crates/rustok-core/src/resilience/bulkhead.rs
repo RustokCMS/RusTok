@@ -280,9 +280,7 @@ mod tests {
     #[tokio::test]
     async fn test_upstream_error_tracked() {
         let bulkhead = Bulkhead::new(BulkheadConfig::default());
-        let result = bulkhead
-            .call(|| async { Err::<i32, _>("oops") })
-            .await;
+        let result = bulkhead.call(|| async { Err::<i32, _>("oops") }).await;
 
         assert!(matches!(result, Err(BulkheadError::Upstream(_))));
         let stats = bulkhead.stats();
@@ -346,9 +344,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(20)).await;
 
         // This will wait 50 ms then time out
-        let result = bulkhead
-            .call(|| async { Ok::<_, String>(()) })
-            .await;
+        let result = bulkhead.call(|| async { Ok::<_, String>(()) }).await;
         assert!(matches!(result, Err(BulkheadError::Timeout)));
 
         tx.send(()).ok();

@@ -15,7 +15,9 @@ pub mod state_machine;
 mod state_machine_proptest;
 
 pub use dto::*;
-pub use entities::{Body, Category, CategoryTranslation, Node, NodeTranslation, Tag, TagTranslation, Taggable};
+pub use entities::{
+    Body, Category, CategoryTranslation, Node, NodeTranslation, Tag, TagTranslation, Taggable,
+};
 pub use error::{ContentError, ContentResult};
 pub use locale::{
     available_locales_from, resolve_by_locale, resolve_by_locale_with_fallback, ResolvedLocale,
@@ -49,57 +51,48 @@ impl RusToKModule for ContentModule {
 
     fn permissions(&self) -> Vec<Permission> {
         vec![
-            // Pages
-            Permission::new(Resource::Pages, Action::Create),
-            Permission::new(Resource::Pages, Action::Read),
-            Permission::new(Resource::Pages, Action::Update),
-            Permission::new(Resource::Pages, Action::Delete),
-            Permission::new(Resource::Pages, Action::List),
             // Posts
             Permission::new(Resource::Posts, Action::Create),
             Permission::new(Resource::Posts, Action::Read),
             Permission::new(Resource::Posts, Action::Update),
             Permission::new(Resource::Posts, Action::Delete),
             Permission::new(Resource::Posts, Action::List),
+            Permission::new(Resource::Posts, Action::Manage),
+            // Nodes
+            Permission::new(Resource::Nodes, Action::Create),
+            Permission::new(Resource::Nodes, Action::Read),
+            Permission::new(Resource::Nodes, Action::Update),
+            Permission::new(Resource::Nodes, Action::Delete),
+            Permission::new(Resource::Nodes, Action::List),
+            Permission::new(Resource::Nodes, Action::Manage),
             // Media
             Permission::new(Resource::Media, Action::Create),
             Permission::new(Resource::Media, Action::Read),
             Permission::new(Resource::Media, Action::Update),
             Permission::new(Resource::Media, Action::Delete),
             Permission::new(Resource::Media, Action::List),
+            Permission::new(Resource::Media, Action::Manage),
             // Comments
             Permission::new(Resource::Comments, Action::Create),
             Permission::new(Resource::Comments, Action::Read),
             Permission::new(Resource::Comments, Action::Update),
             Permission::new(Resource::Comments, Action::Delete),
             Permission::new(Resource::Comments, Action::List),
-            // Forum topics (used by orchestration runtime checks)
-            Permission::new(Resource::ForumTopics, Action::Create),
-            Permission::new(Resource::ForumTopics, Action::Read),
-            Permission::new(Resource::ForumTopics, Action::Update),
-            Permission::new(Resource::ForumTopics, Action::Delete),
-            Permission::new(Resource::ForumTopics, Action::List),
-            Permission::new(Resource::ForumTopics, Action::Moderate),
-            // Forum categories
-            Permission::new(Resource::ForumCategories, Action::Create),
-            Permission::new(Resource::ForumCategories, Action::Read),
-            Permission::new(Resource::ForumCategories, Action::Update),
-            Permission::new(Resource::ForumCategories, Action::Delete),
-            Permission::new(Resource::ForumCategories, Action::List),
-            // Forum replies
-            Permission::new(Resource::ForumReplies, Action::Create),
-            Permission::new(Resource::ForumReplies, Action::Read),
-            Permission::new(Resource::ForumReplies, Action::Update),
-            Permission::new(Resource::ForumReplies, Action::Delete),
-            Permission::new(Resource::ForumReplies, Action::List),
-            Permission::new(Resource::ForumReplies, Action::Moderate),
-            // Blog posts (used by orchestration runtime checks)
-            Permission::new(Resource::BlogPosts, Action::Create),
-            Permission::new(Resource::BlogPosts, Action::Read),
-            Permission::new(Resource::BlogPosts, Action::Update),
-            Permission::new(Resource::BlogPosts, Action::Delete),
-            Permission::new(Resource::BlogPosts, Action::List),
-            Permission::new(Resource::BlogPosts, Action::Moderate),
+            Permission::new(Resource::Comments, Action::Manage),
+            // Categories
+            Permission::new(Resource::Categories, Action::Create),
+            Permission::new(Resource::Categories, Action::Read),
+            Permission::new(Resource::Categories, Action::Update),
+            Permission::new(Resource::Categories, Action::Delete),
+            Permission::new(Resource::Categories, Action::List),
+            Permission::new(Resource::Categories, Action::Manage),
+            // Tags
+            Permission::new(Resource::Tags, Action::Create),
+            Permission::new(Resource::Tags, Action::Read),
+            Permission::new(Resource::Tags, Action::Update),
+            Permission::new(Resource::Tags, Action::Delete),
+            Permission::new(Resource::Tags, Action::List),
+            Permission::new(Resource::Tags, Action::Manage),
         ]
     }
 }

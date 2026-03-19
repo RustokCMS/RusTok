@@ -77,9 +77,9 @@ compatibility with platform-level contracts.
   - [x] `delete_post()` with CannotDeletePublished guard
 - [x] REST API expanded:
   - [x] `GET /api/blog/posts?locale=ru` with PostListQuery
-  - [x] `GET /api/blog/posts/:id?locale=ru` with locale param
-  - [x] `POST /api/blog/posts/:id/publish`
-  - [x] `POST /api/blog/posts/:id/unpublish`
+  - [x] `GET /api/blog/posts/{id}?locale=ru` with locale param
+  - [x] `POST /api/blog/posts/{id}/publish`
+  - [x] `POST /api/blog/posts/{id}/unpublish`
 - [x] GraphQL API expanded:
   - [x] `publishPost`, `unpublishPost`, `archivePost` mutations
   - [x] `UpdatePostInput` uses blog-native DTO (not content UpdateNodeInput)

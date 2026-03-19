@@ -35,9 +35,10 @@ impl Task for CreateOAuthAppTask {
         use crate::models::tenants::Entity as Tenants;
         use sea_orm::EntityTrait;
 
-        let tenant = Tenants::find().one(db).await?.ok_or_else(|| {
-            Error::Message("No tenant found. Run seeds first.".to_string())
-        })?;
+        let tenant = Tenants::find()
+            .one(db)
+            .await?
+            .ok_or_else(|| Error::Message("No tenant found. Run seeds first.".to_string()))?;
 
         let input = CreateOAuthAppInput {
             name,

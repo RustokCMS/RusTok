@@ -23,6 +23,9 @@ impl WorkflowStep for ActionStep {
 
         info!(action = action, "Executing action step");
 
-        Ok(StepOutput::continue_with(context, serde_json::json!({ "action": action, "status": "ok" })))
+        Ok(StepOutput::continue_with(
+            context,
+            serde_json::json!({ "action": action, "status": "ok" }),
+        ))
     }
 }

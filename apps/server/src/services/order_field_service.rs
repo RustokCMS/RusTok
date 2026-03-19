@@ -9,13 +9,13 @@
 //! - Event emission: `FieldDefinitionCreated/Updated/Deleted`
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder,
 };
 use uuid::Uuid;
 
-use rustok_core::field_schema::{is_valid_field_key, CustomFieldsSchema, FieldType, FlexError};
-use rustok_events::types::{DomainEvent, EventEnvelope};
+use rustok_core::field_schema::{is_valid_field_key, CustomFieldsSchema, FlexError};
+use rustok_events::{DomainEvent, EventEnvelope};
 
 use crate::models::order_field_definitions::{
     ActiveModel, Column, CreateFieldDefinitionInput, Entity, Model, UpdateFieldDefinitionInput,
@@ -301,9 +301,11 @@ mod tests {
     use super::OrderFieldService;
     use crate::models::order_field_definitions::{Model, MAX_FIELDS_PER_TENANT};
     use chrono::Utc;
+    use migration::Migrator;
     use rustok_core::field_schema::{FieldType, FlexError};
-    use rustok_events::types::DomainEvent;
-    use sea_orm::{DatabaseBackend, MockDatabase};
+    use rustok_events::DomainEvent;
+    use rustok_test_utils::db::setup_test_db_with_migrations;
+    use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
     use serde_json::json;
     use std::collections::HashMap;
     use uuid::Uuid;
@@ -342,9 +344,34 @@ mod tests {
         }
     }
 
+    async fn test_db() -> DatabaseConnection {
+        setup_test_db_with_migrations::<Migrator>().await
+    }
+
+    async fn insert_row(db: &DatabaseConnection, model: Model) {
+        crate::models::order_field_definitions::ActiveModel {
+            id: Set(model.id),
+            tenant_id: Set(model.tenant_id),
+            field_key: Set(model.field_key),
+            field_type: Set(model.field_type),
+            label: Set(model.label),
+            description: Set(model.description),
+            is_required: Set(model.is_required),
+            default_value: Set(model.default_value),
+            validation: Set(model.validation),
+            position: Set(model.position),
+            is_active: Set(model.is_active),
+            created_at: Set(model.created_at),
+            updated_at: Set(model.updated_at),
+        }
+        .insert(db)
+        .await
+        .expect("failed to insert order field definition");
+    }
+
     #[tokio::test]
     async fn create_rejects_invalid_field_key_without_hitting_database() {
-        let db = MockDatabase::new(DatabaseBackend::Postgres).into_connection();
+        let db = test_db().await;
         let tenant_id = Uuid::new_v4();
 
         let err = OrderFieldService::create(
@@ -365,9 +392,8 @@ mod tests {
     #[tokio::test]
     async fn create_rejects_duplicate_field_key() {
         let tenant_id = Uuid::new_v4();
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([vec![row(tenant_id, "phone")]])
-            .into_connection();
+        let db = test_db().await;
+        insert_row(&db, row(tenant_id, "phone")).await;
 
         let err =
             OrderFieldService::create(&db, tenant_id, Some(Uuid::new_v4()), create_input("phone"))
@@ -383,10 +409,10 @@ mod tests {
     #[tokio::test]
     async fn create_enforces_max_active_fields_guardrail() {
         let tenant_id = Uuid::new_v4();
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([Vec::<Model>::new()])
-            .append_query_results([vec![(MAX_FIELDS_PER_TENANT as i64)]])
-            .into_connection();
+        let db = test_db().await;
+        for idx in 0..MAX_FIELDS_PER_TENANT {
+            insert_row(&db, row(tenant_id, &format!("field_{idx}"))).await;
+        }
 
         let err =
             OrderFieldService::create(&db, tenant_id, Some(Uuid::new_v4()), create_input("phone"))
@@ -406,13 +432,7 @@ mod tests {
     async fn create_emits_field_definition_created_event() {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
-        let created = row(tenant_id, "phone");
-
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([Vec::<Model>::new()])
-            .append_query_results([vec![(0_i64)]])
-            .append_query_results([vec![created.clone()]])
-            .into_connection();
+        let db = test_db().await;
 
         let (model, envelope) =
             OrderFieldService::create(&db, tenant_id, Some(actor_id), create_input("phone"))
@@ -444,14 +464,8 @@ mod tests {
         let actor_id = Uuid::new_v4();
         let existing = row(tenant_id, "phone");
         let id = existing.id;
-
-        let mut updated = existing.clone();
-        updated.is_required = true;
-
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([vec![existing]])
-            .append_query_results([vec![updated.clone()]])
-            .into_connection();
+        let db = test_db().await;
+        insert_row(&db, existing).await;
 
         let input = crate::models::order_field_definitions::UpdateFieldDefinitionInput {
             is_required: Some(true),
@@ -485,10 +499,9 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let mut invalid = row(tenant_id, "legacy");
         invalid.field_type = "legacy_custom".to_string();
-
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([vec![row(tenant_id, "phone"), invalid]])
-            .into_connection();
+        let db = test_db().await;
+        insert_row(&db, row(tenant_id, "phone")).await;
+        insert_row(&db, invalid).await;
 
         let schema = OrderFieldService::get_schema(&db, tenant_id)
             .await
@@ -509,9 +522,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let id = Uuid::new_v4();
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([Vec::<Model>::new()])
-            .into_connection();
+        let db = test_db().await;
 
         let err = OrderFieldService::update(
             &db,
@@ -534,9 +545,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let id = Uuid::new_v4();
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([Vec::<Model>::new()])
-            .into_connection();
+        let db = test_db().await;
 
         let err = OrderFieldService::deactivate(&db, tenant_id, Some(actor_id), id)
             .await
@@ -554,14 +563,8 @@ mod tests {
         let actor_id = Uuid::new_v4();
         let model = row(tenant_id, "phone");
         let id = model.id;
-
-        let mut deactivated = model.clone();
-        deactivated.is_active = false;
-
-        let db = MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([vec![model]])
-            .append_query_results([vec![deactivated]])
-            .into_connection();
+        let db = test_db().await;
+        insert_row(&db, model).await;
 
         let envelope = OrderFieldService::deactivate(&db, tenant_id, Some(actor_id), id)
             .await

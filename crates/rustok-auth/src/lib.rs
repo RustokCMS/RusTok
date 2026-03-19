@@ -17,6 +17,7 @@ pub use jwt::{
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::permissions::Permission;
 use sea_orm_migration::MigrationTrait;
 
 /// Core auth module — JWT lifecycle, credential hashing, token management.
@@ -51,6 +52,17 @@ impl RusToKModule for AuthModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            Permission::USERS_CREATE,
+            Permission::USERS_READ,
+            Permission::USERS_UPDATE,
+            Permission::USERS_DELETE,
+            Permission::USERS_LIST,
+            Permission::USERS_MANAGE,
+        ]
     }
 
     async fn health(&self) -> HealthStatus {

@@ -39,7 +39,11 @@ pub struct AuthContext {
 impl AuthContext {
     pub fn security_context(&self) -> rustok_core::SecurityContext {
         let inferred_role = infer_user_role_from_permissions(&self.permissions);
-        rustok_core::SecurityContext::new(inferred_role, Some(self.user_id))
+        rustok_core::SecurityContext::from_permissions(
+            inferred_role,
+            Some(self.user_id),
+            self.permissions.iter().copied(),
+        )
     }
 
     /// Check if the current context has the required scope.

@@ -113,10 +113,7 @@ impl SiemWebhookExporter {
             }
         };
 
-        let mut req = self
-            .client
-            .post(&self.config.url)
-            .json(&payload);
+        let mut req = self.client.post(&self.config.url).json(&payload);
 
         if let Some(auth) = &self.config.auth_header {
             req = req.header(reqwest::header::AUTHORIZATION, auth);

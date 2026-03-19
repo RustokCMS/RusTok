@@ -22,7 +22,10 @@ impl WorkflowStep for EmitEventStep {
             .and_then(Value::as_str)
             .unwrap_or("workflow.event.emitted");
 
-        info!(event_type = event_type, "Emit event step: scheduling event emission");
+        info!(
+            event_type = event_type,
+            "Emit event step: scheduling event emission"
+        );
 
         let output = serde_json::json!({
             "event_type": event_type,

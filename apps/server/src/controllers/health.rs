@@ -1,13 +1,13 @@
 //! Health check endpoints for K8s probes and module health aggregation
 
+use crate::error::Result;
+use axum::extract::State;
+use axum::response::Response;
 use axum::routing::get;
 use axum::Extension;
 use loco_rs::app::AppContext;
 use loco_rs::controller::format;
 use loco_rs::controller::Routes;
-use crate::error::Result;
-use axum::extract::State;
-use axum::response::Response;
 use once_cell::sync::Lazy;
 use rustok_core::{HealthStatus, ModuleRegistry};
 use sea_orm::DatabaseConnection;
@@ -141,9 +141,7 @@ pub async fn ready(
     State(ctx): State<AppContext>,
     Extension(registry): Extension<ModuleRegistry>,
 ) -> Result<Response> {
-    let settings =
-        RustokSettings::from_settings(&ctx.config.settings)
-            .unwrap_or_default();
+    let settings = RustokSettings::from_settings(&ctx.config.settings).unwrap_or_default();
 
     let mut checks = vec![
         run_guarded_check(

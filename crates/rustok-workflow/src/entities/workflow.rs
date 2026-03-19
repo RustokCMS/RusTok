@@ -1,13 +1,8 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize,
-)]
-#[sea_orm(
-    rs_type = "String",
-    db_type = "String(StringLen::N(32))",
-)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
 #[serde(rename_all = "lowercase")]
 pub enum WorkflowStatus {
     #[sea_orm(string_value = "draft")]
@@ -49,7 +44,7 @@ pub struct Model {
     pub failure_count: i32,
     /// Set when the workflow is auto-disabled due to exceeding the failure threshold
     pub auto_disabled_at: Option<DateTimeWithTimeZone>,
-    /// Unique slug for webhook trigger: POST /webhooks/:tenant_slug/:webhook_slug
+    /// Unique slug for webhook trigger: POST /webhooks/{tenant_slug}/{webhook_slug}
     pub webhook_slug: Option<String>,
     /// HMAC-SHA256 secret for verifying webhook payloads (X-Webhook-Signature header)
     pub webhook_secret: Option<String>,

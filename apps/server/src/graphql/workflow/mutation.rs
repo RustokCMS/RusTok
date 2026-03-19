@@ -7,11 +7,11 @@ use crate::context::{AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
 use crate::services::rbac_service::RbacService;
 use rustok_core::Permission;
+use rustok_workflow::entities::WorkflowStatus;
 use rustok_workflow::{
     CreateWorkflowInput, CreateWorkflowStepInput, UpdateWorkflowInput, UpdateWorkflowStepInput,
     WorkflowService,
 };
-use rustok_workflow::entities::WorkflowStatus;
 
 use super::types::*;
 
@@ -21,17 +21,23 @@ pub struct WorkflowMutation;
 #[Object]
 impl WorkflowMutation {
     /// Create a new workflow (starts as Draft)
-    async fn create_workflow(&self, ctx: &Context<'_>, input: GqlCreateWorkflowInput) -> Result<Uuid> {
+    async fn create_workflow(
+        &self,
+        ctx: &Context<'_>,
+        input: GqlCreateWorkflowInput,
+    ) -> Result<Uuid> {
         let db = ctx.data::<DatabaseConnection>()?;
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_CREATE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_CREATE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -65,10 +71,12 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_UPDATE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_UPDATE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -99,10 +107,12 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_DELETE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_DELETE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -122,18 +132,25 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_UPDATE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_UPDATE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
         service
-            .update(tenant.id, id, Some(auth.user_id), UpdateWorkflowInput {
-                status: Some(WorkflowStatus::Active),
-                ..Default::default()
-            })
+            .update(
+                tenant.id,
+                id,
+                Some(auth.user_id),
+                UpdateWorkflowInput {
+                    status: Some(WorkflowStatus::Active),
+                    ..Default::default()
+                },
+            )
             .await
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
 
@@ -148,18 +165,25 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_UPDATE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_UPDATE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
         service
-            .update(tenant.id, id, Some(auth.user_id), UpdateWorkflowInput {
-                status: Some(WorkflowStatus::Paused),
-                ..Default::default()
-            })
+            .update(
+                tenant.id,
+                id,
+                Some(auth.user_id),
+                UpdateWorkflowInput {
+                    status: Some(WorkflowStatus::Paused),
+                    ..Default::default()
+                },
+            )
             .await
             .map_err(|e| async_graphql::Error::new(e.to_string()))?;
 
@@ -180,10 +204,12 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_EXECUTE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_EXECUTE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -214,10 +240,12 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_UPDATE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_UPDATE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -253,10 +281,12 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_UPDATE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_UPDATE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -292,10 +322,12 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_UPDATE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_UPDATE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -322,10 +354,12 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_CREATE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_CREATE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -348,10 +382,12 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_UPDATE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_UPDATE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -379,16 +415,20 @@ impl WorkflowMutation {
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_CREATE,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_CREATE, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         // If an Alloy ScriptRunner is available, delegate generation to the
         // registered `system/generate_workflow` Rhai script.
         // Otherwise fall back to a minimal Draft skeleton.
-        let generated = if let Ok(runner) = ctx.data::<std::sync::Arc<dyn rustok_workflow::steps::ScriptRunner>>() {
+        let generated = if let Ok(runner) =
+            ctx.data::<std::sync::Arc<dyn rustok_workflow::steps::ScriptRunner>>()
+        {
             let params = serde_json::json!({ "description": description });
             match runner.run_script("system/generate_workflow", params).await {
                 Ok(result) => result,
@@ -450,7 +490,9 @@ async fn require_perm(
         .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
     if !has_perm {
-        return Err(<FieldError as GraphQLError>::permission_denied("Permission denied"));
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Permission denied",
+        ));
     }
     Ok(())
 }

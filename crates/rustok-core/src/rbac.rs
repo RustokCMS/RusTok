@@ -13,6 +13,8 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Tenants,
         Resource::Modules,
         Resource::Settings,
+        Resource::FlexSchemas,
+        Resource::FlexEntries,
         Resource::Products,
         Resource::Categories,
         Resource::Orders,
@@ -69,6 +71,10 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::new(Resource::Scripts, Action::Manage));
     permissions.insert(Permission::new(Resource::Logs, Action::Read));
     permissions.insert(Permission::new(Resource::Logs, Action::List));
+    permissions.insert(Permission::FLEX_SCHEMAS_CREATE);
+    permissions.insert(Permission::FLEX_SCHEMAS_READ);
+    permissions.insert(Permission::FLEX_SCHEMAS_UPDATE);
+    permissions.insert(Permission::FLEX_SCHEMAS_LIST);
 
     permissions.insert(Permission::new(Resource::BlogPosts, Action::Manage));
     permissions.insert(Permission::new(Resource::Tags, Action::Manage));
@@ -257,54 +263,95 @@ pub enum PermissionScope {
 pub struct SecurityContext {
     pub role: UserRole,
     pub user_id: Option<Uuid>,
+    permissions: HashSet<Permission>,
 }
 
 impl SecurityContext {
     pub fn new(role: UserRole, user_id: Option<Uuid>) -> Self {
-        Self { role, user_id }
+        Self {
+            permissions: Rbac::permissions_for_role(&role).iter().copied().collect(),
+            role,
+            user_id,
+        }
+    }
+
+    pub fn from_permissions(
+        role: UserRole,
+        user_id: Option<Uuid>,
+        permissions: impl IntoIterator<Item = Permission>,
+    ) -> Self {
+        Self {
+            role,
+            user_id,
+            permissions: permissions.into_iter().collect(),
+        }
     }
 
     pub fn get_scope(&self, resource: Resource, action: Action) -> PermissionScope {
-        Rbac::get_scope(&self.role, &Permission::new(resource, action))
+        permission_scope_for_set(&self.permissions, &Permission::new(resource, action), self.role)
+    }
+
+    pub fn permissions(&self) -> &HashSet<Permission> {
+        &self.permissions
     }
 
     pub fn system() -> Self {
         Self {
             role: UserRole::SuperAdmin,
             user_id: None,
+            permissions: Rbac::permissions_for_role(&UserRole::SuperAdmin)
+                .iter()
+                .copied()
+                .collect(),
         }
     }
 }
 
-impl Rbac {
-    pub fn get_scope(role: &UserRole, permission: &Permission) -> PermissionScope {
-        if matches!(
-            role,
-            UserRole::SuperAdmin | UserRole::Admin | UserRole::Manager
-        ) && Self::has_permission(role, permission)
+fn has_effective_permission_in_set(
+    permissions: &HashSet<Permission>,
+    permission: &Permission,
+) -> bool {
+    permissions.contains(permission)
+        || permissions.contains(&Permission::new(permission.resource, Action::Manage))
+}
+
+fn permission_scope_for_set(
+    permissions: &HashSet<Permission>,
+    permission: &Permission,
+    role: UserRole,
+) -> PermissionScope {
+    if matches!(role, UserRole::SuperAdmin | UserRole::Admin | UserRole::Manager)
+        && has_effective_permission_in_set(permissions, permission)
+    {
+        return PermissionScope::All;
+    }
+
+    if matches!(role, UserRole::Customer) {
+        if permission.resource == Resource::Orders
+            && has_effective_permission_in_set(permissions, permission)
         {
-            return PermissionScope::All;
+            return PermissionScope::Own;
         }
 
-        if matches!(role, UserRole::Customer) {
-            if permission.resource == Resource::Orders && Self::has_permission(role, permission) {
+        if permission.resource == Resource::Comments {
+            if matches!(permission.action, Action::Update | Action::Delete) {
                 return PermissionScope::Own;
             }
-
-            if permission.resource == Resource::Comments {
-                if matches!(permission.action, Action::Update | Action::Delete) {
-                    return PermissionScope::Own;
-                }
-                if Self::has_permission(role, permission) {
-                    return PermissionScope::All;
-                }
-            }
-
-            if Self::has_permission(role, permission) {
+            if has_effective_permission_in_set(permissions, permission) {
                 return PermissionScope::All;
             }
         }
 
-        PermissionScope::None
+        if has_effective_permission_in_set(permissions, permission) {
+            return PermissionScope::All;
+        }
+    }
+
+    PermissionScope::None
+}
+
+impl Rbac {
+    pub fn get_scope(role: &UserRole, permission: &Permission) -> PermissionScope {
+        permission_scope_for_set(Self::permissions_for_role(role), permission, *role)
     }
 }

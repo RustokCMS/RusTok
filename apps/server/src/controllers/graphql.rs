@@ -4,11 +4,11 @@ use loco_rs::controller::Routes;
 use std::sync::Arc;
 
 use crate::common::RequestContext;
-use rustok_core::i18n::Locale;
 use crate::context::{AuthContext, TenantContext};
 use crate::extractors::auth::OptionalCurrentUser;
 use crate::graphql::persisted::is_admin_persisted_hash;
 use crate::graphql::AppSchema;
+use rustok_core::i18n::Locale;
 use rustok_core::ModuleRegistry;
 
 async fn graphql_handler(

@@ -29,9 +29,9 @@
 
 | # | ✅ Правильно | ❌ Неправильно | Почему | Детали |
 |---|-------------|---------------|--------|--------|
-| 1.1 | Модуль реализует `RusToKModule` trait и регистрируется в `build_registry()` | Модуль подключается напрямую в `app.rs` минуя registry | Обходит lifecycle, health checks, per-tenant toggle | [improvement-recommendations.md §2.13](../architecture/improvement-recommendations.md) |
-| 1.2 | Core-модули возвращают `ModuleKind::Core`, optional — `ModuleKind::Optional` | Все модули имеют одинаковый `kind()` | Core-модули нельзя отключить, нужна формальная граница | [improvement-recommendations.md §2.1](../architecture/improvement-recommendations.md) |
-| 1.3 | `dependencies()` в `RusToKModule` совпадают с `depends_on` в `modules.toml` | Зависимости заданы только в Cargo.toml или только в modules.toml | Runtime-проверка не ловит рассинхрон, модуль включится без dependency | [improvement-recommendations.md §2.5](../architecture/improvement-recommendations.md) |
+| 1.1 | Модуль реализует `RusToKModule` trait и регистрируется в `build_registry()` | Модуль подключается напрямую в `app.rs` минуя registry | Обходит lifecycle, health checks, per-tenant toggle | [architecture/modules.md](../architecture/modules.md) |
+| 1.2 | Core-модули возвращают `ModuleKind::Core`, optional — `ModuleKind::Optional` | Все модули имеют одинаковый `kind()` | Core-модули нельзя отключить, нужна формальная граница | [architecture/principles.md](../architecture/principles.md) |
+| 1.3 | `dependencies()` в `RusToKModule` совпадают с `depends_on` в `modules.toml` | Зависимости заданы только в Cargo.toml или только в modules.toml | Runtime-проверка не ловит рассинхрон, модуль включится без dependency | [modules/manifest.md](../modules/manifest.md) |
 | 1.4 | Бизнес-логика — в domain crates (`crates/rustok-*`), controllers — тонкие | Бизнес-логика в controllers/resolvers | Дублирование между REST и GraphQL, нетестируемость | [architecture/overview.md](../architecture/overview.md) |
 | 1.5 | Модули взаимодействуют через EventBus, не вызывают друг друга напрямую | Прямые вызовы между доменными модулями | Coupling, нарушение event-driven принципа | [architecture/overview.md](../architecture/overview.md) |
 | 1.6 | Write path — нормализованные таблицы, Read path — denormalized index | Один набор таблиц для write и read | Нарушает CQRS-lite, медленный storefront | [architecture/overview.md §CQRS-lite](../architecture/overview.md) |
@@ -86,7 +86,7 @@
 | 4.5 | Idempotent event handlers | Event handler без idempotency check | Дублирование данных при retry/replay | [CONTRIBUTING.md](../../CONTRIBUTING.md) |
 | 4.6 | Event versioning с backward compatibility | Breaking changes в event payload | Старые consumers ломаются | — |
 | 4.7 | Использовать `IggyConfig`/`ConnectorConfig` из кода | Выдумывать конфигурацию Iggy | Несовместимые параметры, ошибки соединения | [ai/KNOWN_PITFALLS.md §Iggy](../ai/KNOWN_PITFALLS.md) |
-| 4.8 | DLQ для failed events + admin replay endpoint | Silent drop failed events | Потеря данных без возможности восстановления | [improvement-recommendations.md §2.12](../architecture/improvement-recommendations.md) |
+| 4.8 | DLQ для failed events + admin replay endpoint | Silent drop failed events | Потеря данных без возможности восстановления | [architecture/events.md](../architecture/events.md) |
 
 ---
 
@@ -113,7 +113,7 @@
 | 6.3 | Negative cache для несуществующих tenants (TTL 60s) | Каждый запрос с невалидным tenant идёт в БД | DoS через несуществующие tenants | [architecture/tenancy.md](../architecture/tenancy.md) |
 | 6.4 | Singleflight для cache miss (один запрос к БД) | Каждый concurrent request делает свой запрос к БД | Cache stampede при холодном старте | [architecture/tenancy.md](../architecture/tenancy.md) |
 | 6.5 | Redis pub/sub для cross-instance invalidation | Только local cache invalidation | Старые данные на других инстансах | [architecture/tenancy.md](../architecture/tenancy.md) |
-| 6.6 | `validate_registry_vs_manifest()` при старте | Manifest и registry рассинхронизированы | Модуль заявлен в manifest но не зарегистрирован (или наоборот) | [improvement-recommendations.md §2.4](../architecture/improvement-recommendations.md) |
+| 6.6 | `validate_registry_vs_manifest()` при старте | Manifest и registry рассинхронизированы | Модуль заявлен в manifest но не зарегистрирован (или наоборот) | [modules/manifest.md](../modules/manifest.md) |
 
 ---
 

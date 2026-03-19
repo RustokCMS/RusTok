@@ -13,8 +13,8 @@ use std::path::Path;
 
 use sea_orm::EntityTrait;
 
-use crate::common::settings::{EmailProvider, RustokSettings};
 use crate::channels;
+use crate::common::settings::{EmailProvider, RustokSettings};
 use crate::controllers;
 use crate::initializers;
 use crate::seeds;
@@ -132,10 +132,8 @@ impl Hooks for App {
     }
 
     async fn after_routes(router: AxumRouter, ctx: &AppContext) -> Result<AxumRouter> {
-        let rustok_settings =
-            RustokSettings::from_settings(&ctx.config.settings).map_err(|error| {
-                Error::BadRequest(format!("Invalid rustok settings: {error}"))
-            })?;
+        let rustok_settings = RustokSettings::from_settings(&ctx.config.settings)
+            .map_err(|error| Error::BadRequest(format!("Invalid rustok settings: {error}")))?;
         let runtime = bootstrap_app_runtime(ctx, &rustok_settings).await?;
         connect_runtime_workers(ctx).await?;
 

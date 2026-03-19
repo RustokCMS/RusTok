@@ -123,7 +123,7 @@ grep -rn "TransactionalEventBus" apps/server/src/ --include="*.rs"
 
 ---
 
-## 4. Email — текущее состояние и миграция
+## 4. Email — provider-based server infra
 
 ### 4.1 Email service существует
 
@@ -131,38 +131,39 @@ grep -rn "TransactionalEventBus" apps/server/src/ --include="*.rs"
 ls apps/server/src/services/email.rs
 ```
 
-### 4.2 После Фазы 2: Loco Mailer используется
+### 4.2 Provider switch и Loco Mailer adapter подключены централизованно
 
 ```bash
-grep -rn "loco_rs::mailer\|Mailer" apps/server/src/services/email.rs
+grep -rn "EmailProvider\|loco_rs::mailer\|LocoMailerAdapter\|email.provider" apps/server/src/services/email.rs apps/server/src/common/settings.rs
 ```
 
-**Ожидаемый результат (до Фазы 2):** Нет совпадений (используется `lettre`).
-**Ожидаемый результат (после Фазы 2):** Loco Mailer adapter присутствует.
+**Ожидаемый результат:** Почтовый runtime остаётся server-infra responsibility и поддерживает `smtp|loco|none`; при `provider=loco` используется `ctx.mailer`, при `provider=smtp` остаётся compatibility path через SMTP.
 
-### 4.3 Нет inline HTML в email (после Фазы 2)
+### 4.3 Шаблоны не захардкожены в send-path
 
 ```bash
-grep -rn "<p>\|<a href\|<html" apps/server/src/services/email.rs
+grep -rn "include_str!\|mailers/auth/password_reset" apps/server/src/services/email.rs
 ```
 
-**Ожидаемый результат (после Фазы 2):** Нет — все через шаблоны.
+**Ожидаемый результат:** Auth email рендерится через файловые шаблоны (`mailers/...`) и единый server email service, а не через inline HTML literals в бизнес-логике.
 
 ---
 
 ## 5. Settings — YAML vs DB
 
-### 5.1 `RustokSettings` загружается с DB fallback (после Фазы 1)
+### 5.1 `RustokSettings` и DB overrides существуют одновременно
 
 ```bash
 grep -rn "SettingsService\|platform_settings" apps/server/src/ --include="*.rs"
 ```
 
+**Ожидаемый результат:** typed settings живут в `settings.rustok.*`, а `SettingsService`/`platform_settings` обеспечивают per-tenant DB overrides и validation layer.
+
 ### 5.2 YAML не дублирует DB
 
 Проверить `config/development.yaml` — должен содержать только bootstrap defaults.
 
-### 5.3 Module settings не пустые (после Фазы 4)
+### 5.3 Module settings не должны притворяться универсально реализованными
 
 ```bash
 # GraphQL query tenantModules должен возвращать settings != {}
@@ -170,17 +171,19 @@ curl -s http://localhost:5150/graphql -H 'Content-Type: application/json' \
   -d '{"query":"{ tenantModules { moduleslug settings } }"}' | jq '.data.tenantModules[] | select(.settings == "{}")'
 ```
 
-**Ожидаемый результат (после Фазы 4):** Пустой ответ (нет пустых settings).
+**Ожидаемый результат:** Для модулей, где settings UI/contract уже заявлены как активные, не должно быть бессмысленного пустого `{}`. Если модульные settings ещё не formalized, это должно быть явно отражено в их docs, а не маскироваться под завершённый runtime.
 
 ---
 
-## 6. i18n — многоязычность по умолчанию (после Фазы 0)
+## 6. i18n — текущий request locale contract
 
-### 6.1 Locale resolution middleware существует
+### 6.1 Locale resolution живёт в request context и middleware
 
 ```bash
-grep -rn "locale\|Accept-Language\|i18n" apps/server/src/middleware/ --include="*.rs"
+grep -rn "RequestContext\|Accept-Language\|rustok-admin-locale\|extract_requested_locale\|resolve_locale" apps/server/src/ --include="*.rs"
 ```
+
+**Ожидаемый результат:** Каноническая цепочка locale resolution (`query -> cookie -> Accept-Language -> tenant.default_locale -> en`) собрана в request context, а middleware/GraphQL используют тот же effective locale.
 
 ### 6.2 API ошибки локализованы
 
@@ -189,33 +192,43 @@ grep -rn "locale\|Accept-Language\|i18n" apps/server/src/middleware/ --include="
 grep -rn "FieldError::new(\"" apps/server/src/graphql/ --include="*.rs" | head -20
 ```
 
-**Ожидаемый результат (после Фазы 0):** Все через i18n keys, не строковые литералы.
+**Ожидаемый результат:** Новые transport-ошибки не должны зашивать пользовательские строки напрямую, если для них уже существует i18n path/translation key.
 
-### 6.3 Модули предоставляют translation bundles
+### 6.3 Module-owned translation bundles не должны описываться как завершённый контракт без кода
 
 ```bash
 grep -rn "fn translations" crates/rustok-*/src/ --include="*.rs"
 ```
 
+**Ожидаемый результат:** Если trait-based translation bundles будут введены, они должны появиться в коде и docs одновременно. Отсутствие `fn translations` сегодня само по себе не баг, но live docs не должны описывать этот слой как уже работающий platform contract.
+
 ---
 
-## 7. RBAC — собственная реализация
+## 7. RBAC — единый Casbin runtime
 
-### 7.1 RBAC engine из rustok-rbac
+### 7.1 Server использует модульный `rustok-rbac` runtime
 
 ```bash
 grep -rn "RbacService::has_permission\|RbacService::has_any_permission" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Все проверки через `RbacService`, не custom middleware.
+**Ожидаемый результат:** Проверки проходят через `RbacService`/общие `rustok-rbac` helpers, а не через локальный policy engine в `apps/server`.
 
-### 7.2 Нет дублирующих auth middleware
+Проверить, что server wiring не вернул локальную authorization semantics:
 
 ```bash
-grep -rn "fn check_permission\|fn verify_role" apps/server/src/ --include="*.rs"
+grep -rn "RuntimePermissionResolver\|authorize_permission\|authorize_any_permission\|authorize_all_permissions" apps/server/src/services/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Нет adhoc проверок мимо `RbacService`.
+**Ожидаемый результат:** `apps/server` использует resolver/adapters из `rustok-rbac`, а decision path опирается на модульный Casbin runtime.
+
+### 7.2 Нет legacy rollout branches и дублирующих auth middleware
+
+```bash
+grep -rn "fn check_permission\|fn verify_role\|relation_only\|casbin_shadow\|mismatch\|RUSTOK_RBAC_AUTHZ_MODE" apps/server/src/ --include="*.rs"
+```
+
+**Ожидаемый результат:** Нет adhoc проверок мимо `RbacService` и нет возврата к старым rollout/shadow веткам в live server runtime.
 
 ---
 
@@ -276,7 +289,7 @@ grep -rn "impl IntoResponse" apps/server/src/controllers/ --include="*.rs"
 ### 10.1 ModuleRegistry содержит все зарегистрированные модули
 
 ```bash
-grep -rn "ModuleRegistry::new()\|\.register(" apps/server/src/app.rs
+grep -rn "ModuleRegistry::new()\|\.register(" apps/server/src/modules/ apps/server/src/services/module_lifecycle.rs
 ```
 
 ### 10.2 Module lifecycle hooks вызываются
@@ -294,33 +307,32 @@ cat modules.toml
 
 ---
 
-## 11. Storage — двухслойная архитектура (после Фазы 3)
+## 11. Storage — shared `rustok-storage` / `rustok-media` contract
 
-> Loco Storage = транспортный слой. `StorageAdapter` = CMS-логика поверх.
+> `rustok-storage` = shared storage backend/service layer. `rustok-media` = core domain module поверх storage. Server только инициализирует общий runtime и прокидывает его в consumers.
 
-### 11.1 StorageAdapter существует и используется
-
-```bash
-grep -rn "StorageAdapter" apps/server/src/ --include="*.rs"
-```
-
-**Ожидаемый результат:** Trait + impl в `services/storage/`.
-
-### 11.2 Никто не вызывает Loco Storage напрямую (мимо adapter)
+### 11.1 Shared storage service инициализируется в app runtime
 
 ```bash
-# Прямой вызов loco storage мимо StorageAdapter — антипаттерн
-grep -rn "storage\.upload\|storage\.download" apps/server/src/controllers/ --include="*.rs"
-grep -rn "loco_rs::storage" apps/server/src/controllers/ --include="*.rs"
+grep -rn "StorageService\|init_storage" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Нет — контроллеры используют только `StorageAdapter`.
+**Ожидаемый результат:** `StorageService` создаётся один раз в runtime bootstrap и используется как shared dependency, а не как adhoc storage client по месту вызова.
+
+### 11.2 Контроллеры не тащат storage backend напрямую
+
+```bash
+# Прямой backend wiring в controllers — антипаттерн
+grep -rn "loco_rs::storage\|StorageService::from_config" apps/server/src/controllers/ --include="*.rs"
+```
+
+**Ожидаемый результат:** Backend wiring остаётся в runtime/bootstrap слое; controllers/graphql/services используют уже готовый shared storage contract.
 
 ### 11.3 Файлы организованы по дате и tenant
 
 ```bash
-# Проверить что пути содержат tenant_id/YYYY/MM/ pattern
-grep -rn "tenant_id.*YYYY\|Utc::now.*format\|chrono.*format.*%Y.*%m" apps/server/src/services/storage/ --include="*.rs"
+# Проверить что storage используется вместе с media/runtime cleanup flows
+grep -rn "media_cleanup\|storage_path\|MediaService" apps/server/src/ crates/rustok-media/src/ --include="*.rs"
 ```
 
 ### 11.4 media_assets таблица существует

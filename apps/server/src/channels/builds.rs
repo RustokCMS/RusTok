@@ -121,10 +121,7 @@ impl From<BuildEvent> for WsBuildMessage {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 /// Upgrade an HTTP request to a WebSocket connection that streams build events.
-pub async fn ws_builds(
-    ws: WebSocketUpgrade,
-    State(ctx): State<AppContext>,
-) -> impl IntoResponse {
+pub async fn ws_builds(ws: WebSocketUpgrade, State(ctx): State<AppContext>) -> impl IntoResponse {
     let hub = build_event_hub_from_context(&ctx);
     ws.on_upgrade(move |socket| handle_socket(socket, hub))
 }

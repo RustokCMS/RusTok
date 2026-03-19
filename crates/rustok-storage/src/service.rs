@@ -17,9 +17,7 @@ impl StorageService {
     /// Build from a config struct.
     pub fn from_config(config: &StorageConfig) -> Self {
         match &config.driver {
-            StorageDriver::Local => {
-                Self::new(config.local.build())
-            }
+            StorageDriver::Local => Self::new(config.local.build()),
         }
     }
 

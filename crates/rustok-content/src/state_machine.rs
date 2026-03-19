@@ -454,27 +454,45 @@ mod tests {
 
     #[test]
     fn test_valid_transitions() {
-        assert!(validate_status_transition(&ContentStatus::Draft, &ContentStatus::Published).is_ok());
-        assert!(validate_status_transition(&ContentStatus::Published, &ContentStatus::Draft).is_ok());
-        assert!(validate_status_transition(&ContentStatus::Published, &ContentStatus::Archived).is_ok());
-        assert!(validate_status_transition(&ContentStatus::Archived, &ContentStatus::Draft).is_ok());
+        assert!(
+            validate_status_transition(&ContentStatus::Draft, &ContentStatus::Published).is_ok()
+        );
+        assert!(
+            validate_status_transition(&ContentStatus::Published, &ContentStatus::Draft).is_ok()
+        );
+        assert!(
+            validate_status_transition(&ContentStatus::Published, &ContentStatus::Archived).is_ok()
+        );
+        assert!(
+            validate_status_transition(&ContentStatus::Archived, &ContentStatus::Draft).is_ok()
+        );
     }
 
     #[test]
     fn test_invalid_draft_to_archived() {
-        assert!(validate_status_transition(&ContentStatus::Draft, &ContentStatus::Archived).is_err());
+        assert!(
+            validate_status_transition(&ContentStatus::Draft, &ContentStatus::Archived).is_err()
+        );
     }
 
     #[test]
     fn test_invalid_archived_to_published() {
-        assert!(validate_status_transition(&ContentStatus::Archived, &ContentStatus::Published).is_err());
+        assert!(
+            validate_status_transition(&ContentStatus::Archived, &ContentStatus::Published)
+                .is_err()
+        );
     }
 
     #[test]
     fn test_invalid_same_status_transitions() {
         assert!(validate_status_transition(&ContentStatus::Draft, &ContentStatus::Draft).is_err());
-        assert!(validate_status_transition(&ContentStatus::Published, &ContentStatus::Published).is_err());
-        assert!(validate_status_transition(&ContentStatus::Archived, &ContentStatus::Archived).is_err());
+        assert!(
+            validate_status_transition(&ContentStatus::Published, &ContentStatus::Published)
+                .is_err()
+        );
+        assert!(
+            validate_status_transition(&ContentStatus::Archived, &ContentStatus::Archived).is_err()
+        );
     }
 
     #[test]

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use rustok_core::{CacheBackend, FallbackCacheBackend, InMemoryCacheBackend};
 #[cfg(feature = "redis-cache")]
 use rustok_core::RedisCacheBackend;
+use rustok_core::{CacheBackend, FallbackCacheBackend, InMemoryCacheBackend};
 
 /// Shared cache service providing backend creation from a centralized Redis connection.
 ///
@@ -81,10 +81,7 @@ impl CacheService {
         if let Some(url) = &self.redis_url {
             if let Ok(redis_backend) = RedisCacheBackend::new(url, prefix, ttl).await {
                 let memory = Arc::new(InMemoryCacheBackend::new(ttl, max_capacity));
-                return Arc::new(FallbackCacheBackend::new(
-                    Arc::new(redis_backend),
-                    memory,
-                ));
+                return Arc::new(FallbackCacheBackend::new(Arc::new(redis_backend), memory));
             }
         }
 

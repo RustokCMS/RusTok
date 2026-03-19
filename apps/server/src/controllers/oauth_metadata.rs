@@ -31,8 +31,8 @@ pub struct OAuthAuthorizationServerMetadata {
 async fn get_metadata(
     State(ctx): State<AppContext>,
 ) -> Result<Json<OAuthAuthorizationServerMetadata>, Error> {
-    let auth_config = auth_config_from_ctx(&ctx)
-        .map_err(|_| Error::Message("Auth config error".into()))?;
+    let auth_config =
+        auth_config_from_ctx(&ctx).map_err(|_| Error::Message("Auth config error".into()))?;
 
     // Generate issuer base URL
     // In a real environment, this should be the public URL from config.

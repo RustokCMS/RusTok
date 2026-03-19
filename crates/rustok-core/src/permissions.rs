@@ -10,6 +10,8 @@ pub enum Resource {
     Tenants,
     Modules,
     Settings,
+    FlexSchemas,
+    FlexEntries,
     Products,
     Categories,
     Orders,
@@ -45,6 +47,8 @@ impl fmt::Display for Resource {
             Self::Tenants => "tenants",
             Self::Modules => "modules",
             Self::Settings => "settings",
+            Self::FlexSchemas => "flex_schemas",
+            Self::FlexEntries => "flex_entries",
             Self::Products => "products",
             Self::Categories => "categories",
             Self::Orders => "orders",
@@ -81,6 +85,8 @@ impl FromStr for Resource {
             "tenants" => Ok(Self::Tenants),
             "modules" => Ok(Self::Modules),
             "settings" => Ok(Self::Settings),
+            "flex_schemas" => Ok(Self::FlexSchemas),
+            "flex_entries" => Ok(Self::FlexEntries),
             "products" => Ok(Self::Products),
             "categories" => Ok(Self::Categories),
             "orders" => Ok(Self::Orders),
@@ -206,6 +212,19 @@ impl Permission {
     pub const USERS_LIST: Self = Self::new(Resource::Users, Action::List);
     pub const USERS_MANAGE: Self = Self::new(Resource::Users, Action::Manage);
 
+    pub const TENANTS_CREATE: Self = Self::new(Resource::Tenants, Action::Create);
+    pub const TENANTS_READ: Self = Self::new(Resource::Tenants, Action::Read);
+    pub const TENANTS_UPDATE: Self = Self::new(Resource::Tenants, Action::Update);
+    pub const TENANTS_DELETE: Self = Self::new(Resource::Tenants, Action::Delete);
+    pub const TENANTS_LIST: Self = Self::new(Resource::Tenants, Action::List);
+    pub const TENANTS_MANAGE: Self = Self::new(Resource::Tenants, Action::Manage);
+
+    pub const MODULES_READ: Self = Self::new(Resource::Modules, Action::Read);
+    pub const MODULES_LIST: Self = Self::new(Resource::Modules, Action::List);
+    pub const MODULES_MANAGE: Self = Self::new(Resource::Modules, Action::Manage);
+
+    pub const SETTINGS_LIST: Self = Self::new(Resource::Settings, Action::List);
+
     pub const PRODUCTS_CREATE: Self = Self::new(Resource::Products, Action::Create);
     pub const PRODUCTS_READ: Self = Self::new(Resource::Products, Action::Read);
     pub const PRODUCTS_UPDATE: Self = Self::new(Resource::Products, Action::Update);
@@ -245,8 +264,25 @@ impl Permission {
     pub const SETTINGS_UPDATE: Self = Self::new(Resource::Settings, Action::Update);
     pub const SETTINGS_MANAGE: Self = Self::new(Resource::Settings, Action::Manage);
 
+    pub const FLEX_SCHEMAS_CREATE: Self = Self::new(Resource::FlexSchemas, Action::Create);
+    pub const FLEX_SCHEMAS_READ: Self = Self::new(Resource::FlexSchemas, Action::Read);
+    pub const FLEX_SCHEMAS_UPDATE: Self = Self::new(Resource::FlexSchemas, Action::Update);
+    pub const FLEX_SCHEMAS_DELETE: Self = Self::new(Resource::FlexSchemas, Action::Delete);
+    pub const FLEX_SCHEMAS_LIST: Self = Self::new(Resource::FlexSchemas, Action::List);
+    pub const FLEX_SCHEMAS_MANAGE: Self = Self::new(Resource::FlexSchemas, Action::Manage);
+
+    pub const FLEX_ENTRIES_CREATE: Self = Self::new(Resource::FlexEntries, Action::Create);
+    pub const FLEX_ENTRIES_READ: Self = Self::new(Resource::FlexEntries, Action::Read);
+    pub const FLEX_ENTRIES_UPDATE: Self = Self::new(Resource::FlexEntries, Action::Update);
+    pub const FLEX_ENTRIES_DELETE: Self = Self::new(Resource::FlexEntries, Action::Delete);
+    pub const FLEX_ENTRIES_LIST: Self = Self::new(Resource::FlexEntries, Action::List);
+    pub const FLEX_ENTRIES_MANAGE: Self = Self::new(Resource::FlexEntries, Action::Manage);
+
     pub const ANALYTICS_READ: Self = Self::new(Resource::Analytics, Action::Read);
     pub const ANALYTICS_EXPORT: Self = Self::new(Resource::Analytics, Action::Export);
+
+    pub const LOGS_READ: Self = Self::new(Resource::Logs, Action::Read);
+    pub const LOGS_LIST: Self = Self::new(Resource::Logs, Action::List);
 
     pub const BLOG_POSTS_CREATE: Self = Self::new(Resource::BlogPosts, Action::Create);
     pub const BLOG_POSTS_READ: Self = Self::new(Resource::BlogPosts, Action::Read);

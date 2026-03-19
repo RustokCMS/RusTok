@@ -3,9 +3,7 @@ use axum::{
     Json,
 };
 use loco_rs::app::AppContext;
-use rustok_workflow::{
-    CreateWorkflowStepInput, UpdateWorkflowStepInput, WorkflowService,
-};
+use rustok_workflow::{CreateWorkflowStepInput, UpdateWorkflowStepInput, WorkflowService};
 use uuid::Uuid;
 
 use crate::context::TenantContext;

@@ -24,26 +24,22 @@ pub fn password_reset_url(ctx: &AppContext, token: &str) -> Result<String> {
         ..Default::default()
     };
 
-    Ok(rustok_email::EmailService::password_reset_url(&config, token))
+    Ok(rustok_email::EmailService::password_reset_url(
+        &config, token,
+    ))
 }
 
 // ── Template rendering for the built-in auth emails ─────────────────────────
 
 /// Embedded Tera template strings for auth emails (compiled in at build time).
 mod templates {
-    pub const EN_SUBJECT: &str =
-        include_str!("../mailers/auth/password_reset/en/subject.t");
-    pub const EN_TEXT: &str =
-        include_str!("../mailers/auth/password_reset/en/text.t");
-    pub const EN_HTML: &str =
-        include_str!("../mailers/auth/password_reset/en/html.t");
+    pub const EN_SUBJECT: &str = include_str!("../mailers/auth/password_reset/en/subject.t");
+    pub const EN_TEXT: &str = include_str!("../mailers/auth/password_reset/en/text.t");
+    pub const EN_HTML: &str = include_str!("../mailers/auth/password_reset/en/html.t");
 
-    pub const RU_SUBJECT: &str =
-        include_str!("../mailers/auth/password_reset/ru/subject.t");
-    pub const RU_TEXT: &str =
-        include_str!("../mailers/auth/password_reset/ru/text.t");
-    pub const RU_HTML: &str =
-        include_str!("../mailers/auth/password_reset/ru/html.t");
+    pub const RU_SUBJECT: &str = include_str!("../mailers/auth/password_reset/ru/subject.t");
+    pub const RU_TEXT: &str = include_str!("../mailers/auth/password_reset/ru/text.t");
+    pub const RU_HTML: &str = include_str!("../mailers/auth/password_reset/ru/html.t");
 }
 
 /// Render the password-reset email for the given locale.
@@ -58,9 +54,17 @@ pub fn render_password_reset(
     let vars = serde_json::json!({ "reset_url": reset_url });
 
     let (subj_t, text_t, html_t) = if locale.starts_with("ru") {
-        (templates::RU_SUBJECT, templates::RU_TEXT, templates::RU_HTML)
+        (
+            templates::RU_SUBJECT,
+            templates::RU_TEXT,
+            templates::RU_HTML,
+        )
     } else {
-        (templates::EN_SUBJECT, templates::EN_TEXT, templates::EN_HTML)
+        (
+            templates::EN_SUBJECT,
+            templates::EN_TEXT,
+            templates::EN_HTML,
+        )
     };
 
     Ok(RenderedEmail {
@@ -83,11 +87,7 @@ pub struct LocoMailerAdapter {
 }
 
 impl LocoMailerAdapter {
-    pub fn new(
-        mailer: EmailSender,
-        from: impl Into<String>,
-        locale: impl Into<String>,
-    ) -> Self {
+    pub fn new(mailer: EmailSender, from: impl Into<String>, locale: impl Into<String>) -> Self {
         Self {
             mailer,
             from: from.into(),
@@ -177,19 +177,25 @@ mod tests {
 
     #[test]
     fn render_password_reset_en_contains_url() {
-        let rendered =
-            render_password_reset("en", "https://example.com/reset?token=abc").unwrap();
-        assert!(rendered.html.contains("https://example.com/reset?token=abc"));
-        assert!(rendered.text.contains("https://example.com/reset?token=abc"));
+        let rendered = render_password_reset("en", "https://example.com/reset?token=abc").unwrap();
+        assert!(rendered
+            .html
+            .contains("https://example.com/reset?token=abc"));
+        assert!(rendered
+            .text
+            .contains("https://example.com/reset?token=abc"));
         assert!(!rendered.subject.is_empty());
     }
 
     #[test]
     fn render_password_reset_ru_contains_url() {
-        let rendered =
-            render_password_reset("ru", "https://example.com/reset?token=xyz").unwrap();
-        assert!(rendered.html.contains("https://example.com/reset?token=xyz"));
-        assert!(rendered.text.contains("https://example.com/reset?token=xyz"));
+        let rendered = render_password_reset("ru", "https://example.com/reset?token=xyz").unwrap();
+        assert!(rendered
+            .html
+            .contains("https://example.com/reset?token=xyz"));
+        assert!(rendered
+            .text
+            .contains("https://example.com/reset?token=xyz"));
         assert!(!rendered.subject.is_empty());
     }
 

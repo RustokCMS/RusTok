@@ -1,3 +1,5 @@
+extern crate rhai_full as rhai;
+
 pub mod async_utils;
 pub mod auth;
 pub mod cache;

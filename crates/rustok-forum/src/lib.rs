@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use rustok_core::permissions::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
@@ -37,6 +38,31 @@ impl RusToKModule for ForumModule {
 
     fn dependencies(&self) -> &[&'static str] {
         &["content"]
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            Permission::FORUM_CATEGORIES_CREATE,
+            Permission::FORUM_CATEGORIES_READ,
+            Permission::FORUM_CATEGORIES_UPDATE,
+            Permission::FORUM_CATEGORIES_DELETE,
+            Permission::FORUM_CATEGORIES_LIST,
+            Permission::FORUM_CATEGORIES_MANAGE,
+            Permission::FORUM_TOPICS_CREATE,
+            Permission::FORUM_TOPICS_READ,
+            Permission::FORUM_TOPICS_UPDATE,
+            Permission::FORUM_TOPICS_DELETE,
+            Permission::FORUM_TOPICS_LIST,
+            Permission::FORUM_TOPICS_MODERATE,
+            Permission::FORUM_TOPICS_MANAGE,
+            Permission::FORUM_REPLIES_CREATE,
+            Permission::FORUM_REPLIES_READ,
+            Permission::FORUM_REPLIES_UPDATE,
+            Permission::FORUM_REPLIES_DELETE,
+            Permission::FORUM_REPLIES_LIST,
+            Permission::FORUM_REPLIES_MODERATE,
+            Permission::FORUM_REPLIES_MANAGE,
+        ]
     }
 }
 

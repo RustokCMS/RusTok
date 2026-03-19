@@ -11,6 +11,7 @@ pub use services::TenantService;
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::permissions::Permission;
 use sea_orm_migration::MigrationTrait;
 
 pub struct TenantModule;
@@ -41,6 +42,20 @@ impl RusToKModule for TenantModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            Permission::TENANTS_CREATE,
+            Permission::TENANTS_READ,
+            Permission::TENANTS_UPDATE,
+            Permission::TENANTS_DELETE,
+            Permission::TENANTS_LIST,
+            Permission::TENANTS_MANAGE,
+            Permission::MODULES_READ,
+            Permission::MODULES_LIST,
+            Permission::MODULES_MANAGE,
+        ]
     }
 
     async fn health(&self) -> HealthStatus {

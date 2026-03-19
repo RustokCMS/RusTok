@@ -3,8 +3,8 @@ use sea_orm::Set;
 
 use rustok_core::generate_id;
 
-pub use super::_entities::platform_settings::{ActiveModel, Column, Entity, Model};
 use super::_entities::platform_settings;
+pub use super::_entities::platform_settings::{ActiveModel, Column, Entity, Model};
 
 impl ActiveModel {
     pub fn new(

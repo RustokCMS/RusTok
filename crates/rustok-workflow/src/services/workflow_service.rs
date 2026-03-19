@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use crate::dto::{
     CreateWorkflowInput, CreateWorkflowStepInput, UpdateWorkflowInput, UpdateWorkflowStepInput,
-    WorkflowExecutionResponse, WorkflowResponse, WorkflowStepExecutionResponse, WorkflowStepResponse,
-    WorkflowSummary, WorkflowVersionDetail, WorkflowVersionSummary,
+    WorkflowExecutionResponse, WorkflowResponse, WorkflowStepExecutionResponse,
+    WorkflowStepResponse, WorkflowSummary, WorkflowVersionDetail, WorkflowVersionSummary,
 };
 use crate::entities::{
     workflow, workflow_execution, workflow_step, workflow_step_execution, workflow_version,
@@ -440,9 +440,7 @@ impl WorkflowService {
             let ctx = initial_context.clone();
             let engine = engine.clone();
 
-            let execution_id = engine
-                .execute(wf_id, tenant_id, None, steps, ctx)
-                .await?;
+            let execution_id = engine.execute(wf_id, tenant_id, None, steps, ctx).await?;
 
             execution_ids.push(execution_id);
         }
@@ -611,16 +609,18 @@ impl WorkflowService {
         let snapshot = &ver.snapshot;
 
         // Save current state as a new version before restoring
-        self.save_version_internal(workflow_id, actor_id, &existing).await?;
+        self.save_version_internal(workflow_id, actor_id, &existing)
+            .await?;
 
         // Apply snapshot
         let mut model: WorkflowActiveModel = existing.into();
         if let Some(name) = snapshot.get("name").and_then(|v| v.as_str()) {
             model.name = Set(name.to_string());
         }
-        model.description = Set(
-            snapshot.get("description").and_then(|v| v.as_str()).map(str::to_string)
-        );
+        model.description = Set(snapshot
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(str::to_string));
         if let Some(tc) = snapshot.get("trigger_config").cloned() {
             model.trigger_config = Set(tc);
         }
@@ -635,7 +635,8 @@ impl WorkflowService {
 
         if let Some(steps) = snapshot.get("steps").and_then(|v| v.as_array()) {
             for step in steps {
-                let step_id = step.get("id")
+                let step_id = step
+                    .get("id")
                     .and_then(|v| v.as_str())
                     .and_then(|s| s.parse::<Uuid>().ok())
                     .unwrap_or_else(Uuid::new_v4);
@@ -645,7 +646,10 @@ impl WorkflowService {
                     .get("step_type")
                     .and_then(|v| serde_json::from_value(v.clone()).ok())
                     .unwrap_or(crate::entities::StepType::Action);
-                let config = step.get("config").cloned().unwrap_or_else(|| serde_json::json!({}));
+                let config = step
+                    .get("config")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({}));
                 let on_error: crate::entities::OnError = step
                     .get("on_error")
                     .and_then(|v| serde_json::from_value(v.clone()).ok())
@@ -718,10 +722,7 @@ impl WorkflowService {
         use sea_orm::sea_query::Expr;
 
         workflow::Entity::update_many()
-            .col_expr(
-                workflow::Column::FailureCount,
-                Expr::value(0i32),
-            )
+            .col_expr(workflow::Column::FailureCount, Expr::value(0i32))
             .filter(workflow::Column::Id.eq(workflow_id))
             .exec(&self.db)
             .await?;
@@ -745,11 +746,16 @@ fn execution_to_response(
         error: exec.error,
         started_at: DateTime::from(exec.started_at),
         completed_at: exec.completed_at.map(DateTime::from),
-        step_executions: step_execs.into_iter().map(step_execution_to_response).collect(),
+        step_executions: step_execs
+            .into_iter()
+            .map(step_execution_to_response)
+            .collect(),
     }
 }
 
-fn step_execution_to_response(s: crate::entities::WorkflowStepExecution) -> WorkflowStepExecutionResponse {
+fn step_execution_to_response(
+    s: crate::entities::WorkflowStepExecution,
+) -> WorkflowStepExecutionResponse {
     use chrono::DateTime;
     WorkflowStepExecutionResponse {
         id: s.id,

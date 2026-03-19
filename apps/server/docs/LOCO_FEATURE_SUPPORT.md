@@ -17,9 +17,9 @@
 | Auth framework primitives | ✅ (patterns/hooks) | JWT, refresh sessions, password reset tokens, RBAC domain wiring | **Project domain logic atop Loco runtime** | Средний | Не дублировать infra-слой Loco, но доменную auth-логику оставить своей |
 | Tasks (`cargo loco task`) | ✅ | `CleanupTask` зарегистрирован | **Loco Tasks** | Низкий | Оставить на Loco |
 | Initializers | ✅ | `TelemetryInitializer` через Loco API | **Loco Initializers** | Низкий | Оставить на Loco |
-| Mailer subsystem | ✅ | Сейчас кастомный SMTP service (`lettre`) + GraphQL forgot_password | **Loco Mailer** | **Высокий** | Мигрировать почтовый flow на Loco Mailer API |
+| Mailer subsystem | ✅ | Provider-based server email service (`smtp|loco|none`) + templated auth mail | **Server email service + Loco Mailer adapter** | Низкий | Оставить provider switch в server infra, без отдельного platform module |
 | Workers/queue subsystem | ✅ | Сейчас собственный event-driven outbox relay worker | **RusToK custom (осознанно)** | Средний | Очереди/воркеры оставить самописными (не дублировать Loco queue runtime) |
-| Storage abstraction (uploads/assets) | ✅ | Единый Loco storage для всех модулей пока не внедрён | **Loco Storage** | **Высокий** | Ввести общий storage adapter/policy через Loco для всех модулей |
+| Storage abstraction (uploads/assets) | ✅ | Shared storage contract через `rustok-storage` + `rustok-media`, инициализируется в server runtime | **`rustok-storage` service + server runtime wiring** | Низкий | Использовать общий storage contract и не размножать adhoc upload paths |
 | Кэширование tenancy | N/A (project concern) | custom tenant cache + negative cache + invalidation + metrics | **RusToK custom** | Низкий | Оставить самопис (platform-specific) |
 | Event bus / outbox transport | N/A (project architecture) | memory/outbox/iggy transport + relay worker | **RusToK custom** | Низкий | Оставить самопис |
 
@@ -36,9 +36,9 @@
 | Auth framework primitives (JWT/sessions/reset/RBAC wiring) | `apps/server` + `rustok-core` + `rustok-rbac` | Domain auth logic поверх Loco runtime | `DECISIONS/2026-02-26-auth-lifecycle-unification-session-invalidation.md`; `DECISIONS/2026-03-05-rbac-relation-only-final-cutover-gate.md` | Accepted | 2026-05-20 | `apps/server/src/services/rbac_service.rs`; `apps/server/src/graphql/auth/mutation.rs`; `apps/server/src/controllers/auth.rs` |
 | Tasks (`cargo loco task`) | `apps/server` via Loco task runtime | Loco tasks API with server task registration | `apps/server/docs/README.md`; `docs/guides/quickstart.md` | Accepted | 2026-06-01 | `apps/server/src/tasks/mod.rs`; `apps/server/src/tasks/cleanup.rs`; `apps/server/src/app.rs` |
 | Initializers | `apps/server` via Loco initializer runtime | Loco initializer API + project initializers | `apps/server/docs/README.md`; `docs/guides/observability-quickstart.md` | Accepted | 2026-06-01 | `apps/server/src/initializers/mod.rs`; `apps/server/src/initializers/telemetry.rs`; `apps/server/src/app.rs` |
-| Mailer subsystem | `apps/server` (custom `EmailService` on `lettre`) | **Loco Mailer API** (+ provider config in `settings`) | `apps/server/docs/loco/README.md`; `docs/architecture/api.md` | Proposed | 2026-04-15 | `apps/server/src/services/email.rs`; `apps/server/src/graphql/auth/mutation.rs`; `apps/server/src/common/settings.rs` |
+| Mailer subsystem | `apps/server` (`services/email.rs` + typed settings) | Server email service with `EmailProvider::{Smtp,Loco,None}` and Loco Mailer adapter | `apps/server/docs/loco/README.md`; `docs/architecture/api.md`; `apps/server/docs/README.md` | Accepted | 2026-06-01 | `apps/server/src/services/email.rs`; `apps/server/src/graphql/auth/mutation.rs`; `apps/server/src/common/settings.rs` |
 | Workers/queue subsystem | `apps/server` + `rustok-outbox` | RusToK event-driven worker runtime (без Loco queue duplication) | `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`; `docs/architecture/event-flow-contract.md`; `docs/standards/transactional-outbox.md` | Accepted | 2026-05-01 | `apps/server/src/app.rs`; `apps/server/src/services/event_transport_factory.rs`; `crates/rustok-outbox/src/relay.rs` |
-| Storage abstraction (uploads/assets) | `apps/server` (частичные ad-hoc use-cases) | **Loco Storage** shared policy/adapters for modules | `apps/server/docs/loco/README.md`; `docs/architecture/modules.md` | Needs review | 2026-04-15 | `apps/server/src/app.rs`; `apps/server/src/controllers/content.rs`; `apps/server/src/controllers/pages.rs` |
+| Storage abstraction (uploads/assets) | `apps/server` + `rustok-storage` + `rustok-media` | Shared `StorageService` runtime + media module APIs | `apps/server/docs/README.md`; `docs/architecture/modules.md`; `docs/modules/registry.md` | Accepted | 2026-06-01 | `apps/server/src/services/app_runtime.rs`; `apps/server/src/services/graphql_schema.rs`; `apps/server/src/tasks/media_cleanup.rs` |
 | Tenancy caching | `apps/server` + `rustok-core` cache backends | RusToK custom tenancy cache (`tenant.rs`) + shared cache backend contract | `docs/architecture/tenancy.md`; `docs/guides/observability-quickstart.md` | Accepted | 2026-05-01 | `apps/server/src/middleware/tenant.rs`; `apps/server/src/middleware/tenant_cache_v3.rs`; `crates/rustok-core/src/cache.rs` |
 | Event bus / transport (`memory|outbox|iggy`) | `apps/server` + `rustok-events` + `rustok-outbox` | RusToK event transport contract + transactional outbox flow | `DECISIONS/2026-02-19-rustok-events-canonical-contract.md`; `docs/architecture/events.md`; `apps/server/docs/event-transport.md` | Accepted | 2026-05-01 | `apps/server/src/services/event_transport_factory.rs`; `apps/server/src/services/build_request_events.rs`; `apps/server/src/workers/outbox_relay.rs` |
 
@@ -114,10 +114,10 @@
 
 ## 3) Что в Loco есть, но у нас должно/решено быть иначе
 
-### 3.1 Mailer (должен быть через Loco)
+### 3.1 Mailer (server infra с provider switch)
 
-**Сейчас:** password reset email отправляется кастомным `EmailService` (`lettre`).  
-**Целевое решение:** использовать Loco Mailer как основной integration contract, сохранив проектные provider-настройки и observability.
+**Сейчас:** server email path централизован в `apps/server/src/services/email.rs` и поддерживает `EmailProvider::{Smtp,Loco,None}`. Built-in auth emails рендерятся через файловые шаблоны, а `provider=loco` использует `ctx.mailer`.
+**Решение:** Loco Mailer уже является частью живого server-infra контракта, но SMTP сохранён как compatibility/provider option, а не как отдельный параллельный архитектурный слой.
 
 **Правило границ:** Mailer не выносится в отдельный платформенный модуль. Это инфраструктурная ответственность `apps/server` на базе Loco API.
 
@@ -126,12 +126,12 @@
 **Сейчас:** outbox relay worker + event-driven pipeline.  
 **Решение:** не дублировать это параллельной Loco queue-runtime реализацией; оставить собственную очередь/воркеры ради расширяемости и архитектурной консистентности. Policy anchor: `DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`.
 
-### 3.3 Storage abstraction (должно быть едино через Loco)
+### 3.3 Storage abstraction (shared library contract + server wiring)
 
-**Сейчас:** единого Loco storage abstraction для всех модулей нет.  
-**Целевое решение:** ввести общий Loco storage слой (policy + adapters), чтобы модульные upload/storage use-cases не расползались на ad-hoc реализации.
+**Сейчас:** общий storage contract уже вынесен в `rustok-storage`, а server runtime инициализирует единый `StorageService`; доменный media path оформлен через `rustok-media`.
+**Решение:** source of truth для storage теперь не adhoc controller-код и не отдельные per-module upload flows, а shared storage service + media module APIs.
 
-**Правило границ:** Storage не выносится в отдельный платформенный модуль. Единый storage-contract живёт в server infra-слое и используется доменными модулями как shared capability.
+**Правило границ:** Storage не превращается в `ModuleKind::Core` ради самого факта хранения файлов. Shared storage-contract живёт в library/runtime слое, а server отвечает за bootstrap и integration wiring.
 
 ---
 
@@ -174,49 +174,26 @@
 
 ---
 
-## 6) Loco Mailer + Storage roadmap (release phases)
+## 6) Current operating contract for Mailer and Storage
 
-Ниже фиксируется единый rollout-план для `Mailer` и `Storage`, чтобы не поддерживать параллельные production-потоки без явных gate-критериев.
+### Mailer
 
-| Phase | Цель | Mailer (code points + config keys) | Storage (code points + config keys) | Release gates / metrics |
-|---|---|---|---|---|
-| 0. Contract freeze | Зафиксировать integration contracts и schema ожидания до реализации адаптеров | Freeze API для password reset delivery в `apps/server/src/services/email.rs`; зафиксировать mapping `settings.rustok.email.*` (`enabled`, `from`, `reset_base_url`, `smtp.host`, `smtp.port`, `smtp.username`) в `apps/server/src/common/settings.rs` и `apps/server/config/development.yaml` | Freeze контракт `StorageAdapter` и policy-level SLA для upload/download; зафиксировать будущие ключи `settings.rustok.storage.*` и Loco `storage.*` как config source of truth | Gate: PR checklist подтверждает отсутствие breaking changes. Success: `delivery_error_rate` baseline собран; `p95_mailer_latency_ms` и `p95_storage_latency_ms` baseline собраны |
-| 1. Adapter implementation | Реализовать Loco-based adapters без cutover трафика | Добавить Loco mailer adapter рядом с текущим SMTP sender (bridge в `apps/server/src/services/email.rs`) и feature flag `settings.rustok.email.provider=loco|smtp` | Ввести storage adapters (директория `apps/server/src/services/storage_adapters/`) и policy resolver из config (`settings.rustok.storage.provider`, `settings.rustok.storage.bucket`, `settings.rustok.storage.prefix`) | Gate: unit/integration tests для adapter parity. Success: functional parity == 100%, `fallback_rate < 5%` на тестовом трафике |
-| 2. Dual-run / shadow | Запустить shadow-доставку и сравнить результаты | Основной send идёт через legacy SMTP path, Loco mailer выполняется shadow mode; расхождения логируются с correlation id | Основной storage path остаётся legacy, Loco adapter выполняет shadow upload/read-check без consumer impact | Gate: минимум 7 дней shadow без деградации. Success: `delivery_error_rate_delta <= 0.2pp`, `p95_latency_delta <= 10%`, `fallback_rate <= 2%` |
-| 3. Cutover | Перевести production трафик на Loco adapters | Включить `settings.rustok.email.provider=loco` + rollback toggle в runtime config; наблюдение через `email_delivery_errors_total`, `email_send_latency_ms` | Включить `settings.rustok.storage.provider=loco` + rollback toggle; наблюдение через `storage_operation_errors_total`, `storage_operation_latency_ms` | Gate: SRE approval + on-call readiness. Success: 14 дней стабильности, `fallback_rate <= 1%`. Rollback trigger: 3 consecutive 5m windows с `delivery_error_rate > 2%` или `p95_latency_ms > 2x baseline` |
-| 4. Legacy removal | Удалить legacy paths после стабилизации | Удалить legacy SMTP-only send path и флаги совместимости из `apps/server/src/services/email.rs`/`apps/server/src/common/settings.rs` | Удалить legacy storage branches в adapters/policy; оставить единый Loco storage runtime path | Gate: post-cutover retrospective + ADR update. Success: `fallback_rate = 0` 30 дней; rollback trigger деактивирован после cleanup window |
+- Runtime config lives in `settings.rustok.email.*`.
+- Provider selection is explicit: `smtp | loco | none`.
+- Built-in auth email rendering is template-based and stays in server infra.
+- `provider=loco` uses `ctx.mailer`; `provider=smtp` remains a compatibility/provider path, not a second architecture owner.
 
-### Release gates (детализация по Mailer/Storage)
+### Storage
 
-#### Mailer
+- Runtime config lives in `settings.rustok.storage.*` and is parsed into `rustok_storage::StorageConfig`.
+- `StorageService` is initialized once during app bootstrap and stored in `AppContext.shared_store`.
+- Media/domain workflows consume the shared storage contract through `rustok-media` and runtime wiring, not via controller-local backend setup.
 
-- **Primary metrics:**
-  - `delivery_error_rate` (доля неуспешных отправок password reset / transactional email),
-  - `p95_mailer_latency_ms`,
-  - `fallback_rate` (доля запросов, ушедших на legacy SMTP path).
-- **Hard release gate для cutover:**
-  - `delivery_error_rate <= 1.0%` в течение 24h,
-  - `p95_mailer_latency_ms <= baseline * 1.25`,
-  - `fallback_rate <= 1.0%`.
-- **Rollback trigger:**
-  - `delivery_error_rate > 2.0%` 3 окна подряд по 5 минут,
-  - или `p95_mailer_latency_ms > baseline * 2.0`,
-  - или spike 5xx от provider API > 3%.
+### Anti-duplication invariant
 
-#### Storage
-
-- **Primary metrics:**
-  - `storage_error_rate` (upload/download/list failures),
-  - `p95_storage_latency_ms`,
-  - `fallback_rate` (доля операций, ушедших в legacy storage path).
-- **Hard release gate для cutover:**
-  - `storage_error_rate <= 0.5%` в течение 24h,
-  - `p95_storage_latency_ms <= baseline * 1.30`,
-  - `fallback_rate <= 1.0%`.
-- **Rollback trigger:**
-  - `storage_error_rate > 1.0%` 3 окна подряд по 5 минут,
-  - или `p95_storage_latency_ms > baseline * 2.0`,
-  - или рост timeout-rate > 2%.
+- Не добавлять параллельный mailer runtime вне `apps/server/src/services/email.rs`.
+- Не добавлять adhoc upload/download backends мимо `rustok-storage` / shared runtime wiring.
+- Любой новый provider/driver должен расширять существующий typed config и observability path, а не вводить отдельный source of truth.
 
 ## 7) Operational runbook (incidents / rollback)
 

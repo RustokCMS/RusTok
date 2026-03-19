@@ -119,6 +119,26 @@ define_permission_extractor!(
     RequireSettingsUpdate,
     rustok_core::Permission::SETTINGS_UPDATE
 );
+define_permission_extractor!(
+    RequireFlexSchemasCreate,
+    rustok_core::Permission::FLEX_SCHEMAS_CREATE
+);
+define_permission_extractor!(
+    RequireFlexSchemasRead,
+    rustok_core::Permission::FLEX_SCHEMAS_READ
+);
+define_permission_extractor!(
+    RequireFlexSchemasUpdate,
+    rustok_core::Permission::FLEX_SCHEMAS_UPDATE
+);
+define_permission_extractor!(
+    RequireFlexSchemasDelete,
+    rustok_core::Permission::FLEX_SCHEMAS_DELETE
+);
+define_permission_extractor!(
+    RequireFlexSchemasList,
+    rustok_core::Permission::FLEX_SCHEMAS_LIST
+);
 
 define_permission_extractor!(
     RequireAnalyticsRead,
@@ -239,8 +259,41 @@ define_permission_extractor!(
 );
 
 define_permission_extractor!(
+    RequireWorkflowsCreate,
+    rustok_core::Permission::WORKFLOWS_CREATE
+);
+define_permission_extractor!(
+    RequireWorkflowsRead,
+    rustok_core::Permission::WORKFLOWS_READ
+);
+define_permission_extractor!(
+    RequireWorkflowsUpdate,
+    rustok_core::Permission::WORKFLOWS_UPDATE
+);
+define_permission_extractor!(
+    RequireWorkflowsDelete,
+    rustok_core::Permission::WORKFLOWS_DELETE
+);
+define_permission_extractor!(
+    RequireWorkflowsList,
+    rustok_core::Permission::WORKFLOWS_LIST
+);
+define_permission_extractor!(
+    RequireWorkflowsExecute,
+    rustok_core::Permission::WORKFLOWS_EXECUTE
+);
+define_permission_extractor!(
+    RequireWorkflowExecutionsRead,
+    rustok_core::Permission::WORKFLOW_EXECUTIONS_READ
+);
+define_permission_extractor!(
+    RequireWorkflowExecutionsList,
+    rustok_core::Permission::WORKFLOW_EXECUTIONS_LIST
+);
+
+define_permission_extractor!(
     RequireLogsRead,
-    rustok_core::Permission::new(rustok_core::Resource::Logs, rustok_core::Action::Read)
+    rustok_core::Permission::LOGS_READ
 );
 
 /// Helper to check permission inline without extractor

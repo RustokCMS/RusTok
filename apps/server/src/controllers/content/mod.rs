@@ -1,5 +1,5 @@
-use loco_rs::controller::Routes;
 use axum::routing::get;
+use loco_rs::controller::Routes;
 
 pub mod nodes;
 

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use async_graphql::{Context, FieldError, Object, Result};
 use chrono::{Duration, Utc};
-use rustok_core::{Action, ModuleRegistry, Permission, Resource};
+use rustok_core::{ModuleRegistry, Permission};
 use rustok_telemetry::metrics;
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DbBackend, EntityTrait, PaginatorTrait, QueryFilter,
@@ -414,9 +414,9 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
         &tenant.id,
         &auth.user_id,
         &[
-            Permission::new(Resource::Modules, Action::Read),
-            Permission::new(Resource::Modules, Action::List),
-            Permission::new(Resource::Modules, Action::Manage),
+            Permission::MODULES_READ,
+            Permission::MODULES_LIST,
+            Permission::MODULES_MANAGE,
         ],
     )
     .await

@@ -1,5 +1,5 @@
 use loco_rs::app::AppContext;
-use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, Set};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -173,11 +173,7 @@ pub struct SettingsService;
 
 impl SettingsService {
     /// Get settings for a single category with fallback.
-    pub async fn get(
-        ctx: &AppContext,
-        tenant_id: Uuid,
-        cat: &str,
-    ) -> Result<Value, SettingsError> {
+    pub async fn get(ctx: &AppContext, tenant_id: Uuid, cat: &str) -> Result<Value, SettingsError> {
         // 1. DB row
         if let Some(row) = Entity::find_by_category(&ctx.db, tenant_id, cat).await? {
             return Ok(row.settings);
@@ -211,7 +207,14 @@ impl SettingsService {
         for &cat in category::ALL {
             if !existing.contains(cat) {
                 let v = Self::yaml_defaults_for(ctx, cat);
-                result.push((cat.to_string(), if v.is_null() { serde_json::json!({}) } else { v }));
+                result.push((
+                    cat.to_string(),
+                    if v.is_null() {
+                        serde_json::json!({})
+                    } else {
+                        v
+                    },
+                ));
             }
         }
 
@@ -281,7 +284,9 @@ mod tests {
     #[test]
     fn rate_limit_validator_rejects_non_positive_rps() {
         let v = RateLimitSettingsValidator;
-        let errs = v.validate(&json!({ "requests_per_second": 0 })).unwrap_err();
+        let errs = v
+            .validate(&json!({ "requests_per_second": 0 }))
+            .unwrap_err();
         assert!(errs.iter().any(|e| e.contains("positive")));
     }
 
@@ -339,9 +344,7 @@ mod tests {
     #[test]
     fn validator_registry_passes_unknown_category() {
         let reg = ValidatorRegistry::default();
-        assert!(reg
-            .validate("general", &json!({ "any": "value" }))
-            .is_ok());
+        assert!(reg.validate("general", &json!({ "any": "value" })).is_ok());
     }
 
     #[test]

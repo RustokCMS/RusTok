@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
 };
 use uuid::Uuid;
 
@@ -16,8 +16,7 @@ use crate::{
     entities::{
         media::{self, ActiveModel as MediaActiveModel, Column as MediaCol, Entity as MediaEntity},
         media_translation::{
-            ActiveModel as TranslationActiveModel, Column as TransCol,
-            Entity as TransEntity,
+            ActiveModel as TranslationActiveModel, Column as TransCol, Entity as TransEntity,
         },
     },
     error::{MediaError, Result},

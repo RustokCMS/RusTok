@@ -24,7 +24,11 @@ impl WorkflowCronScheduler {
     pub fn new(db: DatabaseConnection) -> Self {
         let engine = Arc::new(WorkflowEngine::new(db.clone()));
         let service = Arc::new(WorkflowService::new(db.clone()));
-        Self { db, engine, service }
+        Self {
+            db,
+            engine,
+            service,
+        }
     }
 
     /// Start the cron scheduler as a background task.
@@ -80,9 +84,7 @@ impl WorkflowCronScheduler {
             let prev = now - chrono::Duration::seconds(1);
             let next_after_prev = schedule.after(&prev).next();
 
-            let should_fire = next_after_prev
-                .map(|t| t <= now)
-                .unwrap_or(false);
+            let should_fire = next_after_prev.map(|t| t <= now).unwrap_or(false);
 
             if !should_fire {
                 continue;

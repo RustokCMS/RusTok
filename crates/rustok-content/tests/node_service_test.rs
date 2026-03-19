@@ -9,12 +9,8 @@ use rustok_content::entities::node::ContentStatus;
 use rustok_content::services::NodeService;
 use rustok_content::ContentError;
 use rustok_test_utils::{
-    db::setup_test_db,
-    helpers::admin_context,
-    helpers::customer_context,
-    helpers::manager_context,
-    helpers::unique_slug,
-    mock_transactional_event_bus,
+    db::setup_test_db, helpers::admin_context, helpers::customer_context, helpers::manager_context,
+    helpers::unique_slug, mock_transactional_event_bus,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use uuid::Uuid;
@@ -1224,7 +1220,9 @@ async fn test_update_node_forbidden_for_customer() {
         ..UpdateNodeInput::default()
     };
 
-    let result = service.update_node(tenant_id, node.id, customer, update).await;
+    let result = service
+        .update_node(tenant_id, node.id, customer, update)
+        .await;
 
     assert!(
         matches!(result.unwrap_err(), ContentError::Forbidden(_)),

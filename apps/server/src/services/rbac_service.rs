@@ -1,4 +1,3 @@
-use crate::error::Error;
 use crate::error::Result;
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use tracing::{debug, warn};
@@ -8,8 +7,6 @@ use rustok_rbac::PermissionResolver;
 use rustok_telemetry::metrics;
 
 use super::rbac_persistence::replace_user_role_via_store;
-#[cfg(test)]
-use super::rbac_runtime::authz_mode as runtime_authz_mode;
 pub use super::rbac_runtime::RbacResolverMetricsSnapshot;
 use super::rbac_runtime::{
     authorize_request as authorize_rbac_request,
@@ -19,18 +16,12 @@ use super::rbac_runtime::{
     observe_authorization_decision as observe_rbac_authorization_decision,
     record_claim_role_mismatch as record_rbac_claim_role_mismatch, record_permission_cache_result,
     record_permission_lookup_latency as record_rbac_permission_lookup_latency,
-    record_shadow_compare_failure as record_rbac_shadow_compare_failure,
     resolver as rbac_runtime_resolver, AuthorizationCheck, ServerRuntimePermissionResolver,
 };
 
 pub struct RbacService;
 
 impl RbacService {
-    #[cfg(test)]
-    pub(crate) fn should_run_casbin_shadow() -> bool {
-        runtime_authz_mode().should_run_casbin_shadow()
-    }
-
     pub async fn invalidate_user_permissions_cache(tenant_id: &uuid::Uuid, user_id: &uuid::Uuid) {
         invalidate_permission_runtime_cache(tenant_id, user_id).await;
     }
@@ -41,10 +32,6 @@ impl RbacService {
 
     pub fn record_claim_role_mismatch() {
         record_rbac_claim_role_mismatch();
-    }
-
-    pub fn record_shadow_compare_failure() {
-        record_rbac_shadow_compare_failure();
     }
 
     fn record_authz_entrypoint_call(entry_point: &str, path: &str) {
@@ -99,24 +86,7 @@ impl RbacService {
             );
         }
 
-        if let Err(error) = observe_rbac_authorization_decision(
-            db,
-            tenant_id,
-            user_id,
-            &decision,
-            AuthorizationCheck::Single(required_permission).shadow_check(),
-            latency_ms,
-        )
-        .await
-        {
-            warn!(
-                tenant_id = %tenant_id,
-                user_id = %user_id,
-                required_permission = %required_permission,
-                error = %error,
-                "rbac shadow runtime compare failed"
-            );
-        }
+        observe_rbac_authorization_decision(&decision, latency_ms);
 
         Ok(allowed)
     }
@@ -165,24 +135,7 @@ impl RbacService {
             );
         }
 
-        if let Err(error) = observe_rbac_authorization_decision(
-            db,
-            tenant_id,
-            user_id,
-            &decision,
-            AuthorizationCheck::Any(required_permissions).shadow_check(),
-            latency_ms,
-        )
-        .await
-        {
-            warn!(
-                tenant_id = %tenant_id,
-                user_id = %user_id,
-                required_permissions = ?required_permissions,
-                error = %error,
-                "rbac shadow runtime compare failed"
-            );
-        }
+        observe_rbac_authorization_decision(&decision, latency_ms);
 
         Ok(allowed)
     }
@@ -234,24 +187,7 @@ impl RbacService {
             );
         }
 
-        if let Err(error) = observe_rbac_authorization_decision(
-            db,
-            tenant_id,
-            user_id,
-            &decision,
-            AuthorizationCheck::All(required_permissions).shadow_check(),
-            latency_ms,
-        )
-        .await
-        {
-            warn!(
-                tenant_id = %tenant_id,
-                user_id = %user_id,
-                required_permissions = ?required_permissions,
-                error = %error,
-                "rbac shadow runtime compare failed"
-            );
-        }
+        observe_rbac_authorization_decision(&decision, latency_ms);
 
         Ok(allowed)
     }
@@ -391,69 +327,6 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ConnectionTrait, EntityTrait, Set};
     use serial_test::serial;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
-
-    const AUTHZ_MODE_ENV: &str = "RUSTOK_RBAC_AUTHZ_MODE";
-
-    struct EnvVarGuard {
-        _lock: MutexGuard<'static, ()>,
-        name: &'static str,
-        previous: Option<String>,
-    }
-
-    impl EnvVarGuard {
-        fn lock(name: &'static str) -> Self {
-            static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-            let lock = LOCK
-                .get_or_init(|| Mutex::new(()))
-                .lock()
-                .expect("env lock");
-            let previous = std::env::var(name).ok();
-            Self {
-                _lock: lock,
-                name,
-                previous,
-            }
-        }
-
-        fn set(&self, value: &str) {
-            // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
-            unsafe {
-                std::env::set_var(self.name, value);
-            }
-        }
-
-        fn remove(&self) {
-            // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
-            unsafe {
-                std::env::remove_var(self.name);
-            }
-        }
-
-        fn previous(&self) -> Option<&str> {
-            self.previous.as_deref()
-        }
-
-        fn restore(&self) {
-            if let Some(previous) = self.previous.as_ref() {
-                // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
-                unsafe {
-                    std::env::set_var(self.name, previous);
-                }
-            } else {
-                // SAFETY: tests serialize environment mutations via `EnvVarGuard` lock.
-                unsafe {
-                    std::env::remove_var(self.name);
-                }
-            }
-        }
-    }
-
-    impl Drop for EnvVarGuard {
-        fn drop(&mut self) {
-            self.restore();
-        }
-    }
 
     async fn insert_tenant_and_user(
         db: &impl ConnectionTrait,
@@ -546,57 +419,6 @@ mod tests {
         let before = RbacService::metrics_snapshot().claim_role_mismatch_total;
         RbacService::record_claim_role_mismatch();
         let after = RbacService::metrics_snapshot().claim_role_mismatch_total;
-
-        assert_eq!(after, before + 1);
-    }
-
-    #[test]
-    #[serial]
-    fn authz_mode_defaults_to_relation_only_when_env_missing() {
-        let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
-        env.remove();
-
-        assert!(!RbacService::should_run_casbin_shadow());
-    }
-
-    #[test]
-    #[serial]
-    fn authz_mode_enables_casbin_shadow_from_env() {
-        let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
-        env.set("casbin_shadow");
-
-        assert!(RbacService::should_run_casbin_shadow());
-    }
-
-    #[test]
-    #[serial]
-    fn authz_mode_enables_casbin_only_engine_from_env() {
-        let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
-        env.set("casbin_only");
-
-        assert!(super::runtime_authz_mode().is_casbin_only());
-    }
-
-    #[test]
-    #[serial]
-    fn authz_mode_guard_restores_previous_env_value() {
-        let previous = {
-            let env = EnvVarGuard::lock(AUTHZ_MODE_ENV);
-            let previous = env.previous().map(ToOwned::to_owned);
-            env.set("casbin_shadow");
-            assert!(RbacService::should_run_casbin_shadow());
-            previous
-        };
-
-        assert_eq!(std::env::var(AUTHZ_MODE_ENV).ok(), previous);
-    }
-
-    #[test]
-    #[serial]
-    fn shadow_compare_failure_counter_increments() {
-        let before = RbacService::metrics_snapshot().shadow_compare_failures_total;
-        RbacService::record_shadow_compare_failure();
-        let after = RbacService::metrics_snapshot().shadow_compare_failures_total;
 
         assert_eq!(after, before + 1);
     }

@@ -727,8 +727,8 @@ Thin wrappers над shadcn/ui (shadcn как reference, не дублирова
 
 ## 8. Связанные документы
 
-- [`ADMIN_PANEL_REVIEW.md`](../../ADMIN_PANEL_REVIEW.md) — существующий детальный ревью с критическими проблемами
-- [`docs/admin-review-improvement-plan.md`](../admin-review-improvement-plan.md) — план по auth/dashboard (Фазы 1-2 частично выполнены)
+- [`apps/admin/docs/README.md`](../../apps/admin/docs/README.md) — текущее состояние Leptos admin runtime и принятых решений
+- [`apps/admin/docs/implementation-plan.md`](../../apps/admin/docs/implementation-plan.md) — актуальный scope дальнейшей доработки admin-приложения
 - [`UI/docs/api-contracts.md`](../../UI/docs/api-contracts.md) — контракты UI-компонентов
 - [`UI/tokens/base.css`](../../UI/tokens/base.css) — дизайн-токены
 - [`crates/leptos-ui/`](../../crates/leptos-ui/) — существующая Leptos UI библиотека

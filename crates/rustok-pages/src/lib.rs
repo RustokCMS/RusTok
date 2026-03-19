@@ -77,6 +77,10 @@ impl RusToKModule for PagesModule {
         env!("CARGO_PKG_VERSION")
     }
 
+    fn dependencies(&self) -> &[&'static str] {
+        &["content"]
+    }
+
     fn permissions(&self) -> Vec<Permission> {
         vec![
             // Pages
@@ -86,12 +90,14 @@ impl RusToKModule for PagesModule {
             Permission::new(Resource::Pages, Action::Delete),
             Permission::new(Resource::Pages, Action::List),
             Permission::new(Resource::Pages, Action::Publish),
+            Permission::new(Resource::Pages, Action::Manage),
             // Blocks (stored as nodes)
             Permission::new(Resource::Nodes, Action::Create),
             Permission::new(Resource::Nodes, Action::Read),
             Permission::new(Resource::Nodes, Action::Update),
             Permission::new(Resource::Nodes, Action::Delete),
             Permission::new(Resource::Nodes, Action::List),
+            Permission::new(Resource::Nodes, Action::Manage),
         ]
     }
 }

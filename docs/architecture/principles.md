@@ -158,36 +158,34 @@ Index: Композитный read model для storefront
 
 ## 5. RBAC Strategy
 
-### 5.1 Minimum Viable Model
+### 5.1 Source Of Truth And Runtime Boundary
 
-```rust
-// Каждый модуль объявляет свои permissions
-impl RusToKModule for CommerceModule {
-    fn permissions(&self) -> &[Permission] {
-        &[
-            Permission::new("commerce.products.read"),
-            Permission::new("commerce.products.write"),
-            Permission::new("commerce.orders.read"),
-            Permission::new("commerce.orders.manage"),
-        ]
-    }
-}
+- Канонические RBAC-связи хранятся в relation-таблицах `roles`, `permissions`, `user_roles`, `role_permissions`.
+- `rustok-core` остаётся владельцем базовых RBAC primitives: `Permission`, `Resource`, `Action`, `UserRole`, `SecurityContext`.
+- `crates/rustok-rbac` владеет policy/evaluator-логикой, Casbin model builder, resolver contracts (`PermissionResolver`, `RuntimePermissionResolver`) и публичным authorization API.
+- `apps/server` больше не реализует отдельный RBAC engine: в сервере живут только adapter/wiring-слой (SeaORM store, Moka cache, `RbacService`, metrics, transport integration).
+- Живой decision path один: `casbin_only`. Relation graph остаётся источником permission data, но не отдельным runtime engine.
+
+### 5.2 Permission Model
+
+Канонический формат permission:
+
+```text
+<resource>:<action>
 ```
 
-### 5.2 Naming Convention
+Примеры: `products:create`, `orders:manage`, `blog_posts:publish`, `workflow_executions:list`
 
-```
-<module>.<entity>.<action>
-```
+- Wildcard-семантика задаётся через `manage` и централизованно применяется общими policy helpers из `rustok-rbac`.
+- Tenant-изоляция обеспечивается не именованием permission, а tenant-filtered relation store и server-side resolver adapters.
+- Новые ресурсы и действия должны добавляться в типизированные enum/const contracts, а не через строковые adhoc-соглашения в handlers.
 
-Примеры: `content.nodes.write`, `blog.posts.publish`, `commerce.orders.refund`
+### 5.3 Operating Rules
 
-### 5.3 TODO
-
-- ⬜ TODO: Определить модель (RBAC vs ABAC vs гибрид)
-- ⬜ TODO: Tenant-изоляция и наследование ролей
-- ⬜ TODO: Добавить `fn permissions()` в `RusToKModule` trait
-- ⬜ TODO: Единый enforcement layer для API и Admin
+- Для live runtime не допускается второй authorization engine или shadow/parity branch.
+- HTTP/GraphQL transport-слои и admin/server adapters должны использовать единый enforcement path через `RbacService` и модульные `rustok-rbac` helpers.
+- RBAC runtime не должен возвращаться к mode-switch конфигурации; live contract фиксирован на одном Casbin engine.
+- История migration/cutover фиксируется в ADR и специальных architecture docs, но не определяет текущий runtime contract.
 
 ---
 
@@ -282,7 +280,7 @@ mYYYYMMDD_<module>_<nnn>_<description>.rs
 
 ## См. также
 
-- [ROADMAP.md](../ROADMAP.md) — фазы разработки
+- [docs/index.md](../index.md) — карта актуальной документации
 - [architecture/flex.md](./flex.md) — спецификация и план реализации Flex
 - [MANIFEST_ADDENDUM.md](../MANIFEST_ADDENDUM.md) — дополнения к манифесту
 

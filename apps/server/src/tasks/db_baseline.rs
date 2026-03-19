@@ -8,13 +8,13 @@
 //! `cargo loco task --name db_baseline`
 //! `cargo loco task --name db_baseline --args "tenant_id=<uuid> top_n=15 output=tmp/db-baseline.json"`
 
+use crate::error::{Error, Result};
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use loco_rs::{
     app::AppContext,
     task::{Task, TaskInfo, Vars},
 };
-use crate::error::{Error, Result};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, QueryOrder, Statement,
 };

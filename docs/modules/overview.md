@@ -152,7 +152,7 @@ Next.js-стек — для headless-режима и JS-разработчико
 
 - `docs/modules/registry.md` — реестр приложений и crate'ов.
 - `docs/modules/manifest.md` — манифест и правила описания модулей.
-- `docs/architecture/improvement-recommendations.md` — рекомендации и roadmap архитектуры.
+- `docs/architecture/principles.md` — архитектурные инварианты и живые runtime contracts.
 
 ## 7. Что делать при изменениях модульного состава
 

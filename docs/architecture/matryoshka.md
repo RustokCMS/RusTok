@@ -250,7 +250,7 @@ Just as the OSI model standardized network communication into 7 layers, the Matr
 - [Architecture Overview](overview.md) — Technical system design
 - [Architecture Principles](principles.md) — Core tenets and patterns
 - [RUSTOK_MANIFEST.md](../../RUSTOK_MANIFEST.md) — System manifest
-- [Roadmap](../roadmap.md) — Development phases
+- [Documentation Map](../index.md) — current documentation entry point
 
 ---
 

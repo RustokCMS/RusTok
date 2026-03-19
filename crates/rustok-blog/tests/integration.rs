@@ -82,7 +82,12 @@ async fn test_post_lifecycle() -> TestResult<()> {
     assert!(published.published_at.is_some());
 
     post_service
-        .archive_post(tenant_id, post_id, admin.clone(), Some("outdated".to_string()))
+        .archive_post(
+            tenant_id,
+            post_id,
+            admin.clone(),
+            Some("outdated".to_string()),
+        )
         .await?;
     let archived = post_service.get_post(tenant_id, post_id, "en").await?;
     assert_eq!(archived.status, BlogPostStatus::Archived);
@@ -387,10 +392,7 @@ async fn test_category_crud() -> TestResult<()> {
         .get(tenant_id, category_id, "en")
         .await
         .expect_err("deleted category should not be found");
-    assert!(matches!(
-        not_found,
-        ContentError::CategoryNotFound(_)
-    ));
+    assert!(matches!(not_found, ContentError::CategoryNotFound(_)));
 
     Ok(())
 }

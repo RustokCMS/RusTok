@@ -16,12 +16,7 @@ pub struct MediaMutation;
 #[Object]
 impl MediaMutation {
     /// Delete a media asset and remove it from storage.
-    async fn delete_media(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        id: Uuid,
-    ) -> Result<bool> {
+    async fn delete_media(&self, ctx: &Context<'_>, tenant_id: Uuid, id: Uuid) -> Result<bool> {
         require_module_enabled(ctx, module_slug::MEDIA).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let storage = ctx.data::<StorageService>()?;

@@ -8,9 +8,8 @@
 ///   Accept-Language header → "en"
 ///
 /// Phase 1 will extend this to: Accept-Language → tenant.default_locale → "en".
-
 use axum::{extract::Request, middleware::Next, response::Response};
-use rustok_core::i18n::{extract_locale_from_header, Locale};
+use rustok_core::i18n::extract_locale_from_header;
 
 /// Axum middleware that resolves and injects the request locale.
 pub async fn resolve_locale(mut request: Request, next: Next) -> Response {

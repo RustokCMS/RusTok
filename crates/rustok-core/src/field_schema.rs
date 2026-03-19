@@ -124,19 +124,10 @@ pub fn json_object_depth(value: &serde_json::Value) -> usize {
     match value {
         // Each object adds exactly one level; recurse into values.
         serde_json::Value::Object(map) => {
-            1 + map
-                .values()
-                .map(json_object_depth)
-                .max()
-                .unwrap_or(0)
+            1 + map.values().map(json_object_depth).max().unwrap_or(0)
         }
         // Arrays are transparent: their depth equals the deepest element's depth.
-        serde_json::Value::Array(arr) => {
-            arr.iter()
-                .map(json_object_depth)
-                .max()
-                .unwrap_or(0)
-        }
+        serde_json::Value::Array(arr) => arr.iter().map(json_object_depth).max().unwrap_or(0),
         // Primitives (string, number, bool, null) have depth 0.
         _ => 0,
     }
@@ -1178,12 +1169,7 @@ macro_rules! define_field_definitions_entity {
         use sea_orm::entity::prelude::*;
 
         #[derive(
-            Clone,
-            Debug,
-            PartialEq,
-            DeriveEntityModel,
-            serde::Serialize,
-            serde::Deserialize,
+            Clone, Debug, PartialEq, DeriveEntityModel, serde::Serialize, serde::Deserialize,
         )]
         #[sea_orm(table_name = $table_name)]
         pub struct Model {
@@ -1203,9 +1189,7 @@ macro_rules! define_field_definitions_entity {
             pub updated_at: sea_orm::entity::prelude::DateTimeWithTimeZone,
         }
 
-        #[derive(
-            Copy, Clone, Debug, EnumIter, DeriveRelation,
-        )]
+        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
         pub enum Relation {}
 
         impl ActiveModelBehavior for ActiveModel {}
@@ -1713,27 +1697,18 @@ mod tests {
 
     #[test]
     fn depth_nested_object() {
-        assert_eq!(
-            json_object_depth(&json!({"address": {"city": "NY"}})),
-            2
-        );
+        assert_eq!(json_object_depth(&json!({"address": {"city": "NY"}})), 2);
     }
 
     #[test]
     fn depth_array_of_objects() {
         // Core Variant-A case: array is transparent.
-        assert_eq!(
-            json_object_depth(&json!({"items": [{"id": 1}]})),
-            2
-        );
+        assert_eq!(json_object_depth(&json!({"items": [{"id": 1}]})), 2);
     }
 
     #[test]
     fn depth_triple_nesting() {
-        assert_eq!(
-            json_object_depth(&json!({"a": {"b": {"c": 1}}})),
-            3
-        );
+        assert_eq!(json_object_depth(&json!({"a": {"b": {"c": 1}}})), 3);
     }
 
     #[test]

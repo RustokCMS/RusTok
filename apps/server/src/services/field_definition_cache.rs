@@ -56,8 +56,10 @@ impl FieldDefinitionCache {
             .await;
     }
 
-    pub fn invalidate(&self, tenant_id: Uuid, entity_type: &str) {
-        self.inner.invalidate(&(tenant_id, entity_type.to_string()));
+    pub async fn invalidate(&self, tenant_id: Uuid, entity_type: &str) {
+        self.inner
+            .invalidate(&(tenant_id, entity_type.to_string()))
+            .await;
     }
 }
 
@@ -94,7 +96,7 @@ pub fn field_definition_cache_from_context(
                         ref entity_type,
                         ..
                     } => {
-                        cache_for_task.invalidate(tenant_id, entity_type);
+                        cache_for_task.invalidate(tenant_id, entity_type).await;
                     }
                     _ => {}
                 },
@@ -127,8 +129,8 @@ impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
         FieldDefinitionCache::set(self, tenant_id, entity_type, rows).await;
     }
 
-    fn invalidate(&self, tenant_id: Uuid, entity_type: &str) {
-        FieldDefinitionCache::invalidate(self, tenant_id, entity_type);
+    async fn invalidate(&self, tenant_id: Uuid, entity_type: &str) {
+        FieldDefinitionCache::invalidate(self, tenant_id, entity_type).await;
     }
 }
 
@@ -170,7 +172,7 @@ mod tests {
         assert!(cached.is_some());
         assert_eq!(cached.expect("cache entry")[0].field_key, "nickname");
 
-        cache.invalidate(tenant_id, entity_type);
+        cache.invalidate(tenant_id, entity_type).await;
         assert!(cache.get(tenant_id, entity_type).await.is_none());
     }
 }

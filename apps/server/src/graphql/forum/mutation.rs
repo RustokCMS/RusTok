@@ -262,7 +262,6 @@ impl ForumMutation {
     ) -> Result<GqlForumCategory> {
         require_module_enabled(ctx, module_slug::FORUM).await?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;

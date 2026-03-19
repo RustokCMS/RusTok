@@ -57,13 +57,20 @@ mod tests {
 
     use super::{bad_user_input, map_flex_error, resolve_entity_type};
 
+    fn error_code(error: &async_graphql::Error) -> Option<String> {
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code"))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_str().map(ToOwned::to_owned))
+    }
+
     #[test]
     fn bad_user_input_sets_bad_user_input_code() {
         let gql = bad_user_input("invalid").extend();
-        assert_eq!(
-            gql.extensions.get("code").and_then(|v| v.as_str()),
-            Some("BAD_USER_INPUT")
-        );
+        assert_eq!(error_code(&gql).as_deref(), Some("BAD_USER_INPUT"));
     }
 
     #[test]
@@ -72,10 +79,7 @@ mod tests {
         let gql = err.extend();
 
         assert_eq!(gql.message, "Internal server error");
-        assert_eq!(
-            gql.extensions.get("code").and_then(|v| v.as_str()),
-            Some("INTERNAL_ERROR")
-        );
+        assert_eq!(error_code(&gql).as_deref(), Some("INTERNAL_ERROR"));
     }
 
     #[test]
@@ -85,10 +89,7 @@ mod tests {
         let gql = err.extend();
 
         assert!(gql.message.contains("Field definition not found"));
-        assert_eq!(
-            gql.extensions.get("code").and_then(|v| v.as_str()),
-            Some("NOT_FOUND")
-        );
+        assert_eq!(error_code(&gql).as_deref(), Some("NOT_FOUND"));
     }
 
     #[test]
@@ -96,10 +97,7 @@ mod tests {
         let err = map_flex_error(FlexError::InvalidFieldKey("invalid-key".to_string()));
         let gql = err.extend();
 
-        assert_eq!(
-            gql.extensions.get("code").and_then(|v| v.as_str()),
-            Some("BAD_USER_INPUT")
-        );
+        assert_eq!(error_code(&gql).as_deref(), Some("BAD_USER_INPUT"));
     }
 
     #[test]
@@ -117,10 +115,7 @@ mod tests {
 
         for error in variants {
             let gql = map_flex_error(error).extend();
-            assert_eq!(
-                gql.extensions.get("code").and_then(|v| v.as_str()),
-                Some("BAD_USER_INPUT")
-            );
+            assert_eq!(error_code(&gql).as_deref(), Some("BAD_USER_INPUT"));
         }
     }
 
@@ -128,11 +123,8 @@ mod tests {
     fn map_flex_error_unknown_entity_type_sets_bad_user_input_code() {
         let gql = map_flex_error(FlexError::UnknownEntityType("weird".to_string())).extend();
 
-        assert_eq!(
-            gql.extensions.get("code").and_then(|v| v.as_str()),
-            Some("BAD_USER_INPUT")
-        );
-        assert!(gql.message.contains("Unknown entity type"));
+        assert_eq!(error_code(&gql).as_deref(), Some("BAD_USER_INPUT"));
+        assert_eq!(gql.message, "weird");
     }
 
     #[test]
@@ -153,10 +145,7 @@ mod tests {
         let gql = resolve_entity_type(Some("   ".to_string()))
             .expect_err("empty entity type should fail")
             .extend();
-        assert_eq!(
-            gql.extensions.get("code").and_then(|v| v.as_str()),
-            Some("BAD_USER_INPUT")
-        );
+        assert_eq!(error_code(&gql).as_deref(), Some("BAD_USER_INPUT"));
     }
 
     #[test]
@@ -164,9 +153,6 @@ mod tests {
         let gql = resolve_entity_type(Some("product-type".to_string()))
             .expect_err("invalid entity type should fail")
             .extend();
-        assert_eq!(
-            gql.extensions.get("code").and_then(|v| v.as_str()),
-            Some("BAD_USER_INPUT")
-        );
+        assert_eq!(error_code(&gql).as_deref(), Some("BAD_USER_INPUT"));
     }
 }

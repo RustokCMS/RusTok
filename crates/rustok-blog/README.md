@@ -120,12 +120,12 @@ println!("Available: {:?}", post.available_locales);
 | Метод | Путь | Описание |
 |-------|------|----------|
 | GET | `/api/blog/posts` | Список постов |
-| GET | `/api/blog/posts/:id?locale=ru` | Получить пост |
+| GET | `/api/blog/posts/{id}?locale=ru` | Получить пост |
 | POST | `/api/blog/posts` | Создать пост |
-| PUT | `/api/blog/posts/:id` | Обновить пост |
-| DELETE | `/api/blog/posts/:id` | Удалить пост |
-| POST | `/api/blog/posts/:id/publish` | Опубликовать |
-| POST | `/api/blog/posts/:id/unpublish` | Снять с публикации |
+| PUT | `/api/blog/posts/{id}` | Обновить пост |
+| DELETE | `/api/blog/posts/{id}` | Удалить пост |
+| POST | `/api/blog/posts/{id}/publish` | Опубликовать |
+| POST | `/api/blog/posts/{id}/unpublish` | Снять с публикации |
 
 ## Взаимодействие
 

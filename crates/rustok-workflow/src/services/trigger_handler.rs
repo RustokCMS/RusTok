@@ -21,7 +21,11 @@ impl WorkflowTriggerHandler {
     pub fn new(db: DatabaseConnection) -> Self {
         let engine = Arc::new(WorkflowEngine::new(db.clone()));
         let service = Arc::new(WorkflowService::new(db.clone()));
-        Self { db, engine, service }
+        Self {
+            db,
+            engine,
+            service,
+        }
     }
 }
 
@@ -46,7 +50,9 @@ impl EventHandler for WorkflowTriggerHandler {
             .filter(workflow::Column::Status.eq(WorkflowStatus::Active.to_string()))
             .all(&self.db)
             .await
-            .map_err(|e| rustok_core::Error::External(format!("DB error in WorkflowTriggerHandler: {e}")))?;
+            .map_err(|e| {
+                rustok_core::Error::External(format!("DB error in WorkflowTriggerHandler: {e}"))
+            })?;
 
         let matching: Vec<_> = workflows
             .into_iter()

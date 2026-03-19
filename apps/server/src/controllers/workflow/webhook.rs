@@ -1,6 +1,6 @@
 /// Public webhook ingress for workflow triggers.
 ///
-/// POST /webhooks/:tenant_slug/:webhook_slug
+/// POST /webhooks/{tenant_slug}/{webhook_slug}
 ///
 /// No authentication required — the caller identifies itself via the
 /// `X-Webhook-Signature` header (HMAC-SHA256 of the raw body with the
@@ -33,7 +33,7 @@ pub async fn receive(
     body: Bytes,
 ) -> Result<Json<WebhookResponse>> {
     // Resolve tenant by slug
-    let tenant = tenants::Model::find_by_slug(&ctx.db, &tenant_slug)
+    let tenant = tenants::Entity::find_by_slug(&ctx.db, &tenant_slug)
         .await
         .map_err(|e| crate::error::Error::BadRequest(e.to_string()))?
         .ok_or_else(|| {
@@ -41,9 +41,8 @@ pub async fn receive(
         })?;
 
     // Parse body as JSON; fall back to wrapping raw bytes as a string value
-    let payload: Value = serde_json::from_slice(&body).unwrap_or_else(|_| {
-        Value::String(String::from_utf8_lossy(&body).into_owned())
-    });
+    let payload: Value = serde_json::from_slice(&body)
+        .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&body).into_owned()));
 
     // Log signature header (verification can be enforced later)
     if let Some(sig) = headers.get("x-webhook-signature") {

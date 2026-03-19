@@ -2,11 +2,11 @@
 
 ## Scope and objective
 
-This document captures the current implementation plan for `rustok-rbac` in RusToK and
-serves as the source of truth for rollout sequencing in `crates/rustok-rbac`.
+This document captures the finalized implementation status for `rustok-rbac` in RusToK and
+records the migration outcome for the module-level RBAC runtime contract.
 
-Primary objective: evolve `rustok-rbac` in small, testable increments while preserving
-compatibility with platform-level contracts.
+Primary objective: keep `rustok-rbac` aligned with platform-level contracts while
+documenting the completed transition to the Casbin-backed runtime.
 
 ## Target architecture
 
@@ -24,28 +24,35 @@ compatibility with platform-level contracts.
 - [x] Base docs and registry presence are established.
 - [x] Core compile-time integration with the workspace is available.
 
-### Phase 1 — Contract hardening (in progress)
+### Phase 1 — Contract hardening (done)
 
 - [x] Freeze initial public RBAC runtime API: exported `permission_policy`/`permission_evaluator` + trait contract `PermissionResolver`/`PermissionResolution` with default use-case methods (`has_*`) for adapter-driven integrations.
 - [x] Introduce shared permission-policy helpers (`permission_policy`) and start consuming them from `apps/server` extractors/service wiring to reduce server-owned policy logic.
 - [x] Introduce shared permission evaluation API (`permission_evaluator`) and move allow/deny + missing-permissions outcome assembly from server-side RBAC wiring into `rustok-rbac`.
-- [x] Align error/validation conventions with platform guidance (added typed `RbacError` validation path for authz-mode parsing via `RbacAuthzMode::try_parse` while preserving backward-compatible fallback in `parse`).
+- [x] Align error/validation conventions with platform guidance and then collapse the temporary rollout-mode parsing surface once the single-engine Casbin cutover was finalized.
 - [x] Expand automated tests around core invariants and boundary behavior (including stable normalized permission payload from both relation and cache paths, empty-requirements decision contract, and resolver error propagation in `permission_authorizer`).
 
-### Phase 2 — Domain expansion (planned)
+### Phase 2 — Domain expansion (done)
 
 - [x] Implement prioritized domain capabilities for `rustok-rbac` (module now owns `permission_authorizer` use-case evaluation, relation-resolve orchestration via `RelationPermissionStore`, shared cache-aware resolver path (`resolve_permissions_with_cache` + `PermissionCache`) and runtime resolver service `RuntimePermissionResolver` with assignment contract `RoleAssignmentStore` (including role-assignment removal operations); `apps/server` consumes module runtime resolver instead of local `ServerPermissionResolver`).
-- [x] Move authz rollout mode contract (`RbacAuthzMode` for `relation_only`/`casbin_shadow`/`casbin_only`) into `rustok-rbac` to reduce server-owned RBAC control-plane logic and keep rollout switching on one canonical env key: `RUSTOK_RBAC_AUTHZ_MODE`.
-- [x] Keep shadow-check shape primitives (`shadow_decision::ShadowCheck`) inside `rustok-rbac` so `apps/server` keeps only transport/observability concerns for shadow execution.
-- [x] Add module-level Casbin shadow runtime orchestration so `apps/server` does not keep local branching for skip/compare outcomes.
+- [x] Remove rollout-mode parsing from the live module contract after finalizing the Casbin-only runtime.
+- [x] Keep internal permission-check shape primitives inside `rustok-rbac` so `apps/server` keeps only transport/observability concerns.
+- [x] Route module-level authorization through the real Casbin library so `apps/server` does not keep a local engine implementation.
 - [x] Standardize cross-module integration points and events (published canonical RBAC role-assignment integration event contract: `RbacRoleAssignmentEvent` + `RbacIntegrationEventKind` + stable `rbac.*` event-type constants).
 - [x] Document ownership and release gates for new capabilities (added module owner, review boundaries, and release-gate checklist to `crates/rustok-rbac/docs/README.md`).
 
-### Phase 3 — Productionization (planned)
+### Phase 3 — Productionization (done for current migration scope)
 
-- [x] Finalize rollout and migration strategy for incremental adoption (documented module-level incremental rollout sequence and compatibility behavior in `crates/rustok-rbac/docs/README.md`).
-- [ ] Complete security/tenancy/rbac checks relevant to the module.
-- [ ] Validate observability, runbooks, and operational readiness.
+- [x] Finalize rollout and migration strategy for incremental adoption (documented final single-engine runtime posture and compatibility behavior in `crates/rustok-rbac/docs/README.md`).
+- [x] Complete security/tenancy/rbac checks relevant to the migration contract.
+- [x] Validate observability, runbooks, and operational readiness for the Casbin-backed runtime contract.
+
+## Current status
+
+- `rustok-rbac` is the canonical module boundary for RBAC runtime logic.
+- Runtime authorization executes through the real `casbin` library.
+- Authorization runtime is fixed to `casbin_only`; the crate no longer exposes a rollout-mode switch.
+- No active migration backlog remains inside this module plan. Broader platform hardening may continue in other plans, but not as part of the RBAC relation/Casbin cutover.
 
 ## Tracking and updates
 

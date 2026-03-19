@@ -1,16 +1,13 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_core::i18n::{Locale, translate};
 use loco_rs::app::AppContext;
-use crate::error::Error;
+use rustok_core::{i18n::translate, Locale};
 
 use crate::auth::{auth_config_from_ctx, decode_invite_token, encode_password_reset_token};
 use crate::context::{infer_user_role_from_permissions, TenantContext};
 use crate::graphql::errors::{ErrorCode, GraphQLError};
 use crate::models::users;
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService};
-use crate::services::email::{
-    email_service_from_ctx, password_reset_url, PasswordResetEmail, PasswordResetEmailSender,
-};
+use crate::services::email::{email_service_from_ctx, password_reset_url, PasswordResetEmail};
 
 use crate::context::AuthContext;
 
@@ -29,24 +26,18 @@ fn unauthenticated_auth_error(message: &str) -> FieldError {
 fn map_auth_lifecycle_error(error: AuthLifecycleError, locale: Locale) -> FieldError {
     let t = |key: &str| translate(locale, key);
     match error {
-        AuthLifecycleError::EmailAlreadyExists => {
-            FieldError::new(t("auth.email_already_exists"))
-        }
+        AuthLifecycleError::EmailAlreadyExists => FieldError::new(t("auth.email_already_exists")),
         AuthLifecycleError::InvalidCredentials => {
             unauthenticated_auth_error(&t("auth.invalid_credentials"))
         }
-        AuthLifecycleError::UserInactive => {
-            unauthenticated_auth_error(&t("auth.user_inactive"))
-        }
+        AuthLifecycleError::UserInactive => unauthenticated_auth_error(&t("auth.user_inactive")),
         AuthLifecycleError::InvalidRefreshToken => {
             unauthenticated_auth_error(&t("auth.invalid_refresh_token"))
         }
         AuthLifecycleError::SessionExpired => {
             unauthenticated_auth_error(&t("auth.session_expired"))
         }
-        AuthLifecycleError::UserNotFound => {
-            unauthenticated_auth_error(&t("auth.user_not_found"))
-        }
+        AuthLifecycleError::UserNotFound => unauthenticated_auth_error(&t("auth.user_not_found")),
         AuthLifecycleError::InvalidResetToken => {
             unauthenticated_auth_error(&t("auth.invalid_reset_token"))
         }
@@ -55,7 +46,6 @@ fn map_auth_lifecycle_error(error: AuthLifecycleError, locale: Locale) -> FieldE
         }
     }
 }
-
 
 fn locale_from_ctx(ctx: &Context<'_>) -> Locale {
     ctx.data::<Locale>().copied().unwrap_or_default()
@@ -310,10 +300,9 @@ impl AuthMutation {
         let sid = uuid::Uuid::parse_str(&session_id)
             .map_err(|_| FieldError::new("Invalid session ID format"))?;
 
-        let revoked =
-            AuthLifecycleService::revoke_session(app_ctx, tenant.id, auth.user_id, sid)
-                .await
-                .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
+        let revoked = AuthLifecycleService::revoke_session(app_ctx, tenant.id, auth.user_id, sid)
+            .await
+            .map_err(|e| map_auth_lifecycle_error(e, locale_from_ctx(ctx)))?;
 
         Ok(RevokeSessionPayload {
             success: true,
@@ -392,13 +381,13 @@ impl AuthMutation {
 
 #[cfg(test)]
 mod tests {
-    use super::{map_auth_lifecycle_error, locale_from_ctx, AuthLifecycleError};
+    use super::{map_auth_lifecycle_error, AuthLifecycleError};
     use rustok_core::i18n::Locale;
 
     #[test]
     fn maps_invalid_refresh_token_message() {
         let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidRefreshToken, Locale::En);
-        assert!(err.message.contains("Invalid refresh token"));
+        assert!(err.message.contains("Invalid or expired refresh token"));
     }
 
     #[test]
@@ -492,6 +481,9 @@ mod tests {
     #[test]
     fn maps_auth_errors_in_russian_locale() {
         let err = map_auth_lifecycle_error(AuthLifecycleError::InvalidCredentials, Locale::Ru);
-        assert!(!err.message.is_empty(), "Russian locale must produce a non-empty message");
+        assert!(
+            !err.message.is_empty(),
+            "Russian locale must produce a non-empty message"
+        );
     }
 }

@@ -126,7 +126,7 @@ CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
 - [x] Validation service (использует `CustomFieldsSchema` из core) *(добавлен `apps/server/src/services/flex_standalone_validation_service.rs`, включая normalize/apply_defaults/strip_unknown/validate pipeline)*
 - [x] CRUD services *(добавлен SeaORM adapter `FlexStandaloneSeaOrmService` в `apps/server/src/services/flex_standalone_service.rs`, реализующий `flex::FlexStandaloneService` с tenant-scoped CRUD для schemas/entries)*
 - [~] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; в `crates/flex` добавлены transport-agnostic envelope helper-ы и orchestration helper-ы `*_with_event()`, emission wiring в adapters pending)*
-- [ ] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/:slug/entries`
+- [ ] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{slug}/entries`
 - [ ] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations
 - [ ] RBAC permissions: `flex.schemas.*`, `flex.entries.*` → добавить в `RusToKModule::permissions()`
 - [ ] Indexer handler: `index_flex_entries` + `FlexIndexer` event handler

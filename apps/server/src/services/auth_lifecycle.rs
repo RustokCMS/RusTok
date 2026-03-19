@@ -1,18 +1,18 @@
+use crate::error::Error;
 use chrono::{Duration, Utc};
 use loco_rs::app::AppContext;
-use crate::error::Error;
-use crate::error::Result;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 
-use crate::auth::{auth_config_from_ctx, 
-    decode_password_reset_token, encode_access_token, generate_refresh_token, hash_password,
-    hash_refresh_token, verify_password, AuthConfig,
+use crate::auth::{
+    auth_config_from_ctx, decode_password_reset_token, encode_access_token, generate_refresh_token,
+    hash_password, hash_refresh_token, verify_password, AuthConfig,
 };
 use crate::context::infer_user_role_from_permissions;
 use crate::models::{sessions, users};
+use rustok_core::{i18n::translate, Locale};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::rbac_service::RbacService;
@@ -65,7 +65,7 @@ impl From<AuthLifecycleError> for Error {
             }
             AuthLifecycleError::UserInactive => Error::Unauthorized("User is inactive".into()),
             AuthLifecycleError::InvalidRefreshToken => {
-                Error::Unauthorized("Invalid refresh token".into())
+                Error::Unauthorized(translate(Locale::En, "auth.invalid_refresh_token"))
             }
             AuthLifecycleError::SessionExpired => Error::Unauthorized("Session expired".into()),
             AuthLifecycleError::UserNotFound => Error::Unauthorized("User not found".into()),
@@ -637,7 +637,10 @@ mod tests {
     use migration::Migrator;
     use rustok_core::UserStatus;
     use rustok_test_utils::db::setup_test_db_with_migrations;
-    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set};
+    use sea_orm::{
+        ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+        QuerySelect, Set,
+    };
     use serial_test::serial;
     use std::sync::atomic::Ordering;
 
@@ -1841,7 +1844,10 @@ mod tests {
             .await
             .expect("second update succeeded");
 
-        assert_eq!(result2.rows_affected, 0, "already-revoked session is skipped");
+        assert_eq!(
+            result2.rows_affected, 0,
+            "already-revoked session is skipped"
+        );
     }
 
     #[tokio::test]
@@ -1897,7 +1903,10 @@ mod tests {
         .await
         .expect("create to-be-revoked session");
         sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .col_expr(
+                sessions::Column::RevokedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
             .filter(sessions::Column::Id.eq(revoked_session.id))
             .exec(&db)
             .await
@@ -1988,7 +1997,10 @@ mod tests {
 
         // First revocation: should affect 1 row
         let result = sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .col_expr(
+                sessions::Column::RevokedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
             .filter(sessions::Column::TenantId.eq(tenant.id))
             .filter(sessions::Column::UserId.eq(user.id))
             .filter(sessions::Column::Id.eq(session.id))
@@ -1996,11 +2008,17 @@ mod tests {
             .exec(&db)
             .await
             .expect("revoke session");
-        assert!(result.rows_affected > 0, "first revocation should return true");
+        assert!(
+            result.rows_affected > 0,
+            "first revocation should return true"
+        );
 
         // Second revocation of already-revoked session: 0 rows affected
         let result2 = sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .col_expr(
+                sessions::Column::RevokedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
             .filter(sessions::Column::TenantId.eq(tenant.id))
             .filter(sessions::Column::UserId.eq(user.id))
             .filter(sessions::Column::Id.eq(session.id))
@@ -2008,7 +2026,10 @@ mod tests {
             .exec(&db)
             .await
             .expect("re-revoke session");
-        assert_eq!(result2.rows_affected, 0, "second revocation should return false");
+        assert_eq!(
+            result2.rows_affected, 0,
+            "second revocation should return false"
+        );
     }
 
     #[tokio::test]
@@ -2042,7 +2063,10 @@ mod tests {
 
         // Attacker tries to revoke owner's session (user_id filter mismatch)
         let result = sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .col_expr(
+                sessions::Column::RevokedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
             .filter(sessions::Column::TenantId.eq(tenant.id))
             .filter(sessions::Column::UserId.eq(attacker.id)) // wrong user
             .filter(sessions::Column::Id.eq(session.id))
@@ -2051,7 +2075,10 @@ mod tests {
             .await
             .expect("cross-user revoke attempt");
 
-        assert_eq!(result.rows_affected, 0, "attacker must not revoke another user's session");
+        assert_eq!(
+            result.rows_affected, 0,
+            "attacker must not revoke another user's session"
+        );
 
         // Owner's session should still be active
         let still_active = sessions::Entity::find()
@@ -2060,7 +2087,10 @@ mod tests {
             .one(&db)
             .await
             .expect("query session");
-        assert!(still_active.is_some(), "session should remain active after failed cross-user revocation");
+        assert!(
+            still_active.is_some(),
+            "session should remain active after failed cross-user revocation"
+        );
     }
 
     #[tokio::test]
@@ -2115,7 +2145,10 @@ mod tests {
 
         // Revoke all except current (mirrors revoke_user_sessions with except_session_id)
         let result = sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .col_expr(
+                sessions::Column::RevokedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
             .filter(sessions::Column::TenantId.eq(tenant.id))
             .filter(sessions::Column::UserId.eq(user.id))
             .filter(sessions::Column::Id.ne(current.id))
@@ -2124,7 +2157,10 @@ mod tests {
             .await
             .expect("revoke all other sessions");
 
-        assert_eq!(result.rows_affected, 2, "both other sessions should be revoked");
+        assert_eq!(
+            result.rows_affected, 2,
+            "both other sessions should be revoked"
+        );
 
         // Current session must still be active
         let still_active = sessions::Entity::find()
@@ -2133,7 +2169,10 @@ mod tests {
             .one(&db)
             .await
             .expect("query current session");
-        assert!(still_active.is_some(), "current session must survive revoke_all_other_sessions");
+        assert!(
+            still_active.is_some(),
+            "current session must survive revoke_all_other_sessions"
+        );
 
         // other1 must be revoked
         let revoked = sessions::Entity::find()
@@ -2193,7 +2232,10 @@ mod tests {
 
         // Revoke all sessions for tenant_a / user_a (no except_session_id)
         sessions::Entity::update_many()
-            .col_expr(sessions::Column::RevokedAt, sea_orm::sea_query::Expr::value(now))
+            .col_expr(
+                sessions::Column::RevokedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
             .filter(sessions::Column::TenantId.eq(tenant_a.id))
             .filter(sessions::Column::UserId.eq(user_a.id))
             .filter(sessions::Column::RevokedAt.is_null())
@@ -2208,7 +2250,10 @@ mod tests {
             .one(&db)
             .await
             .expect("query session B");
-        assert!(b_still_active.is_some(), "tenant B session must not be affected");
+        assert!(
+            b_still_active.is_some(),
+            "tenant B session must not be affected"
+        );
 
         // session_a should be revoked
         let a_revoked = sessions::Entity::find()

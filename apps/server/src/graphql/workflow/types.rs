@@ -2,13 +2,15 @@ use async_graphql::{Enum, InputObject, SimpleObject};
 use serde_json::Value;
 use uuid::Uuid;
 
-use rustok_workflow::entities::{ExecutionStatus, OnError, StepExecutionStatus, StepType, WorkflowStatus};
+use rustok_workflow::entities::{
+    ExecutionStatus, OnError, StepExecutionStatus, StepType, WorkflowStatus,
+};
+use rustok_workflow::templates::WorkflowTemplate;
 use rustok_workflow::{
     WorkflowExecutionResponse, WorkflowResponse, WorkflowStepExecutionResponse,
     WorkflowStepResponse, WorkflowSummary,
 };
 use rustok_workflow::{WorkflowVersionDetail, WorkflowVersionSummary};
-use rustok_workflow::templates::WorkflowTemplate;
 
 // ── Enum mirrors ───────────────────────────────────────────────────────────────
 

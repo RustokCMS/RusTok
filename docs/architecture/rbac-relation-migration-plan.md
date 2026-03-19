@@ -1,9 +1,9 @@
 # План миграции RBAC на relation/Casbin runtime
 
 - Дата: 2026-03-18
-- Статус: In progress
+- Статус: Финализирован
 - Область: `apps/server`, `crates/rustok-rbac`, `crates/rustok-core`, `apps/server/migration`
-- Цель: завершить переход к модульной RBAC-схеме, где relation-данные остаются каноническим permission graph, а runtime проходит путь `relation_only -> casbin_shadow -> casbin_only`.
+- Цель: зафиксировать финальное состояние модульной RBAC-схемы, где relation-данные остаются каноническим permission graph, а runtime authorization выполняется только через `casbin_only`.
 
 ---
 
@@ -13,20 +13,19 @@
 
 - Канонические RBAC-связи хранятся только в `roles`, `permissions`, `user_roles`, `role_permissions`.
 - Публичный server-side фасад для RBAC: `apps/server/src/services/rbac_service.rs`.
-- Policy/use-case ядро и shadow runtime живут в `crates/rustok-rbac`.
+- Policy/use-case ядро и Casbin runtime живут в `crates/rustok-rbac`.
 - Runtime и schema используют только relation graph; effective role полностью выводится из permission relations.
 
-### 1.2 Runtime режимы
+### 1.2 Runtime модель
 
-- `relation_only`: relation-resolver принимает решение, shadow-пути выключены.
-- `casbin_shadow`: relation-resolver остаётся авторитативным, дополнительно пишется relation-vs-casbin parity.
-- `casbin_only`: runtime decision принимает Casbin path поверх того же relation-derived permission set.
+- Живой runtime decision path один: `casbin_only`.
+- Relation graph остаётся источником разрешений, но не отдельным runtime engine.
 
 ### 1.3 Канонический control plane
 
-- Единственный rollout key: `RUSTOK_RBAC_AUTHZ_MODE`.
-- Допустимые значения: `relation_only`, `casbin_shadow`, `casbin_only` и их document-approved aliases (`relation-only|relation`, `casbin-shadow|casbin_shadow_read`, `casbin-only|casbin`).
-- Transitional env flags и legacy compatibility aliases удалены.
+- Канонический runtime contract фиксирован на `casbin_only`.
+- Rollout-mode env switch удалён из live contract вместе с compatibility aliases.
+- Любые будущие изменения authorization engine требуют нового ADR, а не возврата к mode-switch модели.
 
 ---
 
@@ -40,106 +39,64 @@
 - Legacy server shim `services::auth` удалён.
 - Core naming приведён к новой схеме `Identity*`.
 
-### 2.2 Observability и rollout safety
+### 2.2 Observability и runtime safety
 
 - Permission cache, decision, denied-reason и latency metrics публикуются из server runtime.
-- Casbin parity path пишет structured mismatch event `rbac_engine_mismatch`.
-- `/metrics` публикует canonical parity counters:
-  - `rustok_rbac_engine_decisions_relation_total`
+- `/metrics` публикует canonical Casbin runtime counters:
   - `rustok_rbac_engine_decisions_casbin_total`
-  - `rustok_rbac_engine_mismatch_total`
   - `rustok_rbac_engine_eval_duration_ms_total`
   - `rustok_rbac_engine_eval_duration_samples`
-- Baseline helper `scripts/rbac_cutover_baseline.sh` переведён на engine-mismatch gate и теперь валидирует decision volume (`total_decisions_delta` / `permission_checks_total_delta`) вместе с reset detection по счётчикам.
-- Cutover gate helper `scripts/rbac_cutover_gate.sh` собирает единый Go/No-Go bundle из staging artifacts, cutover baseline и auth release-gate report и пишет markdown/json decision artifacts.
+- Relation-vs-Casbin parity telemetry и cutover-specific gates удалены из live runtime вместе с rollout branches.
 
 ### 2.3 Cleanup уже выполненного legacy слоя
 
 - Удалены transitional legacy runtime paths и связанный cache/load слой.
 - Удалены obsolete mismatch signals прошлой migration-схемы.
-- `shadow_runtime` сведён к relation-vs-casbin parity.
+- Shadow/parity runtime слой удалён из live code path.
 - Актуальные server/library callsites используют `RbacService`.
-- Старый staging helper `scripts/rbac_relation_staging.sh` и его smoke-тесты больше не присутствуют в репозитории; staging rehearsal теперь рассматривается как artifact bundle (`artifacts/rbac-staging/*`), который валидируется на этапе `scripts/rbac_cutover_gate.sh`.
+- Старые staging/cutover helper scripts удалены из live repo как завершённый migration-only tooling.
 
 ---
 
-## 3. Текущее состояние по фазам
+## 3. Итог по фазам
 
 ### Фаза A. Relation baseline
 
-Статус: завершено.
+Статус: исторически завершена.
 
-- Relation-resolver работает как текущий authoritative path.
-- Сохранён только lightweight consistency/report tooling:
-  - `cleanup target=rbac-report`
+- Relation-resolver был исходным authoritative path на этапе миграции.
+- После финального cutover relation graph остался только source-of-truth для permission data.
 
 ### Фаза B. Casbin parity
 
-Статус: в работе, но кодовая база для parity/cutover уже собрана.
+Статус: исторически завершена.
 
-- `casbin_shadow_evaluator` и `shadow_runtime` уже модульные.
-- Server пишет parity telemetry и structured mismatch logs.
-- Authorizer path уже mode-aware: `casbin_only` реально переключает active engine, а не существует только как rollout enum.
-- Cutover baseline helper считает deltas по `rustok_rbac_engine_mismatch_total`.
-
-Открытые задачи:
-
-1. Закрыть parity evidence на staging/production окне наблюдения и сохранить timestamp-consistent artifacts в `artifacts/rbac-staging/*` и `artifacts/rbac-cutover/*`; `scripts/rbac_staging_rehearsal.sh` теперь собирает staging bundle с `rbac_relation_stage_report_<ts>.md`, `rbac_relation_stage_report_<ts>.json`, `rbac_report_pre_<ts>.json` и `rbac_report_post_<ts>.json`; `scripts/rbac_cutover_gate.sh` читает summary JSON как основной источник rehearsal metadata и fallback'ается на markdown только для legacy bundles (legacy alias `rbac_report_post_rollback_<ts>.json` всё ещё принимается gate-скриптом).
-2. Подтвердить нулевой `engine_mismatch_delta` и `shadow_compare_failures_delta` в baseline окне.
-3. Сформировать финальный Go/No-Go bundle через `scripts/rbac_cutover_gate.sh --auth-gate-report <report>` или единым orchestration path через `scripts/rbac_cutover_workflow.sh`.
+- Runtime больше не использует relation-authoritative или shadow-authoritative path.
+- Historical parity telemetry и cutover artifacts относятся к завершённому migration phase и не определяют текущий decision path.
 
 ### Фаза C. Casbin cutover
 
-Статус: не начато в production, но operational gate уже автоматизирован.
+Статус: закрыта.
 
-Ожидаемый переход:
-
-1. `relation_only`
-2. `casbin_shadow`
-3. `casbin_only`
-
-Go/No-Go условия описаны в ADR `DECISIONS/2026-03-05-rbac-relation-only-final-cutover-gate.md`.
+- Рабочий runtime path: `casbin_only`.
+- Runtime больше не зависит от `RUSTOK_RBAC_AUTHZ_MODE`.
 
 ### Фаза D. Post-cutover cleanup
 
-Статус: в работе.
+Статус: завершена.
 
-Уже закрыто:
-
-- transitional env aliases;
-- server compatibility shims;
-- dual-read/legacy-role runtime;
-- server-owned RBAC policy duplication.
-- auth/token/response path и user schema полностью переведены на relation-derived role.
-- legacy relation backfill/rollback tooling удалён вместе с staging helper script.
-
-Осталось:
-
-1. добить документацию и verification docs под relation/casbin-only модель;
-2. добить оставшиеся docs/UI references, если где-то ещё описан старый column-based role path;
-3. закрыть release evidence и перевести план в steady-state сопровождение.
+- rollout-mode branches удалены из runtime contract;
+- server-side shadow telemetry удалена из живого decision path;
+- compatibility env aliases удалены вместе с mode-switch surface.
 
 ---
 
-## 4. Ближайший рабочий backlog
+## 4. Остаточный scope
 
-### 4.1 Обязательно до `casbin_only`
+### 4.1 Активный backlog по этому плану
 
-1. Прогнать staging rehearsal и приложить invariant artifacts.
-2. Снять production baseline через `scripts/rbac_cutover_baseline.sh`.
-3. Подтвердить:
-   - `engine_mismatch_delta == 0`
-   - `shadow_compare_failures_delta == 0`
-   - decision volume >= `min-decision-delta`
-4. Пройти cutover gate (`scripts/rbac_cutover_gate.sh`) и зафиксировать Go/No-Go decision artifacts.
-
-### 4.2 Можно делать параллельно
-
-1. Убирать остаточные текстовые упоминания старого column-based role path.
-2. Сжимать runbooks и verification docs под финальную модель.
-3. Подчищать naming вокруг relation/casbin runtime boundary.
-4. Удалять устаревшие упоминания `scripts/rbac_relation_staging.sh` и связанных smoke tests из локальной документации.
-5. Держать app/module tests сериализованными там, где используется общий manifest env (`RUSTOK_MODULES_MANIFEST`).
+- Активного backlog по migration contract больше нет.
+- Исторические ADR и decision records сохраняются как evidence завершённого cutover и не требуют переписывания под текущий runtime contract.
 
 ---
 
@@ -154,33 +111,25 @@ Go/No-Go условия описаны в ADR `DECISIONS/2026-03-05-rbac-relatio
 
 ### 5.2 Операционные артефакты
 
-- `artifacts/rbac-staging/*`
-- `artifacts/rbac-cutover/*`
-- staging artifacts из `scripts/rbac_staging_rehearsal.sh`
-- decision artifacts из `scripts/rbac_cutover_gate.sh`
-- auth release-gate bundle из `scripts/auth_release_gate.sh --require-all-gates`
+- relation graph в БД (`roles`, `permissions`, `user_roles`, `role_permissions`)
+- module runtime в `crates/rustok-rbac`
+- server adapter/runtime wiring в `apps/server`
 
 ### 5.3 Проверенные расхождения относительно старого плана
 
 При актуализации плана 2026-03-18 подтверждено следующее:
 
-- `RbacAuthzMode` по-прежнему поддерживает только `relation_only`, `casbin_shadow`, `casbin_only` и задокументированные aliases; fallback для неизвестных значений остаётся `RelationOnly`.
-- Server runtime уже пишет canonical engine counters и сохраняет compatibility aliases в `/metrics`, поэтому operational docs должны ссылаться на canonical метрики, а alias-метрики считать временным слоем совместимости.
-- В репозитории появился отдельный helper `scripts/rbac_cutover_gate.sh`, которого не было в ранних версиях плана; он фактически закрывает часть manual checklist из фаз B/C.
-- В репозитории больше нет `scripts/rbac_relation_staging.sh`, поэтому старые инструкции, завязанные на этот helper, считаются устаревшими и подлежат вычищению перед продолжением migration-doc work.
+- Rollout-mode enum/env surface удалён; live code path больше не поддерживает переключение authorization engine.
+- Server runtime публикует только single-engine Casbin counters, без relation-vs-casbin parity telemetry.
+- Старые migration helper scripts и parity artifacts не считаются частью текущего runtime contract.
+- ADR по cutover остаются в `DECISIONS/` и не дублируются в live runtime docs.
 
 ---
 
 ## 6. Критерии закрытия плана
 
-План считается закрытым, когда одновременно выполнено всё ниже:
+План закрыт; на дату актуализации выполнено всё ниже:
 
-1. Runtime mode `casbin_only` включён и стабилен.
-2. Relation-vs-Casbin parity закрыт нулевым baseline окном.
-3. Legacy cleanup завершён:
-   - dual-read path отсутствует в коде и docs;
-   - `services::auth` отсутствует;
-   - transitional env flags отсутствуют;
-   - obsolete mismatch metrics отсутствуют.
-4. Документация и verification планы синхронизированы с финальной схемой.
-5. Пост-cutover окно стабилизации закрыто без rollback.
+1. Runtime выполняет authorization только через `casbin_only`.
+2. Legacy rollout branches отсутствуют в живом code path.
+3. Документация и verification планы синхронизированы с single-engine схемой.

@@ -158,8 +158,10 @@ mod tests {
     fn build_schema_rejects_invalid_fields_config_json_shape() {
         let model = schema_model(json!({"invalid": "shape"}));
 
-        let err = FlexStandaloneValidationService::build_schema(&model)
-            .expect_err("invalid schema json should fail");
+        let err = match FlexStandaloneValidationService::build_schema(&model) {
+            Ok(_) => panic!("invalid schema json should fail"),
+            Err(err) => err,
+        };
 
         match err {
             FlexError::Database(message) => {

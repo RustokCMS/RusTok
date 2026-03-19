@@ -50,12 +50,9 @@ impl SystemQuery {
         let mut overall = "ok";
 
         // DB probe
-        let db_ok = sea_orm::ConnectionTrait::execute_unprepared(
-            db,
-            "SELECT 1",
-        )
-        .await
-        .is_ok();
+        let db_ok = sea_orm::ConnectionTrait::execute_unprepared(db, "SELECT 1")
+            .await
+            .is_ok();
         components.push(ComponentHealth {
             name: "database".into(),
             status: if db_ok { "ok" } else { "unhealthy" }.into(),
@@ -110,11 +107,7 @@ impl SystemQuery {
 
     /// Media usage statistics for a tenant (requires mod-media feature).
     #[cfg(feature = "mod-media")]
-    async fn media_usage(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-    ) -> Result<MediaUsageStats> {
+    async fn media_usage(&self, ctx: &Context<'_>, tenant_id: Uuid) -> Result<MediaUsageStats> {
         use rustok_media::entities::media::{Column as MediaCol, Entity as MediaEntity};
 
         let db = ctx.data::<DatabaseConnection>()?;
@@ -129,10 +122,7 @@ impl SystemQuery {
         let total_bytes: i64 = MediaEntity::find()
             .filter(MediaCol::TenantId.eq(tenant_id))
             .select_only()
-            .column_as(
-                sea_orm::sea_query::Expr::col(MediaCol::Size).sum(),
-                "total",
-            )
+            .column_as(sea_orm::sea_query::Expr::col(MediaCol::Size).sum(), "total")
             .into_tuple::<Option<i64>>()
             .one(db)
             .await
@@ -148,11 +138,7 @@ impl SystemQuery {
     }
 
     /// Active (non-expired, non-revoked) session count for a tenant.
-    async fn session_stats(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-    ) -> Result<SessionStats> {
+    async fn session_stats(&self, ctx: &Context<'_>, tenant_id: Uuid) -> Result<SessionStats> {
         let db = ctx.data::<DatabaseConnection>()?;
         let now = Utc::now().fixed_offset();
 
@@ -162,7 +148,8 @@ impl SystemQuery {
             .filter(SessionCol::ExpiresAt.gt(now))
             .count(db)
             .await
-            .map_err(|e| async_graphql::Error::new(e.to_string()))? as i64;
+            .map_err(|e| async_graphql::Error::new(e.to_string()))?
+            as i64;
 
         Ok(SessionStats {
             tenant_id,

@@ -3,13 +3,13 @@
 //! Removes old sessions and temporary data.
 //! Run with: `cargo loco task --name cleanup --args "sessions"`
 
+use crate::error::{Error, Result};
 use async_trait::async_trait;
 use chrono::Utc;
 use loco_rs::{
     app::AppContext,
     task::{Task, TaskInfo, Vars},
 };
-use crate::error::{Error, Result};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde_json::json;
 
@@ -92,9 +92,7 @@ fn write_rbac_report_file(
         "orphan_user_roles_total": stats.orphan_user_roles_total,
         "orphan_role_permissions_total": stats.orphan_role_permissions_total,
     }))
-    .map_err(|error| {
-        Error::string(&format!("rbac report serialization failed: {error}"))
-    })?;
+    .map_err(|error| Error::string(&format!("rbac report serialization failed: {error}")))?;
     std::fs::write(path, payload)
         .map_err(|error| Error::string(&format!("rbac report write failed: {error}")))?;
     Ok(())

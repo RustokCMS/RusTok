@@ -17,11 +17,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(PlatformSettings::TenantId)
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(PlatformSettings::TenantId).uuid().not_null())
                     .col(
                         ColumnDef::new(PlatformSettings::Category)
                             .string_len(64)

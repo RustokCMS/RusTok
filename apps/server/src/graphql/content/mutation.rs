@@ -196,12 +196,7 @@ impl ContentMutation {
         Ok(true)
     }
 
-    async fn publish_node(
-        &self,
-        ctx: &Context<'_>,
-        id: Uuid,
-        tenant_id: Uuid,
-    ) -> Result<GqlNode> {
+    async fn publish_node(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<GqlNode> {
         require_module_enabled(ctx, module_slug::CONTENT).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -266,12 +261,7 @@ impl ContentMutation {
         Ok(node.into())
     }
 
-    async fn archive_node(
-        &self,
-        ctx: &Context<'_>,
-        id: Uuid,
-        tenant_id: Uuid,
-    ) -> Result<GqlNode> {
+    async fn archive_node(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<GqlNode> {
         require_module_enabled(ctx, module_slug::CONTENT).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -301,12 +291,7 @@ impl ContentMutation {
         Ok(node.into())
     }
 
-    async fn restore_node(
-        &self,
-        ctx: &Context<'_>,
-        id: Uuid,
-        tenant_id: Uuid,
-    ) -> Result<GqlNode> {
+    async fn restore_node(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<GqlNode> {
         require_module_enabled(ctx, module_slug::CONTENT).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;

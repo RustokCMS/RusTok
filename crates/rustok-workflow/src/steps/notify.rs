@@ -35,7 +35,9 @@ pub struct NotifyStep {
 
 impl NotifyStep {
     pub fn new(sender: std::sync::Arc<dyn NotificationSender>) -> Self {
-        Self { sender: Some(sender) }
+        Self {
+            sender: Some(sender),
+        }
     }
 
     pub fn stub() -> Self {
@@ -67,17 +69,16 @@ impl WorkflowStep for NotifyStep {
             .and_then(Value::as_str)
             .unwrap_or("Workflow notification");
 
-        let body = config
-            .get("body")
-            .and_then(Value::as_str)
-            .unwrap_or("");
+        let body = config.get("body").and_then(Value::as_str).unwrap_or("");
 
-        info!(channel = channel, recipient = recipient, "Executing notify step");
+        info!(
+            channel = channel,
+            recipient = recipient,
+            "Executing notify step"
+        );
 
         let sender = self.sender.as_ref().ok_or_else(|| {
-            WorkflowError::StepFailed(
-                "notify: no NotificationSender registered".into(),
-            )
+            WorkflowError::StepFailed("notify: no NotificationSender registered".into())
         })?;
 
         sender.send(channel, recipient, subject, body).await?;

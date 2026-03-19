@@ -1,4 +1,4 @@
-use async_graphql::{Context, FieldError, Object, Result};
+use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 
 use crate::auth::hash_password;
@@ -21,7 +21,7 @@ use crate::services::event_bus::event_bus_from_context;
 use crate::services::module_lifecycle::{ModuleLifecycleService, ToggleModuleError};
 use crate::services::rbac_service::RbacService;
 use crate::services::user_field_service::UserFieldService;
-use rustok_core::{Action, ModuleRegistry, Permission, Resource};
+use rustok_core::{ModuleRegistry, Permission};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -64,7 +64,9 @@ async fn validate_custom_fields(
         .extend_with(|_, ext| {
             ext.set("code", "CUSTOM_FIELD_VALIDATION_FAILED");
             if let Ok(v) = serde_json::to_value(&errors) {
-                ext.set("fields", v);
+                if let Ok(gql_value) = async_graphql::Value::from_json(v) {
+                    ext.set("fields", gql_value);
+                }
             }
         }));
     }
@@ -131,7 +133,7 @@ async fn ensure_modules_manage_permission(
         &app_ctx.db,
         &tenant.id,
         &auth.user_id,
-        &Permission::new(Resource::Modules, Action::Manage),
+        &Permission::MODULES_MANAGE,
     )
     .await
     .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -633,7 +635,7 @@ impl RootMutation {
             &app_ctx.db,
             &tenant.id,
             &auth.user_id,
-            &Permission::new(Resource::Modules, Action::Manage),
+        &Permission::MODULES_MANAGE,
         )
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -688,8 +690,12 @@ mod tests {
         map_create_user_error, map_manifest_error, validate_custom_fields, AuthLifecycleError,
         ManifestError,
     };
-    use crate::models::user_field_definitions::Model as UserFieldDefinitionModel;
-    use sea_orm::{entity::prelude::DateTimeWithTimeZone, DatabaseBackend, MockDatabase};
+    use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
+    use migration::Migrator;
+    use rustok_test_utils::db::setup_test_db_with_migrations;
+    use sea_orm::{
+        entity::prelude::DateTimeWithTimeZone, ActiveModelTrait, DatabaseConnection, Set,
+    };
     use uuid::Uuid;
 
     fn field_definition_model(
@@ -698,31 +704,36 @@ mod tests {
         field_type: &str,
         is_required: bool,
         default_value: Option<serde_json::Value>,
-    ) -> UserFieldDefinitionModel {
+    ) -> UserFieldDefinitionActiveModel {
         let now: DateTimeWithTimeZone = chrono::Utc::now().into();
-        UserFieldDefinitionModel {
-            id: Uuid::new_v4(),
-            tenant_id,
-            field_key: field_key.to_string(),
-            field_type: field_type.to_string(),
-            label: serde_json::json!({"en": field_key}),
-            description: None,
-            is_required,
-            default_value,
-            validation: None,
-            position: 0,
-            is_active: true,
-            created_at: now,
-            updated_at: now,
+        UserFieldDefinitionActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            field_key: Set(field_key.to_string()),
+            field_type: Set(field_type.to_string()),
+            label: Set(serde_json::json!({"en": field_key})),
+            description: Set(None),
+            is_required: Set(is_required),
+            default_value: Set(default_value),
+            validation: Set(None),
+            position: Set(0),
+            is_active: Set(true),
+            created_at: Set(now),
+            updated_at: Set(now),
         }
     }
 
-    fn db_with_definitions(
-        definitions: Vec<UserFieldDefinitionModel>,
-    ) -> sea_orm::DatabaseConnection {
-        MockDatabase::new(DatabaseBackend::Postgres)
-            .append_query_results([definitions])
-            .into_connection()
+    async fn db_with_definitions(
+        definitions: Vec<UserFieldDefinitionActiveModel>,
+    ) -> DatabaseConnection {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        for definition in definitions {
+            definition
+                .insert(&db)
+                .await
+                .expect("failed to insert user field definition");
+        }
+        db
     }
 
     #[test]
@@ -754,7 +765,8 @@ mod tests {
             "text",
             false,
             Some(serde_json::json!("sales")),
-        )]);
+        )])
+        .await;
 
         let result = validate_custom_fields(&db, tenant_id, Some(serde_json::json!({})))
             .await
@@ -772,7 +784,8 @@ mod tests {
             "text",
             false,
             None,
-        )]);
+        )])
+        .await;
 
         let result = validate_custom_fields(
             &db,
@@ -788,7 +801,7 @@ mod tests {
     #[tokio::test]
     async fn validate_custom_fields_returns_input_when_schema_empty() {
         let tenant_id = Uuid::new_v4();
-        let db = db_with_definitions(Vec::<UserFieldDefinitionModel>::new());
+        let db = db_with_definitions(Vec::<UserFieldDefinitionActiveModel>::new()).await;
         let payload = Some(serde_json::json!({"nickname": "neo"}));
 
         let result = validate_custom_fields(&db, tenant_id, payload.clone())
@@ -803,7 +816,8 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let db = db_with_definitions(vec![field_definition_model(
             tenant_id, "phone", "text", true, None,
-        )]);
+        )])
+        .await;
 
         let err = validate_custom_fields(&db, tenant_id, Some(serde_json::json!({})))
             .await
@@ -811,9 +825,11 @@ mod tests {
 
         let fields = err
             .extensions
-            .get("fields")
-            .and_then(|v| v.as_array())
+            .as_ref()
+            .and_then(|extensions| extensions.get("fields"))
             .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_array().cloned())
             .unwrap_or_default();
         assert!(!fields.is_empty());
         let first_field = &fields[0];
@@ -837,7 +853,8 @@ mod tests {
             "text",
             false,
             Some(serde_json::json!("sales")),
-        )]);
+        )])
+        .await;
 
         let result = validate_custom_fields(&db, tenant_id, None)
             .await
@@ -851,7 +868,8 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let db = db_with_definitions(vec![field_definition_model(
             tenant_id, "phone", "text", true, None,
-        )]);
+        )])
+        .await;
 
         let err = validate_custom_fields(&db, tenant_id, Some(serde_json::json!({})))
             .await
@@ -860,8 +878,11 @@ mod tests {
         assert!(err.message.contains("Custom field validation failed"));
         let code = err
             .extensions
-            .get("code")
-            .and_then(|v| v.as_str())
+            .as_ref()
+            .and_then(|extensions| extensions.get("code"))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_str().map(ToOwned::to_owned))
             .unwrap_or_default();
         assert_eq!(code, "CUSTOM_FIELD_VALIDATION_FAILED");
     }

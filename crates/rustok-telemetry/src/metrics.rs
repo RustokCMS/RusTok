@@ -969,4 +969,3 @@ pub fn update_storage_health(driver: &str, healthy: bool) {
         .with_label_values(&[driver])
         .set(if healthy { 1 } else { 0 });
 }
-

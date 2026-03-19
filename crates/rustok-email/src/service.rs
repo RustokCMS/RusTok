@@ -73,10 +73,9 @@ impl SmtpEmailSender {
             .parse::<Mailbox>()
             .map_err(|e| EmailError::InvalidAddress(format!("Invalid from address: {e}")))?;
 
-        let mut transport_builder =
-            AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp.host)
-                .map_err(|e| EmailError::SmtpConfig(format!("Invalid SMTP relay: {e}")))?
-                .port(config.smtp.port);
+        let mut transport_builder = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp.host)
+            .map_err(|e| EmailError::SmtpConfig(format!("Invalid SMTP relay: {e}")))?
+            .port(config.smtp.port);
 
         if !config.smtp.username.trim().is_empty() {
             let creds =

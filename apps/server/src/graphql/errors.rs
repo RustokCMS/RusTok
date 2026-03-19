@@ -102,13 +102,14 @@ mod tests {
         ];
 
         for (error, expected_code) in cases {
-            assert_eq!(
-                error
-                    .extensions
-                    .get("code")
-                    .and_then(|value| value.as_str()),
-                Some(expected_code)
-            );
+            let actual_code = error
+                .extensions
+                .as_ref()
+                .and_then(|extensions| extensions.get("code"))
+                .cloned()
+                .and_then(|value| value.into_json().ok())
+                .and_then(|value| value.as_str().map(ToOwned::to_owned));
+            assert_eq!(actual_code.as_deref(), Some(expected_code));
         }
     }
 }

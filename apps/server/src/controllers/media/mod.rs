@@ -33,9 +33,9 @@ fn media_error(e: MediaError) -> Error {
         MediaError::UnsupportedMimeType(t) => {
             Error::BadRequest(format!("Unsupported media type: {t}"))
         }
-        MediaError::FileTooLarge { size, max } => Error::BadRequest(format!(
-            "File too large: {size} bytes (max {max} bytes)"
-        )),
+        MediaError::FileTooLarge { size, max } => {
+            Error::BadRequest(format!("File too large: {size} bytes (max {max} bytes)"))
+        }
         MediaError::Storage(e) => Error::Message(e.to_string()),
         MediaError::Db(e) => Error::Message(e.to_string()),
     }
@@ -105,11 +105,7 @@ pub async fn upload(
         };
 
         let item = service.upload(input).await.map_err(media_error)?;
-        metrics::record_media_upload(
-            &tenant.id.to_string(),
-            &item.mime_type,
-            item.size as u64,
-        );
+        metrics::record_media_upload(&tenant.id.to_string(), &item.mime_type, item.size as u64);
         return Ok((StatusCode::CREATED, Json(item)));
     }
 
@@ -182,7 +178,7 @@ pub async fn upsert_translation(
 // ── Route registration ────────────────────────────────────────────────────────
 
 pub fn routes() -> loco_rs::controller::Routes {
-    use axum::routing::{delete, get, post, put};
+    use axum::routing::{get, put};
     loco_rs::controller::Routes::new()
         .prefix("api/media")
         .add("/", get(list).post(upload))

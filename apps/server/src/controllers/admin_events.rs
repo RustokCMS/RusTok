@@ -1,3 +1,5 @@
+use crate::error::Error;
+use crate::error::Result;
 use axum::{
     extract::{Path, Query, State},
     Json,
@@ -5,8 +7,6 @@ use axum::{
 use chrono::{DateTime, Utc};
 use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
-use crate::error::Error;
-use crate::error::Result;
 use rustok_outbox::entity::{self, SysEventStatus};
 use rustok_telemetry::metrics;
 use sea_orm::{

@@ -42,9 +42,9 @@ command = "npx"
 command_arguments = ["tailwindcss", "-i", "input.css", "-o", "dist/output.css", "--minify"]
 ```
 
-## Текущее состояние improvement plan
+## Текущее состояние admin runtime
 
-В рамках `docs/admin-review-improvement-plan.md` уже реализованы ключевые элементы **Phase 1-3**:
+В `apps/admin` уже зафиксированы и реализованы следующие ключевые элементы текущего runtime contract:
 
 - Auth session хранит `refresh_token` и `expires_at`, `AuthProvider` выполняет периодическую проверку и обновление токена.
 - Dashboard получает `dashboardStats` через GraphQL `Resource` + `Suspense` fallback.
@@ -52,7 +52,7 @@ command_arguments = ["tailwindcss", "-i", "input.css", "-o", "dist/output.css", 
 - FSD-структура полностью реализована: `app/`, `pages/`, `widgets/`, `features/`, `entities/`, `shared/`.
 - Tailwind/shadcn миграция завершена: все страницы и компоненты используют семантические CSS-переменные.
 
-Открытые этапы (Phase 4+) остаются в плане как backlog для итеративной доработки.
+Открытые доработки и будущий scope ведутся только в [`implementation-plan.md`](./implementation-plan.md).
 
 ## Связанные документы
 

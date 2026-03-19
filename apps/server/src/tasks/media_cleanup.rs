@@ -41,9 +41,9 @@ impl Task for MediaCleanupTask {
 
 #[cfg(feature = "mod-media")]
 async fn run_media_cleanup(ctx: &AppContext) -> Result<()> {
-    use rustok_media::entities::media::{Column as MediaCol, Entity as MediaEntity};
+    use rustok_media::entities::media::Entity as MediaEntity;
     use rustok_storage::{StorageError, StorageService};
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
+    use sea_orm::EntityTrait;
 
     let Some(storage) = ctx.shared_store.get::<StorageService>() else {
         tracing::warn!("StorageService not available — skipping media cleanup");
@@ -61,11 +61,9 @@ async fn run_media_cleanup(ctx: &AppContext) -> Result<()> {
     }
     let _ = storage.delete(probe).await;
 
-    // Fetch all (id, path) pairs.
+    // Fetch full models and use the fields we need. This avoids brittle
+    // column-only type plumbing for a maintenance task.
     let records = MediaEntity::find()
-        .select_only()
-        .columns([MediaCol::Id, MediaCol::StoragePath])
-        .into_tuple::<(uuid::Uuid, String)>()
         .all(&ctx.db)
         .await
         .map_err(|e| loco_rs::Error::Message(e.to_string()))?;
@@ -73,7 +71,10 @@ async fn run_media_cleanup(ctx: &AppContext) -> Result<()> {
     let total = records.len();
     let mut removed = 0usize;
 
-    for (id, path) in records {
+    for record in records {
+        let id = record.id;
+        let path = record.storage_path;
+
         // For local storage, check if the file exists.
         // For S3-compatible backends, we attempt a HEAD probe (a zero-byte
         // write to a side-channel path would be destructive, so instead we

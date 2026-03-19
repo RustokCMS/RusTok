@@ -8,9 +8,7 @@ use std::collections::HashMap;
 
 use rustok_core::field_schema::{FieldDefinition, FieldType, ValidationRule};
 
-pub use super::_entities::user_field_definitions::{
-    ActiveModel, Column, Entity, Model, Relation,
-};
+pub use super::_entities::user_field_definitions::{ActiveModel, Column, Entity, Model, Relation};
 
 // Maximum number of field definitions per entity type per tenant.
 // Enforced in [`UserFieldService::create`].
@@ -39,16 +37,14 @@ impl Model {
     /// Returns `None` if `field_type` contains an unknown string (forward
     /// compatibility — unknown types are silently skipped by callers).
     pub fn into_field_definition(self) -> Option<FieldDefinition> {
-        let field_type: FieldType = serde_json::from_value(
-            serde_json::Value::String(self.field_type.clone()),
-        )
-        .ok()?;
+        let field_type: FieldType =
+            serde_json::from_value(serde_json::Value::String(self.field_type.clone())).ok()?;
 
-        let label: HashMap<String, String> =
-            serde_json::from_value(self.label).unwrap_or_default();
+        let label: HashMap<String, String> = serde_json::from_value(self.label).unwrap_or_default();
 
-        let description: Option<HashMap<String, String>> =
-            self.description.and_then(|v| serde_json::from_value(v).ok());
+        let description: Option<HashMap<String, String>> = self
+            .description
+            .and_then(|v| serde_json::from_value(v).ok());
 
         let validation: Option<ValidationRule> =
             self.validation.and_then(|v| serde_json::from_value(v).ok());

@@ -610,11 +610,7 @@ impl PostService {
             let filtered_total = all_items.len() as u64;
             let offset = query.offset() as usize;
             let per_page = query.per_page() as usize;
-            let page_items = all_items
-                .into_iter()
-                .skip(offset)
-                .take(per_page)
-                .collect();
+            let page_items = all_items.into_iter().skip(offset).take(per_page).collect();
             (filtered_total, page_items)
         } else {
             (db_total, all_items)

@@ -82,7 +82,10 @@ impl TagService {
             .await?
             .ok_or_else(|| ContentError::tag_not_found(tag_id))?;
 
-        let translations = t.find_related(tag_translation::Entity).all(&self.db).await?;
+        let translations = t
+            .find_related(tag_translation::Entity)
+            .all(&self.db)
+            .await?;
         Ok(to_tag_response(t, translations, locale))
     }
 

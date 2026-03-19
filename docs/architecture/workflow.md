@@ -1,229 +1,225 @@
 # Workflow — визуальная автоматизация на платформенной очереди
 
-> **Статус:** Реализован ✅
-> **Модуль:** `rustok-workflow` ([docs](../../crates/rustok-workflow/docs/README.md) · [CRATE_API](../../crates/rustok-workflow/CRATE_API.md))
-> **Вид:** `ModuleKind::Optional` — полноценный модуль с таблицами, зарегистрирован в `apps/server`
+> Статус: реализован и интегрирован в live runtime  
+> Модуль: `rustok-workflow`  
+> Вид: `ModuleKind::Optional`
 
 ---
 
 ## 1. Что это
 
-Визуальный конструктор автоматизаций (аналог n8n / Directus Flows), но:
-- Не параллельная система очередей — встраивается в существующую event-инфраструктуру (outbox → `EventTransport`)
-- Не внешний сервис — часть платформы с tenant isolation и RBAC
-- Не замена Alloy — дополнение: Workflow оркестрирует, Alloy исполняет произвольную логику
+Workflow — это платформенный модуль автоматизаций в стиле n8n / Directus Flows:
+
+- использует существующую событийную инфраструктуру платформы;
+- не поднимает отдельную очередь или отдельный event loop;
+- изолирован по tenant и защищён через платформенный RBAC;
+- может оркестрировать вызовы Alloy, HTTP, notify и публикацию событий.
 
 ---
 
-## 2. Архитектурный принцип
+## 2. Runtime-модель
 
-```
-DomainEvent (blog.published, order.paid, ...)
+```text
+DomainEvent / cron / webhook / manual trigger
        ↓
-  EventBus (outbox → EventTransport)
+WorkflowTriggerHandler / WorkflowCronScheduler
        ↓
-  WorkflowTriggerHandler          ← подписан на события
+WorkflowService + WorkflowEngine
        ↓
-  WorkflowEngine                  ← находит matching workflows
+Linear step chain
        ↓
-  Step 1 → Step 2 → Step 3       ← цепочка шагов
-       ↓         ↓         ↓
-  каждый шаг может эмитить DomainEvent обратно в outbox
+Step outputs / execution logs / optional emitted events
 ```
 
-**Ключевое:** workflow НЕ запускает свой event loop. Он — потребитель и производитель событий
-через существующий `TransactionalEventBus`. Конкретный транспорт (iggy, rabbitmq, базовый outbox)
-workflow не волнует — он работает через абстракции `EventBus` / `EventTransport`.
-Вся инфраструктура доставки (retry, DLQ, replay) обеспечивается транспортным слоем.
+Ключевые свойства текущего runtime:
+
+- event trigger path работает через платформенный event dispatcher;
+- cron trigger path работает через `WorkflowCronScheduler`;
+- executions и step executions сохраняются в модульные таблицы;
+- workflow не зависит от конкретного event transport implementation, а использует общую платформенную событийную модель.
 
 ---
 
-## 3. Workflow и Alloy
+## 3. Триггеры
 
-| | Workflow | Alloy |
-|--|----------|-------|
-| **Что делает** | Оркестрирует: "когда X → сделай Y, потом Z" | Исполняет: произвольная логика на данных |
-| **Интерфейс** | Визуальный редактор (граф шагов) | Натуральный язык / Rhai / API |
-| **Уровень** | Координация между модулями | Создание новой функциональности |
-| **Данные** | Маршрутизирует между шагами | Трансформирует, обогащает, создаёт |
+Поддерживаемые trigger-режимы:
 
-**Пересечение:** Alloy может быть action-шагом внутри workflow.
-Workflow запускает Alloy-скрипт как один из шагов цепочки.
+| Тип | Источник |
+|-----|----------|
+| `event` | Платформенное доменное событие |
+| `cron` | Планировщик `WorkflowCronScheduler` |
+| `webhook` | Входящий платформенный HTTP/webhook trigger |
+| `manual` | Явный запуск из UI/API |
 
-```
-Trigger: order.paid
-  → Step 1: Alloy script "сгенерируй invoice PDF"
-  → Step 2: отправь email клиенту
-  → Step 3: обнови статус в CRM
-  → Step 4: Alloy script "синхронизируй с 1С"
-```
-
-В будущем Alloy может **порождать workflow** — описал на человеческом языке бизнес-процесс,
-Alloy создал граф workflow с нужными шагами и Rhai-скриптами внутри.
+Webhook и versioning больше не являются future-идеями: они входят в текущий модульный контракт.
 
 ---
 
-## 4. Модель данных (planned)
+## 4. Типы шагов
 
-### Таблицы
+Текущий набор step types:
 
-```
-workflows
-├── id: uuid
-├── tenant_id: uuid
-├── name: string
-├── description: text
-├── status: enum (draft | active | paused | archived)
-├── trigger_config: jsonb    -- тип триггера + параметры
-├── created_at / updated_at
-└── created_by: uuid
+| Тип | Назначение |
+|-----|------------|
+| `action` | Платформенное/модульное действие |
+| `emit_event` | Публикация события |
+| `condition` | Ветвление по данным контекста |
+| `delay` | Отложенное выполнение |
+| `http` | Внешний HTTP-вызов |
+| `alloy_script` | Шаг с интеграцией Alloy |
+| `notify` | Уведомление |
 
-workflow_steps
-├── id: uuid
-├── workflow_id: uuid (FK)
-├── position: i32            -- порядок выполнения
-├── step_type: enum          -- action | condition | delay | alloy_script | ...
-├── config: jsonb            -- параметры шага
-├── on_error: enum           -- stop | skip | retry | fallback_step
-└── timeout_ms: i64
-
-workflow_executions
-├── id: uuid
-├── workflow_id: uuid (FK)
-├── trigger_event_id: uuid   -- какое событие запустило
-├── status: enum (running | completed | failed | timed_out)
-├── started_at / completed_at
-├── context: jsonb           -- данные, переданные между шагами
-└── error: text
-
-workflow_step_executions
-├── id: uuid
-├── execution_id: uuid (FK)
-├── step_id: uuid (FK)
-├── status: enum (pending | running | completed | failed | skipped)
-├── input: jsonb
-├── output: jsonb
-├── started_at / completed_at
-└── error: text
-```
+Текущая execution model остаётся линейной. Полноценный DAG — это отдельный будущий шаг, не часть текущего live contract.
 
 ---
 
-## 5. Типы триггеров
+## 5. Модель данных
 
-| Тип | Источник | Пример |
-|-----|----------|--------|
-| **Event** | `DomainEvent` через `EventBus` | `blog.post.published`, `commerce.order.paid` |
-| **Cron** | Планировщик (как в Alloy) | "каждый день в 02:00" |
-| **Webhook** | Входящий HTTP-запрос | внешний сервис вызывает endpoint |
-| **Manual** | Кнопка в админке | оператор запускает вручную |
-| **Alloy** | Alloy-скрипт вызывает `workflow.trigger()` | программный запуск из скрипта |
+Live schema модуля включает:
+
+### `workflows`
+
+- `tenant_id`
+- `name`
+- `description`
+- `status`
+- `trigger_config`
+- `created_by`
+- `failure_count`
+- `auto_disabled_at`
+- `webhook_slug`
+- `webhook_secret`
+- `created_at`
+- `updated_at`
+
+### `workflow_steps`
+
+- `workflow_id`
+- `position`
+- `step_type`
+- `config`
+- `on_error`
+- `timeout_ms`
+
+### `workflow_executions`
+
+- `workflow_id`
+- `tenant_id`
+- `trigger_event_id`
+- `status`
+- `context`
+- `error`
+- `started_at`
+- `completed_at`
+
+### `workflow_step_executions`
+
+- `execution_id`
+- `step_id`
+- `status`
+- `input`
+- `output`
+- `error`
+- `started_at`
+- `completed_at`
+
+### `workflow_versions`
+
+- `workflow_id`
+- `version`
+- `snapshot`
+- `created_by`
+- `created_at`
 
 ---
 
-## 6. Типы шагов
+## 6. Интеграция с платформой
 
-| Тип | Что делает |
-|-----|-----------|
-| **action** | Вызывает сервис модуля (через трейт) |
-| **alloy_script** | Запускает Rhai-скрипт через Alloy engine |
-| **condition** | Ветвление: if/else по данным контекста |
-| **delay** | Ожидание (реализуется через scheduled event в `EventTransport`) |
-| **emit_event** | Публикует `DomainEvent` в outbox |
-| **http** | Внешний HTTP-вызов (webhook out) |
-| **notify** | Уведомление (email, Telegram, Slack — через интеграции) |
-| **transform** | Трансформация данных контекста (map/filter/merge) |
+### События
 
----
+- `WorkflowTriggerHandler` подписывается на платформенные события;
+- matching workflows ищутся по tenant и trigger config;
+- шаги могут эмитить события обратно в платформенный event runtime.
 
-## 7. Интеграция с платформой
+### Планировщик
 
-### Event System
-
-```rust
-// WorkflowTriggerHandler подписывается на ВСЕ события
-// и проверяет, есть ли активные workflows с matching trigger
-impl EventHandler for WorkflowTriggerHandler {
-    async fn handle(&self, event: &EventEnvelope) -> Result<()> {
-        let workflows = self.registry
-            .find_by_trigger(event.event_type(), event.tenant_id())
-            .await?;
-
-        for workflow in workflows {
-            self.engine.execute(workflow, event.into()).await?;
-        }
-        Ok(())
-    }
-}
-```
-
-### Шаг эмитит событие обратно
-
-```rust
-// Внутри шага emit_event — публикация через outbox
-self.event_bus.publish_in_tx(
-    &txn,
-    DomainEvent::new("workflow.step.completed", payload),
-).await?;
-```
+- `WorkflowCronScheduler` запускается в server runtime;
+- cron workflows обрабатываются без отдельной системы очередей.
 
 ### RBAC
 
-Ресурс `Workflows` с permissions: `Create`, `Read`, `Update`, `Delete`, `Execute`, `Manage`.
+Используются ресурсы:
 
-### Tenant Isolation
+- `Workflows`: `Create`, `Read`, `Update`, `Delete`, `List`, `Execute`, `Manage`
+- `WorkflowExecutions`: `Read`, `List`
 
-Все таблицы с `tenant_id`. Workflow видит только события своего тенанта.
+### Tenant isolation
+
+Все модульные таблицы tenant-aware. Выполнения и triggers работают в tenant scope.
+
+---
+
+## 7. Связь с Alloy
+
+Workflow и Alloy решают разные задачи:
+
+- Workflow оркестрирует процесс;
+- Alloy исполняет произвольную логику внутри шага.
+
+Пример:
+
+```text
+Trigger: order.paid
+  -> alloy_script: generate invoice payload
+  -> notify: send customer message
+  -> http: sync downstream CRM
+```
+
+Важно: интеграция Alloy уже является частью живого workflow contract, но некоторые step implementations всё ещё могут иметь backlog на углубление поведения, тестов или интеграционных адаптеров.
 
 ---
 
 ## 8. UI
 
-Визуальный редактор workflow (граф) — в админке:
-- Drag & drop шагов
-- Настройка триггеров
-- Просмотр истории выполнений
-- Логи каждого шага
-- Кнопка manual trigger
+Primary admin UI для workflow уже присутствует в `apps/admin`:
 
-Технология: Next.js (apps/next-admin) — `crates/rustok-workflow/ui/admin-next`.
+- список workflows;
+- detail page;
+- step editor;
+- execution history;
+- version history;
+- template gallery;
+- module navigation integration.
 
----
-
-## 9. Статус реализации
-
-Все четыре фазы реализованы. Детальный план с чеклистами:
-[`crates/rustok-workflow/docs/implementation-plan.md`](../../crates/rustok-workflow/docs/implementation-plan.md)
+Workflow больше не должен описываться как “только будущий визуальный редактор”.
 
 ---
 
-## 10. Архитектурные решения
+## 9. Что уже закрыто
 
-| Решение | Выбор | Обоснование |
-|---------|-------|-------------|
-| Очередь | Существующий `EventBus` / `EventTransport` | Не дублировать инфраструктуру. Transport-agnostic: iggy, rabbitmq, базовый outbox |
-| Хранение | SeaORM entities + JSONB config | Единообразно с другими модулями |
-| Шаги | trait `WorkflowStep` | Расширяемость, модули могут регистрировать свои шаги |
-| Execution | Async, каждый шаг — отдельный span | Observability через существующий telemetry |
-| Alloy | Alloy-шаг = вызов `ScriptOrchestrator` | Переиспользование, не дублирование |
-| Визуальный граф | Хранится как ordered steps + conditions | Простота первой версии, DAG — позже |
-| Delayed steps | Scheduled events через `EventTransport` | Не таймеры в памяти. Работает с любым транспортом |
+- модуль зарегистрирован в `apps/server`;
+- feature-gated GraphQL query/mutation подключены в общей схеме;
+- базовые entities и migrations реализованы;
+- event trigger и cron scheduler интегрированы в runtime;
+- versioning и webhook fields присутствуют в схеме;
+- Leptos admin UI присутствует в живом приложении.
 
 ---
 
-## 11. Связь с другими модулями
+## 10. Что остаётся будущим scope
 
-```
-rustok-workflow
-  ├── зависит от: rustok-core (трейты, registry, events, EventBus, EventTransport)
-  ├── интегрируется с: alloy-scripting (шаг alloy_script)
-  ├── использует: rustok-outbox (publish_in_tx) — через абстракцию EventBus
-  ├── использует: rustok-cache (кэш активных workflows)
-  └── используется: любым модулем через event triggers
+Следующие вещи не стоит описывать как полностью закрытые:
 
-НЕ зависит напрямую от конкретного транспорта (iggy, rabbitmq, etc.)
-— только от абстракций EventBus / EventTransport из rustok-core.
-```
+- более глубокая реализация отдельных step adapters (`alloy_script`, `notify`) там, где они пока работают через abstraction/stub contracts;
+- расширение linear execution model до DAG;
+- более широкий набор интеграционных тестов с реальной БД/runtime evidence;
+- расширение observability/system events вокруг `workflow.execution.*`, если это ещё не оформлено как жёсткий платформенный контракт.
 
-> Workflow — горизонтальный модуль, как Alloy. Он не привязан к одному домену —
-> он оркестрирует взаимодействие между любыми модулями через события.
+---
+
+## 11. Связанные документы
+
+- [crates/rustok-workflow/docs/README.md](../../crates/rustok-workflow/docs/README.md)
+- [events.md](./events.md)
+- [event-flow-contract.md](./event-flow-contract.md)
+- [modules.md](./modules.md)

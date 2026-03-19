@@ -64,8 +64,7 @@ pub fn encode_access_token(
     role: rustok_core::UserRole,
     session_id: uuid::Uuid,
 ) -> Result<String> {
-    rustok_auth::encode_access_token(config, user_id, tenant_id, role, session_id)
-        .map_err(auth_err)
+    rustok_auth::encode_access_token(config, user_id, tenant_id, role, session_id).map_err(auth_err)
 }
 
 pub fn encode_oauth_access_token(

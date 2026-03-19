@@ -1,3 +1,5 @@
+extern crate rhai_full as rhai;
+
 pub mod api;
 pub mod bridge;
 pub mod context;

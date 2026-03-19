@@ -144,11 +144,11 @@ Rhai engine configured with:
 | GET | `/scripts` | List scripts (paginated) |
 | POST | `/scripts` | Create script |
 | POST | `/scripts/validate` | Validate script syntax |
-| GET | `/scripts/:id` | Get script by ID |
-| PUT | `/scripts/:id` | Update script |
-| DELETE | `/scripts/:id` | Delete script |
-| POST | `/scripts/:id/run` | Execute script by ID |
-| POST | `/scripts/name/:name/run` | Execute script by name |
+| GET | `/scripts/{id}` | Get script by ID |
+| PUT | `/scripts/{id}` | Update script |
+| DELETE | `/scripts/{id}` | Delete script |
+| POST | `/scripts/{id}/run` | Execute script by ID |
+| POST | `/scripts/name/{name}/run` | Execute script by name |
 
 ## Usage Example
 
@@ -237,7 +237,7 @@ match orchestrator.run_before("deal", EventType::BeforeCreate, entity, None).awa
 
 1. **Database Bridge** — controlled DB queries из скриптов
 2. **Execution metrics** — счётчики и гистограммы выполнений по script_id/phase
-3. **REST audit endpoint** — `GET /scripts/:id/executions` для просмотра истории
+3. **REST audit endpoint** — `GET /scripts/{id}/executions` для просмотра истории
 
 ### Phase 3 (Future)
 

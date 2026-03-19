@@ -62,10 +62,7 @@ impl CategoryService {
             )
             .await?;
 
-        let cat = self
-            .categories
-            .get(tenant_id, id, &input.locale)
-            .await?;
+        let cat = self.categories.get(tenant_id, id, &input.locale).await?;
 
         Ok(content_to_forum_response(cat, &input.locale))
     }
@@ -170,7 +167,14 @@ impl CategoryService {
         fallback_locale: Option<&str>,
     ) -> ForumResult<Vec<CategoryListItem>> {
         let (items, _) = self
-            .list_paginated_with_locale_fallback(tenant_id, security, locale, 1, 1000, fallback_locale)
+            .list_paginated_with_locale_fallback(
+                tenant_id,
+                security,
+                locale,
+                1,
+                1000,
+                fallback_locale,
+            )
             .await?;
         Ok(items)
     }
@@ -209,8 +213,14 @@ impl CategoryService {
                     name: item.name,
                     slug: item.slug,
                     description: None,
-                    icon: s.get("icon").and_then(|v| v.as_str()).map(|v| v.to_string()),
-                    color: s.get("color").and_then(|v| v.as_str()).map(|v| v.to_string()),
+                    icon: s
+                        .get("icon")
+                        .and_then(|v| v.as_str())
+                        .map(|v| v.to_string()),
+                    color: s
+                        .get("color")
+                        .and_then(|v| v.as_str())
+                        .map(|v| v.to_string()),
                     topic_count: s.get("topic_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
                     reply_count: s.get("reply_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
                 }
@@ -235,12 +245,21 @@ fn content_to_forum_response(
         name: cat.name,
         slug: cat.slug,
         description: cat.description,
-        icon: s.get("icon").and_then(|v| v.as_str()).map(|v| v.to_string()),
-        color: s.get("color").and_then(|v| v.as_str()).map(|v| v.to_string()),
+        icon: s
+            .get("icon")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string()),
+        color: s
+            .get("color")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string()),
         parent_id: cat.parent_id,
         position: cat.position,
         topic_count: s.get("topic_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
         reply_count: s.get("reply_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-        moderated: s.get("moderated").and_then(|v| v.as_bool()).unwrap_or(false),
+        moderated: s
+            .get("moderated")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     }
 }

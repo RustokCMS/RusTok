@@ -79,9 +79,5 @@ pub trait WorkflowStep: Send + Sync {
     fn step_type(&self) -> &'static str;
 
     /// Execute the step, returning updated context or an error.
-    async fn execute(
-        &self,
-        config: &Value,
-        context: StepContext,
-    ) -> WorkflowResult<StepOutput>;
+    async fn execute(&self, config: &Value, context: StepContext) -> WorkflowResult<StepOutput>;
 }

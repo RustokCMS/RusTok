@@ -6,7 +6,7 @@ use loco_rs::app::AppContext;
 use crate::error::{Error, Result};
 use rustok_core::ModuleRegistry;
 
-use crate::auth::AuthConfig;
+use crate::auth::auth_config_from_ctx;
 use crate::common::settings::RustokSettings;
 use crate::controllers;
 use crate::graphql::alloy::AlloyState;
@@ -24,6 +24,7 @@ use crate::services::index_dispatcher::spawn_index_dispatcher;
 use crate::services::marketplace_catalog::{
     MarketplaceCatalogService, SharedMarketplaceCatalogService,
 };
+use rustok_cache::CacheService;
 
 pub struct AppRuntimeBootstrap {
     pub deployment_surfaces: DeploymentSurfaceContract,
@@ -64,6 +65,7 @@ pub async fn bootstrap_app_runtime(
     ctx: &AppContext,
     settings: &RustokSettings,
 ) -> Result<AppRuntimeBootstrap> {
+    let cache_service = CacheService::from_env();
     let event_runtime = build_event_runtime(ctx).await?;
     ctx.shared_store.insert(event_runtime.transport.clone());
     spawn_index_dispatcher(ctx, settings);
@@ -84,7 +86,7 @@ pub async fn bootstrap_app_runtime(
     ManifestManager::validate(&manifest)
         .and_then(|_| ManifestManager::validate_with_registry(&manifest, &registry))
         .map_err(|error| Error::BadRequest(format!("modules.toml validation failed: {error}")))?;
-    middleware::tenant::init_tenant_cache_infrastructure(ctx).await;
+    middleware::tenant::init_tenant_cache_infrastructure(ctx, &cache_service).await;
 
     #[cfg(feature = "mod-media")]
     init_storage(ctx, settings);
@@ -94,7 +96,7 @@ pub async fn bootstrap_app_runtime(
 
     let alloy = init_alloy_runtime(ctx);
     let graphql_schema = init_graphql_schema(ctx, alloy.graphql_state.clone());
-    let rate_limits = init_rate_limit_layers(ctx, settings)?;
+    let rate_limits = init_rate_limit_layers(ctx, settings, &cache_service)?;
 
     Ok(AppRuntimeBootstrap {
         deployment_surfaces,
@@ -198,13 +200,18 @@ struct RateLimitLayers {
     oauth_state: PathRateLimitMiddlewareState,
 }
 
-fn init_rate_limit_layers(ctx: &AppContext, settings: &RustokSettings) -> Result<RateLimitLayers> {
-    let auth_config = AuthConfig::from_ctx(ctx).ok();
+fn init_rate_limit_layers(
+    ctx: &AppContext,
+    settings: &RustokSettings,
+    cache_service: &CacheService,
+) -> Result<RateLimitLayers> {
+    let auth_config = auth_config_from_ctx(ctx).ok();
     let trusted_auth_dimensions = settings.rate_limit.trusted_auth_dimensions;
 
     let api_limiter = build_namespaced_rate_limiter(
         ctx,
         settings,
+        cache_service,
         "api",
         settings.rate_limit.requests_per_minute,
         settings.rate_limit.burst,
@@ -213,6 +220,7 @@ fn init_rate_limit_layers(ctx: &AppContext, settings: &RustokSettings) -> Result
     let auth_limiter = build_namespaced_rate_limiter(
         ctx,
         settings,
+        cache_service,
         "auth",
         settings.rate_limit.auth_requests_per_minute,
         settings.rate_limit.auth_burst,
@@ -221,6 +229,7 @@ fn init_rate_limit_layers(ctx: &AppContext, settings: &RustokSettings) -> Result
     let oauth_limiter = build_namespaced_rate_limiter(
         ctx,
         settings,
+        cache_service,
         "oauth",
         settings.rate_limit.oauth_requests_per_minute,
         settings.rate_limit.oauth_burst,
@@ -266,6 +275,7 @@ enum SharedLimiterNamespace {
 fn build_namespaced_rate_limiter(
     ctx: &AppContext,
     settings: &RustokSettings,
+    cache_service: &CacheService,
     namespace: &'static str,
     requests_per_minute: u32,
     burst: u32,
@@ -283,6 +293,7 @@ fn build_namespaced_rate_limiter(
             settings.rate_limit.backend,
             &settings.rate_limit.redis_key_prefix,
             namespace,
+            cache_service,
         )
         .map_err(Error::BadRequest)?,
     );

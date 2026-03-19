@@ -1,180 +1,211 @@
 # Architecture & System Logic
 
-RusTok is a high-performance, event-driven modular monolith designed for enterprise content and commerce. It balances the developer productivity of frameworks like Rails (via Loco.rs) with the uncompromising performance and safety of Rust.
+RusToK is an event-driven modular monolith built around `apps/server`, shared core/library crates, and optional domain modules. The platform keeps write-side correctness in normalized tables, derives read models asynchronously, and composes product capabilities through module registration rather than per-app forks.
 
-> **Foundational vision:** RusToK follows the [Matryoshka Principle](matryoshka.md) — a 7-layer nested architecture from core platform to inter-network federation. This document covers the technical implementation of Layers 1-3.
+> Foundational vision: RusToK follows the [Matryoshka Principle](./matryoshka.md). This document focuses on the currently implemented platform/runtime architecture.
 
 ---
 
-## 🛰️ High-Level Architecture
-
-The platform is structured as a **Modular Monolith**. While all modules are compiled into a single binary, they remain decoupled through a central **Event Bus** and a **Module Registry**.
+## High-Level Architecture
 
 ```mermaid
 graph TD
-    subgraph "External Layers"
-        Admin[Admin Panel: Leptos CSR]
-        Store[Storefront: Leptos SSR / Next.js]
-        API_Ext[External Integrations]
+    subgraph "External Clients"
+        Admin["Admin Panel: Leptos CSR"]
+        Store["Storefront: Leptos SSR / Next.js"]
+        Integrations["External integrations"]
     end
 
     subgraph "Application Layer (apps/server)"
-        Axum[Axum Web Server]
-        Auth[Auth & RBAC Middleware]
-        Tenant[Tenant Resolver Middleware]
-        GQL[GraphQL Resolver Engine]
+        Axum["Axum + Loco.rs runtime"]
+        Tenant["Tenant resolution + request context"]
+        Auth["Auth lifecycle + RBAC enforcement"]
+        GQL["GraphQL schema"]
+        REST["REST controllers"]
     end
 
-    subgraph "Core Registry (rustok-core)"
-        Registry[Module Registry]
-        Bus[Event Bus: tokio::broadcast]
+    subgraph "Shared Platform Contracts"
+        Registry["ModuleRegistry"]
+        Core["rustok-core primitives"]
+        RBAC["rustok-rbac"]
+        Outbox["rustok-outbox / Event runtime"]
+        Storage["rustok-storage"]
     end
 
     subgraph "Modules (crates/*)"
-        Commerce[rustok-commerce]
-        Content[rustok-content]
-        Blog[rustok-blog]
-        Index[rustok-index: CQRS Read Models]
+        Content["rustok-content"]
+        Commerce["rustok-commerce"]
+        Blog["rustok-blog"]
+        Forum["rustok-forum"]
+        Pages["rustok-pages"]
+        Media["rustok-media"]
+        Workflow["rustok-workflow"]
+        Index["rustok-index"]
     end
 
-    subgraph "Data Layer (PostgreSQL)"
-        DB_Write[(Primary DB: Normalized)]
-        DB_Read[(Index DB: Denormalized)]
+    subgraph "Data Layer"
+        WriteDB["PostgreSQL write-side"]
+        ReadDB["CQRS read models / index tables"]
     end
 
-    Admin & Store & API_Ext --> Axum
-    Axum --> Tenant --> Auth --> Registry
-    Registry --> Commerce & Content & Blog
-    
-    %% Write Path
-    Commerce & Content & Blog --> DB_Write
-    
-    %% Event Path
-    Commerce & Content & Blog -- "Domain Events" --> Bus
-    Bus -- "Async Listen" --> Index
-    Index --> DB_Read
-    
-    %% Read Path
-    GQL -.-> DB_Read
+    Admin --> Axum
+    Store --> Axum
+    Integrations --> Axum
+
+    Axum --> Tenant --> Auth
+    Axum --> GQL
+    Axum --> REST
+
+    Auth --> RBAC
+    GQL --> Registry
+    REST --> Registry
+
+    Registry --> Content
+    Registry --> Commerce
+    Registry --> Blog
+    Registry --> Forum
+    Registry --> Pages
+    Registry --> Media
+    Registry --> Workflow
+    Registry --> Index
+
+    Content --> WriteDB
+    Commerce --> WriteDB
+    Blog --> WriteDB
+    Forum --> WriteDB
+    Pages --> WriteDB
+    Media --> WriteDB
+    Workflow --> WriteDB
+
+    Content --> Outbox
+    Commerce --> Outbox
+    Blog --> Outbox
+    Forum --> Outbox
+    Pages --> Outbox
+    Media --> Outbox
+    Workflow --> Outbox
+
+    Outbox --> Index
+    Index --> ReadDB
+
+    Storage --> Media
 ```
 
 ---
 
-## 🧠 Core System Logic
+## Core Runtime Logic
 
-### 1. Multi-Tenant Isolation
-Every request passes through the `TenantContext` middleware, which identifies the tenant (site/store) based on headers or hostname. All database queries are automatically scoped by `tenant_id`.
+### 1. Tenant isolation and request context
 
-### 1.1. Request-Level Caching (Tenant Context)
-**Current behavior (code today)**  
-Tenant resolution now uses a shared infrastructure object (`TenantCacheInfrastructure`) stored in the application context (`AppContext.shared_store`) instead of process-global static caches. The middleware resolves tenant IDs (`uuid`, `slug`, `host`) via a unified versioned key-builder and caches results through `CacheBackend`.
+Every request is resolved into a tenant-aware request context. Current locale/tenant behavior is centralized in the request pipeline, not scattered across handlers.
 
-**Key details**
-- **Versioned key namespace**: tenant keys are generated in a unified format with explicit versioning (`v1`) for `uuid`/`slug`/`host`, plus separate negative-cache keys.
-- **Two cache layers**:
-  - Positive cache: tenant context (TTL 5 minutes, capacity 1000).
-  - Negative cache: not-found lookups (TTL 60 seconds, capacity 1000).
-- **Backend selection**:
-  - Uses `RedisCacheBackend` when Redis URL is available (`RUSTOK_REDIS_URL`, fallback `REDIS_URL`).
-  - Falls back to in-memory cache backend when Redis is unavailable.
-- **Cross-instance invalidation**:
-  - Tenant/domain updates publish cache invalidation messages to Redis pub/sub channel `tenant.cache.invalidate`.
-  - Every instance subscribes and invalidates matching positive + negative keys.
-- **Metrics**:
-  - `/metrics` exports tenant cache hit/miss and negative-cache counters from shared cache metrics.
-  - In Redis mode counters are stored/read via Redis keys, so metrics reflect shared multi-instance behavior (not only local process state).
+Current contract:
 
-### 2. CQRS-lite (Write vs Read)
-To ensure maximum Performance on read paths (Storefront) without sacrificing data integrity on write paths (Admin), RusTok uses a **CQRS-lite** approach:
+- tenant resolution uses shared infrastructure (`TenantCacheInfrastructure`) instead of process-global caches;
+- cache keys are versioned and support positive and negative caching;
+- Redis pub/sub invalidation keeps multi-instance tenant cache consistent;
+- locale resolution follows:
+  `query -> admin locale cookie -> Accept-Language -> tenant.default_locale -> en`.
 
-- **Write Path (Normalized):** Data is stored in 3rd Normal Form (3NF). Transactions and complex validations happen here. Optimized for safety.
-- **Read Path (Denormalized):** When data changes, a `DomainEvent` is published. The `rustok-index` module listens and builds a "Flat" version of the data in specialized index tables. Optimized for blazingly fast queries and search.
+### 2. CQRS-lite: write side vs read side
 
-### 3. Event-Driven Decoupling
-Modules do not call each other directly. 
-- If `rustok-commerce` updates inventory or pricing, it emits `InventoryUpdated`/`PriceUpdated` events (with `product_id` for index refreshes).
-- The `rustok-index` module reacts and updates the search index.
-- A notification module (if present) might react and send an email.
+RusToK keeps domain writes in normalized tables and derives denormalized read models asynchronously:
 
-### 4. Module Registry
-The `ModuleRegistry` is the brain of the system. It tracks which modules are compiled and allows for runtime toggling per tenant. Each module provides its own migrations, GraphQL resolvers, and event listeners.
+- write-side: validated transactional updates in domain modules;
+- event publication: transactional outbox via `rustok-outbox`;
+- read-side: `rustok-index` updates `index_content` / `index_products`.
 
----
+This keeps admin/domain logic safe while allowing fast storefront and search queries.
 
-## 🔌 API Architecture
+### 3. Event-driven decoupling
 
-RusToK uses a hybrid API approach to balance system tasks and domain-specific content management.
+Modules are integrated through events, not direct cross-module calls.
 
-### 1. Hybrid Design
-- **REST API (Axum/Loco.rs):** Used for infrastructure and system-level tasks.
-  - Authentication (`/api/auth`)
-  - Health checks (`/api/health`)
-  - OpenAPI/Swagger UI (`/swagger`)
-- **GraphQL API (async-graphql):** The primary interface for domain data and complex queries.
-  - Modular schema via `MergedObject`.
-  - Federated extensions (Commerce, Content, Blog).
-  - Single endpoint: `/api/graphql`.
+Examples:
 
-### 2. Service-Oriented Logic
-Interaction follows a strict hierarchy:
-1. **Controllers/Resolvers:** Handle request parsing, RBAC (Role-Based Access Control), and Tenant context.
-2. **Domain Services:** Located in `crates/*`, these handle business logic, database transactions, and event publishing.
-3. **Data Access:** Performed via SeaORM entities.
+- content changes emit domain events consumed by `rustok-index`;
+- workflow listens to platform events and launches executions;
+- build/runtime infrastructure consumes events for release/build progress.
 
-### 3. Standards & Documentation
-- **OpenAPI 3.0:** Fully supported via `utoipa`. Schemas are derive-based, ensuring documentation always matches the code.
-- **DTOs:** Strong separation between API Input/Response structures and internal Database models.
-- **Error Handling:** Unified error types and GraphQL-specific error extensions.
+The canonical transport contract is the event runtime (`memory | outbox | iggy`), with outbox as the authoritative write-side path.
+
+### 4. Module registration and runtime composition
+
+`ModuleRegistry` is the platform composition point:
+
+- core modules are always present;
+- optional modules are compiled through Cargo features and toggled per tenant through `tenant_modules`;
+- GraphQL schema composition is feature-gated at compile time and protected by runtime module-enable checks;
+- migrations remain module-owned.
 
 ---
 
-## 📂 Project Structure Overview
+## API Architecture
+
+RusToK uses a hybrid API model:
+
+- GraphQL at `/api/graphql` for UI clients and most platform/domain operations;
+- REST at `/api/*` and `/api/v1/*` for integrations, operational endpoints, and selected resource flows;
+- OpenAPI documents at `/api/openapi.json` and `/api/openapi.yaml`;
+- health at `/health`, `/health/live`, `/health/ready`, `/health/modules`;
+- Prometheus metrics at `/metrics`.
+
+### Transport structure
+
+Request flow is intentionally layered:
+
+1. controllers/resolvers handle parsing, auth/session extraction, RBAC and tenant context;
+2. services execute application logic;
+3. domain crates own domain behavior and persistence coordination;
+4. outbox/event runtime propagates downstream effects.
+
+### Auth and RBAC
+
+- auth flows are centralized in `AuthLifecycleService`;
+- RBAC source-of-truth remains relation tables;
+- live authorization runtime is Casbin-only through `rustok-rbac`;
+- `apps/server` holds adapter/wiring responsibilities, not a second RBAC engine.
+
+---
+
+## Project Structure Overview
 
 | Component | Path | Responsibility |
 |-----------|------|----------------|
-| **Server** | `apps/server` | Main API entry point, route orchestration, and configuration. |
-| **Admin** | `apps/admin` | WASM-based dashboard for managing content and store. |
-| **Storefront** | `apps/storefront` / `apps/next-frontend` | SEO-optimized public-facing site with SSR (Leptos) or Next.js. |
-| **Core** | `crates/rustok-core` | Shared logic: Auth, Events, ID generation (ULID), and Registry. |
-| **Content** | `crates/rustok-content` | Universal content model (Nodes & Bodies). |
-| **Commerce** | `crates/rustok-commerce` | E-commerce engine: Products, Variants, Inventory, and Prices. |
-| **Index** | `crates/rustok-index` | Search and high-speed read models (CQRS logic). |
+| Server | `apps/server` | Main runtime entry point, API composition, bootstrapping, operational endpoints |
+| Admin | `apps/admin` | Primary Leptos admin UI |
+| Storefront | `apps/storefront` / `apps/next-frontend` | Public web frontend |
+| Core contracts | `crates/rustok-core` | Shared primitives: module contracts, permissions, security context, cache contracts, event re-exports |
+| RBAC runtime | `crates/rustok-rbac` | Resolver contracts, permission policy, Casbin-backed authorization runtime |
+| Event runtime | `crates/rustok-outbox`, `crates/rustok-events`, `crates/rustok-iggy*` | Transactional event publishing and transport |
+| Storage contracts | `crates/rustok-storage` | Shared storage backend/service contract |
+| Media module | `crates/rustok-media` | Media domain logic on top of storage |
+| Domain modules | `crates/rustok-content`, `crates/rustok-commerce`, `crates/rustok-blog`, `crates/rustok-forum`, `crates/rustok-pages`, `crates/rustok-workflow` | Product/domain capabilities |
+| Read-model module | `crates/rustok-index` | CQRS indexers and read-model upkeep |
 
 ---
 
-## 🛠️ Data Flow Example
+## Example Flow
 
-1. **User** updates a Blog Post in the **Admin Panel**.
-2. **Admin Panel** sends a GraphQL mutation to `apps/server`.
-3. `rustok-content` receives the command, validates it, and updates the `nodes` table in **PostgreSQL**.
-4. `rustok-content` publishes a `NodeUpdated` event to the **Event Bus**.
-5. `rustok-index` receives the event and runs its **Indexer**.
-6. The **Indexer** fetches the updated post, merges it with tags and author info, and saves it to the `index_content` table.
-7. **Storefront** users see the update near-instantly by querying the fast `index_content` table.
+1. A user updates content from the admin UI through GraphQL.
+2. `apps/server` resolves tenant, locale, auth context, and permissions.
+3. The domain service updates normalized write-side tables in PostgreSQL.
+4. The service publishes domain events via transactional outbox.
+5. `rustok-index` consumes those events and refreshes read models.
+6. Storefront/API readers observe the update through fast index-backed queries.
 
 ---
 
-## ✅ Platform Definition of Done (Domain Scenarios)
+## Architecture Governance
 
-For every new domain scenario, the PR is considered done only when all items below are satisfied:
+Definition of done for architecture-sensitive changes:
 
-1. The new domain scenario is implemented in `crates/rustok-*`, **or** (for platform foundation scope) in `apps/server` + core crates (`rustok-core` and other infrastructure core crates).
-2. The scenario has a public API contract (GraphQL/REST/module API) and tests.
-3. The app layer does not accumulate domain business logic: it orchestrates API/library calls.
-4. For frontend scope, duplication is extracted into shared frontend libraries (custom UI/contracts packages), not backend domain crates.
+1. Domain behavior lives in domain/library crates unless there is an explicit architectural exception.
+2. Public API/runtime contracts are documented when they change.
+3. `apps/server` remains a composition/integration layer, not a place for accumulating domain logic.
+4. Module, runtime, and docs registries are updated together when boundaries change.
 
-If a point is not met, the PR is not considered done without an explicit architectural decision/approval.
-
-## 🔎 PR-review checklist (Architecture Governance)
-
-Mandatory review questions for architecture and module boundaries:
-
-- [ ] «Есть ли новый код в app-слое, который должен жить в библиотеке?»
-- [ ] «Есть ли изменения в docs модуля и `docs/index.md` при изменении контракта?»
-
-### Critical-domain exception policy
-
-If a PR intentionally bypasses the DoD rule above (domain logic stays in app-layer, temporary contract mismatch, etc.), then **architecture approval is mandatory** for critical domains:
+Critical domains requiring explicit architectural approval for exceptions:
 
 - `content`
 - `commerce`
@@ -185,6 +216,4 @@ If a PR intentionally bypasses the DoD rule above (domain logic stays in app-lay
 - `rbac`
 - `tenant`
 
-Without explicit architecture sign-off, such PRs must not be merged.
-
-> **Статус документа:** Актуальный. При изменениях архитектуры обновляйте этот файл и `docs/index.md`.
+> Document status: current-state overview. Update this file together with [docs/index.md](../index.md) when platform architecture materially changes.

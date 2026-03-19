@@ -1,385 +1,156 @@
-# RBAC Enforcement in RusToK
+# RBAC Enforcement In RusToK
 
-> Граница ответственности: этот документ описывает модель RBAC-enforcement и систему permissions.
-> Консистентность auth lifecycle (`register/login/refresh/reset/change-password`, parity между transport-слоями, policy инвалидирования сессий) зафиксирована в `docs/architecture/api.md` (раздел «Auth lifecycle consistency и release-gate») и ADR `DECISIONS/2026-02-26-auth-lifecycle-unification-session-invalidation.md`.
-> Миграция relation-модели и cutover RBAC source-of-truth ведутся отдельно в `docs/architecture/rbac-relation-migration-plan.md`.
+> Граница ответственности: этот документ описывает текущее RBAC runtime-решение и модульные границы.
+> История migration/cutover relation -> Casbin вынесена в `docs/architecture/rbac-relation-migration-plan.md`.
 
-This document describes the Role-Based Access Control (RBAC) enforcement system in RusToK.
+## 1. Current Model
 
-## Overview
+RusToK использует single-engine RBAC runtime:
 
-RusToK implements a comprehensive RBAC system that controls access to resources based on user roles. The system consists of:
+- relation-таблицы `roles`, `permissions`, `user_roles`, `role_permissions` остаются source of truth для permission data;
+- live authorization runtime выполняется только через библиотеку Casbin;
+- модуль `crates/rustok-rbac` владеет policy/evaluator/contracts;
+- `apps/server` владеет только adapter/wiring-слоем и публичным фасадом `RbacService`.
 
-1. **Resources** - The entities being protected (Products, Orders, Nodes, etc.)
-2. **Actions** - Operations that can be performed (Create, Read, Update, Delete, List, etc.)
-3. **Permissions** - Combinations of Resource + Action (e.g., `products:create`)
-4. **Roles** - Collections of permissions assigned to users
-5. **Enforcement** - Middleware and extractors that verify permissions
+Это означает, что у платформы больше нет отдельного relation-runtime path, shadow-runtime path или parity-gate логики в live code path.
 
-## User Roles
+## 2. Module Boundaries
 
-### SuperAdmin
-- Full access to all resources and actions
-- Can manage tenants, modules, and system-level settings
-- Typically only 1-2 users per deployment
+### `rustok-core`
 
-### Admin
-- Full access to tenant-specific resources
-- Can manage users, products, orders, content, etc.
-- Cannot manage tenants or system modules
-- Typically several per tenant
+`rustok-core` содержит типизированные RBAC primitives:
 
-### Manager
-- Can manage commerce (products, orders, inventory)
-- Can create and manage content (posts, nodes, media)
-- Can create and manage blog posts (create/read/update/delete/list/publish)
-- Can moderate forum topics and replies (create/read/update/delete/list/moderate)
-- Can view customers and analytics
-- Cannot manage users or system settings
+- `Permission`
+- `Resource`
+- `Action`
+- `UserRole`
+- `SecurityContext`
 
-### Customer
-- Can view products and content
-- Can create and view their own orders
-- Can read posts and nodes
-- Can read blog posts and forum content
-- Can create forum topics and replies
-- Can create comments
-- Limited write access
+Именно здесь живёт canonical permission vocabulary, который используют server, extractors и модуль `rustok-rbac`.
 
-## Resources
+### `crates/rustok-rbac`
 
-The following resources are defined in the system:
+`rustok-rbac` содержит:
 
-- `users` - User accounts
-- `tenants` - Tenant/organization data
-- `modules` - System modules
-- `settings` - System and tenant settings
-- `products` - E-commerce products
-- `categories` - Product categories
-- `orders` - Customer orders
-- `customers` - Customer data
-- `inventory` - Stock management
-- `discounts` - Discount codes and promotions
-- `posts` - Content posts (generic)
-- `pages` - Static pages
-- `nodes` - Content nodes (generic content)
-- `media` - Media files and assets
-- `comments` - User comments
-- `analytics` - Analytics and reports
-- `logs` - System logs (DLQ and event audit)
-- `webhooks` - Webhook integrations
-- `blog_posts` - Blog module posts (domain-specific)
-- `forum_categories` - Forum module categories
-- `forum_topics` - Forum module topics/threads
-- `forum_replies` - Forum module replies
-- `scripts` - Alloy scripting engine scripts
+- policy helpers (`check_permission`, `check_any_permission`, `check_all_permissions`, `has_effective_permission_in_set`);
+- evaluator API и authorization API (`authorize_permission`, `authorize_any_permission`, `authorize_all_permissions`);
+- Casbin model/runtime helpers (`default_casbin_model`, `build_enforcer_for_permissions`);
+- resolver contracts (`PermissionResolver`, `RuntimePermissionResolver`);
+- integration event contracts для role-assignment flows.
 
-## Actions
+### `apps/server`
 
-- `create` - Create new resource
-- `read` - Read single resource
-- `update` - Update existing resource
-- `delete` - Delete resource
-- `list` - List/search resources
-- `export` - Export data
-- `import` - Import data
-- `manage` - All actions on resource (wildcard)
-- `publish` - Publish/unpublish resource (content lifecycle)
-- `moderate` - Moderate resource (forum moderation)
+`apps/server` содержит только integration layer:
 
-## Permission Enforcement
+- SeaORM-backed `RelationPermissionStore`;
+- Moka-backed `PermissionCache`;
+- `RbacService` как публичный server-side фасад;
+- transport-specific wiring для REST/GraphQL extractors;
+- observability и metrics.
 
-### Method 1: Permission Extractors (Recommended)
+Server не должен дублировать policy evaluation, Casbin model construction или отдельную authorization semantics.
 
-The recommended way to enforce permissions is using custom extractors in your handlers:
+## 3. Permission Model
 
-```rust
-use crate::extractors::rbac::{RequireNodesCreate, check_permission};
-use rustok_core::Permission;
+Permission задаётся как пара `resource + action` и сериализуется в canonical строку:
 
-// Using pre-defined extractor
-pub async fn create_node(
-    State(ctx): State<AppContext>,
-    tenant: TenantContext,
-    RequireNodesCreate(user): RequireNodesCreate,  // ✅ Permission checked here
-    Json(input): Json<CreateNodeInput>,
-) -> Result<Json<NodeResponse>> {
-    // User is guaranteed to have NODES_CREATE permission
-    let service = NodeService::new(ctx.db.clone(), event_bus);
-    let node = service
-        .create_node(tenant.id, user.security_context(), input)
-        .await?;
-    Ok(Json(node))
-}
-
-// Using inline permission check
-pub async fn some_handler(
-    user: CurrentUser,
-    // other extractors...
-) -> Result<Response> {
-    check_permission(&user, Permission::PRODUCTS_UPDATE)?;
-    // Continue with handler logic
-    // ...
-}
+```text
+<resource>:<action>
 ```
 
-### Method 2: Inline Permission Checks
+Примеры:
 
-For more complex scenarios, you can check permissions inline:
+- `products:create`
+- `products:manage`
+- `orders:list`
+- `blog_posts:publish`
+- `workflow_executions:list`
 
-```rust
-use crate::extractors::rbac::{check_permission, check_any_permission, check_all_permissions};
-use rustok_core::Permission;
+Ключевые правила:
 
-pub async fn complex_handler(
-    user: CurrentUser,
-    // ...
-) -> Result<Response> {
-    // Check single permission
-    check_permission(&user, Permission::PRODUCTS_UPDATE)?;
-    
-    // Check if user has ANY of these permissions
-    check_any_permission(&user, &[
-        Permission::PRODUCTS_UPDATE,
-        Permission::PRODUCTS_MANAGE,
-    ])?;
-    
-    // Check if user has ALL of these permissions
-    check_all_permissions(&user, &[
-        Permission::PRODUCTS_READ,
-        Permission::INVENTORY_UPDATE,
-    ])?;
-    
-    // Continue...
-}
+- `manage` работает как wildcard для набора действий ресурса;
+- wildcard-семантика централизована в `rustok-rbac`, а не в отдельных handlers;
+- tenant isolation обеспечивается relation store и tenant-filtered queries, а не префиксами в имени permission;
+- новые permissions добавляются в типизированные enum/const contracts в `rustok-core`.
+
+## 4. Runtime Decision Path
+
+### Authorization contract
+
+Текущий runtime contract:
+
+- live runtime фиксирован на `casbin_only`;
+- rollout-mode env switch больше не является частью публичного operational surface;
+- любые новые интеграции должны считать Casbin единственным supported engine.
+
+### Request Flow
+
+```mermaid
+flowchart TD
+    A["REST / GraphQL handler"] --> B["RbacService"]
+    B --> C["RuntimePermissionResolver"]
+    C --> D["SeaORM relation store + Moka cache"]
+    C --> E["Resolved permissions"]
+    E --> F["Casbin enforcer"]
+    F --> G["AuthorizationDecision"]
+    G --> H["Allow / Deny + metrics"]
 ```
 
-### Method 3: Using SecurityContext in Services
+Практически это означает:
 
-Services receive a `SecurityContext` which includes role information. Services can use this to apply scope-based filtering:
+1. server-resolver загружает effective permissions пользователя для tenant;
+2. runtime строит Casbin-backed evaluator на основе разрешённых permissions;
+3. решение возвращается как `AuthorizationDecision`;
+4. server публикует cache/decision/latency metrics и логирует deny-причины.
 
-```rust
-impl NodeService {
-    pub async fn list_nodes(
-        &self,
-        tenant_id: Uuid,
-        security: SecurityContext,
-        filter: ListNodesFilter,
-    ) -> Result<(Vec<NodeListItem>, i64)> {
-        // Check permission scope
-        let scope = security.get_scope(Resource::Nodes, Action::List);
-        
-        match scope {
-            PermissionScope::All => {
-                // Return all nodes for this tenant
-            }
-            PermissionScope::Own => {
-                // Only return nodes authored by this user
-                // filter.author_id = Some(security.user_id);
-            }
-            PermissionScope::None => {
-                return Err(ContentError::PermissionDenied);
-            }
-        }
-        
-        // Execute query...
-    }
-}
-```
+## 5. Server Integration
 
-## Available Permission Extractors
+Основная server-side точка входа: `apps/server/src/services/rbac_service.rs`.
 
-The following extractors are pre-defined and ready to use:
+Канонические use-cases:
 
-### Content (nodes)
-- `RequireNodesCreate`
-- `RequireNodesRead`
-- `RequireNodesUpdate`
-- `RequireNodesDelete`
-- `RequireNodesList`
-- `RequirePostsCreate`
-- `RequirePostsRead`
-- `RequirePostsUpdate`
-- `RequirePostsDelete`
-- `RequirePostsList`
+- `RbacService::has_permission`
+- `RbacService::has_any_permission`
+- `RbacService::has_all_permissions`
+- `RbacService::get_user_permissions`
+- `RbacService::assign_role_permissions`
+- `RbacService::replace_user_role`
 
-### Commerce
-- `RequireProductsCreate`
-- `RequireProductsRead`
-- `RequireProductsUpdate`
-- `RequireProductsDelete`
-- `RequireProductsList`
-- `RequireOrdersCreate`
-- `RequireOrdersRead`
-- `RequireOrdersUpdate`
-- `RequireOrdersDelete`
-- `RequireOrdersList`
+Transport layers должны использовать именно этот фасад или общие `rustok-rbac` policy helpers, а не локальные проверки ролей.
 
-### Blog
-- `RequireBlogPostsCreate`
-- `RequireBlogPostsRead`
-- `RequireBlogPostsUpdate`
-- `RequireBlogPostsDelete`
-- `RequireBlogPostsList`
-- `RequireBlogPostsPublish`
+REST RBAC extractors дополнительно используют общую wildcard-семантику через `rustok_rbac::has_effective_permission_in_set`, чтобы не дублировать permission logic в контроллерах.
 
-### Forum
-- `RequireForumTopicsCreate`
-- `RequireForumTopicsRead`
-- `RequireForumTopicsUpdate`
-- `RequireForumTopicsDelete`
-- `RequireForumTopicsList`
-- `RequireForumTopicsModerate`
-- `RequireForumRepliesCreate`
-- `RequireForumRepliesRead`
-- `RequireForumRepliesModerate`
-- `RequireForumCategoriesCreate`
-- `RequireForumCategoriesList`
-- `RequireForumCategoriesUpdate`
-- `RequireForumCategoriesDelete`
+## 6. Observability
 
-### Pages
-- `RequirePagesCreate`
-- `RequirePagesRead`
-- `RequirePagesUpdate`
-- `RequirePagesDelete`
+Текущие canonical runtime signals:
 
-### Scripts (Alloy)
-- `RequireScriptsCreate`
-- `RequireScriptsRead`
-- `RequireScriptsList`
-- `RequireScriptsManage`
+- `rustok_rbac_permission_cache_hits`
+- `rustok_rbac_permission_cache_misses`
+- `rustok_rbac_permission_checks_allowed`
+- `rustok_rbac_permission_checks_denied`
+- `rustok_rbac_claim_role_mismatch_total`
+- `rustok_rbac_engine_decisions_casbin_total`
+- `rustok_rbac_engine_eval_duration_ms_total`
+- `rustok_rbac_engine_eval_duration_samples`
 
-### Administration
-- `RequireUsersCreate`
-- `RequireUsersRead`
-- `RequireUsersUpdate`
-- `RequireUsersDelete`
-- `RequireUsersList`
-- `RequireSettingsRead`
-- `RequireSettingsUpdate`
-- `RequireAnalyticsRead`
-- `RequireAnalyticsExport`
-- `RequireLogsRead`
+Consistency metrics по relation data остаются допустимыми operational signals, потому что relation graph продолжает быть source of truth для permission assignments.
 
-## Creating Custom Permission Extractors
+Parity-specific telemetry старой migration-схемы больше не является частью live runtime contract.
 
-If you need a custom extractor, use the `define_permission_extractor!` macro:
+## 7. Removed From The Live Contract
 
-```rust
-define_permission_extractor!(RequireCustomAction, rustok_core::Permission::new(
-    Resource::YourResource,
-    Action::YourAction
-));
+Следующие вещи считаются историческими и не должны возвращаться в live docs/code path без нового ADR:
 
-// Then use in handler:
-pub async fn handler(
-    RequireCustomAction(user): RequireCustomAction,
-    // ...
-) -> Result<Response> {
-    // User has permission
-}
-```
+- отдельный `relation_only` runtime;
+- `casbin_shadow` как отдельная decision branch;
+- parity/mismatch rollout gates как часть production authorization path;
+- staging/cutover helper scripts для relation-vs-casbin перехода;
+- ссылки на `crates/rustok-core/src/rbac.rs` как на текущее место реализации enforcement-логики.
 
-## Permission Scope
+## 8. See Also
 
-Some permissions have **scope** limitations:
-
-- **PermissionScope::All** - Access to all resources of this type in the tenant
-- **PermissionScope::Own** - Access only to resources owned by the user
-- **PermissionScope::None** - No access
-
-Example scopes:
-- Customers have `Own` scope for Orders (can only see their own orders)
-- Customers have `Own` scope for Comments updates/deletes
-- Managers have `All` scope for Products (can manage all products)
-
-## Testing Permission Enforcement
-
-```rust
-#[tokio::test]
-async fn test_permission_denied() {
-    let customer_user = create_test_user(UserRole::Customer);
-    
-    let result = check_permission(&customer_user, Permission::PRODUCTS_DELETE);
-    
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().0, StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
-async fn test_permission_allowed() {
-    let admin_user = create_test_user(UserRole::Admin);
-    
-    let result = check_permission(&admin_user, Permission::PRODUCTS_DELETE);
-    
-    assert!(result.is_ok());
-}
-```
-
-## Best Practices
-
-1. **Use extractors when possible** - They provide compile-time safety and clear intent
-2. **Check permissions early** - Fail fast if user doesn't have permission
-3. **Use scope for filtering** - Don't rely on permission checks alone; filter data by scope
-4. **Document required permissions** - Add `@security` tags to OpenAPI docs
-5. **Test negative cases** - Always test that unauthorized users are denied
-6. **Avoid `unwrap()`** - Handle all permission check results explicitly
-
-## Migration Checklist
-
-To add RBAC enforcement to existing endpoints:
-
-- [ ] Identify the resource and action for the endpoint
-- [ ] Choose appropriate permission constant or create new one
-- [ ] Add permission extractor to handler signature OR use inline check
-- [ ] Update OpenAPI documentation with security requirements
-- [ ] Add tests for both authorized and unauthorized access
-- [ ] Update service methods to respect permission scope
-- [ ] Document permission requirements in endpoint docstring
-
-## Example: Complete Protected Endpoint
-
-```rust
-/// Create a new product
-///
-/// Requires: `products:create` permission
-/// Roles: Admin, Manager
-#[utoipa::path(
-    post,
-    path = "/api/products",
-    tag = "commerce",
-    request_body = CreateProductInput,
-    responses(
-        (status = 201, description = "Product created", body = ProductResponse),
-        (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden - insufficient permissions")
-    ),
-    security(
-        ("bearer_auth" = [])
-    )
-)]
-pub async fn create_product(
-    State(ctx): State<AppContext>,
-    tenant: TenantContext,
-    RequireProductsCreate(user): RequireProductsCreate,
-    Json(input): Json<CreateProductInput>,
-) -> Result<Json<ProductResponse>> {
-    let service = CatalogService::new(ctx.db.clone(), event_bus);
-    
-    let product = service
-        .create_product(tenant.id, user.security_context(), input)
-        .await
-        .map_err(|e| Error::BadRequest(e.to_string()))?;
-    
-    Ok(Json(product))
-}
-```
-
-## See Also
-
-- `crates/rustok-core/src/permissions.rs` - Permission definitions
-- `crates/rustok-core/src/rbac.rs` - RBAC implementation
-- `apps/server/src/extractors/rbac.rs` - Permission extractors
-- `apps/server/src/extractors/auth.rs` - Authentication
+- `docs/architecture/rbac-relation-migration-plan.md`
+- `crates/rustok-rbac/docs/README.md`
+- `apps/server/docs/README.md`
+- `crates/rustok-core/src/permissions.rs`
+- `crates/rustok-rbac/src/lib.rs`

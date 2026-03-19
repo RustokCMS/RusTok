@@ -27,8 +27,6 @@ pub mod runtime_guardrails;
 pub mod settings_service;
 pub mod topic_field_service;
 pub mod user_field_service;
-pub mod product_field_service;
-pub mod topic_field_service;
 
 pub mod field_definition_cache;
 pub mod field_definition_registry_bootstrap;

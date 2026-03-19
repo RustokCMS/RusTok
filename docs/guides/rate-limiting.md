@@ -138,4 +138,4 @@ cargo check -p rustok-server --bin rustok-server
 ## Related Docs
 
 - [`runtime-guardrails.md`](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md)
-- [`improvement-recommendations.md`](/C:/проекты/RusTok/docs/architecture/improvement-recommendations.md)
+- [`principles.md`](/C:/Users/user/Documents/New%20project/RusTok/docs/architecture/principles.md)

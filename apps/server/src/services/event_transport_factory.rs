@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use loco_rs::app::AppContext;
 use crate::error::{Error, Result};
+use loco_rs::app::AppContext;
 use rustok_core::events::{EventTransport, MemoryTransport};
 use rustok_iggy::{IggyConfig, IggyTransport};
 use rustok_outbox::{OutboxRelay, OutboxTransport, RelayConfig};
@@ -65,9 +65,7 @@ pub async fn build_event_runtime(ctx: &AppContext) -> Result<EventRuntime> {
             let transport = IggyTransport::new(resolve_iggy_config(&settings))
                 .await
                 .map_err(|error| {
-                    Error::BadRequest(format!(
-                        "Failed to initialize iggy transport: {error}"
-                    ))
+                    Error::BadRequest(format!("Failed to initialize iggy transport: {error}"))
                 })?;
             Ok(EventRuntime {
                 transport: Arc::new(transport),

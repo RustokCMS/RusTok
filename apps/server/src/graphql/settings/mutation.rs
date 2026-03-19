@@ -43,10 +43,8 @@ impl SettingsMutation {
             ));
         }
 
-        let settings_json: serde_json::Value =
-            serde_json::from_str(&input.settings).map_err(|e| {
-                FieldError::new(format!("Invalid JSON in settings: {e}"))
-            })?;
+        let settings_json: serde_json::Value = serde_json::from_str(&input.settings)
+            .map_err(|e| FieldError::new(format!("Invalid JSON in settings: {e}")))?;
 
         let validators = ValidatorRegistry::default();
 

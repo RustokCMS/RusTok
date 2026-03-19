@@ -242,9 +242,9 @@ pub async fn openapi_json() -> Result<Response> {
     )
 )]
 pub async fn openapi_yaml() -> Result<Response> {
-    let spec = ApiDoc::openapi().to_yaml().map_err(|e| {
-        Error::Message(format!("Failed to serialize OpenAPI spec to YAML: {e}"))
-    })?;
+    let spec = ApiDoc::openapi()
+        .to_yaml()
+        .map_err(|e| Error::Message(format!("Failed to serialize OpenAPI spec to YAML: {e}")))?;
     Ok((
         StatusCode::OK,
         [(CONTENT_TYPE, "text/yaml; charset=utf-8")],

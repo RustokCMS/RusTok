@@ -94,9 +94,9 @@ _Описание связей между таблицами модуля_
 |--------|------|-------------|------|
 | GET | `/api/v1/<entities>` | List all | Required |
 | POST | `/api/v1/<entities>` | Create | Required |
-| GET | `/api/v1/<entities>/:id` | Get by ID | Required |
-| PUT | `/api/v1/<entities>/:id` | Update | Required |
-| DELETE | `/api/v1/<entities>/:id` | Delete | Required |
+| GET | `/api/v1/<entities>/{id}` | Get by ID | Required |
+| PUT | `/api/v1/<entities>/{id}` | Update | Required |
+| DELETE | `/api/v1/<entities>/{id}` | Delete | Required |
 
 ### 4.2 GraphQL Schema
 

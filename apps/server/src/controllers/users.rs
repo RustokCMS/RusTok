@@ -1,13 +1,13 @@
+use crate::error::{Error, Result};
+use axum::response::Response;
 use axum::{
     extract::{Path, Query},
     routing::get,
 };
 use loco_rs::app::AppContext;
-use loco_rs::controller::Routes;
-use crate::error::{Error, Result};
-use axum::response::Response;
 use loco_rs::controller::format;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
+use loco_rs::controller::Routes;
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -155,5 +155,5 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/users")
         .add("/", get(list_users))
-        .add("/:id", get(get_user))
+        .add("/{id}", get(get_user))
 }

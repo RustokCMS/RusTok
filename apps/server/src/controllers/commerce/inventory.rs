@@ -1,10 +1,10 @@
+use crate::error::Error;
+use crate::error::Result;
 use axum::{
     extract::{Path, State},
     Json,
 };
 use loco_rs::app::AppContext;
-use crate::error::Error;
-use crate::error::Result;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;

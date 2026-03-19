@@ -271,9 +271,6 @@ fn format_rbac_metrics(
         RBAC_CONSISTENCY_QUERY_LATENCY_MS_TOTAL.load(Ordering::Relaxed);
     let consistency_query_latency_samples =
         RBAC_CONSISTENCY_QUERY_LATENCY_SAMPLES.load(Ordering::Relaxed);
-    let engine_decisions_total =
-        stats.engine_decisions_relation_total + stats.engine_decisions_casbin_total;
-
     format!(
         concat!(
             "rustok_rbac_permission_cache_hits {cache_hits}\n",
@@ -288,15 +285,7 @@ fn format_rbac_metrics(
             "rustok_rbac_permission_denied_reason_missing_permissions {denied_missing_permissions}\n",
             "rustok_rbac_permission_denied_reason_unknown {denied_unknown}\n",
             "rustok_rbac_claim_role_mismatch_total {claim_role_mismatch_total}\n",
-            "rustok_rbac_shadow_compare_failures_total {shadow_compare_failures_total}\n",
-            "rbac_engine_decisions_total {engine_decisions_total}\n",
-            "rustok_rbac_engine_decisions_relation_total {engine_decisions_relation_total}\n",
             "rustok_rbac_engine_decisions_casbin_total {engine_decisions_casbin_total}\n",
-            "rbac_engine_mismatch_total {engine_mismatch_total}\n",
-            "rbac_engine_mismatch_total{{source=\"relation\",target=\"casbin\"}} {engine_mismatch_total}\n",
-            "rustok_rbac_engine_mismatch_total {engine_mismatch_total}\n",
-            "rbac_engine_eval_duration_ms {engine_eval_duration_ms_total}\n",
-            "rbac_engine_eval_latency_ms{{engine=\"casbin\"}} {engine_eval_duration_ms_total}\n",
             "rustok_rbac_engine_eval_duration_ms_total {engine_eval_duration_ms_total}\n",
             "rustok_rbac_engine_eval_duration_samples {engine_eval_duration_samples}\n",
             "rustok_rbac_users_without_roles_total {users_without_roles_total}\n",
@@ -318,11 +307,7 @@ fn format_rbac_metrics(
         denied_missing_permissions = stats.denied_missing_permissions,
         denied_unknown = stats.denied_unknown,
         claim_role_mismatch_total = stats.claim_role_mismatch_total,
-        shadow_compare_failures_total = stats.shadow_compare_failures_total,
-        engine_decisions_total = engine_decisions_total,
-        engine_decisions_relation_total = stats.engine_decisions_relation_total,
         engine_decisions_casbin_total = stats.engine_decisions_casbin_total,
-        engine_mismatch_total = stats.engine_mismatch_total,
         engine_eval_duration_ms_total = stats.engine_eval_duration_ms_total,
         engine_eval_duration_samples = stats.engine_eval_duration_samples,
         users_without_roles_total = users_without_roles_total,
@@ -375,36 +360,9 @@ mod tests {
     }
 
     #[test]
-    fn rbac_metrics_include_shadow_compare_failures_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
-        assert!(payload.contains("rustok_rbac_shadow_compare_failures_total"));
-    }
-
-    #[test]
-    fn rbac_metrics_include_engine_mismatch_counter() {
-        let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
-        assert!(payload.contains("rustok_rbac_engine_mismatch_total"));
-    }
-
-    #[test]
     fn rbac_metrics_include_engine_decision_and_latency_counters() {
         let payload = format_rbac_metrics(RbacService::metrics_snapshot(), 0, 0, 0);
-        assert_metric_line(&payload, "rbac_engine_decisions_total");
-        assert_metric_line(&payload, "rustok_rbac_engine_decisions_relation_total");
         assert_metric_line(&payload, "rustok_rbac_engine_decisions_casbin_total");
-        assert_metric_line(&payload, "rbac_engine_mismatch_total");
-        assert_metric_labeled_line(
-            &payload,
-            "rbac_engine_mismatch_total",
-            "{source=\"relation\",target=\"casbin\"}",
-        );
-        assert_metric_line(&payload, "rustok_rbac_engine_mismatch_total");
-        assert_metric_line(&payload, "rbac_engine_eval_duration_ms");
-        assert_metric_labeled_line(
-            &payload,
-            "rbac_engine_eval_latency_ms",
-            "{engine=\"casbin\"}",
-        );
         assert_metric_line(&payload, "rustok_rbac_engine_eval_duration_ms_total");
         assert_metric_line(&payload, "rustok_rbac_engine_eval_duration_samples");
     }

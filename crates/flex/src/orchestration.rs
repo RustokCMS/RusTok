@@ -17,7 +17,7 @@ use crate::registry::{
 pub trait FieldDefinitionCachePort: Send + Sync {
     async fn get(&self, tenant_id: Uuid, entity_type: &str) -> Option<Vec<FieldDefinitionView>>;
     async fn set(&self, tenant_id: Uuid, entity_type: &str, rows: Vec<FieldDefinitionView>);
-    fn invalidate(&self, tenant_id: Uuid, entity_type: &str);
+    async fn invalidate(&self, tenant_id: Uuid, entity_type: &str);
 }
 
 pub async fn list_field_definitions(
@@ -47,12 +47,12 @@ pub async fn list_field_definitions_with_cache(
     Ok(rows)
 }
 
-pub fn invalidate_field_definition_cache(
+pub async fn invalidate_field_definition_cache(
     cache: &dyn FieldDefinitionCachePort,
     tenant_id: Uuid,
     entity_type: &str,
 ) {
-    cache.invalidate(tenant_id, entity_type);
+    cache.invalidate(tenant_id, entity_type).await;
 }
 
 pub async fn find_field_definition(
@@ -155,7 +155,7 @@ mod tests {
             *self.rows.lock().expect("cache lock") = Some(rows);
         }
 
-        fn invalidate(&self, _tenant_id: Uuid, _entity_type: &str) {
+        async fn invalidate(&self, _tenant_id: Uuid, _entity_type: &str) {
             *self.rows.lock().expect("cache lock") = None;
         }
     }

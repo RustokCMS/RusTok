@@ -48,25 +48,35 @@ impl RusToKModule for CommerceModule {
             Permission::new(Resource::Products, Action::Update),
             Permission::new(Resource::Products, Action::Delete),
             Permission::new(Resource::Products, Action::List),
+            Permission::new(Resource::Products, Action::Manage),
             // Orders
             Permission::new(Resource::Orders, Action::Create),
             Permission::new(Resource::Orders, Action::Read),
             Permission::new(Resource::Orders, Action::Update),
+            Permission::new(Resource::Orders, Action::Delete),
             Permission::new(Resource::Orders, Action::List),
+            Permission::new(Resource::Orders, Action::Manage),
             // Customers
+            Permission::new(Resource::Customers, Action::Create),
             Permission::new(Resource::Customers, Action::Read),
             Permission::new(Resource::Customers, Action::Update),
+            Permission::new(Resource::Customers, Action::Delete),
             Permission::new(Resource::Customers, Action::List),
+            Permission::new(Resource::Customers, Action::Manage),
             // Inventory
+            Permission::new(Resource::Inventory, Action::Create),
             Permission::new(Resource::Inventory, Action::Read),
             Permission::new(Resource::Inventory, Action::Update),
+            Permission::new(Resource::Inventory, Action::Delete),
             Permission::new(Resource::Inventory, Action::List),
+            Permission::new(Resource::Inventory, Action::Manage),
             // Discounts
             Permission::new(Resource::Discounts, Action::Create),
             Permission::new(Resource::Discounts, Action::Read),
             Permission::new(Resource::Discounts, Action::Update),
             Permission::new(Resource::Discounts, Action::Delete),
             Permission::new(Resource::Discounts, Action::List),
+            Permission::new(Resource::Discounts, Action::Manage),
         ]
     }
 }

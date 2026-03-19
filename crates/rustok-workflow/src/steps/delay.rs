@@ -29,9 +29,7 @@ impl WorkflowStep for DelayStep {
         let delay_ms = config
             .get("delay_ms")
             .and_then(Value::as_u64)
-            .ok_or_else(|| {
-                WorkflowError::InvalidStepConfig("delay: missing 'delay_ms'".into())
-            })?;
+            .ok_or_else(|| WorkflowError::InvalidStepConfig("delay: missing 'delay_ms'".into()))?;
 
         if delay_ms > MAX_INLINE_DELAY_MS {
             return Err(WorkflowError::InvalidStepConfig(format!(

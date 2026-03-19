@@ -13,8 +13,8 @@ use uuid::Uuid;
 use crate::context::TenantContext;
 use crate::error::{Error, Result};
 use crate::extractors::rbac::{
-    RequireWorkflowsCreate, RequireWorkflowsDelete, RequireWorkflowsExecute,
-    RequireWorkflowsList, RequireWorkflowsRead, RequireWorkflowsUpdate,
+    RequireWorkflowsCreate, RequireWorkflowsDelete, RequireWorkflowsExecute, RequireWorkflowsList,
+    RequireWorkflowsRead, RequireWorkflowsUpdate,
 };
 
 /// List all workflows for the current tenant
@@ -55,7 +55,7 @@ pub async fn create(
 ) -> Result<Json<serde_json::Value>> {
     let service = WorkflowService::new(ctx.db.clone());
     let id = service
-        .create(tenant.id, Some(auth.0.id), input)
+        .create(tenant.id, Some(auth.0.user.id), input)
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
     Ok(Json(serde_json::json!({ "id": id })))
@@ -71,7 +71,7 @@ pub async fn update(
 ) -> Result<Json<serde_json::Value>> {
     let service = WorkflowService::new(ctx.db.clone());
     service
-        .update(tenant.id, id, Some(auth.0.id), input)
+        .update(tenant.id, id, Some(auth.0.user.id), input)
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
     Ok(Json(serde_json::json!({ "ok": true })))
@@ -96,7 +96,7 @@ pub async fn delete_workflow(
 pub async fn activate(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    _auth: RequireWorkflowsUpdate,
+    auth: RequireWorkflowsUpdate,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let service = WorkflowService::new(ctx.db.clone());
@@ -104,6 +104,7 @@ pub async fn activate(
         .update(
             tenant.id,
             id,
+            Some(auth.0.user.id),
             UpdateWorkflowInput {
                 status: Some(rustok_workflow::entities::WorkflowStatus::Active),
                 ..Default::default()
@@ -118,7 +119,7 @@ pub async fn activate(
 pub async fn pause(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
-    _auth: RequireWorkflowsUpdate,
+    auth: RequireWorkflowsUpdate,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>> {
     let service = WorkflowService::new(ctx.db.clone());
@@ -126,6 +127,7 @@ pub async fn pause(
         .update(
             tenant.id,
             id,
+            Some(auth.0.user.id),
             UpdateWorkflowInput {
                 status: Some(rustok_workflow::entities::WorkflowStatus::Paused),
                 ..Default::default()
@@ -154,7 +156,13 @@ pub async fn trigger_manual(
 ) -> Result<Json<serde_json::Value>> {
     let service = WorkflowService::new(ctx.db.clone());
     let execution_id = service
-        .trigger_manual(tenant.id, id, Some(auth.0.id), input.payload, input.force)
+        .trigger_manual(
+            tenant.id,
+            id,
+            Some(auth.0.user.id),
+            input.payload,
+            input.force,
+        )
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
     Ok(Json(serde_json::json!({ "execution_id": execution_id })))

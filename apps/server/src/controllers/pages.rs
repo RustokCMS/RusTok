@@ -1,3 +1,5 @@
+use crate::error::Error;
+use crate::error::Result;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -5,8 +7,6 @@ use axum::{
 };
 use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
-use crate::error::Error;
-use crate::error::Result;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

@@ -1,11 +1,11 @@
+use crate::error::Error;
+use crate::error::Result;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
 use loco_rs::app::AppContext;
-use crate::error::Error;
-use crate::error::Result;
 use rustok_content::dto::{NodeListItem, NodeResponse};
 use rustok_content::{CreateNodeInput, ListNodesFilter, NodeService, UpdateNodeInput};
 use rustok_telemetry::metrics;

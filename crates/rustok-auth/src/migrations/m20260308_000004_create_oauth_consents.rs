@@ -1,8 +1,6 @@
 use super::shared::*;
 use sea_orm_migration::prelude::*;
 
-
-
 use super::m20260308_000001_create_oauth_apps::OAuthApps;
 
 #[derive(DeriveMigrationName)]

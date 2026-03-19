@@ -93,17 +93,15 @@ impl WorkflowStep for HttpStep {
             }
         }
 
-        let resp = req.send().await.map_err(|e| {
-            WorkflowError::StepFailed(format!("http: request failed: {e}"))
-        })?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| WorkflowError::StepFailed(format!("http: request failed: {e}")))?;
 
         let status = resp.status().as_u16();
         let ok = resp.status().is_success();
 
-        let body: Value = resp
-            .json()
-            .await
-            .unwrap_or_else(|_| Value::Null);
+        let body: Value = resp.json().await.unwrap_or_else(|_| Value::Null);
 
         if !ok {
             return Err(WorkflowError::StepFailed(format!(

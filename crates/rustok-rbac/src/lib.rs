@@ -10,10 +10,9 @@ pub use integration::{
     RBAC_EVENT_TENANT_ROLE_ASSIGNMENTS_REMOVED, RBAC_EVENT_USER_ROLE_ASSIGNMENT_REMOVED,
     RBAC_EVENT_USER_ROLE_REPLACED,
 };
-pub use services::authz_mode::{AuthzEngine, RbacAuthzMode};
+pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{
-    authorize_all_permissions, authorize_all_permissions_for_mode, authorize_any_permission,
-    authorize_any_permission_for_mode, authorize_permission, authorize_permission_for_mode,
+    authorize_all_permissions, authorize_any_permission, authorize_permission,
     AuthorizationDecision,
 };
 pub use services::permission_evaluator::{
@@ -25,12 +24,9 @@ pub use services::permission_policy::{
     has_effective_permission_in_set, missing_permissions, DeniedReasonKind, PermissionCheckOutcome,
 };
 
-pub use services::casbin_model::default_casbin_model;
-pub use services::casbin_shadow_evaluator::{
-    compare_casbin_shadow_decision, evaluate_casbin_shadow, evaluate_casbin_shadow_comparison,
-    evaluate_casbin_shadow_for_mode, evaluate_casbin_shadow_result, permissions_for_shadow_check,
-    CasbinShadowComparison, CasbinShadowDecision, CasbinShadowEvaluation,
-    CasbinShadowMismatchRecord, CasbinShadowSkipReason, CasbinShadowTelemetry,
+pub use services::casbin_model::{
+    build_casbin_policy_csv, build_enforcer_for_permissions, default_casbin_model,
+    resolved_permissions_subject,
 };
 pub use services::permission_resolver::{PermissionResolution, PermissionResolver};
 pub use services::relation_permission_resolver::{
@@ -38,15 +34,10 @@ pub use services::relation_permission_resolver::{
     resolve_permissions_with_cache, PermissionCache, RelationPermissionStore,
 };
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
-pub use services::shadow_decision::ShadowCheck;
-pub use services::shadow_runtime::{
-    evaluate_shadow_runtime_for_mode, observe_shadow_runtime, shadow_runtime_runs_casbin,
-    ShadowRuntimeContext, ShadowRuntimeEvaluation, ShadowRuntimeInput, ShadowRuntimeObserver,
-    ShadowRuntimeTelemetry,
-};
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::permissions::Permission;
 use sea_orm_migration::MigrationTrait;
 
 pub struct RbacModule;
@@ -77,6 +68,16 @@ impl RusToKModule for RbacModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            Permission::SETTINGS_READ,
+            Permission::SETTINGS_UPDATE,
+            Permission::SETTINGS_MANAGE,
+            Permission::LOGS_READ,
+            Permission::LOGS_LIST,
+        ]
     }
 
     async fn health(&self) -> HealthStatus {

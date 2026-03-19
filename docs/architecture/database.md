@@ -1,310 +1,243 @@
 # RusToK Database Schema
 
-> **Полная карта таблиц БД с многоязычной поддержкой**  
-> **Обновлено:** 2026-02-11  
-> **См. также**: [I18N_ARCHITECTURE.md](I18N_ARCHITECTURE.md) - Comprehensive i18n guide
+> Current-state schema map for the main platform tables and major module-owned schemas.  
+> Updated: 2026-03-19
+
+This document is a high-level guide, not the canonical migration source. Source of truth remains:
+
+- SeaORM entities under `apps/server/src/models/_entities` and module crates;
+- migrations in `apps/server/migration` and module-owned migration sources;
+- module docs for storage/index/workflow-specific schemas.
 
 ---
 
-## Overview
+## Foundation Tables
 
-| Module | Tables Count | Prefix |
-|--------|:------------:|--------|
-| Core/Auth | 1 | - |
-| Content | 3 | - |
-| Commerce | 6 | - |
-| Scripting | 1 | - |
-| Infrastructure | 1 | sys_ |
+### `tenants`
 
-**Total Tables:** 12+
+Platform tenant registry.
 
----
-
-## Core / Auth Tables
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `name` | TEXT/VARCHAR | Display name |
+| `slug` | VARCHAR | Stable tenant slug |
+| `domain` | VARCHAR nullable | Optional host/domain binding |
+| `settings` | JSONB | Tenant-scoped opaque settings |
+| `default_locale` | VARCHAR | Default locale used by request fallback chain |
+| `is_active` | BOOL | Tenant activity flag |
+| `created_at` | TIMESTAMPTZ | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | Last update timestamp |
 
 ### `users`
->
-> **Module:** rustok-core  
-> **Entity:** `rustok-core/src/auth/user.rs`
+
+Tenant-scoped user identity table.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| id | UUID | Primary key |
-| tenant_id | UUID | FK → tenants |
-| email | VARCHAR | Unique email |
-| password_hash | VARCHAR | Hashed password |
-| role | VARCHAR | User role |
-| status | VARCHAR | Account status |
-| created_at | TIMESTAMPTZ | Creation time |
-| updated_at | TIMESTAMPTZ | Last update |
+| `id` | UUID | Primary key |
+| `tenant_id` | UUID | FK to tenant |
+| `email` | VARCHAR | Login/identity email |
+| `password_hash` | VARCHAR | Password hash |
+| `name` | VARCHAR nullable | Display name |
+| `status` | ENUM/text | Account status |
+| `email_verified_at` | TIMESTAMPTZ nullable | Email verification timestamp |
+| `last_login_at` | TIMESTAMPTZ nullable | Last login timestamp |
+| `metadata` | JSONB | Additional profile metadata |
+| `created_at` | TIMESTAMPTZ | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | Last update timestamp |
+
+### `sessions`
+
+Auth/session lifecycle table.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `tenant_id` | UUID | FK to tenant |
+| `user_id` | UUID | FK to user |
+| `token_hash` | VARCHAR | Refresh/session token hash |
+| `ip_address` | VARCHAR nullable | Source IP |
+| `user_agent` | TEXT/VARCHAR nullable | User agent |
+| `last_used_at` | TIMESTAMPTZ nullable | Last use timestamp |
+| `expires_at` | TIMESTAMPTZ | Expiration timestamp |
+| `revoked_at` | TIMESTAMPTZ nullable | Soft-revoke marker |
+| `created_at` | TIMESTAMPTZ | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | Last update timestamp |
+
+### `platform_settings`
+
+Per-tenant platform configuration overrides.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `tenant_id` | UUID | FK to tenant |
+| `category` | VARCHAR | Category such as `email`, `rate_limit`, `events`, `oauth` |
+| `settings` | JSONB | Stored category payload |
+| `schema_version` | INT | Schema version for validation/migration |
+| `updated_by` | UUID nullable | User who last updated the record |
+| `created_at` | TIMESTAMPTZ | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | Last update timestamp |
+
+### `tenant_modules`
+
+Per-tenant module toggle and module-scoped settings.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `tenant_id` | UUID | FK to tenant |
+| `module_slug` | VARCHAR | Module identifier |
+| `enabled` | BOOL | Runtime enablement flag |
+| `settings` | JSONB | Module-owned opaque settings |
+| `created_at` | TIMESTAMPTZ | Creation timestamp |
+| `updated_at` | TIMESTAMPTZ | Last update timestamp |
+
+### `oauth_apps`
+
+Tenant-scoped OAuth application registry for provider/client management.
+
+This table exists in the live schema and is used by GraphQL OAuth admin flows.
+
+### `sys_events`
+
+Transactional outbox and delivery state.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `payload` | JSONB | Serialized event envelope |
+| `status` | VARCHAR | Delivery state (`pending`, `dispatched`, `failed`, etc.) |
+| `created_at` | TIMESTAMPTZ | Creation timestamp |
+| `dispatched_at` | TIMESTAMPTZ nullable | Dispatch timestamp |
 
 ---
 
-## Content Module Tables
+## RBAC Tables
 
-### `nodes`
->
-> **Module:** rustok-content  
-> **Entity:** `rustok-content/src/entities/node.rs`
+RBAC source of truth remains relation tables:
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| tenant_id | UUID | FK → tenants |
-| kind | VARCHAR(32) | Node type: 'page', 'post', 'topic' |
-| slug | VARCHAR(255) | URL slug |
-| author_id | UUID | FK → users |
-| status | VARCHAR | draft/published/archived |
-| published_at | TIMESTAMPTZ | Publication date |
-| created_at | TIMESTAMPTZ | Creation time |
-| updated_at | TIMESTAMPTZ | Last update |
+- `roles`
+- `permissions`
+- `user_roles`
+- `role_permissions`
 
-### `node_translations`
->
-> **Module:** rustok-content  
-> **Entity:** `rustok-content/src/entities/node_translation.rs`
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| node_id | UUID | FK → nodes |
-| locale | VARCHAR(10) | Language code |
-| title | VARCHAR(255) | Localized title |
-| excerpt | TEXT | Short description |
-| metadata | JSONB | SEO, custom fields |
-
-### `bodies`
->
-> **Module:** rustok-content  
-> **Entity:** `rustok-content/src/entities/body.rs`
-
-| Column | Type | Description |
-|--------|------|-------------|
-| node_id | UUID | PK, FK → nodes |
-| locale | VARCHAR(10) | PK, language code |
-| body | TEXT | Rich content (HTML/Markdown) |
-| format | VARCHAR | Content format |
+These tables back the Casbin-only runtime through resolver/adapters; they remain authoritative for permission data.
 
 ---
 
-## Commerce Module Tables
+## Content and Commerce Tables
 
-### `products`
->
-> **Module:** rustok-commerce  
-> **Entity:** `rustok-commerce/src/entities/product.rs`
+### Content
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| tenant_id | UUID | FK → tenants |
-| handle | VARCHAR(255) | URL-friendly slug |
-| status | VARCHAR | draft/active/archived |
-| product_type | VARCHAR | Product type |
-| vendor | VARCHAR | Vendor name |
-| created_at | TIMESTAMPTZ | Creation time |
-| updated_at | TIMESTAMPTZ | Last update |
+Core content schema remains centered around:
 
-### `product_translations`
->
-> **Module:** rustok-commerce  
-> **Entity:** `rustok-commerce/src/entities/product_translation.rs`
+- `nodes`
+- `node_translations`
+- `bodies`
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| product_id | UUID | FK → products |
-| locale | VARCHAR(10) | Language code |
-| title | VARCHAR(255) | Localized title |
-| description | TEXT | Localized description |
-| seo_title | VARCHAR | SEO title |
-| seo_description | TEXT | SEO description |
+This supports locale-aware content storage with explicit fallback behavior at the service/request layer.
 
-### `product_variants`
->
-> **Module:** rustok-commerce  
-> **Entity:** `rustok-commerce/src/entities/product_variant.rs`
+### Commerce
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| product_id | UUID | FK → products |
-| sku | VARCHAR(100) | Stock keeping unit |
-| barcode | VARCHAR(50) | Barcode |
-| weight | DECIMAL | Weight |
-| inventory_quantity | INT | Stock quantity |
-| position | INT | Sort order |
+Core commerce schema remains centered around:
 
-### `variant_translations`
->
-> **Module:** rustok-commerce  
-> **Entity:** `rustok-commerce/src/entities/variant_translation.rs`
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| variant_id | UUID | FK → product_variants |
-| locale | VARCHAR(10) | Language code |
-| title | VARCHAR(255) | Localized title |
-
-### `prices`
->
-> **Module:** rustok-commerce  
-> **Entity:** `rustok-commerce/src/entities/price.rs`
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| variant_id | UUID | FK → product_variants |
-| currency | VARCHAR(3) | Currency code (USD, EUR) |
-| amount | BIGINT | Price in cents |
-| compare_at | BIGINT | Original price |
-
-### `product_images`
->
-> **Module:** rustok-commerce  
-> **Entity:** `rustok-commerce/src/entities/product_image.rs`
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| product_id | UUID | FK → products |
-| url | VARCHAR | Image URL |
-| alt | VARCHAR | Alt text |
-| position | INT | Sort order |
-
-### `product_options`
->
-> **Module:** rustok-commerce  
-> **Entity:** `rustok-commerce/src/entities/product_option.rs`
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| product_id | UUID | FK → products |
-| name | VARCHAR | Option name (Size, Color) |
-| values | JSONB | Option values |
-| position | INT | Sort order |
+- `products`
+- `product_translations`
+- `product_variants`
+- `variant_translations`
+- `prices`
+- `product_images`
+- `product_options`
 
 ---
 
-## Scripting Tables
+## Index Tables
 
-### `scripts`
->
-> **Module:** alloy-scripting  
-> **Entity:** `alloy-scripting/src/storage/sea_orm.rs`
+`rustok-index` owns the denormalized read models used by the CQRS read path.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| name | VARCHAR | Script name |
-| code | TEXT | Rhai script code |
-| schedule | VARCHAR | Cron expression |
-| enabled | BOOL | Is active |
-| last_run | TIMESTAMPTZ | Last execution |
+### `index_content`
 
----
+Implemented and maintained by content indexers.
 
-## Infrastructure Tables
+Representative columns:
 
-### `sys_events` (Outbox)
->
-> **Module:** rustok-outbox  
-> **Entity:** `rustok-outbox/src/entity.rs`
+- `tenant_id`
+- `node_id`
+- `locale`
+- `kind`
+- `slug`
+- `title`
+- `excerpt`
+- `search_vector`
+- `indexed_at`
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| payload | JSONB | EventEnvelope serialized |
-| status | VARCHAR | pending/dispatched |
-| created_at | TIMESTAMPTZ | Creation time |
-| dispatched_at | TIMESTAMPTZ | Dispatch time |
+### `index_products`
 
----
+Implemented and maintained by product indexers.
 
-## Index Tables (CQRS Read Model)
+Representative columns:
 
-> **Module:** rustok-index  
-> Денормализованные таблицы для быстрого поиска
-
-### `index_products` (planned)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| tenant_id | UUID | Tenant |
-| product_id | UUID | Source product |
-| title | VARCHAR | Denormalized title |
-| description | TEXT | Denormalized description |
-| price_min | BIGINT | Min price |
-| price_max | BIGINT | Max price |
-| search_vector | TSVECTOR | Full-text search |
-| indexed_at | TIMESTAMPTZ | Index time |
-
-### `index_content` (planned)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| tenant_id | UUID | Tenant |
-| node_id | UUID | Source node |
-| kind | VARCHAR | Node type |
-| title | VARCHAR | Denormalized title |
-| search_vector | TSVECTOR | Full-text search |
-| indexed_at | TIMESTAMPTZ | Index time |
+- `tenant_id`
+- `product_id`
+- `locale`
+- `handle`
+- `title`
+- `description`
+- `price_min`
+- `price_max`
+- `attributes`
+- `search_vector`
+- `indexed_at`
 
 ---
 
-## Entity Relationship Diagram
+## Workflow Tables
 
-```mermaid
-erDiagram
-    TENANTS ||--o{ USERS : has
-    TENANTS ||--o{ NODES : has
-    TENANTS ||--o{ PRODUCTS : has
-    
-    USERS ||--o{ NODES : creates
-    
-    NODES ||--o{ NODE_TRANSLATIONS : has
-    NODES ||--o{ BODIES : has
-    
-    PRODUCTS ||--o{ PRODUCT_TRANSLATIONS : has
-    PRODUCTS ||--o{ PRODUCT_VARIANTS : has
-    PRODUCTS ||--o{ PRODUCT_IMAGES : has
-    PRODUCTS ||--o{ PRODUCT_OPTIONS : has
-    
-    PRODUCT_VARIANTS ||--o{ VARIANT_TRANSLATIONS : has
-    PRODUCT_VARIANTS ||--o{ PRICES : has
-```
+`rustok-workflow` owns its own module tables and they are implemented in the live schema:
+
+- `workflows`
+- `workflow_steps`
+- `workflow_executions`
+- `workflow_step_executions`
+- `workflow_versions`
+
+Notable runtime fields include:
+
+- workflow trigger config (`trigger_config`)
+- failure tracking (`failure_count`, `auto_disabled_at`)
+- webhook trigger support (`webhook_slug`, `webhook_secret`)
+- execution context and step I/O payloads (`context`, `input`, `output`)
 
 ---
 
-## Migration Naming Convention
+## Media and Storage
 
-```
-mYYYYMMDD_<module>_<nnn>_<description>.rs
-```
+Media metadata is module-owned while file bytes are handled through the shared storage runtime.
 
-**Examples:**
+Key media tables:
 
-- `m20250201_content_001_create_nodes.rs`
-- `m20250201_commerce_001_create_products.rs`
+- `media`
+- `media_translations`
+
+Storage backend configuration is not modeled as per-file SQL schema; it is runtime-configured through typed settings and `platform_settings`.
 
 ---
 
 ## Notes
 
-- Все таблицы используют `UUID` как primary key
-- `tenant_id` обязателен для multi-tenancy изоляции
-- Timestamps используют `TIMESTAMPTZ` (timezone-aware)
-- JSONB для гибких структур (metadata, options)
-- Индексы: GIN для JSONB, GiST для full-text search
+- `tenant_id` remains the primary isolation boundary for platform and module data.
+- JSONB is used intentionally for module/platform settings, workflow configuration, and flexible metadata.
+- Read-model tables are denormalized on purpose and should not be treated as authoritative write-side state.
+- For exact column/index/constraint details, prefer module migrations and generated entities over this summary doc.
 
 ---
 
-## См. также
+## See Also
 
-- [MODULE_MATRIX.md](./modules/MODULE_MATRIX.md) — матрица модулей
-- [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md) — архитектура
-
+- [i18n.md](./i18n.md)
+- [rbac.md](./rbac.md)
+- [events.md](./events.md)
+- [workflow.md](./workflow.md)
+- [modules.md](./modules.md)

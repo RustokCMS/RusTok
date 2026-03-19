@@ -6,7 +6,7 @@ use crate::graphql::errors::GraphQLError;
 use crate::graphql::types::BuildProgressEvent;
 use crate::services::build_event_hub::BuildEventHub;
 use crate::services::rbac_service::RbacService;
-use rustok_core::{Action, EventConsumerRuntime, Permission, Resource};
+use rustok_core::{EventConsumerRuntime, Permission};
 
 #[derive(Default)]
 pub struct BuildSubscription;
@@ -23,9 +23,9 @@ async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
         &tenant.id,
         &auth.user_id,
         &[
-            Permission::new(Resource::Modules, Action::Read),
-            Permission::new(Resource::Modules, Action::List),
-            Permission::new(Resource::Modules, Action::Manage),
+            Permission::MODULES_READ,
+            Permission::MODULES_LIST,
+            Permission::MODULES_MANAGE,
         ],
     )
     .await

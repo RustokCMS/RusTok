@@ -227,11 +227,6 @@ When upgrading existing systems:
 4. **Monitor outbox backlog** - set up alerts for stuck events
 5. **Test rollback scenarios** - ensure events are not lost on failures
 
-## Operational runbook links
-
-- Loco Mailer/Storage migration incident & rollback playbook: [`apps/server/docs/LOCO_FEATURE_SUPPORT.md` (section "Loco Mailer + Storage roadmap")](../../apps/server/docs/LOCO_FEATURE_SUPPORT.md#6-loco-mailer--storage-roadmap-release-phases).
-- Use this runbook during dual-run/cutover phases to apply release gates, fallback toggles, and rollback triggers consistently.
-
 ## Troubleshooting
 
 ### Events not being persisted
@@ -326,7 +321,7 @@ See module READMEs for specific implementation details:
 
 **Policy anchor (2026-03-11):** queue runtime source-of-truth и запрет parallel production-path через Loco jobs зафиксированы в ADR [`DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md`](../../DECISIONS/2026-03-11-queue-runtime-source-of-truth-outbox.md).
 
-Планируемый production-паттерн: write-side всегда использует outbox (L1), а relay target задаётся отдельно (`memory` для local/dev, `iggy` для highload/replay).
+Текущий production-паттерн: write-side всегда использует outbox (L1), а relay target задаётся отдельно (`memory` для local/dev, `iggy` для highload/replay).
 
 ```toml
 [settings.rustok.events]

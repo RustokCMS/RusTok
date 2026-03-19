@@ -90,28 +90,13 @@ impl RusToKModule for BlogModule {
 
     fn permissions(&self) -> Vec<Permission> {
         vec![
-            Permission::new(Resource::Posts, Action::Create),
-            Permission::new(Resource::Posts, Action::Read),
-            Permission::new(Resource::Posts, Action::Update),
-            Permission::new(Resource::Posts, Action::Delete),
-            Permission::new(Resource::Posts, Action::List),
-            Permission::new(Resource::Posts, Action::Publish),
-            Permission::new(Resource::Comments, Action::Create),
-            Permission::new(Resource::Comments, Action::Read),
-            Permission::new(Resource::Comments, Action::Update),
-            Permission::new(Resource::Comments, Action::Delete),
-            Permission::new(Resource::Comments, Action::List),
-            Permission::new(Resource::Comments, Action::Moderate),
-            Permission::new(Resource::Categories, Action::Create),
-            Permission::new(Resource::Categories, Action::Read),
-            Permission::new(Resource::Categories, Action::Update),
-            Permission::new(Resource::Categories, Action::Delete),
-            Permission::new(Resource::Categories, Action::List),
-            Permission::new(Resource::Tags, Action::Create),
-            Permission::new(Resource::Tags, Action::Read),
-            Permission::new(Resource::Tags, Action::Update),
-            Permission::new(Resource::Tags, Action::Delete),
-            Permission::new(Resource::Tags, Action::List),
+            Permission::BLOG_POSTS_CREATE,
+            Permission::BLOG_POSTS_READ,
+            Permission::BLOG_POSTS_UPDATE,
+            Permission::BLOG_POSTS_DELETE,
+            Permission::BLOG_POSTS_LIST,
+            Permission::BLOG_POSTS_PUBLISH,
+            Permission::BLOG_POSTS_MANAGE,
         ]
     }
 }

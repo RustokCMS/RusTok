@@ -179,18 +179,23 @@ impl WorkflowEngine {
                         }
                         OnError::Skip => {
                             // Update step status to skipped and continue
-                            self.update_step_status(step_execution_id, StepExecutionStatus::Skipped)
-                                .await?;
+                            self.update_step_status(
+                                step_execution_id,
+                                StepExecutionStatus::Skipped,
+                            )
+                            .await?;
                             continue 'steps;
                         }
                         OnError::Retry => {
                             // Retry with exponential backoff
                             // Configurable via step config: { "max_retries": 3, "retry_base_ms": 1000 }
-                            let max_retries = step.config
+                            let max_retries = step
+                                .config
                                 .get("max_retries")
                                 .and_then(Value::as_u64)
                                 .unwrap_or(3) as u32;
-                            let retry_base_ms = step.config
+                            let retry_base_ms = step
+                                .config
                                 .get("retry_base_ms")
                                 .and_then(Value::as_u64)
                                 .unwrap_or(1000);
@@ -206,9 +211,8 @@ impl WorkflowEngine {
                                     backoff_ms = backoff,
                                     "Retrying step after failure"
                                 );
-                                tokio::time::sleep(
-                                    tokio::time::Duration::from_millis(backoff)
-                                ).await;
+                                tokio::time::sleep(tokio::time::Duration::from_millis(backoff))
+                                    .await;
 
                                 match executor.execute(&step.config, context.clone()).await {
                                     Ok(out) => {
@@ -284,14 +288,8 @@ impl WorkflowEngine {
                 workflow_step_execution::Column::Status,
                 Expr::value(status.to_string()),
             )
-            .col_expr(
-                workflow_step_execution::Column::Output,
-                Expr::value(output),
-            )
-            .col_expr(
-                workflow_step_execution::Column::Error,
-                Expr::value(error),
-            )
+            .col_expr(workflow_step_execution::Column::Output, Expr::value(output))
+            .col_expr(workflow_step_execution::Column::Error, Expr::value(error))
             .col_expr(
                 workflow_step_execution::Column::CompletedAt,
                 Expr::value(Utc::now().fixed_offset()),
@@ -336,14 +334,8 @@ impl WorkflowEngine {
                 workflow_execution::Column::Status,
                 Expr::value(status.to_string()),
             )
-            .col_expr(
-                workflow_execution::Column::Context,
-                Expr::value(context),
-            )
-            .col_expr(
-                workflow_execution::Column::Error,
-                Expr::value(error),
-            )
+            .col_expr(workflow_execution::Column::Context, Expr::value(context))
+            .col_expr(workflow_execution::Column::Error, Expr::value(error))
             .col_expr(
                 workflow_execution::Column::CompletedAt,
                 Expr::value(Utc::now().fixed_offset()),

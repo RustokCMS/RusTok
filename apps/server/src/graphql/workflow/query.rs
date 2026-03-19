@@ -23,10 +23,12 @@ impl WorkflowQuery {
             .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_LIST,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_LIST, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -46,10 +48,12 @@ impl WorkflowQuery {
             .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_READ,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_READ, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -72,10 +76,12 @@ impl WorkflowQuery {
             .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_LIST,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_LIST, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -99,10 +105,12 @@ impl WorkflowQuery {
             .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_READ,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_READ, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -136,10 +144,12 @@ impl WorkflowQuery {
             .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_READ,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_READ, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -164,10 +174,12 @@ impl WorkflowQuery {
             .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
 
-        require_perm(db, tenant.id, auth.user_id, &[
-            Permission::WORKFLOWS_READ,
-            Permission::WORKFLOWS_MANAGE,
-        ])
+        require_perm(
+            db,
+            tenant.id,
+            auth.user_id,
+            &[Permission::WORKFLOWS_READ, Permission::WORKFLOWS_MANAGE],
+        )
         .await?;
 
         let service = WorkflowService::new(db.clone());
@@ -186,14 +198,12 @@ async fn require_perm(
 ) -> Result<()> {
     let has_perm = RbacService::has_any_permission(db, &tenant_id, &user_id, perms)
         .await
-        .map_err(|e| {
-            <async_graphql::FieldError as GraphQLError>::internal_error(&e.to_string())
-        })?;
+        .map_err(|e| <async_graphql::FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
     if !has_perm {
-        return Err(<async_graphql::FieldError as GraphQLError>::permission_denied(
-            "Permission denied",
-        ));
+        return Err(
+            <async_graphql::FieldError as GraphQLError>::permission_denied("Permission denied"),
+        );
     }
     Ok(())
 }

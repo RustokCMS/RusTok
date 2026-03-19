@@ -1,4 +1,8 @@
+use crate::error::Error;
+use crate::error::Result;
+use axum::response::Response;
 use axum::{
+    extract::State,
     extract::{ConnectInfo, Path, Query},
     http::header::USER_AGENT,
     routing::{delete, get, post},
@@ -8,9 +12,7 @@ use chrono::Utc;
 use loco_rs::app::AppContext;
 use loco_rs::controller::format;
 use loco_rs::controller::Routes;
-use crate::error::Error;
-use crate::error::Result;
-use axum::response::Response;
+use rustok_core::{i18n::translate, Locale};
 use rustok_telemetry::metrics;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
@@ -273,7 +275,7 @@ async fn refresh(
 }
 
 #[utoipa::path(post, path = "/api/auth/logout", tag = "auth", request_body = RefreshRequest,
-    responses((status = 200, description = "Logout successful", body = LogoutResponse),(status = 401, description = "Invalid refresh token")))]
+    responses((status = 200, description = "Logout successful", body = LogoutResponse),(status = 401, description = "Invalid or expired refresh token")))]
 async fn logout(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
@@ -282,7 +284,7 @@ async fn logout(
     let token_hash = hash_refresh_token(&params.refresh_token);
     let session = sessions::Entity::find_by_token_hash(&ctx.db, tenant.id, &token_hash)
         .await?
-        .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
+        .ok_or_else(|| Error::Unauthorized(translate(Locale::En, "auth.invalid_refresh_token")))?;
 
     if session.revoked_at.is_none() {
         let mut session_model: sessions::ActiveModel = session.into();
@@ -630,14 +632,10 @@ async fn revoke_session(
     current: CurrentUser,
     Path(session_id): Path<uuid::Uuid>,
 ) -> Result<Response> {
-    let revoked = AuthLifecycleService::revoke_session(
-        &ctx,
-        tenant.id,
-        current.user.id,
-        session_id,
-    )
-    .await
-    .map_err(|e: AuthLifecycleError| Error::from(e))?;
+    let revoked =
+        AuthLifecycleService::revoke_session(&ctx, tenant.id, current.user.id, session_id)
+            .await
+            .map_err(|e: AuthLifecycleError| Error::from(e))?;
 
     if revoked {
         format::json(GenericStatusResponse { status: "ok" })
@@ -661,7 +659,7 @@ pub fn routes() -> Routes {
         .add("/verify/confirm", post(confirm_verification))
         .add("/sessions", get(list_sessions))
         .add("/sessions/revoke-all", post(revoke_all_sessions))
-        .add("/sessions/:id", delete(revoke_session))
+        .add("/sessions/{id}", delete(revoke_session))
         .add("/change-password", post(change_password))
         .add("/profile", post(update_profile))
         .add("/history", get(login_history))
