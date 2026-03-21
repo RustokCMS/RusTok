@@ -8,15 +8,17 @@
 
 - Provide `BlogModule` metadata for the runtime registry.
 - Own blog-specific post lifecycle, SEO, and localized blog orchestration.
+- Own blog GraphQL and REST transport adapters alongside the domain services.
 - Publish the typed `blog_posts:*` RBAC surface.
 
 ## Interactions
 
 - Depends on `rustok-content` for shared content storage and orchestration primitives.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
-- Used directly by `apps/server` blog GraphQL and REST adapters.
+- Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter contracts.
+- Used by `apps/server` through thin GraphQL/REST shims and route composition.
 - Declares permissions via `rustok-core::Permission`.
-- `apps/server` enforces `blog_posts:*` through `RbacService` or RBAC extractors, then passes
+- Transport adapters validate `blog_posts:*` against `AuthContext.permissions`, then pass
   a permission-aware `SecurityContext` into blog services.
 
 ## Entry points
@@ -26,3 +28,6 @@
 - `CommentService`
 - `CategoryService`
 - `TagService`
+- `graphql::BlogQuery`
+- `graphql::BlogMutation`
+- `controllers::routes`

@@ -29,6 +29,7 @@ use super::flex::{FlexMutation, FlexQuery};
 #[cfg(feature = "mod-forum")]
 use super::forum::{ForumMutation, ForumQuery};
 use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader, TenantNameLoader};
+use super::mcp::{McpMutation, McpQuery};
 #[cfg(feature = "mod-media")]
 use super::media::{MediaMutation, MediaQuery};
 use super::mutations::RootMutation;
@@ -51,7 +52,6 @@ pub mod module_slug {
     pub const BLOG: &str = "blog";
     pub const FORUM: &str = "forum";
     pub const PAGES: &str = "pages";
-    pub const ALLOY: &str = "alloy";
     pub const MEDIA: &str = "media";
     pub const WORKFLOW: &str = "workflow";
 }
@@ -61,6 +61,7 @@ pub struct Query(
     RootQuery,
     AuthQuery,
     OAuthQuery,
+    McpQuery,
     SettingsQuery,
     SystemQuery,
     FlexQuery,
@@ -79,6 +80,7 @@ pub struct Mutation(
     RootMutation,
     AuthMutation,
     OAuthMutation,
+    McpMutation,
     SettingsMutation,
     FlexMutation,
     #[cfg(feature = "mod-commerce")] CommerceMutation,

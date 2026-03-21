@@ -176,4 +176,4 @@ match result.status {
 
 - [Implementation Plan](./docs/implementation-plan.md)
 - [rustok-iggy-connector](../rustok-iggy-connector/README.md) — connector layer documentation
-- [Architecture Overview](../../docs/architecture/events.md)
+- [Outbox and event runtime docs](../rustok-outbox/docs/README.md)

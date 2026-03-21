@@ -6,13 +6,18 @@ license.workspace = true
 description = "Visual workflow automation module for RusToK platform"
 
 [dependencies]
+async-graphql.workspace = true
 async-trait.workspace = true
+axum.workspace = true
 chrono.workspace = true
 cron = "0.15"
+loco-rs.workspace = true
 reqwest = { workspace = true }
+rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
+rustok-tenant.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

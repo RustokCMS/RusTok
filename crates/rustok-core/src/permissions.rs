@@ -35,6 +35,7 @@ pub enum Resource {
     ForumReplies,
     // Scripting (alloy)
     Scripts,
+    Mcp,
     // Workflow automation
     Workflows,
     WorkflowExecutions,
@@ -69,6 +70,7 @@ impl fmt::Display for Resource {
             Self::ForumTopics => "forum_topics",
             Self::ForumReplies => "forum_replies",
             Self::Scripts => "scripts",
+            Self::Mcp => "mcp",
             Self::Workflows => "workflows",
             Self::WorkflowExecutions => "workflow_executions",
         };
@@ -107,6 +109,7 @@ impl FromStr for Resource {
             "forum_topics" => Ok(Self::ForumTopics),
             "forum_replies" => Ok(Self::ForumReplies),
             "scripts" => Ok(Self::Scripts),
+            "mcp" => Ok(Self::Mcp),
             "workflows" => Ok(Self::Workflows),
             "workflow_executions" => Ok(Self::WorkflowExecutions),
             _ => Err(format!("Unknown resource: {value}")),
@@ -327,7 +330,15 @@ impl Permission {
     pub const SCRIPTS_UPDATE: Self = Self::new(Resource::Scripts, Action::Update);
     pub const SCRIPTS_DELETE: Self = Self::new(Resource::Scripts, Action::Delete);
     pub const SCRIPTS_LIST: Self = Self::new(Resource::Scripts, Action::List);
+    pub const SCRIPTS_EXECUTE: Self = Self::new(Resource::Scripts, Action::Execute);
     pub const SCRIPTS_MANAGE: Self = Self::new(Resource::Scripts, Action::Manage);
+
+    pub const MCP_CREATE: Self = Self::new(Resource::Mcp, Action::Create);
+    pub const MCP_READ: Self = Self::new(Resource::Mcp, Action::Read);
+    pub const MCP_UPDATE: Self = Self::new(Resource::Mcp, Action::Update);
+    pub const MCP_DELETE: Self = Self::new(Resource::Mcp, Action::Delete);
+    pub const MCP_LIST: Self = Self::new(Resource::Mcp, Action::List);
+    pub const MCP_MANAGE: Self = Self::new(Resource::Mcp, Action::Manage);
 
     pub const WORKFLOWS_CREATE: Self = Self::new(Resource::Workflows, Action::Create);
     pub const WORKFLOWS_READ: Self = Self::new(Resource::Workflows, Action::Read);

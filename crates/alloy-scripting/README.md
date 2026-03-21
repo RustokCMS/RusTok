@@ -1,4 +1,4 @@
-# alloy-scripting
+﻿# alloy-scripting
 
 ## Purpose
 
@@ -6,21 +6,25 @@
 
 ## Responsibilities
 
-- Provide the `AlloyModule` runtime metadata used by `apps/server`.
 - Own script storage, execution contracts, and migrations.
+- Own the Rhai runtime and REST handler core used by Alloy-facing adapters.
 - Publish the typed `scripts:*` RBAC surface.
 
 ## Interactions
 
-- Depends on `rustok-core` for module contracts and permission vocabulary.
-- Used by `apps/server` for script CRUD, execution, and automation wiring.
-- Used by `rustok-workflow` for script-backed workflow steps.
+- Depends on `rustok-core` for permission vocabulary and shared runtime traits.
+- Used by `alloy` as the runtime/engine backend for Alloy management/API adapters.
+- `apps/server` now composes Alloy through `alloy` transport shims instead of owning
+  Alloy transport code directly.
+- Integrates with `rustok-mcp` as the module-agnostic Alloy capability surface.
+- Used by `rustok-workflow` for script-backed workflow steps without making Alloy part of the
+  tenant module graph.
 - Declares permissions via `rustok-core::Permission`.
-- `apps/server` enforces `scripts:*` through `RbacService` or RBAC extractors before
-  dispatching script operations.
+- GraphQL permission checks for `scripts:*` live in `alloy`; the scripting runtime stays
+  free of `rustok-api` to avoid dependency cycles through `rustok-core`.
 
 ## Entry points
 
-- `AlloyModule` via `apps/server/src/modules/alloy.rs`
 - script storage and execution APIs from `alloy-scripting`
 - migrations and runtime configuration helpers
+

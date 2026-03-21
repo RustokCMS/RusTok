@@ -6,6 +6,41 @@
 
 - [Implementation plan](./implementation-plan.md)
 
+## Canonical scope
+
+This file is the canonical module-level documentation for `crates/rustok-rbac`.
+Module-specific RBAC documentation must stay in this crate, not under `docs/architecture/`.
+
+## Current module boundary
+
+RusToK uses a single-engine RBAC runtime:
+
+- relation tables `roles`, `permissions`, `user_roles`, `role_permissions` remain the source of truth for assignments;
+- `crates/rustok-rbac` owns permission policy helpers, evaluator APIs, Casbin runtime helpers, resolver contracts, and integration event contracts;
+- `apps/server` owns only the adapter and wiring layer: SeaORM stores, Moka cache, `RbacService`, transport-specific extractors, and observability;
+- `rustok-core` owns the typed RBAC primitives (`Permission`, `Resource`, `Action`, `UserRole`, `SecurityContext`).
+
+Live authorization no longer has a separate relation-only path, shadow-runtime path, or parity-gate logic.
+
+## Permission model
+
+- Canonical permission shape is `<resource>:<action>`.
+- `manage` acts as a wildcard for the action set of a resource.
+- Wildcard semantics live in `rustok-rbac`, not in server handlers.
+- Tenant isolation is enforced by tenant-filtered relation-store queries and resolver contracts, not by permission-string prefixes.
+- New permissions must be added through typed contracts in `rustok-core`.
+
+## Request and integration path
+
+Runtime decision path for REST/GraphQL integrations:
+
+1. `apps/server` calls `RbacService`.
+2. `RuntimePermissionResolver` loads effective permissions through relation-store and cache adapters.
+3. `rustok-rbac` builds the Casbin-backed evaluator and returns `AuthorizationDecision`.
+4. Server adapters emit decision, cache, and latency telemetry.
+
+`apps/server` also builds `rustok_core::SecurityContext` from the resolved permission set, not from an inferred role alone. Derived role values are still allowed for presentation and compatibility, but live authorization must use typed permissions plus the permission-aware `SecurityContext`.
+
 ## Event contracts
 
 - [Event flow contract (central)](../../../docs/architecture/event-flow-contract.md)
@@ -21,6 +56,21 @@
 - Internal Casbin permission evaluation now lives behind `casbin_evaluator` + `permission_check`; relation-vs-shadow rollout logic is no longer part of the module contract.
 - `integration` exports canonical RBAC cross-module event contract for role-assignment change notifications: `RbacRoleAssignmentEvent`, `RbacIntegrationEventKind`, and stable event-type constants (`rbac.role_permissions_assigned`, `rbac.user_role_replaced`, `rbac.tenant_role_assignments_removed`, `rbac.user_role_assignment_removed`). Integration payloads are `serde`-serializable (`snake_case` enum tags) for transport-agnostic publish/consume flows.
 
+## Observability
+
+Canonical runtime signals for the live contract:
+
+- `rustok_rbac_permission_cache_hits`
+- `rustok_rbac_permission_cache_misses`
+- `rustok_rbac_permission_checks_allowed`
+- `rustok_rbac_permission_checks_denied`
+- `rustok_rbac_claim_role_mismatch_total`
+- `rustok_rbac_engine_decisions_casbin_total`
+- `rustok_rbac_engine_eval_duration_ms_total`
+- `rustok_rbac_engine_eval_duration_samples`
+
+Consistency metrics over relation data remain valid operational signals because relation data is still the source of truth. Old parity telemetry from the cutover period is no longer part of the live runtime contract.
+
 
 ## Ownership and release gates
 
@@ -34,7 +84,7 @@
   1. Unit tests for changed domain logic are present/updated in `crates/rustok-rbac/src/**` (or explained why not needed).
   2. `rustfmt` passes for touched Rust files.
   3. `apps/server` adapter compatibility is validated (compile/tests in network-enabled CI or documented local limitation).
-  4. Module docs are updated (`crates/rustok-rbac/docs/*`) and, when migration milestones change, central architecture docs are synced (`docs/architecture/rbac-relation-migration-plan.md`).
+  4. Module docs are updated (`crates/rustok-rbac/docs/*`) and server/verification docs stay synced (`apps/server/docs/README.md`, `docs/verification/rbac-server-modules-verification-plan.md`).
 
 
 ## Runtime posture

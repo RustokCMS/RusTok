@@ -6,11 +6,16 @@ license.workspace = true
 description = "Media asset management for RusTok — uploads, metadata, translations"
 
 [dependencies]
+async-graphql.workspace = true
 rustok-core.workspace = true
 rustok-storage.workspace = true
 async-trait.workspace = true
+axum.workspace = true
 bytes = "1.0"
 chrono.workspace = true
+loco-rs.workspace = true
+rustok-api.workspace = true
+rustok-telemetry.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

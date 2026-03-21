@@ -1,4 +1,4 @@
-# rustok-workflow — Public API
+# rustok-workflow - Public API
 
 ## Module registration
 
@@ -10,12 +10,16 @@ registry.register(Box::new(WorkflowModule));
 ```
 
 `WorkflowModule` implements `RusToKModule`:
-- `slug()` → `"workflow"`
-- `name()` → `"Workflow"`
-- `kind()` → `ModuleKind::Optional`
-- `dependencies()` → `["core"]`
-- `migrations()` → `WorkflowsMigration`, `WorkflowPhase4Migration`
-- `permissions()` → `Workflows::{Create,Read,Update,Delete,List,Execute,Manage}`, `WorkflowExecutions::{Read,List}`
+- `slug()` -> `"workflow"`
+- `name()` -> `"Workflow"`
+- `kind()` -> `ModuleKind::Optional`
+- `dependencies()` -> `[]`
+- `migrations()` -> `WorkflowsMigration`, `WorkflowPhase4Migration`
+- `permissions()` -> `Workflows::{Create,Read,Update,Delete,List,Execute,Manage}`, `WorkflowExecutions::{Read,List}`
+
+## Public modules
+
+`controllers`, `dto`, `entities`, `error`, `graphql`, `services`, `steps`, `templates`.
 
 ## Services
 
@@ -28,21 +32,26 @@ impl WorkflowService {
     pub fn new(db: DatabaseConnection) -> Self;
 
     // Workflows
-    pub async fn create_workflow(&self, tenant_id: Uuid, dto: CreateWorkflowDto) -> WorkflowResult<WorkflowDto>;
-    pub async fn get_workflow(&self, id: Uuid, tenant_id: Uuid) -> WorkflowResult<WorkflowDto>;
-    pub async fn list_workflows(&self, tenant_id: Uuid) -> WorkflowResult<Vec<WorkflowDto>>;
-    pub async fn update_workflow(&self, id: Uuid, tenant_id: Uuid, dto: UpdateWorkflowDto) -> WorkflowResult<WorkflowDto>;
-    pub async fn delete_workflow(&self, id: Uuid, tenant_id: Uuid) -> WorkflowResult<()>;
-    pub async fn activate_workflow(&self, id: Uuid, tenant_id: Uuid) -> WorkflowResult<WorkflowDto>;
+    pub async fn create(&self, tenant_id: Uuid, actor_id: Option<Uuid>, input: CreateWorkflowInput) -> WorkflowResult<Uuid>;
+    pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> WorkflowResult<WorkflowResponse>;
+    pub async fn list(&self, tenant_id: Uuid) -> WorkflowResult<Vec<WorkflowSummary>>;
+    pub async fn update(&self, tenant_id: Uuid, id: Uuid, actor_id: Option<Uuid>, input: UpdateWorkflowInput) -> WorkflowResult<()>;
+    pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> WorkflowResult<()>;
 
     // Steps
-    pub async fn add_step(&self, workflow_id: Uuid, tenant_id: Uuid, dto: CreateStepDto) -> WorkflowResult<WorkflowStepDto>;
-    pub async fn update_step(&self, step_id: Uuid, tenant_id: Uuid, dto: UpdateStepDto) -> WorkflowResult<WorkflowStepDto>;
-    pub async fn delete_step(&self, step_id: Uuid, tenant_id: Uuid) -> WorkflowResult<()>;
+    pub async fn add_step(&self, tenant_id: Uuid, workflow_id: Uuid, input: CreateWorkflowStepInput) -> WorkflowResult<Uuid>;
+    pub async fn update_step(&self, tenant_id: Uuid, workflow_id: Uuid, step_id: Uuid, input: UpdateWorkflowStepInput) -> WorkflowResult<()>;
+    pub async fn delete_step(&self, tenant_id: Uuid, workflow_id: Uuid, step_id: Uuid) -> WorkflowResult<()>;
 
     // Executions
-    pub async fn list_executions(&self, workflow_id: Uuid, tenant_id: Uuid) -> WorkflowResult<Vec<WorkflowExecutionDto>>;
-    pub async fn get_execution(&self, execution_id: Uuid, tenant_id: Uuid) -> WorkflowResult<WorkflowExecutionDto>;
+    pub async fn trigger_manual(&self, tenant_id: Uuid, workflow_id: Uuid, actor_id: Option<Uuid>, payload: Value, force: bool) -> WorkflowResult<Uuid>;
+    pub async fn list_executions(&self, tenant_id: Uuid, workflow_id: Uuid) -> WorkflowResult<Vec<WorkflowExecutionResponse>>;
+    pub async fn get_execution(&self, tenant_id: Uuid, execution_id: Uuid) -> WorkflowResult<WorkflowExecutionResponse>;
+    pub async fn trigger_by_webhook(&self, tenant_id: Uuid, webhook_slug: &str, payload: Value) -> WorkflowResult<Vec<Uuid>>;
+    pub async fn list_versions(&self, tenant_id: Uuid, workflow_id: Uuid) -> WorkflowResult<Vec<WorkflowVersionSummary>>;
+    pub async fn get_version(&self, tenant_id: Uuid, workflow_id: Uuid, version: i32) -> WorkflowResult<WorkflowVersionDetail>;
+    pub async fn restore_version(&self, tenant_id: Uuid, workflow_id: Uuid, version: i32, actor_id: Option<Uuid>) -> WorkflowResult<()>;
+    pub async fn create_from_template(&self, tenant_id: Uuid, actor_id: Option<Uuid>, template_id: &str, name: String) -> WorkflowResult<Uuid>;
 }
 ```
 
@@ -65,7 +74,7 @@ pub struct WorkflowTriggerHandler { /* db, engine */ }
 
 impl WorkflowTriggerHandler {
     pub fn new(db: DatabaseConnection, engine: Arc<WorkflowEngine>) -> Self;
-    // Implements EventHandler — call from EventBus subscriber loop
+    // Implements EventHandler - call from EventBus subscriber loop
     pub async fn handle(&self, event: &EventEnvelope) -> WorkflowResult<()>;
 }
 ```
@@ -106,6 +115,13 @@ pub struct WorkflowTemplate {
 }
 ```
 
+## Transport entry points
+
+- `graphql::WorkflowQuery`
+- `graphql::WorkflowMutation`
+- `controllers::routes()`
+- `controllers::webhook_routes()`
+
 ## Error type
 
 ```rust
@@ -124,6 +140,7 @@ pub type WorkflowResult<T> = Result<T, WorkflowError>;
 
 Key request/response types (all in `rustok_workflow::dto`):
 
-- `CreateWorkflowDto` / `UpdateWorkflowDto` / `WorkflowDto`
-- `CreateStepDto` / `UpdateStepDto` / `WorkflowStepDto`
-- `WorkflowExecutionDto` / `WorkflowStepExecutionDto`
+- `CreateWorkflowInput` / `UpdateWorkflowInput` / `WorkflowResponse` / `WorkflowSummary`
+- `CreateWorkflowStepInput` / `UpdateWorkflowStepInput` / `WorkflowStepResponse`
+- `WorkflowExecutionResponse` / `WorkflowStepExecutionResponse`
+- `WorkflowVersionSummary` / `WorkflowVersionDetail`

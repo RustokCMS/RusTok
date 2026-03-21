@@ -57,4 +57,4 @@
 ## Документация
 
 - Локальная: `apps/admin/docs/README.md`
-- Платформенная: `docs/UI/fsd-restructuring-plan.md`, `docs/UI/rust-ui-component-catalog.md`, `docs/index.md`
+- Платформенная: `docs/UI/README.md`, `docs/UI/rust-ui-component-catalog.md`, `docs/index.md`

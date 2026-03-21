@@ -1,43 +1,49 @@
-# alloy-scripting docs
+﻿# alloy-scripting docs
 
-Документация модуля `crates/alloy-scripting`.
+Р”РѕРєСѓРјРµРЅС‚Р°С†РёСЏ capability-crate `crates/alloy-scripting`.
 
-## Содержание
+## РЎРѕРґРµСЂР¶Р°РЅРёРµ
 
-- [Alloy Concept](../../../docs/alloy-concept.md) — стратегическое видение Alloy: Self-Evolving Integration Runtime
-- [implementation-plan.md](./implementation-plan.md) — архитектура, компоненты, flow выполнения, future improvements
+- [Alloy Concept](../../../docs/alloy-concept.md) вЂ” СЃС‚СЂР°С‚РµРіРёС‡РµСЃРєРѕРµ РІРёРґРµРЅРёРµ Alloy: Self-Evolving Integration Runtime
+- [implementation-plan.md](./implementation-plan.md) вЂ” Р°СЂС…РёС‚РµРєС‚СѓСЂР°, РєРѕРјРїРѕРЅРµРЅС‚С‹, flow РІС‹РїРѕР»РЅРµРЅРёСЏ Рё future improvements
 
-## Краткий обзор
+## РљСЂР°С‚РєРёР№ РѕР±Р·РѕСЂ
 
-`alloy-scripting` — скриптовый движок на базе Rhai для пользовательской автоматизации.
+`alloy-scripting` вЂ” runtime/engine crate РґР»СЏ Alloy РЅР° Р±Р°Р·Рµ Rhai.
 
-### Основные возможности
+### РћСЃРЅРѕРІРЅС‹Рµ РІРѕР·РјРѕР¶РЅРѕСЃС‚Рё
 
-1. **Event hooks** — скрипты срабатывают на события сущностей (before_create, after_update, on_commit)
-2. **Cron scheduler** — scheduled выполнение по расписанию
-3. **API triggers** — скрипты как HTTP endpoints
-4. **Manual execution** — ручной запуск через API
+1. **Event hooks** вЂ” СЃРєСЂРёРїС‚С‹ СЃСЂР°Р±Р°С‚С‹РІР°СЋС‚ РЅР° СЃРѕР±С‹С‚РёСЏ СЃСѓС‰РЅРѕСЃС‚РµР№ (`before_create`, `after_update`, `on_commit`)
+2. **Cron scheduler** вЂ” scheduled-РІС‹РїРѕР»РЅРµРЅРёРµ РїРѕ СЂР°СЃРїРёСЃР°РЅРёСЋ
+3. **API triggers** вЂ” СЃРєСЂРёРїС‚С‹ РєР°Рє HTTP endpoints
+4. **Manual execution** вЂ” СЂСѓС‡РЅРѕР№ Р·Р°РїСѓСЃРє С‡РµСЂРµР· API
 
-### Безопасность
+### Р‘РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ
 
-- Resource limits (max_operations, timeout, call_depth)
-- Auto-disable после 3 ошибок подряд
-- Sandboxed execution (no FS/network access)
+- Resource limits (`max_operations`, `timeout`, `call_depth`)
+- Auto-disable РїРѕСЃР»Рµ СЃРµСЂРёРё РѕС€РёР±РѕРє
+- Sandboxed execution Р±РµР· РїСЂСЏРјРѕРіРѕ FS/network РґРѕСЃС‚СѓРїР° РІРЅРµ СЂР°Р·СЂРµС€С‘РЅРЅС‹С… bridge-СЃР»РѕС‘РІ
 
-### Интеграция с платформой
+### РРЅС‚РµРіСЂР°С†РёСЏ СЃ РїР»Р°С‚С„РѕСЂРјРѕР№
 
-`alloy-scripting` зарегистрирован в `ModuleRegistry` как опциональный модуль (`ModuleKind::Optional`) через `AlloyModule` в `apps/server/src/modules/alloy.rs`.
+`alloy-scripting` Р±РѕР»СЊС€Рµ РЅРµ СЂРµРіРёСЃС‚СЂРёСЂСѓРµС‚СЃСЏ РєР°Рє tenant-toggle РјРѕРґСѓР»СЊ РІ `ModuleRegistry`.
+Р­С‚Рѕ module-agnostic runtime/capability СЃР»РѕР№ Alloy, РєРѕС‚РѕСЂС‹Р№:
 
-Это обеспечивает:
-- Видимость состояния в `/health/modules`
-- RBAC-контроль доступа к скриптам через ресурс `Scripts` (create/read/update/delete/list/manage)
-- Управление миграциями через единый механизм реестра (`ScriptsMigration`)
+- РґР°С‘С‚ РґРІРёР¶РѕРє, storage, execution log Рё migration-СЃР»РѕР№ РґР»СЏ Alloy;
+- РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ transport-Р°РґР°РїС‚РµСЂРѕРј `alloy`;
+- РёРЅС‚РµРіСЂРёСЂСѓРµС‚СЃСЏ СЃ `rustok-mcp` РєР°Рє СЃ РєР°РЅРѕРЅРёС‡РµСЃРєРѕР№ РІРЅРµС€РЅРµР№ surface-С‚РѕС‡РєРѕР№ Alloy;
+- РјРѕР¶РµС‚ РІС‹Р·С‹РІР°С‚СЊСЃСЏ РёР· `rustok-workflow` С‡РµСЂРµР· `alloy_script` Рё `ScriptRunner`, РЅРѕ Р±РµР· runtime-Р·Р°РІРёСЃРёРјРѕСЃС‚Рё `workflow -> alloy`.
 
-Модуль также предоставляет:
-- `ScriptableEntity` trait для интеграции с доменными сущностями
-- `HookExecutor` для удобного вызова hooks из сервисов
-- `ScriptOrchestrator` для координации выполнения
+РњРѕРґСѓР»СЊ С‚Р°РєР¶Рµ РїСЂРµРґРѕСЃС‚Р°РІР»СЏРµС‚:
 
-Рантайм (`AlloyState`) инициализируется в `apps/server/src/app.rs::after_routes()` — это session-level состояние для GraphQL.
+- `ScriptableEntity` trait РґР»СЏ РёРЅС‚РµРіСЂР°С†РёРё СЃ РґРѕРјРµРЅРЅС‹РјРё СЃСѓС‰РЅРѕСЃС‚СЏРјРё;
+- `HookExecutor` РґР»СЏ СѓРґРѕР±РЅРѕРіРѕ РІС‹Р·РѕРІР° hooks РёР· СЃРµСЂРІРёСЃРѕРІ;
+- `ScriptOrchestrator` РґР»СЏ РєРѕРѕСЂРґРёРЅР°С†РёРё РІС‹РїРѕР»РЅРµРЅРёСЏ.
 
-См. [implementation-plan.md](./implementation-plan.md) для деталей.
+GraphQL Рё transport-shell РґР»СЏ Alloy РІС‹РЅРµСЃРµРЅС‹ РІ `crates/alloy`, С‡С‚РѕР±С‹ РЅРµ Р·Р°РјС‹РєР°С‚СЊ С†РёРєР»
+Р·Р°РІРёСЃРёРјРѕСЃС‚РµР№ `alloy-scripting -> rustok-api -> rustok-core -> alloy-scripting`.
+`alloy-scripting` РѕСЃС‚Р°С‘С‚СЃСЏ runtime/engine СЃР»РѕРµРј, Р° `apps/server` РїРѕРґРєР»СЋС‡Р°РµС‚ `alloy`
+РєР°Рє composition-root shim Р±РµР· СЂРµРіРёСЃС‚СЂР°С†РёРё Alloy РєР°Рє tenant module.
+
+РЎРј. [implementation-plan.md](./implementation-plan.md) РґР»СЏ РґРµС‚Р°Р»РµР№.
+

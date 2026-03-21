@@ -655,7 +655,15 @@ pub async fn resolve(
             };
 
             match tenant {
-                Some(tenant) => Ok(Some(TenantContext::from_model(&tenant))),
+                Some(tenant) => Ok(Some(TenantContext {
+                    id: tenant.id,
+                    name: tenant.name,
+                    slug: tenant.slug,
+                    domain: tenant.domain,
+                    settings: tenant.settings,
+                    default_locale: tenant.default_locale,
+                    is_active: tenant.is_active,
+                })),
                 None => {
                     infra_clone.set_negative(negative_key_clone).await?;
                     Ok(None)

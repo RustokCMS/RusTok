@@ -1,175 +1,78 @@
-# Документация по модулям RusToK
+﻿# Р”РѕРєСѓРјРµРЅС‚Р°С†РёСЏ РїРѕ РјРѕРґСѓР»СЏРј RusToK
 
-Этот документ фиксирует текущее состояние модульной архитектуры в репозитории:
+Р­С‚РѕС‚ РґРѕРєСѓРјРµРЅС‚ С„РёРєСЃРёСЂСѓРµС‚ С‚РµРєСѓС‰РµРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РјРѕРґСѓР»СЊРЅРѕР№ Р°СЂС…РёС‚РµРєС‚СѓСЂС‹ РІ СЂРµРїРѕР·РёС‚РѕСЂРёРё:
 
-- какие **обязательные Core-модули платформы** должны быть включены всегда;
-- какие дополнительные доменные модули можно подключать по необходимости;
-- какие остальные обязательные core-модули входят в ядро платформы.
+- РєР°РєРёРµ runtime-РјРѕРґСѓР»Рё СЂРµР°Р»СЊРЅРѕ СЂРµРіРёСЃС‚СЂРёСЂСѓСЋС‚СЃСЏ РІ `ModuleRegistry`;
+- РєР°РєРёРµ core/crate-Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РѕР±СЏР·Р°С‚РµР»СЊРЅС‹ РґР»СЏ РїР»Р°С‚С„РѕСЂРјС‹;
+- РєР°РєРёРµ capability-СЃР»РѕРё РЅРµ СЏРІР»СЏСЋС‚СЃСЏ tenant-toggle РјРѕРґСѓР»СЏРјРё.
 
-## 1. Общая картина
+## 1. РћР±С‰Р°СЏ РєР°СЂС‚РёРЅР°
 
-RusToK — модульный монолит: модули компилируются в общий бинарник и поднимаются через `ModuleRegistry`.
+RusToK вЂ” РјРѕРґСѓР»СЊРЅС‹Р№ РјРѕРЅРѕР»РёС‚: runtime-РјРѕРґСѓР»Рё РєРѕРјРїРёР»РёСЂСѓСЋС‚СЃСЏ РІ РѕР±С‰РёР№ Р±РёРЅР°СЂРЅРёРє Рё РїРѕРґРЅРёРјР°СЋС‚СЃСЏ С‡РµСЂРµР·
+`ModuleRegistry`, Р° platform/core С„СѓРЅРєС†РёРѕРЅР°Р»СЊРЅРѕСЃС‚СЊ Рё capability-СЃР»РѕРё Р¶РёРІСѓС‚ СЂСЏРґРѕРј РІ shared crate'Р°С….
 
-Ключевой момент: в RusToK есть обязательные core-модули платформы и дополнительные optional-модули.
+Р“РґРµ СЃРјРѕС‚СЂРµС‚СЊ РІ РєРѕРґРµ:
 
-**Где смотреть в коде:**
+- runtime-СЂРµРіРёСЃС‚СЂР°С†РёСЏ РјРѕРґСѓР»РµР№: `apps/server/src/modules/mod.rs`
+- СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ runtime registry Рё manifest: `apps/server/src/modules/manifest.rs`
+- РєРѕРЅС‚СЂР°РєС‚ РјРѕРґСѓР»СЏ Рё РІРёРґС‹ РјРѕРґСѓР»РµР№: `crates/rustok-core/src/module.rs`
+- manifest СЃР±РѕСЂРєРё: `modules.toml`
 
-- Runtime-регистрация модулей: `apps/server/src/modules/mod.rs`
-- Синхронизация манифеста и runtime-регистрации: `apps/server/src/modules/manifest.rs`
-- Контракт модуля и виды модулей: `crates/rustok-core/src/module.rs`
-- Реестр Core/Optional: `crates/rustok-core/src/registry.rs`
-- Манифест модулей: `modules.toml`
+## 2. Р§С‚Рѕ СЂРµР°Р»СЊРЅРѕ Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°РЅРѕ РІ СЃРµСЂРІРµСЂРµ
 
-## 2. Что реально зарегистрировано в сервере
+### Core runtime-РјРѕРґСѓР»Рё
 
-В текущей сборке в `ModuleRegistry` регистрируются:
+| Slug | Crate | РќР°Р·РЅР°С‡РµРЅРёРµ |
+|---|---|---|
+| `index` | `rustok-index` | РРЅРґРµРєСЃР°С†РёСЏ Рё read-model contracts |
+| `tenant` | `rustok-tenant` | Tenant lifecycle Рё tenant metadata |
+| `rbac` | `rustok-rbac` | RBAC lifecycle Рё authorization contracts |
 
-### Обязательные Core-модули (`ModuleKind::Core`)
+### Optional runtime-РјРѕРґСѓР»Рё
 
-| Slug | Crate | Назначение |
-| --- | --- | --- |
-| `index` | `rustok-index` | **Core (critical)**: CQRS/read-model индексатор |
-| `tenant` | `rustok-tenant` | **Core (critical)**: Tenant lifecycle и метаданные |
-| `rbac` | `rustok-rbac` | **Core (critical)**: RBAC lifecycle и health |
+| Slug | Crate | РќР°Р·РЅР°С‡РµРЅРёРµ |
+|---|---|---|
+| `content` | `rustok-content` | РљРѕРЅС‚РµРЅС‚РЅС‹Р№ РґРѕРјРµРЅ |
+| `commerce` | `rustok-commerce` | Commerce/catalog/inventory |
+| `blog` | `rustok-blog` | Р‘Р»РѕРі РїРѕРІРµСЂС… content |
+| `forum` | `rustok-forum` | Р¤РѕСЂСѓРј РїРѕРІРµСЂС… content |
+| `pages` | `rustok-pages` | РЎС‚СЂР°РЅРёС†С‹, РјРµРЅСЋ Рё Р±Р»РѕРєРё |
+| `workflow` | `rustok-workflow` | Workflow automation Рё execution history |
 
-Эти три модуля считаются **критичными для корректной работы платформы** и являются базовым contract-first минимумом для `apps/server`.
+## 3. РћР±СЏР·Р°С‚РµР»СЊРЅС‹Р№ platform/core СЃР»РѕР№
 
-### Дополнительные доменные модули (`ModuleKind::Optional`)
+Р­С‚Рё crate'С‹ СЏРІР»СЏСЋС‚СЃСЏ С‡Р°СЃС‚СЊСЋ РѕР±СЏР·Р°С‚РµР»СЊРЅРѕРіРѕ Р±Р°Р·РёСЃР° РїР»Р°С‚С„РѕСЂРјС‹:
 
-| Slug | Crate | Назначение |
-| --- | --- | --- |
-| `content` | `rustok-content` | Базовый CMS-контент |
-| `commerce` | `rustok-commerce` | e-commerce домен |
-| `blog` | `rustok-blog` | Блоговая надстройка (depends_on: `content`) |
-| `forum` | `rustok-forum` | Форумный модуль (depends_on: `content`) |
-| `pages` | `rustok-pages` | Страницы и меню |
+| Crate | Р РѕР»СЊ |
+|---|---|
+| `rustok-core` | Р‘Р°Р·РѕРІС‹Рµ РїР»Р°С‚С„РѕСЂРјРµРЅРЅС‹Рµ РєРѕРЅС‚СЂР°РєС‚С‹ |
+| `rustok-api` | РћР±С‰РёР№ web/API СЃР»РѕР№ РґР»СЏ transport-Р°РґР°РїС‚РµСЂРѕРІ |
+| `rustok-outbox` | Transactional delivery СЃРѕР±С‹С‚РёР№ |
+| `rustok-events` | РљР°РЅРѕРЅРёС‡РµСЃРєРёР№ import point РґР»СЏ event contracts |
+| `rustok-telemetry` | Observability bootstrap |
+| `rustok-cache` | Cache/runtime infra |
+| `rustok-storage` | Storage backend contracts |
+| `rustok-iggy` + `rustok-iggy-connector` | Streaming transport |
+| `rustok-mcp` | MCP integration surface |
 
-## 3. Остальные обязательные core-модули
+## 4. Alloy: РЅРµ РјРѕРґСѓР»СЊ, Р° capability
 
-Эти crate'ы относятся к обязательным core-модулям платформы:
+Alloy Р±РѕР»СЊС€Рµ РЅРµ С‚СЂР°РєС‚СѓРµС‚СЃСЏ РєР°Рє optional runtime-РјРѕРґСѓР»СЊ.
 
-| Crate | Статус | Примечание |
-| --- | --- | --- |
-| `rustok-core` | **Core (critical)** | Контракты, базовые типы и инфраструктура |
-| `rustok-outbox` | **Core (critical)** | Транзакционная доставка событий (required в `modules.toml`) |
-| `rustok-telemetry` | **Core (critical)** | Сквозная observability |
+РџСЂР°РІРёР»СЊРЅР°СЏ Р°СЂС…РёС‚РµРєС‚СѓСЂРЅР°СЏ РјРѕРґРµР»СЊ:
 
-Итого обязательные core-модули платформы: `index`, `tenant`, `rbac`, `rustok-core`, `rustok-outbox`, `rustok-telemetry`.
+- `alloy-scripting` вЂ” module-agnostic runtime/engine crate;
+- `alloy` вЂ” transport-shell для Alloy management/API surface;
+- Alloy РЅРµ СЂРµРіРёСЃС‚СЂРёСЂСѓРµС‚СЃСЏ РІ `ModuleRegistry`;
+- Alloy РЅРµ СѓС‡Р°СЃС‚РІСѓРµС‚ РІ tenant module lifecycle;
+- `workflow` РјРѕР¶РµС‚ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ Alloy РєР°Рє capability РґР»СЏ С€Р°РіР° `alloy_script`, РЅРѕ РЅРµ РєР°Рє runtime dependency;
+- РІРЅРµС€РЅСЏСЏ РёРЅС‚РµРіСЂР°С†РёРѕРЅРЅР°СЏ РїРѕРІРµСЂС…РЅРѕСЃС‚СЊ Alloy РЅР°С…РѕРґРёС‚СЃСЏ СЂСЏРґРѕРј СЃ `rustok-mcp`.
 
-Также есть дополнительные optional crate'ы (`rustok-iggy`, `rustok-iggy-connector`, `rustok-mcp`, `alloy-scripting`).
+## 5. UI composition policy РґР»СЏ optional-РјРѕРґСѓР»РµР№
 
-## 4. UI composition policy для optional-модулей
+Р”Р»СЏ `ModuleKind::Optional` UI-СЃР»РѕР№ РЅРµ РґРѕР»Р¶РµРЅ Р¶РёС‚СЊ РІ `apps/*` РєР°Рє Р¶С‘СЃС‚РєРѕ РїСЂРёС€РёС‚Р°СЏ Р»РѕРіРёРєР°.
+Р­РєСЂР°РЅС‹, РјРµРЅСЋ Рё РјР°СЂС€СЂСѓС‚С‹ РґРѕР»Р¶РЅС‹ РїРѕСЃС‚Р°РІР»СЏС‚СЊСЃСЏ СЃР°РјРёРјРё РјРѕРґСѓР»СЊРЅС‹РјРё РїР°РєРµС‚Р°РјРё/crate'Р°РјРё.
 
-### 4.1 Базовое правило
+РСЃРєР»СЋС‡РµРЅРёРµ: platform/core Рё capability-СЃР»РѕРё РЅРµ РѕР±СЏР·Р°РЅС‹ СЃР»РµРґРѕРІР°С‚СЊ СЌС‚РѕРјСѓ РїСЂР°РІРёР»Сѓ, РµСЃР»Рё РїРѕ СЃРІРѕРµР№
+РїСЂРёСЂРѕРґРµ РѕРЅРё СЏРІР»СЏСЋС‚СЃСЏ server/runtime orchestration, Р° РЅРµ tenant-РјРѕРґСѓР»РµРј.
 
-Для модулей `ModuleKind::Optional` UI-слой **не должен хардкодиться в приложениях** (`apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`).
-Экраны, меню, nav items, guards и редакторы подключаются из модульных UI-пакетов, поставляемых самим модулем.
-
-### 4.2 Исключение для core
-
-Следующие модули и crate'ы считаются платформенным core-слоем и **не обязаны** следовать UI-паттерну модульных пакетов:
-
-- Core-модули: `index`, `tenant`, `rbac`.
-- Платформенные core crate'ы: `rustok-core`, `rustok-outbox`, `rustok-telemetry` (и их инфраструктурные зависимости).
-
-### 4.3 Структура UI-пакетов модулей
-
-**Leptos UI** — живёт внутри модульного крейта через feature flags (`/admin`, `/storefront`). Папки `/admin` и `/storefront` сами являются publishable крейтами (crates.io).
-
-```text
-crates/rustok-blog/
-  Cargo.toml           # rustok-blog (backend)
-  src/
-  admin/               # rustok-blog-admin → crates.io
-    Cargo.toml
-    src/
-  storefront/         # rustok-blog-storefront → crates.io
-    Cargo.toml
-    src/
-```
-
-`apps/admin/Cargo.toml` зависит от `rustok-blog-admin`, `rustok-commerce-admin` и т.д.
-BuildExecutor управляет пересборкой WASM автоматически при install/uninstall.
-
-**Next.js UI** — отдельные npm-пакеты внутри директории `packages/` приложения:
-
-```text
-apps/next-admin/
-  packages/
-    blog/              # @rustok/blog-admin
-    commerce/          # @rustok/commerce-admin
-  src/                 # само приложение, импортирует из packages/*
-  package.json
-
-apps/next-frontend/
-  packages/
-    blog/              # @rustok/blog-frontend
-    commerce/          # @rustok/commerce-frontend
-  src/
-  package.json
-```
-
-Убрать модуль из Next.js:
-
-1. Удалить `apps/next-admin/packages/<name>/`
-2. Убрать зависимость из `apps/next-admin/package.json`
-3. `npm install && npm run build`
-
-> [!IMPORTANT]
-> Авто-установка модулей через marketplace работает только для **Leptos**-стека.
-> Next.js приложения требуют ручной пересборки при добавлении/удалении модуля.
-
-### 4.4 UI readiness (non-core)
-
-| Модуль | Leptos (sub-crate) | Next.js (packages/) | Статус |
-| --- | --- | --- | --- |
-| `content` | `admin/`, `storefront/` | `packages/content/` | ❌ Not ready |
-| `commerce` | `admin/`, `storefront/` | `packages/commerce/` | ❌ Not ready |
-| `blog` | `admin/`, `storefront/` | `packages/blog/` | ⚠️ Partial |
-| `forum` | `admin/`, `storefront/` | `packages/forum/` | ⚠️ Partial |
-| `pages` | `admin/` | `packages/pages/` | ❌ Not ready |
-
-> [!NOTE]
-> Устаревшие пути:
->
-> - `crates/rustok-blog/ui/admin` → мигрирует в `crates/rustok-blog/admin/` (Leptos sub-crate)
-> - `apps/next-admin/src/features/blog/` → мигрирует в `apps/next-admin/packages/blog/`
-
-
-## 5. Приложения
-
-- `apps/server` (`rustok-server`) — API-сервер и orchestration модулей.
-- `apps/admin` (`rustok-admin`) — **primary** админ-панель на Leptos (CSR/WASM). Участвует в авто-деплое при install/uninstall модулей.
-- `apps/storefront` (`rustok-storefront`) — **primary** storefront на Leptos (SSR). Участвует в авто-деплое при install/uninstall модулей.
-- `apps/next-admin` — Next.js Admin (экспериментальная headless-альтернатива). Пересборка **вручную**; не участвует в module install pipeline.
-- `apps/next-frontend` — Next.js Storefront (экспериментальная headless-альтернатива). Пересборка **вручную**; не участвует в module install pipeline.
-- `crates/rustok-mcp` (bin `rustok-mcp-server`) — MCP сервер/адаптер.
-
-Leptos-стек (`apps/admin`, `apps/storefront`) — основной фокус разработки и авто-деплоя.
-Next.js-стек — для headless-режима и JS-разработчиков; управляется независимо.
-
-## 6. Связанные документы
-
-- `docs/modules/registry.md` — реестр приложений и crate'ов.
-- `docs/modules/manifest.md` — манифест и правила описания модулей.
-- `docs/architecture/principles.md` — архитектурные инварианты и живые runtime contracts.
-
-## 7. Что делать при изменениях модульного состава
-
-При добавлении/удалении модульных crate'ов или их регистрации в сервере:
-
-1. Обновить `apps/server/src/modules/mod.rs` (если меняется runtime-регистрация).
-2. Обновить `modules.toml` (required/depends_on/default_enabled).
-3. Обновить `docs/modules/overview.md`, `docs/modules/registry.md` и при необходимости `docs/index.md`.
-4. Если затронуты Leptos UI-крейты — адд/ремув зависимость `rustok-<module>-admin` в `apps/admin/Cargo.toml` и `apps/storefront/Cargo.toml`; запустить пересборку WASM (BuildExecutor делает это автоматически).
-5. Для Next.js: добавить/удалить `apps/next-admin/packages/<module>/` и `apps/next-frontend/packages/<module>/`; обновить `package.json`; `npm install && npm run build`. Авто-деплой **не предусмотрен**.
-
-## 8. Проверка готовности к внедрению Tiptap / Page Builder (blog/forum/pages/content)
-
-Детальный план внедрения вынесен в отдельный документ: [План внедрения Tiptap/Page Builder](./tiptap-page-builder-implementation-plan.md).
-
-Краткий статус:
-
-- backend-контракт (`markdown` + `rt_json_v1` + server-side sanitize/validation) уже готов;
-- UI-интеграция в production-маршруты admin-приложений и rollout-процедуры — в работе;
-- запуск по умолчанию допускается только после прохождения фаз release-gate из отдельного плана.

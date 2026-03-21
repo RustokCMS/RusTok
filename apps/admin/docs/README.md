@@ -52,11 +52,18 @@ command_arguments = ["tailwindcss", "-i", "input.css", "-o", "dist/output.css", 
 - FSD-структура полностью реализована: `app/`, `pages/`, `widgets/`, `features/`, `entities/`, `shared/`.
 - Tailwind/shadcn миграция завершена: все страницы и компоненты используют семантические CSS-переменные.
 
+## UI и FSD contract
+
+- `apps/admin` использует `UI/leptos` через thin wrapper [`crates/leptos-ui`](../../../crates/leptos-ui/README.md).
+- Канонический API компонентных примитивов зафиксирован в [`UI/docs/api-contracts.md`](../../../UI/docs/api-contracts.md).
+- Токены и shadcn-compatible CSS-переменные задаются в `apps/admin/input.css` с импортом [`UI/tokens/base.css`](../../../UI/tokens/base.css).
+- `shared/` содержит только переиспользуемый transport/UI/config слой без доменной бизнес-логики.
+- `widgets/`, `features/`, `entities/` остаются canonical FSD-слоями для нового кода; legacy compatibility paths не считаются целевым API.
+
 Открытые доработки и будущий scope ведутся только в [`implementation-plan.md`](./implementation-plan.md).
 
 ## Связанные документы
 
-- [`docs/UI/fsd-restructuring-plan.md`](../../../docs/UI/fsd-restructuring-plan.md) — план FSD-реструктуризации
 - [`docs/UI/rust-ui-component-catalog.md`](../../../docs/UI/rust-ui-component-catalog.md) — каталог UI-компонентов
 - [`UI/leptos/README.md`](../../../UI/leptos/README.md) — документация iu-leptos
 - [`UI/docs/api-contracts.md`](../../../UI/docs/api-contracts.md) — API-контракты компонентов

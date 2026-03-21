@@ -33,7 +33,7 @@
 ## РЎРІСЏР·Р°РЅРЅС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹
 
 - `/docs/UI/storefront.md`
-- `/docs/UI/fsd-restructuring-plan.md`
+- `/docs/UI/README.md`
 - `/docs/index.md`
 
 ## Module-aware storefront notes

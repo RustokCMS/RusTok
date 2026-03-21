@@ -27,3 +27,6 @@
 - `🟡 В процессе`
 - `✅ Завершено`
 - `❌ Блокировано`
+## Active plans
+
+- [RBAC verification for server and runtime modules](./rbac-server-modules-verification-plan.md)

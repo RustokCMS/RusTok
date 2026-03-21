@@ -3,9 +3,11 @@ use rustok_core::permissions::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod graphql;
 pub mod locale;
 pub mod migrations;
 pub mod services;
@@ -19,6 +21,7 @@ pub use entities::{
     Body, Category, CategoryTranslation, Node, NodeTranslation, Tag, TagTranslation, Taggable,
 };
 pub use error::{ContentError, ContentResult};
+pub use graphql::{ContentMutation, ContentQuery};
 pub use locale::{
     available_locales_from, resolve_by_locale, resolve_by_locale_with_fallback, ResolvedLocale,
     PLATFORM_FALLBACK_LOCALE,

@@ -1,4 +1,4 @@
-# Module documentation index
+﻿# Module documentation index
 
 Per-module documentation lives inside each crate at `crates/<name>/docs/README.md`.
 This page is the navigation index for all module-level docs.
@@ -34,38 +34,45 @@ not duplicated in `docs/modules/`. Links below point directly to those locations
 | `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |
 | `rustok-pages` | [docs](../../crates/rustok-pages/docs/README.md) | [plan](../../crates/rustok-pages/docs/implementation-plan.md) |
 | `rustok-index` | [docs](../../crates/rustok-index/docs/README.md) | [plan](../../crates/rustok-index/docs/implementation-plan.md) |
-| `alloy-scripting` | [docs](../../crates/alloy-scripting/docs/README.md) | [plan](../../crates/alloy-scripting/docs/implementation-plan.md) |
 | `rustok-media` | [docs](../../crates/rustok-media/docs/README.md) | [plan](../../crates/rustok-media/docs/implementation-plan.md) |
 | `rustok-storage` | [docs](../../crates/rustok-storage/docs/README.md) | [plan](../../crates/rustok-storage/docs/implementation-plan.md) |
 | `rustok-workflow` | [docs](../../crates/rustok-workflow/docs/README.md) | [plan](../../crates/rustok-workflow/docs/implementation-plan.md) |
+
+## Capabilities
+
+| Capability | Docs | Implementation plan |
+|--------|------|-------------------|
+| `alloy-scripting` | [docs](../../crates/alloy-scripting/docs/README.md) | [plan](../../crates/alloy-scripting/docs/implementation-plan.md) |
+| `alloy` | [docs](../../crates/alloy/docs/README.md) | n/a |
 
 ## Module template
 
 When creating a new module, copy the `_template` folder and fill in all sections.
 
 > [!IMPORTANT]
-> Если новый модуль публикует или обрабатывает `DomainEvent`, в его `crates/<name>/docs/README.md`
-> обязательно добавить секцию `Event contracts` со ссылкой на
-> `docs/architecture/event-flow-contract.md`, и обновить `docs/index.md`/`docs/modules/registry.md` при добавлении нового модуля.
+> Р•СЃР»Рё РЅРѕРІС‹Р№ РјРѕРґСѓР»СЊ РїСѓР±Р»РёРєСѓРµС‚ РёР»Рё РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚ `DomainEvent`, РІ РµРіРѕ `crates/<name>/docs/README.md`
+> РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ РґРѕР±Р°РІРёС‚СЊ СЃРµРєС†РёСЋ `Event contracts` СЃРѕ СЃСЃС‹Р»РєРѕР№ РЅР°
+> `docs/architecture/event-flow-contract.md`, Рё РѕР±РЅРѕРІРёС‚СЊ `docs/index.md`/`docs/modules/registry.md` РїСЂРё РґРѕР±Р°РІР»РµРЅРёРё РЅРѕРІРѕРіРѕ РјРѕРґСѓР»СЏ.
 
 
 ```
 docs/modules/_template/
-  _index.md    — entry point with purpose and key flows
-  api.md       — GraphQL/REST contracts
-  commands.md  — write-side commands
-  queries.md   — read-side queries
-  events.md    — published domain events
-  domain.md    — entity model
-  storage.md   — tables and indexes
-  testing.md   — test strategy
-  workflows.md — key business workflows
+  _index.md    вЂ” entry point with purpose and key flows
+  api.md       вЂ” GraphQL/REST contracts
+  commands.md  вЂ” write-side commands
+  queries.md   вЂ” read-side queries
+  events.md    вЂ” published domain events
+  domain.md    вЂ” entity model
+  storage.md   вЂ” tables and indexes
+  testing.md   вЂ” test strategy
+  workflows.md вЂ” key business workflows
 ```
 
 ## Related documents
 
-- [Module overview](./overview.md) — which modules are registered and their kinds
-- [Module & application registry](./registry.md) — full component directory with dependencies
-- [Module manifest](./manifest.md) — modules.toml format and rebuild lifecycle
-- [Tiptap/Page Builder implementation plan](./tiptap-page-builder-implementation-plan.md) — phased rollout plan with completion marks
-- [Flex spec](./flex.md) — Flex module concept
+- [Module overview](./overview.md) вЂ” which modules are registered and their kinds
+- [Module & application registry](./registry.md) вЂ” full component directory with dependencies
+- [Module manifest](./manifest.md) вЂ” modules.toml format and rebuild lifecycle
+- [Tiptap/Page Builder implementation plan](./tiptap-page-builder-implementation-plan.md) вЂ” phased rollout plan with completion marks
+- [Flex docs](../../crates/flex/docs/README.md) вЂ” Flex module concept
+

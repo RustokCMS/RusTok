@@ -3,10 +3,13 @@ use rustok_core::permissions::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod graphql;
 pub mod migrations;
+mod search;
 pub mod services;
 pub mod state_machine;
 
@@ -15,6 +18,7 @@ mod state_machine_proptest;
 
 pub use dto::*;
 pub use error::{CommerceError, CommerceResult};
+pub use graphql::{CommerceMutation, CommerceQuery};
 pub use services::{CatalogService, InventoryService, PricingService};
 pub use state_machine::{
     Cancelled, Confirmed, Delivered, Order, OrderError, Paid, Pending, Shipped,

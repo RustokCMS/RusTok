@@ -8,9 +8,11 @@
 
 ### Архитектурные долги
 
+- Удалить остаточные compatibility paths после верификации сборки (`src/components/`, `src/api/`, `src/providers/`, `src/i18n.rs`, `src/modules/`, `src/app.rs`), чтобы live API совпадал с текущей FSD-структурой.
 - Завершить консолидацию FSD-структуры с минимизацией cross-layer импортов.
 - Устранить дубли бизнес-логики между widgets/features и shared-integration слоем.
 - Сформировать единый набор UI primitives и policy повторного использования.
+- Добавить недостающий агрегатный `widgets/user_table` вместо локальных таблиц/обвязки по страницам.
 
 ### API/UI контракты
 
@@ -35,6 +37,7 @@
 - Увеличить покрытие unit/component тестов для shared UI и критичных форм.
 - Добавить e2e smoke-сценарии для core admin workflows.
 - Ввести contract checks для i18n ключей и API-type drift.
+- Довести `cargo build -p rustok-admin` и `cargo-udeps --package rustok-admin` до зелёного baseline без `cargo-udeps.ignore` для устаревших UI/FSD хвостов.
 
 ## Паритет стеков (Leptos/Next.js)
 
@@ -46,6 +49,13 @@
 - [ ] Реализовано в Next.js-варианте.
 - [ ] Контракты API/UI совпадают.
 - [ ] Навигация и RBAC-поведение эквивалентны.
+
+## FSD/UI follow-up backlog
+
+- Закрыть все cross-layer импорты, которые нарушают правило `pages -> widgets -> features -> entities -> shared`.
+- Удалить compatibility aliases и старые import paths после подтверждённой сборки и smoke-верификации.
+- Выровнять shared UI/state contracts с `apps/next-admin` для loading, empty, error и permission-gated сценариев.
+- Зафиксировать repeatable verification-runbook для FSD-слоёв и UI-контрактов вместе с RBAC/navigation checks.
 
 ### Текущий статус rich-text (blog/forum/pages)
 

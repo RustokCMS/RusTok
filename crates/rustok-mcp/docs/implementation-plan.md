@@ -1,126 +1,148 @@
-# MCP module implementation plan (`rustok-mcp`)
+# План реализации `rustok-mcp`
 
-## Scope and objective
+## Назначение документа
 
-This document captures the current implementation plan for the MCP module in RusToK and
-serves as the source of truth for rollout sequencing in `crates/rustok-mcp`.
+Этот документ фиксирует только RusToK-специфичный слой реализации `crates/rustok-mcp`:
 
-Primary objective: incrementally expand MCP capabilities without coupling business domains
-to transport/protocol details.
+- что мы уже реализовали поверх `rmcp`;
+- какие capability MCP мы реально подняли в RusToK;
+- какие архитектурные пробелы ещё остаются до platform-grade MCP слоя.
 
-## Target architecture
+Документ не должен пересказывать или переписывать спецификацию MCP.
 
-- `rustok-mcp` stays a thin adapter over `rmcp`.
-- Domain logic remains in platform/domain services (`rustok-core` + `rustok-*` modules).
-- MCP exposes typed tools/resources with stable contracts and versioned evolution.
-- Runtime supports dual-mode delivery:
-  - library mode (`rustok_mcp` as embeddable crate);
-  - binary mode (`rustok-mcp-server` for standalone stdio/server usage).
+## Источник истины по протоколу и SDK
 
-## Delivery phases
+Если вопрос касается самого протокола MCP, поведения SDK, security или authorization flow,
+источником истины считаются внешние документы:
 
-### Phase 0 — Foundation (done)
+- MCP docs: [modelcontextprotocol.io/docs](https://modelcontextprotocol.io/docs)
+- MCP spec: [modelcontextprotocol.io/specification](https://modelcontextprotocol.io/specification/2025-03-26)
+- `rmcp` docs: [docs.rs/rmcp](https://docs.rs/rmcp/latest/rmcp/)
+- Rust SDK repo: [modelcontextprotocol/rust-sdk](https://github.com/modelcontextprotocol/rust-sdk)
+- Authorization: [Understanding Authorization in MCP](https://modelcontextprotocol.io/docs/tutorials/security/authorization)
+- Security: [Security Best Practices](https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices)
 
-- [x] Baseline crate structure (`lib`, `server`, `tools`, tests).
-- [x] Integrated official Rust MCP SDK (`rmcp`).
-- [x] Introduced dual-mode packaging (library + binary).
-- [x] Initial docs and integration points with module registry.
-- [x] Module discovery tools (`list_modules`, `module_exists`, `module_details`).
-- [x] Tests for module discovery tools.
+Локальная документация должна ссылаться на эти источники, а не копировать их содержимое.
 
-### Phase 1 — Contract hardening (done)
+## Текущая архитектурная роль `rustok-mcp`
 
-- [x] Freeze tool naming conventions and argument schemas (constants in `tools.rs`).
-- [x] Define response/error envelope policy for MCP tools (`McpToolResponse`).
-- [x] Add compatibility matrix for client versions (see below).
-- [x] Expand integration tests for schema and transport behavior.
+- `rustok-mcp` остаётся thin adapter crate поверх `rmcp`;
+- доменная логика не живёт внутри MCP-слоя и остаётся в platform/domain services;
+- Alloy подключается как capability через `AlloyMcpState`, а не как отдельный MCP runtime;
+- локальный MCP-слой сейчас покрывает typed tools, response envelope, access policy, runtime binding и первый реальный Alloy product-slice.
 
-### Compatibility matrix
+## Что реально реализовано
 
-| Component | Version | Notes |
-| --- | --- | --- |
-| MCP protocol | 2024-11-05 | Matches `rmcp::model::ProtocolVersion::V_2024_11_05`. |
-| Tool response envelope | v1 | `McpToolResponse` with `ok/data/error`. |
+### Foundation
 
-### Phase 2 — Domain expansion (done)
+- [x] crate shape: `lib`, `server`, `tools`, tests
+- [x] интеграция с официальным Rust SDK `rmcp`
+- [x] dual-mode delivery: library + binary (`rustok-mcp-server`)
+- [x] стабильный envelope `McpToolResponse`
+- [x] compatibility policy для protocol version и response envelope
 
-- [x] Add content/page/blog/forum domain MCP tools (`content_module`, `blog_module`, `forum_module`, `pages_module`).
-- [x] Introduce pagination/filter standards across tool outputs (`query_modules`).
-- [x] Add observability defaults (structured logs via `tracing` around tool calls).
-- [x] Define module-level ownership and release gates for each new tool group.
+### Tool surface
 
-**Ownership and release gates**
+- [x] module discovery tools: `list_modules`, `query_modules`, `module_exists`, `module_details`
+- [x] domain module metadata tools: `content_module`, `blog_module`, `forum_module`, `pages_module`
+- [x] readiness tool: `mcp_health`
+- [x] Alloy script/runtime tools при наличии `AlloyMcpState`
+- [x] `alloy_scaffold_module` как первый реальный `AI -> MCP -> Alloy -> Platform` tool
+- [x] review/apply boundary через `alloy_review_module_scaffold` и `alloy_apply_module_scaffold`
+- [x] persisted server-side scaffold draft control plane в `apps/server`
+- [x] pluggable runtime draft-store contract и live binding к persisted server-side scaffold drafts через `DbBackedMcpRuntimeBridge`
 
-| Tool group | Owner | Release gate |
-| --- | --- | --- |
-| Module discovery (`list_modules`, `query_modules`, `module_*`) | Platform foundation | Requires registry schema review + contract test updates. |
-| Domain module tools (`content_module`, `blog_module`, `forum_module`, `pages_module`) | Domain module owners | Requires service-layer sign-off + changelog entry. |
-| Health/ops (`mcp_health`) | Platform foundation | Requires runbook update + metrics review. |
+### Operational baseline
 
-### Phase 3 — Productionization (done)
+- [x] allow-list инструментов через `enabled_tools`
+- [x] базовый structured logging вокруг tool calls
+- [x] schema-driven argument parsing через `schemars`
+- [x] identity/policy foundation: `McpIdentity`, `McpAccessContext`, `McpAccessPolicy`
+- [x] permission-aware authorization для tool calls с compatibility shim поверх legacy `enabled_tools`
+- [x] introspection tool `mcp_whoami`
+- [x] session-start runtime binding hooks: `McpSessionContext`, `McpAccessResolver`, `McpRuntimeBinding`
+- [x] runtime allow/deny audit hook через `McpAuditSink` и `McpToolCallAuditEvent`
 
-- [x] Add rollout strategy (capability gates via `enabled_tools` in `McpServerConfig`).
-- [x] Finalize security hardening checklist for tool execution.
-- [x] Add SLO-aligned readiness checks and operational runbook (`mcp_health`).
-- [x] Complete production support policy and upgrade playbook.
+## Первый реальный Alloy product-slice
 
-**Security hardening checklist**
+`alloy_scaffold_module` нужен не ради ещё одного tool, а как первая честная вертикаль между AI и
+платформой.
 
-- Tool allow-list enforced via configuration (`enabled_tools`).
-- Consistent response envelope for errors (`McpToolResponse`).
-- Tool argument validation enforced via JSON schema parsing.
-- Unknown tools fail with protocol error.
+Что он делает сейчас:
 
-**Operational runbook (summary)**
+- принимает структурированный `ScaffoldModuleRequest`;
+- возвращает preview набора файлов draft-модуля и staging draft id;
+- отдаёт отдельный review step через `alloy_review_module_scaffold`;
+- выносит реальную запись в workspace в `alloy_apply_module_scaffold` с `confirm=true`;
+- не перезаписывает существующий crate;
+- не регистрирует модуль автоматически в runtime.
 
-- Use `mcp_health` for readiness checks.
-- Review `enabled_tools` before deployments.
-- Monitor tool call logs (`tracing`) for error patterns.
+Что это означает:
 
-**Production support policy**
+- это уже не “заглушка ради демонстрации”;
+- это ещё не полноценная автоматическая генерация production-модуля;
+- это управляемый scaffolding-step с явной review/apply границей, на котором можно строить persisted codegen pipeline дальше.
 
-- Maintain compatibility matrix for protocol + response envelope.
-- Backward-compatible tool changes only; breaking changes require new tool names.
-- Support window aligns with RusToK minor versions.
+## Что не реализовано
 
-## Status section: virtual users and RBAC access
+Следующие части MCP-экосистемы пока не подняты в RusToK как production-ready surface:
 
-> Status: **planned, not yet exposed as a production-ready MCP API in the current module**.
+- [ ] `resources`
+- [ ] `prompts`
+- [ ] `roots`
+- [ ] `sampling`
+- [ ] `logging` как полноценная MCP capability
+- [ ] `completions`
+- [ ] subscriptions/streaming surface за пределами текущего tool model
 
-### What is planned (but not enabled as production MCP API)
+Это значит, что `rustok-mcp` сегодня нельзя описывать как “полную реализацию MCP для RusToK”.
+Корректное описание: это governed MCP tool adapter поверх `rmcp` с Alloy-related extensions.
 
-- Virtual users model for non-human/automation MCP actors.
-- RBAC-aware capability checks for MCP tool invocations.
-- Role/scope mapping between MCP identities and RusToK permission model.
-- Audit trail requirements for privileged tool execution under virtual identities.
+## Критический архитектурный gap: identities и authorization
 
-### What is already completed for this stream
+Статус: **foundation реализован, но platform-grade remote MCP surface ещё не завершён**.
 
-- ✅ Dual-mode module shape is in place (library + binary delivery model).
-- ✅ Readiness posture is evaluated at planning level and included in rollout thinking.
-- ✅ A detailed MCP + RBAC roadmap is now fixed in module documentation and can be
-  tracked as part of module-level planning.
+### Что уже есть
 
-### Entry criteria for enabling production API
+- persisted модели MCP client/token/policy/audit в `apps/server`;
+- management API для клиентов, токенов, policy и аудита в `apps/server` (REST `/api/mcp/*` + GraphQL `mcp*`);
+- server-owned `DbBackedMcpRuntimeBridge`, который резолвит plaintext MCP token в `McpAccessContext` на старте stdio-сессии;
+- runtime audit allow/deny для tool invocations через `McpAuditSink` -> `mcp_audit_logs`.
 
-Before exposing virtual users + RBAC as production MCP API:
+### Чего сейчас нет
 
-1. Permission model must be explicitly documented (roles/scopes/tenancy boundaries).
-2. End-to-end authorization checks must be validated by tests.
-3. Auditability requirements must be implemented and observable.
-4. Backward-compatible migration path must be documented for existing MCP clients.
+- server-owned remote MCP transport/session bootstrap beyond текущего stdio adapter path;
+- admin UI поверх management API;
+- полная product-модель consent/delegation для human-linked clients и model agents.
 
-## Tracking and updates
+### Что это означает на практике
 
-When updating MCP architecture, API contracts, tenancy behavior, routing of tools,
-or observability expectations:
+Текущий foundation уже включает identity + policy + permission mapping в runtime `rustok-mcp`, но
+этого всё ещё недостаточно для platform-grade MCP access management. Он не заменяет:
 
-1. Update this file first.
-2. Update `crates/rustok-mcp/README.md` when public behavior changes.
-3. Update `docs/index.md` links if documentation structure changes.
-4. If module responsibilities change, update `docs/modules/registry.md` accordingly.
+- authorization из официальной MCP security model;
+- tenant-aware access control;
+- per-client/per-model consent и auditability.
 
-## Checklist
+Для remote MCP сценариев проектироваться нужно с опорой на официальный authorization/security
+guidance, а не на локальные упрощённые допущения.
 
-- [x] контрактные тесты покрывают все публичные use-case.
+## Следующие целевые срезы
 
+Следующие правильные слои развития `rustok-mcp` и Alloy integration:
+
+1. Поднять server-owned remote MCP transport/session bootstrap поверх уже существующего runtime binding и persisted draft-store contract.
+2. Довести audit trail до более богатого execution telemetry поверх текущего allow/deny слоя.
+3. Добавить UI-слой для администрирования MCP доступа и Alloy draft review.
+4. Расширить Alloy surface от draft scaffolding к более богатому codegen pipeline: permission/resource generation, runtime wiring hints, дальнейшая компиляция/публикация.
+
+## Правило сопровождения документации
+
+При изменениях в `crates/rustok-mcp/**`:
+
+1. Сначала сверить изменения с официальными MCP/rmcp документами.
+2. Обновить этот файл только в части RusToK integration behavior.
+3. Обновить [`../README.md`](../README.md), если изменилось публичное поведение crate.
+4. Обновить [`../../../docs/references/mcp/README.md`](../../../docs/references/mcp/README.md),
+   если изменился локальный reference-index.
+5. Обновить [`../../../docs/index.md`](../../../docs/index.md), если изменилась карта документации.

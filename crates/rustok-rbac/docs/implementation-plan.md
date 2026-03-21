@@ -52,7 +52,16 @@ documenting the completed transition to the Casbin-backed runtime.
 - `rustok-rbac` is the canonical module boundary for RBAC runtime logic.
 - Runtime authorization executes through the real `casbin` library.
 - Authorization runtime is fixed to `casbin_only`; the crate no longer exposes a rollout-mode switch.
-- No active migration backlog remains inside this module plan. Broader platform hardening may continue in other plans, but not as part of the RBAC relation/Casbin cutover.
+- Migration backlog is closed. Ongoing work is limited to steady-state hardening and drift prevention.
+
+## Ongoing hardening backlog
+
+### Phase 4 - Verification and drift prevention
+
+- [ ] Keep the periodic verification cycle green using `docs/verification/rbac-server-modules-verification-plan.md`.
+- [ ] Continue removing authorization drift where presentation-oriented role inference still exists outside the primary RBAC path.
+- [ ] Keep runtime-module `permissions()` / `dependencies()` / `README.md -> Interactions` aligned as modules evolve.
+- [ ] Expand module-level and server-level guardrails whenever a new RBAC-managed surface is added.
 
 ## Tracking and updates
 
@@ -63,6 +72,7 @@ or observability expectations:
 2. Update `crates/rustok-rbac/README.md` and `crates/rustok-rbac/docs/README.md` when public behavior changes.
 3. Update `docs/index.md` links if documentation structure changes.
 4. If module responsibilities change, update `docs/modules/registry.md` accordingly.
+5. If the live RBAC contract changes, update `apps/server/docs/README.md` and the RBAC verification plan.
 
 ## Checklist
 

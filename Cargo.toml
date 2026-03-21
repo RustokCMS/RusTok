@@ -145,6 +145,7 @@ rustok-content = { path = "crates/rustok-content" }
 rustok-pages = { path = "crates/rustok-pages" }
 rustok-index = { path = "crates/rustok-index" }
 rustok-auth = { path = "crates/rustok-auth" }
+rustok-api = { path = "crates/rustok-api" }
 rustok-cache = { path = "crates/rustok-cache" }
 rustok-email = { path = "crates/rustok-email" }
 rustok-outbox = { path = "crates/rustok-outbox" }
@@ -153,10 +154,12 @@ rustok-iggy-connector = { path = "crates/rustok-iggy-connector" }
 rustok-forum = { path = "crates/rustok-forum" }
 rustok-tenant = { path = "crates/rustok-tenant" }
 rustok-rbac = { path = "crates/rustok-rbac" }
+rustok-mcp = { path = "crates/rustok-mcp" }
 rustok-telemetry = { path = "crates/rustok-telemetry" }
 rustok-test-utils = { path = "crates/rustok-test-utils" }
 rustok-storage = { path = "crates/rustok-storage" }
 rustok-media = { path = "crates/rustok-media" }
 flex = { path = "crates/flex" }
 alloy-scripting = { path = "crates/alloy-scripting" }
+alloy = { path = "crates/alloy" }
 rustok-workflow = { path = "crates/rustok-workflow" }

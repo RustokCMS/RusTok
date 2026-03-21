@@ -30,8 +30,8 @@
 | [docs/architecture/i18n.md](docs/architecture/i18n.md) | i18n/multi-language архитектура |
 | [docs/modules/registry.md](docs/modules/registry.md) | Реестр всех модулей и приложений |
 | [docs/modules/manifest.md](docs/modules/manifest.md) | Манифест модулей и rebuild |
-| [docs/architecture/rbac.md](docs/architecture/rbac.md) | RBAC система прав доступа |
-| [docs/architecture/events.md](docs/architecture/events.md) | Event system и transactional publishing |
+| [crates/rustok-rbac/docs/README.md](crates/rustok-rbac/docs/README.md) | RBAC система прав доступа |
+| [crates/rustok-outbox/docs/README.md](crates/rustok-outbox/docs/README.md) | Event system и transactional publishing |
 | [docs/architecture/improvement-recommendations.md](docs/architecture/improvement-recommendations.md) | Актуальные рекомендации по архитектуре |
 | [CHANGELOG.md](CHANGELOG.md) | История версий и релизов |
 
@@ -148,6 +148,8 @@ Each layer encapsulates those below it. This model has no direct analogue in the
 | `rustok-rbac` | `rbac` | RBAC | Roles & permissions |
 | `rustok-index` | `index` | Index | CQRS Read Model (Fast Search) |
 
+`alloy-scripting` here refers to the Alloy core runtime surface, not to a tenant module inside RusToK. When RusToK hosts Alloy, the companion crate `alloy` acts as the transport/API shell, while Alloy itself remains a separate capability layer.
+
 ### 2.3 CQRS (Write vs Read)
 
 - **Write Model (Modules):** строгие реляционные таблицы (3NF), транзакции, валидация.
@@ -240,7 +242,7 @@ RusToK использует разные API-стили по типу клиен
 
 - **GraphQL (UI-only):** admin/storefront фронтенды работают через единый GraphQL endpoint.
 - **REST (integration/service):** внешние интеграции, webhook-коллбеки, batch/service automation и compatibility flows.
-- **Alloy GraphQL:** управление scripts/triggers и ручными запусками для UI-инструментов в той же GraphQL-схеме.
+- **Alloy management surface:** когда RusToK хостит Alloy, управление scripts/triggers и ручными запусками живёт в той же GraphQL-схеме и дополняется REST/MCP adapters.
 
 ### 4.2 Documentation
 
@@ -267,6 +269,8 @@ rustok/
 │   ├── rustok-outbox          # Outbox transport
 │   ├── rustok-iggy            # Streaming (optional)
 │   ├── rustok-iggy-connector  # Iggy connector layer (embedded/remote)
+│   ├── alloy-scripting        # Alloy core runtime
+│   ├── alloy/                 # Alloy transport/API shell for RusToK host
 │   └── rustok-mcp             # MCP adapter (rmcp SDK)
 │
 └── apps/

@@ -1,7 +1,7 @@
 # Flex — Implementation Plan
 
-> Документация модуля: [`docs/modules/flex.md`](/docs/modules/flex.md)
-> Архитектура: [`docs/architecture/flex.md`](/docs/architecture/flex.md)
+> Каноническая документация модуля: [`README.md`](./README.md)
+> Центральный индекс модулей: [`docs/modules/_index.md`](/docs/modules/_index.md)
 
 ---
 
@@ -188,5 +188,5 @@ CREATE INDEX idx_index_flex_search ON index_flex_entries USING GIN (search_vecto
 
 При изменении плана:
 1. Обновить этот файл
-2. Обновить статусы в [`docs/modules/flex.md`](/docs/modules/flex.md)
+2. Обновить ссылки и статус в [`docs/modules/_index.md`](/docs/modules/_index.md) или [`docs/modules/registry.md`](/docs/modules/registry.md), если меняется состав/статус модуля
 3. Запустить `cargo test -p rustok-core` — тесты field_schema должны проходить

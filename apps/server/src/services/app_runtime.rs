@@ -70,6 +70,8 @@ pub async fn bootstrap_app_runtime(
     ctx.shared_store.insert(event_runtime.transport.clone());
     spawn_index_dispatcher(ctx, settings);
     ctx.shared_store.insert(Arc::new(event_runtime));
+    ctx.shared_store
+        .insert(crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));
 
     init_marketplace_catalog(ctx);
 

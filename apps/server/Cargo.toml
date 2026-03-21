@@ -30,12 +30,13 @@ mod-content   = ["dep:rustok-content"]
 mod-blog      = ["dep:rustok-blog", "dep:rustok-content"]
 mod-forum     = ["dep:rustok-forum"]
 mod-pages     = ["dep:rustok-pages"]
-mod-alloy     = ["dep:alloy-scripting"]
+mod-alloy     = ["dep:alloy-scripting", "dep:alloy"]
 mod-media     = ["dep:rustok-media", "dep:rustok-storage"]
 mod-workflow  = ["dep:rustok-workflow"]
 
 [dependencies]
 rustok-core = { workspace = true, features = ["redis-cache"] }
+rustok-api.workspace = true
 rustok-auth.workspace = true
 rustok-cache = { workspace = true, features = ["redis-cache"] }
 rustok-email.workspace = true
@@ -52,10 +53,12 @@ rustok-media     = { workspace = true, optional = true }
 rustok-index.workspace = true
 rustok-tenant.workspace = true
 rustok-rbac.workspace = true
+rustok-mcp.workspace = true
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
 rustok-outbox.workspace = true
 alloy-scripting  = { workspace = true, optional = true }
+alloy            = { workspace = true, optional = true }
 rustok-workflow  = { workspace = true, optional = true }
 
 loco-rs.workspace = true

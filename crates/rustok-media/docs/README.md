@@ -16,8 +16,10 @@
 crates/rustok-media/
 ├── src/
 │   ├── lib.rs               # pub-реэкспорт
+│   ├── controllers/         # REST-адаптеры модуля media
 │   ├── dto.rs               # UploadInput, MediaItem, MediaTranslationItem, константы
 │   ├── error.rs             # MediaError, Result<T>
+│   ├── graphql/             # GraphQL Query/Mutation/types модуля media
 │   ├── service.rs           # MediaService (основная бизнес-логика)
 │   └── entities/
 │       ├── mod.rs
@@ -215,7 +217,7 @@ mediaUsage(tenantId: UUID!): MediaUsageStats!
 | `rustok_media_deletes_total` | Counter | `tenant_id` | Кол-во удалений |
 | `rustok_media_storage_health` | Gauge | `driver` | 1=healthy, 0=unhealthy |
 
-Метрики инкрементируются в `apps/server/src/controllers/media/mod.rs` после каждой успешной операции.
+Метрики инкрементируются в `crates/rustok-media/src/controllers/mod.rs` после каждой успешной операции.
 
 ## Задача обслуживания
 
@@ -235,8 +237,8 @@ cargo loco task --name media_cleanup
 
 При старте сервера:
 1. `init_storage()` → `StorageService` помещается в `ctx.shared_store`
-2. `MediaService::new(db, storage)` создаётся на каждый запрос в контроллере/резолвере
-3. Маршруты: `routes = routes.add_route(controllers::media::routes())`
+2. `MediaService::new(db, storage)` создаётся на каждый запрос внутри `rustok-media::controllers` и `rustok-media::graphql`
+3. `apps/server` подключает `rustok_media::controllers::routes()` и `rustok_media::graphql::*` как composition-root shim
 
 ## Зависимости
 

@@ -1,61 +1,97 @@
-# MCP Reference-пакет (RusToK)
+# Справочный пакет MCP
 
-Дата последней актуализации: **2026-02-19**.
+Дата последней актуализации: **2026-03-20**.
 
-> Пакет фиксирует рабочие паттерны для `crates/rustok-mcp` (адаптер MCP сервера поверх `rmcp`) и защищает от ложных переносов из ad-hoc JSON-RPC/CLI интеграций.
+Этот пакет не дублирует спецификацию MCP и не пересказывает документацию `rmcp`. Его задача:
 
-## 1) Минимальный рабочий пример: запуск MCP stdio сервера
+- дать команде короткий индекс официальных источников истины;
+- зафиксировать, что именно RusToK использует из MCP сегодня;
+- защитить локальные документы от деградации в устаревший пересказ активно развивающейся экосистемы.
 
-```rust
-use rustok_core::registry::ModuleRegistry;
-use rustok_mcp::McpServerConfig;
+## Источники истины
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let registry = ModuleRegistry::new();
-    let config = McpServerConfig::new(registry);
-    rustok_mcp::serve_stdio(config).await
-}
-```
+### Официальная документация и спецификация
 
-## 2) Минимальный рабочий пример: allow-list инструментов
+- MCP docs: [modelcontextprotocol.io/docs](https://modelcontextprotocol.io/docs)
+- MCP spec: [modelcontextprotocol.io/specification](https://modelcontextprotocol.io/specification/2025-03-26)
+- Server tools: [Tools](https://modelcontextprotocol.io/specification/2025-03-26/server/tools)
+- Server resources: [Resources](https://modelcontextprotocol.io/specification/2025-03-26/server/resources)
+- Server prompts: [Prompts](https://modelcontextprotocol.io/specification/2025-03-26/server/prompts)
 
-```rust
-use std::collections::HashSet;
+### Security и authorization
 
-use rustok_core::registry::ModuleRegistry;
-use rustok_mcp::McpServerConfig;
+- Authorization guide: [Understanding Authorization in MCP](https://modelcontextprotocol.io/docs/tutorials/security/authorization)
+- Security guide: [Security Best Practices](https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices)
 
-let registry = ModuleRegistry::new();
-let enabled = HashSet::from([
-    "list_modules".to_string(),
-    "mcp_health".to_string(),
-]);
+### Rust SDK
 
-let config = McpServerConfig::with_enabled_tools(registry, enabled);
-```
+- `rmcp` docs: [docs.rs/rmcp](https://docs.rs/rmcp/latest/rmcp/)
+- Official Rust SDK repo: [modelcontextprotocol/rust-sdk](https://github.com/modelcontextprotocol/rust-sdk)
 
-## 3) Актуальные сигнатуры API (в репозитории)
+## Как использовать этот пакет
 
-- `pub fn new(registry: ModuleRegistry) -> Self` (`McpServerConfig`)
-- `pub fn with_enabled_tools<I, S>(registry: ModuleRegistry, enabled_tools: I) -> Self where I: IntoIterator<Item = S>, S: Into<String>` (`McpServerConfig`)
-- `pub fn new(registry: ModuleRegistry) -> Self` (`RusToKMcpServer`)
-- `pub fn with_enabled_tools(registry: ModuleRegistry, enabled_tools: HashSet<String>) -> Self` (`RusToKMcpServer`)
-- `pub async fn serve_stdio(config: McpServerConfig) -> Result<()>`
-- `pub async fn list_modules(state: &McpState) -> ModuleListResponse`
-- `pub async fn module_exists(state: &McpState, request: ModuleLookupRequest) -> ModuleLookupResponse`
-- `pub async fn module_details(state: &McpState, request: ModuleLookupRequest) -> ModuleDetailsResponse`
+Если вопрос касается:
 
-## 4) Чего делать нельзя (типичные ложные паттерны)
+- структуры протокола;
+- capability surface MCP;
+- server/client semantics;
+- authorization flow;
+- security requirements;
+- конкретного поведения `rmcp`;
 
-1. **Нельзя обходить typed tools и отдавать произвольный JSON без `McpToolResponse<T>`.**
-2. **Нельзя хардкодить доступ ко всем инструментам, если нужен ограниченный контур.** Использовать allow-list через `with_enabled_tools`.
-3. **Нельзя дублировать бизнес-логику в MCP-слое.** MCP слой — адаптер над сервисами/registry, а не отдельный доменный модуль.
-4. **Нельзя придумывать transport-handshake поверх stdio.** Для сервера использовать `serve_stdio(...)` и контракт `rmcp`.
+нужно идти в официальные ссылки выше. Локальные документы RusToK должны ссылаться на них, а не
+копировать фрагменты спецификации к себе.
 
-## 5) Синхронизация с кодом (регламент)
+## Что фиксируем локально в RusToK
 
-- При изменениях в `crates/rustok-mcp/**`:
-  1) обновить примеры и сигнатуры;
-  2) обновить дату в шапке;
-  3) проверить, что anti-patterns соответствуют текущей реализации.
+Локально мы документируем только интеграционный слой:
+
+- `rustok-mcp` как thin adapter над `rmcp`;
+- какой tool surface уже реализован;
+- какие RusToK-specific ограничения и gaps остаются;
+- как MCP связан с Alloy и platform RBAC/tenant model.
+
+## Текущее состояние RusToK
+
+На сегодня `rustok-mcp` покрывает:
+
+- MCP server/tool surface через `rmcp`;
+- module discovery tools;
+- Alloy-related tools при наличии `AlloyMcpState`;
+- identity/policy foundation через `McpIdentity`, `McpAccessContext`, `McpAccessPolicy`;
+- introspection tool `mcp_whoami`;
+- compatibility shim через legacy `enabled_tools`;
+- session-start runtime binding hooks (`McpSessionContext`, `McpAccessResolver`, `McpRuntimeBinding`);
+- runtime allow/deny audit hook через `McpAuditSink`;
+- первый реальный Alloy product-slice: `alloy_scaffold_module`, который stage-ит draft `crates/rustok-<slug>` module scaffold, а `alloy_review_module_scaffold` / `alloy_apply_module_scaffold` дают review/apply boundary.
+- persisted server-side control plane для Alloy scaffold drafts в `apps/server` через REST `/api/mcp/scaffold-drafts*` и GraphQL `mcpModuleScaffoldDraft*`.
+- live runtime hook `McpScaffoldDraftStore`, через который `DbBackedMcpRuntimeBridge` может уводить Alloy scaffold flow из process-local памяти в persisted drafts `apps/server`.
+
+На сегодня `rustok-mcp` не покрывает как production-ready слой:
+
+- server-owned remote MCP transport/session bootstrap beyond текущего stdio adapter path;
+- admin UI для MCP clients, tokens, policies и audit;
+- полную upstream capability surface (`resources`, `prompts`, `roots`, `sampling` и т.д.);
+- product UI и server-owned remote MCP bootstrap поверх уже существующего persisted scaffold draft control plane;
+- более богатый review/apply/codegen pipeline, который превращает draft Alloy scaffold в production-ready модуль.
+
+Persisted management layer уже есть на стороне `apps/server`: таблицы `mcp_clients`, `mcp_tokens`,
+`mcp_policies`, `mcp_audit_logs`, `mcp_scaffold_drafts`, REST `/api/mcp/*`, GraphQL `mcp*` и
+`DbBackedMcpRuntimeBridge` для связывания plaintext MCP token с runtime access context и runtime
+allow/deny audit.
+
+## Связанные локальные документы
+
+- [`crates/rustok-mcp/README.md`](../../../crates/rustok-mcp/README.md)
+- [`crates/rustok-mcp/docs/README.md`](../../../crates/rustok-mcp/docs/README.md)
+- [`crates/rustok-mcp/docs/implementation-plan.md`](../../../crates/rustok-mcp/docs/implementation-plan.md)
+- [`docs/modules/registry.md`](../../modules/registry.md)
+- [`docs/modules/crates-registry.md`](../../modules/crates-registry.md)
+
+## Правило сопровождения
+
+Перед любым обновлением локальных MCP-доков:
+
+1. Проверить актуальные официальные MCP/rmcp документы.
+2. Не переносить в RusToK длинные пересказы spec/SDK.
+3. Документировать только локальную интеграцию, ограничения и решения RusToK.

@@ -1,4 +1,3 @@
-mod alloy;
 mod manifest;
 
 use rustok_auth::AuthModule;
@@ -14,7 +13,6 @@ use rustok_pages::PagesModule;
 use rustok_rbac::RbacModule;
 use rustok_tenant::TenantModule;
 
-pub use alloy::AlloyModule;
 pub use manifest::{
     validate_registry_vs_manifest, BuildExecutionPlan, CatalogManifestModule, CatalogModuleVersion,
     DeploymentSurfaceContract, InstalledManifestModule, ManifestDiff, ManifestError,
@@ -35,7 +33,6 @@ pub fn build_registry() -> ModuleRegistry {
         .register(BlogModule)
         .register(ForumModule)
         .register(PagesModule)
-        .register(AlloyModule::new())
         .register(rustok_workflow::WorkflowModule)
 }
 
@@ -55,7 +52,6 @@ mod contract_tests {
     const BLOG_README: &str = include_str!("../../../../crates/rustok-blog/README.md");
     const FORUM_README: &str = include_str!("../../../../crates/rustok-forum/README.md");
     const PAGES_README: &str = include_str!("../../../../crates/rustok-pages/README.md");
-    const ALLOY_README: &str = include_str!("../../../../crates/alloy-scripting/README.md");
     const WORKFLOW_README: &str = include_str!("../../../../crates/rustok-workflow/README.md");
     const FLEX_MUTATION: &str = include_str!("../graphql/flex/mutation.rs");
 
@@ -73,7 +69,6 @@ mod contract_tests {
             ("blog", BLOG_README),
             ("forum", FORUM_README),
             ("pages", PAGES_README),
-            ("alloy", ALLOY_README),
             ("workflow", WORKFLOW_README),
         ] {
             assert!(
@@ -100,9 +95,13 @@ mod contract_tests {
         assert!(rbac.permissions().contains(&Permission::SETTINGS_MANAGE));
         assert!(rbac.permissions().contains(&Permission::LOGS_READ));
         assert!(blog.permissions().contains(&Permission::BLOG_POSTS_MANAGE));
-        assert!(forum.permissions().contains(&Permission::FORUM_TOPICS_MANAGE));
+        assert!(forum
+            .permissions()
+            .contains(&Permission::FORUM_TOPICS_MANAGE));
         assert!(pages.permissions().contains(&Permission::PAGES_MANAGE));
-        assert!(workflow.permissions().contains(&Permission::WORKFLOWS_MANAGE));
+        assert!(workflow
+            .permissions()
+            .contains(&Permission::WORKFLOWS_MANAGE));
     }
 
     #[test]
@@ -112,7 +111,7 @@ mod contract_tests {
         let workflow = registry.get("workflow").expect("workflow module");
 
         assert_eq!(pages.dependencies(), &["content"]);
-        assert_eq!(workflow.dependencies(), &["alloy"]);
+        assert!(workflow.dependencies().is_empty());
     }
 
     #[test]

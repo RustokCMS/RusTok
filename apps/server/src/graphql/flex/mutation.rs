@@ -235,9 +235,9 @@ fn require_permission<'a>(ctx: &'a Context<'a>, permission: Permission) -> Resul
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
 
     if !auth_has_permission(auth, permission) {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            &format!("{permission} required"),
-        ));
+        return Err(<FieldError as GraphQLError>::permission_denied(&format!(
+            "{permission} required"
+        )));
     }
 
     Ok(auth)

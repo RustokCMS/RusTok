@@ -1,6 +1,8 @@
+pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod graphql;
 pub mod service;
 
 pub use dto::{
@@ -8,4 +10,5 @@ pub use dto::{
     DEFAULT_MAX_SIZE,
 };
 pub use error::{MediaError, Result};
+pub use graphql::{MediaMutation, MediaQuery};
 pub use service::MediaService;

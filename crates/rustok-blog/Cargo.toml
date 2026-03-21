@@ -6,18 +6,24 @@ license.workspace = true
 description.workspace = true
 
 [dependencies]
+async-graphql.workspace = true
 async-trait.workspace = true
+axum.workspace = true
 chrono.workspace = true
+loco-rs.workspace = true
 proptest = { workspace = true, optional = true }
+rustok-api.workspace = true
 rustok-content.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
+rustok-telemetry.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 utoipa = { workspace = true, features = ["uuid", "chrono"] }
 uuid.workspace = true

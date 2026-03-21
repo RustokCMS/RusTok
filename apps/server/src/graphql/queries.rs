@@ -240,7 +240,6 @@ fn module_category(slug: &str) -> &'static str {
     match slug {
         "content" | "blog" | "forum" | "pages" => "content",
         "commerce" => "commerce",
-        "alloy" => "automation",
         "tenant" | "rbac" | "index" | "outbox" => "platform",
         _ => "extensions",
     }

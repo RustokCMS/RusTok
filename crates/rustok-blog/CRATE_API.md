@@ -1,7 +1,7 @@
 # rustok-blog / CRATE_API
 
 ## Публичные модули
-`dto`, `entities`, `error`, `locale`, `services`, `state_machine`.
+`controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `services`, `state_machine`.
 
 ## Основные публичные типы и сигнатуры
 
@@ -10,6 +10,18 @@
 pub struct BlogModule;
 impl RusToKModule for BlogModule { ... }
 impl MigrationSource for BlogModule { fn migrations() -> Vec::new() }
+```
+
+### Transport entry points
+```rust
+pub mod graphql {
+    pub struct BlogQuery;
+    pub struct BlogMutation;
+}
+
+pub mod controllers {
+    pub fn routes() -> Routes;
+}
 ```
 
 ### PostService

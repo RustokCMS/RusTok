@@ -122,6 +122,10 @@ pub fn compose_application_router(
     ))
     .layer(axum_middleware::from_fn_with_state(
         ctx.clone(),
+        middleware::auth_context::resolve_optional,
+    ))
+    .layer(axum_middleware::from_fn_with_state(
+        ctx.clone(),
         middleware::tenant::resolve,
     ))
     .layer(axum_middleware::from_fn(

@@ -7,6 +7,7 @@
 - crates/rustok-core
 - доменные модули crates/rustok-*
 - apps/admin и apps/next-frontend как клиенты API
+- `rustok-mcp` как platform MCP adapter; persisted MCP management/API, Alloy scaffold draft control plane и DB-backed runtime bridge живут в `apps/server`, включая live bridge обратно в persisted draft store
 
 ## Документация
 - Локальная документация: `./docs/`
@@ -42,6 +43,7 @@ RUSTOK_EVENT_TRANSPORT=iggy
 ## Паспорт компонента
 - **Роль в системе:** Главный backend RusToK: API, модули, миграции, orchestration runtime.
 - **Основные данные/ответственность:** бизнес-логика и API данного компонента; структура кода и документации в корне компонента.
+  Также platform-owned слои вроде MCP management API, persisted Alloy scaffold drafts и DB-backed MCP runtime bridge.
 - **Взаимодействует с:**
   - crates/rustok-core
   - все доменные crates/rustok-*

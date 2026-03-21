@@ -11,6 +11,7 @@
 - Завершить нормализацию FSD-структуры и ограничить импортные зависимости между слоями.
 - Централизовать data-access/auth integrations в `shared` для исключения копипаста по страницам.
 - Упростить повторное использование виджетов между разделами админки.
+- Удалить legacy import paths после прохождения type-check/build, чтобы canonical `shared/*`, `entities/*`, `widgets/*` стали единственным живым API.
 
 ### API/UI контракты
 
@@ -35,6 +36,7 @@
 - Расширить e2e покрытие критических разделов (auth, users, content, settings).
 - Добавить contract-тесты API маппинга и проверки typed clients.
 - Увеличить unit/component coverage для shared UI и form logic.
+- Держать `pnpm --filter next-admin type-check` и `pnpm --filter next-admin build` в зелёном baseline после каждого изменения FSD/UI структуры.
 
 
 ## Готовность Blog/Forum/Pages к rich-text (Tiptap/Page Builder)
@@ -55,6 +57,13 @@
 - [ ] Реализовано в Next.js-варианте.
 - [ ] Контракты API/UI совпадают.
 - [ ] Навигация и RBAC-поведение эквивалентны.
+
+## FSD/UI follow-up backlog
+
+- Вычистить compatibility imports из `components/`, `lib/`, `hooks/` и перевести потребителей на canonical FSD-layer paths.
+- Выровнять widget/shared boundaries для таблиц, form shells и app-shell композиций.
+- Довести parity-check с `apps/admin` по loading/error/permission-gated UX и navigation contract.
+- Удерживать `@iu/*` и `UI/docs/api-contracts.md` как source of truth для cross-stack UI API.
 
 ### Текущий статус rich-text (blog/forum/pages)
 

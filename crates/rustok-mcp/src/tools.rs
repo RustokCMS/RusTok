@@ -12,6 +12,7 @@ pub const TOOL_BLOG_MODULE: &str = "blog_module";
 pub const TOOL_FORUM_MODULE: &str = "forum_module";
 pub const TOOL_PAGES_MODULE: &str = "pages_module";
 pub const TOOL_MCP_HEALTH: &str = "mcp_health";
+pub const TOOL_MCP_WHOAMI: &str = "mcp_whoami";
 
 pub const MODULE_CONTENT: &str = "content";
 pub const MODULE_BLOG: &str = "blog";
@@ -115,6 +116,10 @@ pub struct McpHealthResponse {
     pub tool_count: usize,
     /// List of enabled tools (when configured)
     pub enabled_tools: Option<Vec<String>>,
+    /// Effective authorization mode for this server.
+    pub access_mode: String,
+    /// Attached MCP identity, when configured.
+    pub identity: Option<crate::access::McpIdentity>,
 }
 
 impl<T> McpToolResponse<T> {

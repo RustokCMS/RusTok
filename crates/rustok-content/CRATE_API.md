@@ -1,11 +1,12 @@
 # rustok-content / CRATE_API
 
 ## Публичные модули
-`dto`, `entities`, `error`, `services`, `state_machine`.
+`controllers`, `dto`, `entities`, `error`, `graphql`, `services`, `state_machine`.
 
 ## Основные публичные типы и сигнатуры
 - `pub struct ContentModule`
 - `pub struct NodeService`
+- `pub struct ContentQuery`, `pub struct ContentMutation`
 - `pub struct Node`, `pub struct NodeTranslation`, `pub struct Body`
 - `pub struct ContentNode<S>` + состояния `Draft`, `Published`, `Archived`
 - `pub type ContentResult<T>`, `pub enum ContentError`
@@ -17,6 +18,7 @@
 - Потребляет: внешние доменные события явно не подписывает (бизнес-операции вызываются сервисами).
 
 ## Зависимости от других rustok-крейтов
+- `rustok-api`
 - `rustok-core`
 - `rustok-outbox`
 - (dev) `rustok-test-utils`
@@ -49,7 +51,7 @@
 
 ### Входные DTO/команды
 - Входной контракт формируется публичными DTO/командами из crate (см. разделы с `Create*Input`/`Update*Input`/query/filter выше и соответствующие `pub`-экспорты в `src/lib.rs`).
-- Все изменения публичных полей DTO считаются breaking-change и требуют синхронного обновления transport-адаптеров `apps/server`.
+- Все изменения публичных полей DTO считаются breaking-change и требуют синхронного обновления модульных transport-адаптеров (`src/graphql/*`, `src/controllers/*`) и server composition-root shim-слоя.
 
 ### Доменные инварианты
 - Инварианты модуля фиксируются в сервисах/стейт-машинах и валидации DTO; недопустимые переходы/параметры должны завершаться доменной ошибкой.

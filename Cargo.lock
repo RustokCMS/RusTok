@@ -139,6 +139,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "alloy"
+version = "0.1.0"
+dependencies = [
+ "alloy-scripting",
+ "async-graphql",
+ "axum",
+ "chrono",
+ "rhai 1.24.0 (git+https://github.com/rhaiscript/rhai?tag=v1.24.0)",
+ "rustok-api",
+ "rustok-core",
+ "rustok-telemetry",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "alloy-scripting"
 version = "0.1.0"
 dependencies = [
@@ -9123,7 +9139,6 @@ dependencies = [
  "once_cell",
  "rhai_codegen 3.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
- "serde_json",
  "smallvec",
  "smartstring",
  "thin-vec",
@@ -9600,6 +9615,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-api"
+version = "0.1.0"
+dependencies = [
+ "async-graphql",
+ "axum",
+ "base64 0.22.1",
+ "loco-rs",
+ "rustok-core",
+ "rustok-outbox",
+ "rustok-tenant",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-auth"
 version = "0.1.0"
 dependencies = [
@@ -9642,13 +9676,18 @@ dependencies = [
 name = "rustok-blog"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
+ "axum",
  "chrono",
+ "loco-rs",
  "proptest",
+ "rustok-api",
  "rustok-content",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -9677,14 +9716,19 @@ dependencies = [
 name = "rustok-commerce"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
+ "axum",
  "chrono",
+ "loco-rs",
  "proptest",
  "rust_decimal",
  "rust_decimal_macros",
+ "rustok-api",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-telemetry",
  "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
@@ -9703,9 +9747,13 @@ dependencies = [
 name = "rustok-content"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
+ "axum",
  "chrono",
+ "loco-rs",
  "proptest",
+ "rustok-api",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
@@ -9796,12 +9844,17 @@ dependencies = [
 name = "rustok-forum"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
+ "axum",
  "chrono",
+ "loco-rs",
+ "rustok-api",
  "rustok-content",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -9870,7 +9923,7 @@ dependencies = [
  "alloy-scripting",
  "anyhow",
  "async-trait",
- "rhai 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rhai 1.24.0 (git+https://github.com/rhaiscript/rhai?tag=v1.24.0)",
  "rmcp",
  "rustok-core",
  "schemars 1.2.1",
@@ -9886,12 +9939,17 @@ dependencies = [
 name = "rustok-media"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
+ "axum",
  "bytes",
  "chrono",
+ "loco-rs",
  "mime_guess",
+ "rustok-api",
  "rustok-core",
  "rustok-storage",
+ "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -9922,11 +9980,17 @@ dependencies = [
 name = "rustok-pages"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "loco-rs",
+ "rustok-api",
  "rustok-content",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-telemetry",
  "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
@@ -9960,6 +10024,7 @@ dependencies = [
 name = "rustok-server"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "alloy-scripting",
  "anyhow",
  "argon2",
@@ -9987,6 +10052,7 @@ dependencies = [
  "rhai 1.24.0 (git+https://github.com/rhaiscript/rhai?tag=v1.24.0)",
  "rust-embed",
  "rust_decimal",
+ "rustok-api",
  "rustok-auth",
  "rustok-blog",
  "rustok-cache",
@@ -9998,6 +10064,7 @@ dependencies = [
  "rustok-forum",
  "rustok-iggy",
  "rustok-index",
+ "rustok-mcp",
  "rustok-media",
  "rustok-outbox",
  "rustok-pages",
@@ -10130,13 +10197,18 @@ dependencies = [
 name = "rustok-workflow"
 version = "0.1.0"
 dependencies = [
+ "async-graphql",
  "async-trait",
+ "axum",
  "chrono",
  "cron 0.15.0",
+ "loco-rs",
  "reqwest 0.13.2",
+ "rustok-api",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-tenant",
  "sea-orm",
  "sea-orm-migration",
  "serde",

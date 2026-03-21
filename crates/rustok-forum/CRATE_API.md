@@ -1,11 +1,13 @@
 # rustok-forum / CRATE_API
 
 ## Публичные модули
-`constants`, `dto`, `entities`, `error`, `locale`, `services`.
+`constants`, `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `services`.
 
 ## Основные публичные типы и сигнатуры
 - `pub struct ForumModule`
 - `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`
+- `pub mod graphql` -> `ForumQuery`, `ForumMutation`
+- `pub mod controllers` -> `routes()`
 - Публичные DTO/константы из `dto::*` и `constants::*`
 - `pub enum ForumError`, `pub type ForumResult<T>`
 - `pub mod locale` — хелперы `resolve_translation`, `resolve_body`, `available_locales`

@@ -24,6 +24,14 @@ Next.js UI-код модулей находится в виде отдельны
 
 For platform-wide app ownership and dependencies, see [`docs/modules/registry.md`](../modules/registry.md).
 
+## Current UI/FSD contract
+
+- `apps/admin` и `apps/next-admin` используют canonical FSD-слои `app`, `shared`, `entities`, `features`, `widgets`, `pages`/route-level screens.
+- Source of truth для shared component API находится в [`UI/docs/api-contracts.md`](../../UI/docs/api-contracts.md).
+- `UI/leptos` предоставляет Leptos-native реализацию тех же примитивов; `UI/next/components` предоставляет Next.js wrappers с тем же surface.
+- shadcn-compatible CSS variables являются canonical theming contract для обеих админок; `UI/tokens/base.css` добавляет только общие font/spacing/radius tokens.
+- Future scope и cleanup не фиксируются здесь как historical plan: они ведутся только в app-level `implementation-plan.md` файлах.
+
 ## Documents in this section
 
 - [GraphQL Architecture](./graphql-architecture.md) — client-side GraphQL conventions.

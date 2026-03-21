@@ -4,9 +4,11 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod constants;
+pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod graphql;
 pub mod locale;
 pub mod migrations;
 pub mod services;
@@ -14,6 +16,7 @@ pub mod services;
 pub use constants::*;
 pub use dto::*;
 pub use error::{ForumError, ForumResult};
+pub use graphql::{ForumMutation, ForumQuery};
 pub use services::{CategoryService, ModerationService, ReplyService, TopicService};
 
 pub struct ForumModule;

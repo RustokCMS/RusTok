@@ -1,5 +1,10 @@
 pub mod flex_entries;
 pub mod flex_schemas;
+pub mod mcp_audit_logs;
+pub mod mcp_clients;
+pub mod mcp_policies;
+pub mod mcp_scaffold_drafts;
+pub mod mcp_tokens;
 pub mod oauth_apps;
 pub mod oauth_authorization_codes;
 pub mod oauth_consents;
@@ -20,6 +25,11 @@ pub mod users;
 
 pub use flex_entries::Entity as FlexEntries;
 pub use flex_schemas::Entity as FlexSchemas;
+pub use mcp_audit_logs::Entity as McpAuditLogs;
+pub use mcp_clients::Entity as McpClients;
+pub use mcp_policies::Entity as McpPolicies;
+pub use mcp_scaffold_drafts::Entity as McpScaffoldDrafts;
+pub use mcp_tokens::Entity as McpTokens;
 pub use oauth_apps::Entity as OAuthApps;
 pub use oauth_authorization_codes::Entity as OAuthAuthorizationCodes;
 pub use oauth_consents::Entity as OAuthConsents;

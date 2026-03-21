@@ -468,7 +468,7 @@ async fn authorize_handler(
     } else {
         requested_scopes
             .iter()
-            .filter(|s| crate::services::oauth_app::scope_matches(&allowed_scopes, s))
+            .filter(|s| crate::context::scope_matches(&allowed_scopes, s))
             .cloned()
             .collect()
     };

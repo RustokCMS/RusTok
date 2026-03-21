@@ -221,5 +221,5 @@ RusToK использует Loco RS как server/runtime framework, а плат
 - [api.md](../../docs/architecture/api.md)
 - [i18n.md](../../docs/architecture/i18n.md)
 - [modules.md](../../docs/architecture/modules.md)
-- [events.md](../../docs/architecture/events.md)
+- [rustok-outbox docs](../../crates/rustok-outbox/docs/README.md)
 - [overview.md](../../docs/architecture/overview.md)

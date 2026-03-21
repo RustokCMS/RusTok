@@ -529,17 +529,6 @@ fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             ),
         ),
         (
-            "alloy",
-            first_party_module(
-                "alloy-scripting",
-                "crates/alloy-scripting",
-                false,
-                &[],
-                &["leptos-admin"],
-                &[],
-            ),
-        ),
-        (
             "tenant",
             first_party_module(
                 "rustok-tenant",

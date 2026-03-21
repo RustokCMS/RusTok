@@ -6,8 +6,13 @@ license.workspace = true
 description.workspace = true
 
 [dependencies]
+async-graphql.workspace = true
 async-trait.workspace = true
+axum.workspace = true
 chrono.workspace = true
+loco-rs.workspace = true
+rustok-api.workspace = true
+rustok-telemetry.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

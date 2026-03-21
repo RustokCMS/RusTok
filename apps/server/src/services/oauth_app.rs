@@ -11,6 +11,7 @@ use crate::models::oauth_consents::{
 };
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
 use chrono::Utc;
+use rustok_api::context::scope_matches;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
@@ -813,27 +814,6 @@ fn generate_client_secret() -> String {
         auth::generate_refresh_token()
     );
     format!("sk_live_{token}")
-}
-
-/// Check if a scope matches any of the allowed scopes (supports wildcards)
-pub fn scope_matches(allowed: &[String], requested: &str) -> bool {
-    for allowed_scope in allowed {
-        if allowed_scope == "*:*" {
-            return true;
-        }
-        if allowed_scope == requested {
-            return true;
-        }
-        // Wildcard: "resource:*" matches "resource:read", "resource:write", etc.
-        if let Some(prefix) = allowed_scope.strip_suffix(":*") {
-            if let Some(req_prefix) = requested.split(':').next() {
-                if prefix == req_prefix {
-                    return true;
-                }
-            }
-        }
-    }
-    false
 }
 
 #[cfg(test)]

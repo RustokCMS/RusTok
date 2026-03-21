@@ -14,6 +14,7 @@ pub mod flex;
 #[cfg(feature = "mod-forum")]
 pub mod forum;
 pub mod loaders;
+pub mod mcp;
 #[cfg(feature = "mod-media")]
 pub mod media;
 pub mod mutations;

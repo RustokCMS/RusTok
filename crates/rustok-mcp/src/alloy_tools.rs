@@ -1,6 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 
+pub use crate::alloy_scaffold::{
+    ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse, ModuleScaffoldDraftStatus,
+    ReviewModuleScaffoldRequest, ReviewModuleScaffoldResponse, ScaffoldModulePreview,
+    ScaffoldModuleRequest, StageModuleScaffoldResponse, StagedModuleScaffold,
+};
 use alloy_scripting::model::{Script, ScriptStatus, ScriptTrigger};
 use alloy_scripting::runner::ExecutionOutcome;
 use alloy_scripting::storage::{ScriptQuery, ScriptRegistry};
@@ -9,6 +15,8 @@ use alloy_scripting::{EntityProxy, ScriptEngine, ScriptOrchestrator};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::runtime::{McpScaffoldDraftRuntimeContext, SharedMcpScaffoldDraftStore};
+
 pub const TOOL_ALLOY_LIST_SCRIPTS: &str = "alloy_list_scripts";
 pub const TOOL_ALLOY_GET_SCRIPT: &str = "alloy_get_script";
 pub const TOOL_ALLOY_CREATE_SCRIPT: &str = "alloy_create_script";
@@ -16,6 +24,9 @@ pub const TOOL_ALLOY_UPDATE_SCRIPT: &str = "alloy_update_script";
 pub const TOOL_ALLOY_DELETE_SCRIPT: &str = "alloy_delete_script";
 pub const TOOL_ALLOY_VALIDATE_SCRIPT: &str = "alloy_validate_script";
 pub const TOOL_ALLOY_RUN_SCRIPT: &str = "alloy_run_script";
+pub const TOOL_ALLOY_SCAFFOLD_MODULE: &str = "alloy_scaffold_module";
+pub const TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD: &str = "alloy_review_module_scaffold";
+pub const TOOL_ALLOY_APPLY_MODULE_SCAFFOLD: &str = "alloy_apply_module_scaffold";
 pub const TOOL_ALLOY_LIST_ENTITY_TYPES: &str = "alloy_list_entity_types";
 pub const TOOL_ALLOY_SCRIPT_HELPERS: &str = "alloy_script_helpers";
 
@@ -27,6 +38,9 @@ pub const ALL_ALLOY_TOOLS: &[&str] = &[
     TOOL_ALLOY_DELETE_SCRIPT,
     TOOL_ALLOY_VALIDATE_SCRIPT,
     TOOL_ALLOY_RUN_SCRIPT,
+    TOOL_ALLOY_SCAFFOLD_MODULE,
+    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
+    TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
     TOOL_ALLOY_LIST_ENTITY_TYPES,
     TOOL_ALLOY_SCRIPT_HELPERS,
 ];
@@ -35,6 +49,8 @@ pub struct AlloyMcpState<R: ScriptRegistry + 'static> {
     pub registry: Arc<R>,
     pub engine: Arc<ScriptEngine>,
     pub orchestrator: Arc<ScriptOrchestrator<R>>,
+    pub staged_scaffolds: Arc<Mutex<HashMap<uuid::Uuid, StagedModuleScaffold>>>,
+    pub draft_store: Option<SharedMcpScaffoldDraftStore>,
 }
 
 impl<R: ScriptRegistry + 'static> Clone for AlloyMcpState<R> {
@@ -43,6 +59,8 @@ impl<R: ScriptRegistry + 'static> Clone for AlloyMcpState<R> {
             registry: Arc::clone(&self.registry),
             engine: Arc::clone(&self.engine),
             orchestrator: Arc::clone(&self.orchestrator),
+            staged_scaffolds: Arc::clone(&self.staged_scaffolds),
+            draft_store: self.draft_store.as_ref().map(Arc::clone),
         }
     }
 }
@@ -57,7 +75,22 @@ impl<R: ScriptRegistry + 'static> AlloyMcpState<R> {
             registry,
             engine,
             orchestrator,
+            staged_scaffolds: Arc::new(Mutex::new(HashMap::new())),
+            draft_store: None,
         }
+    }
+
+    pub fn with_shared_draft_store(mut self, draft_store: SharedMcpScaffoldDraftStore) -> Self {
+        self.draft_store = Some(draft_store);
+        self
+    }
+
+    pub fn with_draft_store<T>(mut self, draft_store: Arc<T>) -> Self
+    where
+        T: crate::runtime::McpScaffoldDraftStore + 'static,
+    {
+        self.draft_store = Some(draft_store);
+        self
     }
 }
 
@@ -197,6 +230,133 @@ pub struct ScriptHelperInfo {
     pub signature: String,
     pub description: String,
     pub available_in: Vec<String>,
+}
+
+pub async fn alloy_scaffold_module<R: ScriptRegistry>(
+    state: &AlloyMcpState<R>,
+    context: Option<McpScaffoldDraftRuntimeContext>,
+    request: ScaffoldModuleRequest,
+) -> Result<StageModuleScaffoldResponse, String> {
+    if let Some(draft_store) = &state.draft_store {
+        let context = require_draft_runtime_context(context)?;
+        return draft_store
+            .stage_scaffold_draft(&context, request)
+            .await
+            .map_err(|error| error.to_string());
+    }
+
+    let preview = crate::alloy_scaffold::generate_module_scaffold(&request)?;
+    let draft_id = uuid::Uuid::new_v4();
+    let draft = StagedModuleScaffold {
+        draft_id: draft_id.to_string(),
+        request,
+        preview: preview.clone(),
+        status: ModuleScaffoldDraftStatus::Staged,
+    };
+
+    state
+        .staged_scaffolds
+        .lock()
+        .map_err(|_| "Failed to lock staged scaffold store".to_string())?
+        .insert(draft_id, draft);
+
+    Ok(StageModuleScaffoldResponse {
+        draft_id: draft_id.to_string(),
+        preview,
+        status: ModuleScaffoldDraftStatus::Staged,
+        review_required: true,
+        apply_tool: TOOL_ALLOY_APPLY_MODULE_SCAFFOLD.to_string(),
+        next_steps: vec![
+            format!(
+                "Review the staged draft with {} before applying it.",
+                TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD
+            ),
+            format!(
+                "Apply the reviewed draft with {} and confirm=true.",
+                TOOL_ALLOY_APPLY_MODULE_SCAFFOLD
+            ),
+        ],
+    })
+}
+
+pub async fn alloy_review_module_scaffold<R: ScriptRegistry>(
+    state: &AlloyMcpState<R>,
+    context: Option<McpScaffoldDraftRuntimeContext>,
+    request: ReviewModuleScaffoldRequest,
+) -> Result<ReviewModuleScaffoldResponse, String> {
+    if let Some(draft_store) = &state.draft_store {
+        let context = require_draft_runtime_context(context)?;
+        return draft_store
+            .review_scaffold_draft(&context, request)
+            .await
+            .map_err(|error| error.to_string());
+    }
+
+    let draft_id = request
+        .draft_id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| e.to_string())?;
+    let draft = state
+        .staged_scaffolds
+        .lock()
+        .map_err(|_| "Failed to lock staged scaffold store".to_string())?
+        .get(&draft_id)
+        .cloned()
+        .ok_or_else(|| format!("Unknown scaffold draft: {}", request.draft_id))?;
+
+    Ok(ReviewModuleScaffoldResponse { draft })
+}
+
+pub async fn alloy_apply_module_scaffold<R: ScriptRegistry>(
+    state: &AlloyMcpState<R>,
+    context: Option<McpScaffoldDraftRuntimeContext>,
+    request: ApplyModuleScaffoldRequest,
+) -> Result<ApplyModuleScaffoldResponse, String> {
+    if let Some(draft_store) = &state.draft_store {
+        let context = require_draft_runtime_context(context)?;
+        return draft_store
+            .apply_scaffold_draft(&context, request)
+            .await
+            .map_err(|error| error.to_string());
+    }
+
+    if !request.confirm {
+        return Err(
+            "Refusing to apply staged scaffold without confirm=true after review.".to_string(),
+        );
+    }
+
+    let draft_id = request
+        .draft_id
+        .parse::<uuid::Uuid>()
+        .map_err(|e| e.to_string())?;
+    let mut store = state
+        .staged_scaffolds
+        .lock()
+        .map_err(|_| "Failed to lock staged scaffold store".to_string())?;
+    let draft = store
+        .get_mut(&draft_id)
+        .ok_or_else(|| format!("Unknown scaffold draft: {}", request.draft_id))?;
+
+    if draft.status == ModuleScaffoldDraftStatus::Applied {
+        return Err(format!(
+            "Scaffold draft {} has already been applied",
+            request.draft_id
+        ));
+    }
+
+    let response = crate::alloy_scaffold::apply_staged_scaffold(draft, &request.workspace_root)?;
+    draft.status = ModuleScaffoldDraftStatus::Applied;
+    Ok(response)
+}
+
+fn require_draft_runtime_context(
+    context: Option<McpScaffoldDraftRuntimeContext>,
+) -> Result<McpScaffoldDraftRuntimeContext, String> {
+    context.ok_or_else(|| {
+        "Persisted scaffold draft store requires MCP runtime context with tenant/client binding"
+            .to_string()
+    })
 }
 
 pub async fn alloy_list_scripts<R: ScriptRegistry>(
@@ -344,6 +504,232 @@ pub fn alloy_validate_script<R: ScriptRegistry>(
             valid: false,
             message: e.to_string(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_scripting::{create_default_engine, InMemoryStorage, ScriptOrchestrator};
+    use anyhow::Result as AnyhowResult;
+    use async_trait::async_trait;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use crate::runtime::McpScaffoldDraftStore;
+
+    fn test_state() -> AlloyMcpState<InMemoryStorage> {
+        let engine = Arc::new(create_default_engine());
+        let storage = Arc::new(InMemoryStorage::new());
+        let orchestrator = Arc::new(ScriptOrchestrator::new(engine.clone(), storage.clone()));
+        AlloyMcpState::new(storage, engine, orchestrator)
+    }
+
+    fn draft_runtime_context() -> McpScaffoldDraftRuntimeContext {
+        McpScaffoldDraftRuntimeContext {
+            session: crate::runtime::McpSessionContext::stdio(),
+            runtime_binding: None,
+            access_context: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn stage_and_review_scaffold() {
+        let state = test_state();
+        let staged = alloy_scaffold_module(
+            &state,
+            None,
+            ScaffoldModuleRequest {
+                slug: "newsletter".to_string(),
+                name: "Newsletter".to_string(),
+                description: "newsletter module".to_string(),
+                dependencies: Vec::new(),
+                with_graphql: true,
+                with_rest: true,
+                write_files: false,
+            },
+        )
+        .await
+        .expect("stage should succeed");
+
+        assert_eq!(staged.status, ModuleScaffoldDraftStatus::Staged);
+
+        let reviewed = alloy_review_module_scaffold(
+            &state,
+            None,
+            ReviewModuleScaffoldRequest {
+                draft_id: staged.draft_id.clone(),
+            },
+        )
+        .await
+        .expect("review should succeed");
+
+        assert_eq!(reviewed.draft.draft_id, staged.draft_id);
+        assert_eq!(reviewed.draft.status, ModuleScaffoldDraftStatus::Staged);
+    }
+
+    #[tokio::test]
+    async fn apply_scaffold_requires_confirmation() {
+        let state = test_state();
+        let staged = alloy_scaffold_module(
+            &state,
+            None,
+            ScaffoldModuleRequest {
+                slug: "newsletter".to_string(),
+                name: "Newsletter".to_string(),
+                description: "newsletter module".to_string(),
+                dependencies: Vec::new(),
+                with_graphql: false,
+                with_rest: false,
+                write_files: false,
+            },
+        )
+        .await
+        .expect("stage should succeed");
+
+        let error = alloy_apply_module_scaffold(
+            &state,
+            None,
+            ApplyModuleScaffoldRequest {
+                draft_id: staged.draft_id,
+                workspace_root: "C:\\tmp".to_string(),
+                confirm: false,
+            },
+        )
+        .await
+        .expect_err("confirm=false must be rejected");
+
+        assert!(error.contains("confirm=true"));
+    }
+
+    struct FakeDraftStore {
+        stage_calls: AtomicUsize,
+        review_calls: AtomicUsize,
+        apply_calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl McpScaffoldDraftStore for FakeDraftStore {
+        async fn stage_scaffold_draft(
+            &self,
+            _context: &McpScaffoldDraftRuntimeContext,
+            request: ScaffoldModuleRequest,
+        ) -> AnyhowResult<StageModuleScaffoldResponse> {
+            self.stage_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(StageModuleScaffoldResponse {
+                draft_id: "persisted-draft".to_string(),
+                preview: crate::alloy_scaffold::generate_module_scaffold(&request)
+                    .map_err(anyhow::Error::msg)?,
+                status: ModuleScaffoldDraftStatus::Staged,
+                review_required: true,
+                apply_tool: TOOL_ALLOY_APPLY_MODULE_SCAFFOLD.to_string(),
+                next_steps: vec!["persisted".to_string()],
+            })
+        }
+
+        async fn review_scaffold_draft(
+            &self,
+            _context: &McpScaffoldDraftRuntimeContext,
+            request: ReviewModuleScaffoldRequest,
+        ) -> AnyhowResult<ReviewModuleScaffoldResponse> {
+            self.review_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(ReviewModuleScaffoldResponse {
+                draft: StagedModuleScaffold {
+                    draft_id: request.draft_id,
+                    request: ScaffoldModuleRequest {
+                        slug: "newsletter".to_string(),
+                        name: "Newsletter".to_string(),
+                        description: "persisted".to_string(),
+                        dependencies: Vec::new(),
+                        with_graphql: true,
+                        with_rest: true,
+                        write_files: false,
+                    },
+                    preview: ScaffoldModulePreview {
+                        crate_name: "rustok-newsletter".to_string(),
+                        crate_path: "crates/rustok-newsletter".to_string(),
+                        files: Vec::new(),
+                        next_steps: vec!["persisted".to_string()],
+                    },
+                    status: ModuleScaffoldDraftStatus::Staged,
+                },
+            })
+        }
+
+        async fn apply_scaffold_draft(
+            &self,
+            _context: &McpScaffoldDraftRuntimeContext,
+            request: ApplyModuleScaffoldRequest,
+        ) -> AnyhowResult<ApplyModuleScaffoldResponse> {
+            self.apply_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(ApplyModuleScaffoldResponse {
+                draft_id: request.draft_id,
+                crate_name: "rustok-newsletter".to_string(),
+                crate_path: "crates/rustok-newsletter".to_string(),
+                wrote_files: true,
+                status: ModuleScaffoldDraftStatus::Applied,
+                next_steps: vec!["persisted".to_string()],
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn persisted_store_replaces_in_memory_scaffold_flow() {
+        let draft_store = Arc::new(FakeDraftStore {
+            stage_calls: AtomicUsize::new(0),
+            review_calls: AtomicUsize::new(0),
+            apply_calls: AtomicUsize::new(0),
+        });
+        let state = test_state().with_draft_store(Arc::clone(&draft_store));
+
+        let staged = alloy_scaffold_module(
+            &state,
+            Some(draft_runtime_context()),
+            ScaffoldModuleRequest {
+                slug: "newsletter".to_string(),
+                name: "Newsletter".to_string(),
+                description: "newsletter module".to_string(),
+                dependencies: Vec::new(),
+                with_graphql: true,
+                with_rest: true,
+                write_files: false,
+            },
+        )
+        .await
+        .expect("persisted stage should succeed");
+        assert_eq!(staged.draft_id, "persisted-draft");
+
+        let reviewed = alloy_review_module_scaffold(
+            &state,
+            Some(draft_runtime_context()),
+            ReviewModuleScaffoldRequest {
+                draft_id: staged.draft_id.clone(),
+            },
+        )
+        .await
+        .expect("persisted review should succeed");
+        assert_eq!(reviewed.draft.draft_id, staged.draft_id);
+
+        let applied = alloy_apply_module_scaffold(
+            &state,
+            Some(draft_runtime_context()),
+            ApplyModuleScaffoldRequest {
+                draft_id: staged.draft_id,
+                workspace_root: "C:\\tmp".to_string(),
+                confirm: true,
+            },
+        )
+        .await
+        .expect("persisted apply should succeed");
+        assert_eq!(applied.status, ModuleScaffoldDraftStatus::Applied);
+
+        assert_eq!(draft_store.stage_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(draft_store.review_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(draft_store.apply_calls.load(Ordering::SeqCst), 1);
+        assert!(state
+            .staged_scaffolds
+            .lock()
+            .expect("in-memory store lock")
+            .is_empty());
     }
 }
 

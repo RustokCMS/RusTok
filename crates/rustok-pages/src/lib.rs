@@ -41,14 +41,17 @@
 //! let page = service.create_page(tenant_id, security, input).await?;
 //! ```
 
+pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod graphql;
 pub mod services;
 
 pub use dto::*;
 pub use entities::{Block, Menu, Page};
 pub use error::{PagesError, PagesResult};
+pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{BlockService, MenuService, PageService};
 
 use async_trait::async_trait;

@@ -6,6 +6,20 @@
 
 ---
 
+## 0. Текущая архитектурная граница
+
+Каноническая модульная документация Flex живёт в этом файле.
+
+Текущая архитектура разделена на три слоя:
+
+- `rustok-core::field_schema` хранит базовые типы, валидаторы и migration helpers для attached mode;
+- `crates/flex` хранит transport-agnostic orchestration, registry и standalone contracts;
+- `apps/server` держит adapter/wiring слой: SeaORM, GraphQL, cache/RBAC gates, event emission и bootstrap.
+
+Attached mode считается рабочим production contract. Standalone mode начат, но ещё не является live API surface платформы.
+
+---
+
 ## 1. Что такое Flex
 
 **Flex — это катана, а не склад мечей.**
@@ -511,4 +525,4 @@ CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
 
 - [`implementation-plan.md`](./implementation-plan.md) — нереализованное (Phase 4 долги, Phase 4.5, 5, 6)
 - [`rustok-core/src/field_schema.rs`](../../crates/rustok-core/src/field_schema.rs) — исходный код core типов
-- [`docs/architecture/flex.md`](../../docs/architecture/flex.md) — архитектурный обзор
+- [`../../../docs/modules/_index.md`](../../../docs/modules/_index.md) — центральный индекс модульной документации

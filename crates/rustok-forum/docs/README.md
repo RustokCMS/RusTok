@@ -6,6 +6,11 @@
 
 - [Implementation plan](./implementation-plan.md)
 
+## Status
+
+- ✅ GraphQL и REST адаптеры модуля перенесены в `crates/rustok-forum`; `apps/server` держит только тонкий shim/composition-root слой.
+- ✅ Общие transport-контракты (`AuthContext`, `TenantContext`, `RequestContext`, GraphQL helpers) модуль получает из `rustok-api`.
+
 ## Event contracts
 
 - [Event flow contract (central)](../../../docs/architecture/event-flow-contract.md)

@@ -635,7 +635,7 @@ impl RootMutation {
             &app_ctx.db,
             &tenant.id,
             &auth.user_id,
-        &Permission::MODULES_MANAGE,
+            &Permission::MODULES_MANAGE,
         )
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;

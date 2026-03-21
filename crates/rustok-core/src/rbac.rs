@@ -30,6 +30,7 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Logs,
         Resource::Webhooks,
         Resource::Scripts,
+        Resource::Mcp,
         Resource::BlogPosts,
         Resource::Tags,
         Resource::ForumCategories,
@@ -69,6 +70,7 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::new(Resource::Modules, Action::Read));
     permissions.insert(Permission::new(Resource::Modules, Action::List));
     permissions.insert(Permission::new(Resource::Scripts, Action::Manage));
+    permissions.insert(Permission::new(Resource::Mcp, Action::Manage));
     permissions.insert(Permission::new(Resource::Logs, Action::Read));
     permissions.insert(Permission::new(Resource::Logs, Action::List));
     permissions.insert(Permission::FLEX_SCHEMAS_CREATE);
@@ -288,7 +290,11 @@ impl SecurityContext {
     }
 
     pub fn get_scope(&self, resource: Resource, action: Action) -> PermissionScope {
-        permission_scope_for_set(&self.permissions, &Permission::new(resource, action), self.role)
+        permission_scope_for_set(
+            &self.permissions,
+            &Permission::new(resource, action),
+            self.role.clone(),
+        )
     }
 
     pub fn permissions(&self) -> &HashSet<Permission> {
@@ -320,8 +326,10 @@ fn permission_scope_for_set(
     permission: &Permission,
     role: UserRole,
 ) -> PermissionScope {
-    if matches!(role, UserRole::SuperAdmin | UserRole::Admin | UserRole::Manager)
-        && has_effective_permission_in_set(permissions, permission)
+    if matches!(
+        role,
+        UserRole::SuperAdmin | UserRole::Admin | UserRole::Manager
+    ) && has_effective_permission_in_set(permissions, permission)
     {
         return PermissionScope::All;
     }
@@ -352,6 +360,6 @@ fn permission_scope_for_set(
 
 impl Rbac {
     pub fn get_scope(role: &UserRole, permission: &Permission) -> PermissionScope {
-        permission_scope_for_set(Self::permissions_for_role(role), permission, *role)
+        permission_scope_for_set(Self::permissions_for_role(role), permission, role.clone())
     }
 }

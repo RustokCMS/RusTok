@@ -84,10 +84,10 @@
 
 ### 0.6 Зависимости (Cargo)
 
-- [x] `iggy` версия исправлена: `0.9.2` → `0.9.0` (crates.io не имел 0.9.2)
+- [x] `iggy` версия исправлена: `0.9.2` > `0.9.0` (crates.io не имел 0.9.2)
   - Исправлено в `Cargo.toml` (workspace) и `crates/rustok-iggy-connector/Cargo.toml`
 - [ ] `cargo update` не приводит к конфликтам версий
-- [x] `Cargo.lock` зафиксирован в git — удалён из `.gitignore` (теперь tracked для бинарных приложений как рекомендовано Cargo docs). Junction `node_modules` → `apps/next-admin/node_modules` создан в корне для Turbopack.
+- [x] `Cargo.lock` зафиксирован в git — удалён из `.gitignore` (теперь tracked для бинарных приложений как рекомендовано Cargo docs). Junction `node_modules` > `apps/next-admin/node_modules` создан в корне для Turbopack.
 
 ### 0.3 Каждый crate компилируется независимо
 
@@ -164,7 +164,7 @@
 - [x] `rustok-index` зависит от `rustok-core` (в Cargo.toml)
 - [x] Все domain crates зависят от `rustok-core`
 - [x] Нет циклических зависимостей
-- [x] `rustok-events` → `rustok-core` dependency chain корректен
+- [x] `rustok-events` > `rustok-core` dependency chain корректен
 
 ---
 
@@ -203,7 +203,7 @@
 - [x] `CacheBackend` trait определён в `context.rs` (re-export через `lib.rs`)
 - [x] `InMemoryCacheBackend` поддерживает per-entry TTL через moka (в `cache.rs`)
 - [x] `RedisCacheBackend` работает с CircuitBreaker (в `cache.rs`)
-- [x] Fallback: Redis → InMemory — реализован `FallbackCacheBackend` в `crates/rustok-core/src/cache.rs`: при Cache-ошибке от primary (Redis circuit breaker open) читает из InMemory, пишет в оба бэкенда (write-through для прогрева). Экспортирован в `lib.rs` и `prelude`.
+- [x] Fallback: Redis > InMemory — реализован `FallbackCacheBackend` в `crates/rustok-core/src/cache.rs`: при Cache-ошибке от primary (Redis circuit breaker open) читает из InMemory, пишет в оба бэкенда (write-through для прогрева). Экспортирован в `lib.rs` и `prelude`.
 
 #### Error handling
 - [x] `Error` enum определён в `error/mod.rs` с вариантами: InvalidIdFormat, Database, Serialization, Auth, NotFound, Forbidden, Cache, Scripting, Validation, External
@@ -250,7 +250,7 @@
 - `apps/server/src/graphql/auth/` — GraphQL auth resolvers
 - `apps/server/src/extractors/auth.rs` — CurrentUser extractor
 
-#### Auth lifecycle (REST ↔ GraphQL паритет)
+#### Auth lifecycle (REST - GraphQL паритет)
 - [x] `register` — доступен через REST (`POST /api/auth/register`) и GraphQL (`mutation register`)
 - [x] `login/sign_in` — доступен через REST и GraphQL
 - [x] `refresh` — доступен через REST и GraphQL
@@ -360,7 +360,7 @@
 - `crates/rustok-tenant/src/`
 
 - [x] Middleware извлекает tenant из: `X-Tenant-Slug` header, `X-Tenant-ID` header, hostname/domain
-- [x] При отсутствии tenant → 400/404 (через `TenantError.status_code()`)
+- [x] При отсутствии tenant > 400/404 (через `TenantError.status_code()`)
 - [x] `TenantContext` реализует `FromRequestParts` в `apps/server/src/context/tenant.rs`
 
 ### 5.2 Tenant Cache
@@ -396,7 +396,7 @@
 
 ### 5.5 Cross-instance Cache Invalidation (Redis mode)
 
-- [x] При обновлении tenant → PUBLISH в `tenant.cache.invalidate` — через `TenantInvalidationPublisher::publish()` с Redis PUBLISH команд
+- [x] При обновлении tenant > PUBLISH в `tenant.cache.invalidate` — через `TenantInvalidationPublisher::publish()` с Redis PUBLISH команд
 - [x] Все инстансы подписаны и инвалидируют matching ключи — через `spawn_invalidation_listener()` с Redis PubSub
 - [x] Метрики cache hit/miss экспортируются через Redis INCR — через `TenantCacheMetricsStore::incr()`
 
@@ -472,9 +472,9 @@
 ### 6.5 Outbox Relay
 
 - [x] Relay обрабатывает pending events корректно
-- [x] Retry с exponential backoff (1s → 60s)
+- [x] Retry с exponential backoff (1s > 60s)
 - [x] Max retries = 5 (или конфигурируемо)
-- [x] DLQ: после max retries → status = `failed`
+- [x] DLQ: после max retries > status = `failed`
 - [x] Метрики: `outbox_backlog_size`, `outbox_retries_total`, `outbox_dlq_total`
 
 ### 6.6 Event Versioning
@@ -511,7 +511,7 @@
 - [x] `NodeListItem` — list response DTO
 
 #### State Machine
-- [x] Node status transitions: Draft → Published → Archived
+- [x] Node status transitions: Draft > Published > Archived
 - [x] Невалидные transitions возвращают ошибку
 - [x] Property tests для state machine (`state_machine_proptest.rs`)
 
@@ -548,7 +548,7 @@
 - [x] `CreateVariantInput` / `VariantResponse` (в `dto/variant.rs`)
 
 #### State Machine
-- [x] Product status: Draft → Active → Archived (в `state_machine.rs`)
+- [x] Product status: Draft > Active > Archived (в `state_machine.rs`)
 - [x] Property tests для state machine (`state_machine_proptest.rs`)
 
 #### Migrations
@@ -562,7 +562,7 @@
 - [x] Зависит от `rustok-content` (uses nodes internally)
 - [x] `BlogModule::dependencies()` возвращает `&["content"]`
 - [x] `PostService` — CRUD для постов (обёртка над NodeService)
-- [x] State machine: Draft → Published → Archived
+- [x] State machine: Draft > Published > Archived
 - [x] Events: `PostCreated`, `PostPublished`, etc. — исправлено, все события публикуются через `publish_in_tx()` в рамках транзакции
 - [x] DTOs: `CreatePostInput`, `PostResponse`, `PostListItem`
 - [x] Поддержка i18n (locale.rs)
@@ -588,7 +588,7 @@
 **Путь:** `crates/rustok-pages/`
 
 - [x] `PageService` — CRUD для страниц (create, update, publish, unpublish, delete, get, get_by_slug, list)
-- [x] State machine: Draft → Published → Archived (использует ContentStatus из rustok-content)
+- [x] State machine: Draft > Published > Archived (использует ContentStatus из rustok-content)
 - [x] Events: публикуются через NodeService (NodeCreated/NodePublished/etc.)
 - [x] DTOs: `CreatePageInput`, `UpdatePageInput`, `PageResponse`, `PageListItem`, `ListPagesFilter`
 - [~] Миграции: не нужны — использует таблицы rustok-content (nodes + translations + bodies)
@@ -597,10 +597,10 @@
 
 **Путь:** `crates/alloy-scripting/`
 
-- [x] `AlloyModule` зарегистрирован как `ModuleKind::Optional` (в `apps/server/src/modules/alloy.rs`)
+- [x] Alloy зафиксирован как module-agnostic capability и больше не регистрируется в `ModuleRegistry` как optional module
 - [x] Rhai scripting engine инициализируется — `create_default_engine()` в `apps/server/src/app.rs::after_routes()` с `EngineConfig` (max_operations, max_call_depth, max_string_size, max_array_size)
-- [x] `scripts` таблица — CRUD реализован в `SeaOrmStorage` (`storage/sea_orm.rs`); GraphQL API в `graphql/alloy/`; REST API через `controllers::alloy::router()`
-- [x] RBAC permissions: `Scripts` resource (create/read/update/delete/list/manage) — объявлены в `AlloyModule::permissions()`, проверяются в `require_admin()`
+- [x] `scripts` таблица — CRUD реализован в `SeaOrmStorage` (`storage/sea_orm.rs`); GraphQL API живёт в `crates/alloy/src/graphql/`, REST API — через `alloy::controllers::router()`
+- [x] RBAC permissions: `Scripts` resource (create/read/update/delete/list/manage) проверяется в `alloy::graphql::require_admin()`, а `alloy-scripting` остаётся runtime-слоем
 - [x] Безопасность: Rhai `set_max_operations()`, `set_strict_variables(true)` — I/O только через `bridge/http.rs` в OnCommit/Manual/Scheduled фазах
 - [x] Миграции — `ScriptsMigration` и `ScriptExecutionsMigration` добавлены в главный Migrator через wrapper-файлы `m20260302_000001_create_scripts.rs` и `m20260302_000002_create_script_executions.rs`
 
@@ -690,12 +690,12 @@
 - [x] Mutation: `createTopic`, `createReply`, `updateTopic`, `deleteTopic`, `createCategory`, `deleteCategory` — с RBAC
 - [x] Categories: query + mutation реализованы с полным RBAC
 
-### 8.6 Alloy GraphQL
+### 8.6 Alloy Management Surface
 
 **Файлы:** `apps/server/src/graphql/alloy/`
 
-- [~] Query: `script(id)`, `scripts(filter)` — зависит от состояния `alloy-scripting` crate
-- [~] Mutation: `createScript`, `updateScript`, `executeScript`, `deleteScript` — требует audit `graphql/alloy/`
+- [~] Query: `script(id)`, `scripts(filter)` — Alloy management queries, зависят от состояния `alloy-scripting` crate
+- [~] Mutation: `createScript`, `updateScript`, `executeScript`, `deleteScript` — Alloy management mutations, требуют audit `graphql/alloy/`
 
 ### 8.7 Pages GraphQL
 
@@ -944,38 +944,38 @@
 
 ## Фаза 13: Интеграционные связи
 
-### 13.1 Write → Event → Index (E2E data flow)
+### 13.1 Write > Event > Index (E2E data flow)
 
-- [ ] Admin создаёт Product → `ProductCreated` event → Index обновляет `index_products` → Storefront видит product
-- [ ] Admin создаёт Node → `NodeCreated` event → Index обновляет `index_content` → Storefront видит content
-- [ ] Admin создаёт Post → `PostCreated` event → Index обновляет → Storefront видит post
+- [ ] Admin создаёт Product > `ProductCreated` event > Index обновляет `index_products` > Storefront видит product
+- [ ] Admin создаёт Node > `NodeCreated` event > Index обновляет `index_content` > Storefront видит content
+- [ ] Admin создаёт Post > `PostCreated` event > Index обновляет > Storefront видит post
 
 ### 13.2 Module Dependencies
 
-- [ ] При отключении `content` модуля → `blog` и `forum` автоматически отключаются (или ошибка)
-- [ ] При включении `blog` → `content` должен быть включён (или ошибка)
+- [ ] При отключении `content` модуля > `blog` и `forum` автоматически отключаются (или ошибка)
+- [ ] При включении `blog` > `content` должен быть включён (или ошибка)
 - [ ] Core modules не могут быть отключены ни при каких условиях
 
-### 13.3 Frontend ↔ Backend API Contracts
+### 13.3 Frontend - Backend API Contracts
 
 - [ ] GraphQL schema, используемая фронтендами, совпадает с реальной серверной schema
 - [ ] REST endpoints, вызываемые фронтендами, существуют на сервере
 - [ ] Типы данных (DTOs) между фронтом и бэком согласованы
 - [ ] Auth token format одинаков для всех фронтендов
 
-### 13.4 Leptos Admin ↔ Server
+### 13.4 Leptos Admin - Server
 
 - [ ] Admin использует `/api/graphql` endpoint
-- [ ] Auth flow: login → получить JWT → хранить в localStorage/cookie → отправлять в headers
+- [ ] Auth flow: login > получить JWT > хранить в localStorage/cookie > отправлять в headers
 - [ ] RBAC: admin видит только разрешённые разделы
 
-### 13.5 Next.js Admin ↔ Server
+### 13.5 Next.js Admin - Server
 
 - [ ] Next Admin использует тот же `/api/graphql` endpoint
-- [ ] Clerk auth ↔ Server JWT: механизм интеграции работает
+- [ ] Clerk auth - Server JWT: механизм интеграции работает
 - [ ] RBAC навигация на фронте совпадает с серверным RBAC
 
-### 13.6 Storefront ↔ Server
+### 13.6 Storefront - Server
 
 - [ ] Storefront (Leptos SSR) получает данные из index tables через GraphQL
 - [ ] Next.js storefront получает те же данные
@@ -1470,7 +1470,7 @@
 - [~] CORS middleware подключён с правильными origins
   - В dev используется permissive-конфигурация (`CorsLayer::very_permissive()`), production-specific allowlist требует отдельной настройки через env/config
 
-### 19.14 REST ↔ GraphQL parity
+### 19.14 REST - GraphQL parity
 
 - [x] Auth операции (login, register, refresh, change-password) доступны через REST (`/api/auth/*`); GraphQL имеет `loginUser`, `registerUser`, `refreshToken` mutations
 - [x] Бизнес-логика **одна** — через `AuthLifecycleService`; REST и GraphQL auth вызывают одни и те же методы сервиса
@@ -1490,7 +1490,7 @@
 - [ ] Нет прямых запросов к таблицам домена из app-слоя мимо crate API
   - Автопоиск сигнатур `Entity::find*`, `from_raw_sql`, `DatabaseConnection` в `apps/server/src`
 - [ ] Каждый найденный случай оформлен как migration-task
-  - Формат: перенос в корректный слой (домен → `crates/rustok-<domain>`, platform/core orchestration — допускается в `apps/server` + `crates/rustok-core`)
+  - Формат: перенос в корректный слой (домен > `crates/rustok-<domain>`, platform/core orchestration — допускается в `apps/server` + `crates/rustok-core`)
   - Минимум: ссылка на issue/task + owner + целевой API/слой
   - Для frontend-слоя: дублирование выносить в самописные frontend-библиотеки (shared UI/contracts), не в backend domain crates
 
@@ -1504,7 +1504,7 @@
 - [x] Status поля — enum, не `String` — `ContentStatus`, `ProductStatus`, `BlogPostStatus`, `TopicStatus` — все через `#[derive(DeriveActiveEnum)]`
 - [~] Phantom types для state-aware structs — не используются; state machine реализован через отдельный `transition()` метод
 - [~] Нет `as` casts для числовых типов без проверки (use `TryFrom`)
-  - Исправлено в ProductIndexer: `agg.total_inventory as i32` и `agg.variant_count as i32` → `i32::try_from().unwrap_or(i32::MAX)` (Issue #21)
+  - Исправлено в ProductIndexer: `agg.total_inventory as i32` и `agg.variant_count as i32` > `i32::try_from().unwrap_or(i32::MAX)` (Issue #21)
 
 ### 20.2 Concurrency correctness
 
@@ -1524,14 +1524,14 @@
 
 - [~] `serde(rename_all = "camelCase")` для JSON APIs — не применяется; платформа использует `snake_case` (Rust default) для REST API. GraphQL генерирует camelCase автоматически через `async_graphql`
 - [~] `#[serde(skip_serializing)]` для sensitive fields — `password_hash` не включается в DTO; auth responses не содержат hash
-- [x] DateTime сериализуется в ISO 8601 — SeaORM `DateTimeWithTimeZone` → chrono → serde ISO 8601 автоматически
+- [x] DateTime сериализуется в ISO 8601 — SeaORM `DateTimeWithTimeZone` > chrono > serde ISO 8601 автоматически
 - [x] UUID сериализуется как string — через `utoipa = { features = ["uuid"] }` и `serde` для Uuid
 
 ### 20.5 Migration correctness
 
 - [x] Каждая миграция имеет `up()` и `down()` (reversible)
   - Проверено: все ALTER TABLE миграции (m20260301_*) имеют корректный down()
-- [x] Foreign keys с `ON DELETE CASCADE` или `ON DELETE SET NULL` — проверено в m20250130_000005 (nodes → tenants: CASCADE, nodes → nodes parent: CASCADE, nodes → users author: SET NULL), m20250130_000012 (products → tenants: CASCADE), и других
+- [x] Foreign keys с `ON DELETE CASCADE` или `ON DELETE SET NULL` — проверено в m20250130_000005 (nodes > tenants: CASCADE, nodes > nodes parent: CASCADE, nodes > users author: SET NULL), m20250130_000012 (products > tenants: CASCADE), и других
 - [x] Indexes на часто фильтруемые поля — `idx_nodes_tenant_kind` (tenant_id, kind, status), `idx_nodes_parent`, `idx_nodes_author`, `idx_products_tenant_status`; slug индексы через UNIQUE constraints
 - [x] `UNIQUE` constraints где бизнес-логика требует — tenant.slug (UNIQUE), product_translation.handle+locale (UNIQUE), node_translation slug+locale (UNIQUE в code)
 
@@ -1544,33 +1544,33 @@
 
 | № | Приоритет | Статус | Описание | Файлы | Фаза |
 |---|-----------|--------|----------|-------|------|
-| 1 | 🔴 Критический | ✅ Исправлено | `content` был помечен `required = true` в `modules.toml`, но `ContentModule::kind()` возвращает `ModuleKind::Optional`. Несоответствие приводило к ошибке `validate_registry_vs_manifest()` при старте. | `modules.toml` | 1.1 |
-| 2 | 🔴 Критический | ✅ Исправлено | `rustok-blog` и `rustok-forum` используют `event_bus.publish()` вместо `publish_in_tx()` — нарушение атомарности. Все сервисы переведены на `publish_in_tx()` с открытой транзакцией. | `crates/rustok-blog/src/services/post.rs`, `crates/rustok-forum/src/services/{topic,reply,moderation}.rs` | 6.2, 7.3, 7.4 |
-| 3 | 🟡 Высокий | ✅ Исправлено | `iggy` версия `0.9.2` не существует на crates.io. CI-сборка падала. Исправлено на `0.9.0`. | `Cargo.toml`, `crates/rustok-iggy-connector/Cargo.toml` | 0.6 |
-| 4 | 🔴 Критический | ✅ Исправлено | Контроллеры `blog/posts.rs`, `forum/topics.rs`, `forum/replies.rs`, `forum/categories.rs`, `pages.rs` использовали только `CurrentUser` без RBAC-проверок. Добавлены RBAC-экстракторы (`RequireBlogPostsCreate`, `RequireForumTopicsCreate`, и т.д.). Добавлена матрица Blog/Forum permissions для всех ролей в `rbac.rs`. | `apps/server/src/controllers/blog/posts.rs`, `forum/topics.rs`, `forum/replies.rs`, `forum/categories.rs`, `pages.rs`, `crates/rustok-core/src/rbac.rs`, `apps/server/src/extractors/rbac.rs` | 4.4, 18.2, 19.2 |
-| 5 | 🔴 Критический | ✅ Исправлено | `content/nodes.rs` использовал `CurrentUser` без RBAC-проверок для всех 5 endpoints. Заменён на RBAC extractors (`RequireNodesList`, `RequireNodesRead`, `RequireNodesCreate`, `RequireNodesUpdate`, `RequireNodesDelete`). OpenAPI 403 добавлен. | `apps/server/src/controllers/content/nodes.rs` | 4.4, 9.4, 18.2 |
-| 6 | 🔴 Критический | ✅ Исправлено | `admin_events.rs` (DLQ просмотр/replay) использовал `CurrentUser` без RBAC — доступен любому аутентифицированному пользователю. Заменён на `RequireLogsRead` (Admin/SuperAdmin only). Добавлен `Logs::Read` и `Logs::List` в `ADMIN_PERMISSIONS`. | `apps/server/src/controllers/admin_events.rs`, `crates/rustok-core/src/rbac.rs`, `apps/server/src/extractors/rbac.rs` | 4.4, 9.8, 18.2 |
-| 7 | 🟡 Высокий | ✅ Исправлено | GraphQL Blog mutations (`create_post`, `update_post`, `delete_post`, `publish_post`, `unpublish_post`, `archive_post`) имели только auth check, но не проверяли конкретные RBAC permissions. Добавлены проверки через `RbacService::has_any_permission()` для каждой операции. | `apps/server/src/graphql/blog/mutation.rs` | 4.3, 8.4 |
-| 8 | 🔴 Критический | ✅ Исправлено | GraphQL Commerce mutations (`create_product`, `update_product`, `publish_product`, `delete_product`) — без auth/RBAC. Добавлены проверки `RbacService::has_any_permission()` для PRODUCTS_CREATE/UPDATE/DELETE. | `apps/server/src/graphql/commerce/mutation.rs` | 4.3, 8.3 |
-| 9 | 🔴 Критический | ✅ Исправлено | GraphQL Content mutations (`create_node`, `update_node`, `delete_node`) — только auth check, без RBAC. Добавлены NODES_CREATE/UPDATE/DELETE через `RbacService::has_any_permission()`. Параметр `tenant_id` добавлен. | `apps/server/src/graphql/content/mutation.rs` | 4.3, 8.2 |
-| 10 | 🟡 Высокий | ✅ Исправлено | GraphQL Forum — stub реализация. Реализованы полноценные queries и mutations через TopicService, ReplyService, CategoryService с RBAC. | `apps/server/src/graphql/forum/mutation.rs`, `query.rs`, `types.rs` | 4.3, 8.5 |
-| 11 | 🟡 Высокий | ✅ Исправлено | GraphQL Pages mutations — без RBAC, использовали SecurityContext::system(). Добавлены PAGES_CREATE/UPDATE/DELETE через `RbacService::has_any_permission()`. | `apps/server/src/graphql/pages/mutation.rs` | 4.3, 8.7 |
-| 12 | 🟡 Высокий | ✅ Исправлено | RBAC extractors RequirePagesCreate/Read/Update/Delete использовали NODES_* permissions вместо PAGES_*. Исправлено. Добавлены константы PAGES_* и permissions для Manager/Customer. | `extractors/rbac.rs`, `permissions.rs`, `rbac.rs` | 4.1, 4.4 |
-| 13 | 🔴 Критический | ✅ Исправлено | REST контроллер `variants.rs`: `create_variant`, `update_variant`, `delete_variant` публиковали события `VariantCreated/Updated/Deleted` через `event_bus_from_context().publish()` **после** коммита транзакции. При сбое между commit и publish событие терялось. Исправлено: все три операции переведены на `publish_in_tx()` внутри транзакции до `commit()`. Update/Delete-операции получили обёртку в транзакцию. | `apps/server/src/controllers/commerce/variants.rs` | 6.2, 19.1 |
-| 14 | 🟡 Высокий | ✅ Исправлено | Миграция таблицы `sys_events` (outbox pattern) не была зарегистрирована в главном сервере. Создан файл `m20260211_000002_create_sys_events.rs` и добавлен в `apps/server/migration/src/lib.rs`. | `apps/server/migration/src/` | 2.2 |
-| 15 | 🟡 Высокий | ✅ Исправлено | Rate limiting middleware существовал в `middleware/rate_limit.rs` но **не был подключён** к роутеру. Все auth endpoints были уязвимы к брутфорс-атакам. Исправлено: добавлен `axum_middleware::from_fn` с per-IP sliding window limiter (20 req/60 сек) для `/api/auth/login`, `/api/auth/register`, `/api/auth/reset/*` в `app.rs::after_routes()`. | `apps/server/src/app.rs`, `apps/server/src/middleware/rate_limit.rs` | 9.10, 18.1 |
-| 16 | 🟡 Высокий | ✅ Исправлено | Entity `product_variant` имел поля `tenant_id, inventory_policy, inventory_management, inventory_quantity, weight_unit, option1/2/3, position`, которых не было в миграции `m20250130_000014_create_commerce_variants`. Добавлена миграция `m20260301_000001_alter_product_variants_add_fields`. | `apps/server/migration/src/m20260301_000001_alter_product_variants_add_fields.rs` | 7.2, 20.5 |
-| 17 | 🟡 Высокий | ✅ Исправлено | Entity `node` имел поля `deleted_at` и `version`, которых не было в миграции `m20250130_000005_create_nodes`. Добавлена миграция `m20260301_000002_alter_nodes_add_soft_delete`. | `apps/server/migration/src/m20260301_000002_alter_nodes_add_soft_delete.rs` | 7.1, 20.5 |
-| 18 | 🟡 Высокий | ✅ Исправлено | `ContentIndexer::build_index_content()` и `ProductIndexer::index_one()` были stub-реализациями (return Ok(None/0)). Реализованы с реальными JOIN-запросами к БД и UPSERT в index_content/index_products. | `crates/rustok-index/src/content/indexer.rs`, `crates/rustok-index/src/product/indexer.rs` | 6.3, 7.7 |
-| 19 | 🟢 Низкий | ✅ Исправлено | `ModuleLifecycleService` использовал hardcoded `CORE_MODULE_SLUGS` массив вместо `registry.is_core()`. При добавлении нового Core-модуля нужно было обновлять два места. Исправлено: `validate_core_toggle()` удалён, проверка инлайнена через `registry.is_core()`. Тесты обновлены. | `apps/server/src/services/module_lifecycle.rs` | 5.4 |
-| 20 | 🟡 Высокий | ✅ Исправлено | `ProductIndexer::reindex_all()` содержал SQL-запрос `WHERE tenant_id = $1 AND deleted_at IS NULL` — но таблица `products` не имеет поля `deleted_at` (продукты удаляются через hard delete). Убрана несуществующая колонка из WHERE. | `crates/rustok-index/src/product/indexer.rs` | 7.7, 20.5 |
-| 21 | 🟢 Низкий | ✅ Исправлено | `ProductIndexer::build_index_product()` использовал небезопасный `as i32` cast для `agg.total_inventory` и `agg.variant_count` (тип `i64`). Исправлено: используется `i32::try_from().unwrap_or(i32::MAX)`. | `crates/rustok-index/src/product/indexer.rs` | 20.1 |
-| 22 | 🟡 Высокий | ✅ Исправлено | `crates/rustok-tenant` содержал пустые stub-файлы (entities/mod.rs, services/mod.rs, dto/mod.rs — только комментарии). Реализованы SeaORM entities (`tenant.rs`, `tenant_module.rs`), DTOs (`CreateTenantInput`, `UpdateTenantInput`, `TenantResponse`, `ToggleModuleInput`) и `TenantService` с полным CRUD и toggle_module. | `crates/rustok-tenant/src/` | 7.9 |
-| 23 | 🟡 Высокий | ✅ Исправлено | `controllers/swagger.rs` содержал только `ApiDoc` struct без endpoint для отдачи OpenAPI spec. Добавлены handlers `openapi_json()` и `openapi_yaml()` для эндпоинтов `GET /api/openapi.json` и `GET /api/openapi.yaml`, маршруты зарегистрированы в `app.rs`. | `apps/server/src/controllers/swagger.rs`, `apps/server/src/app.rs` | 9.9 |
-| 24 | 🟡 Высокий | ✅ Исправлено | Миграции `ScriptsMigration` и `ScriptExecutionsMigration` из `alloy-scripting` не были включены в главный Migrator — таблицы `scripts` и `script_executions` не создавались при деплое. Добавлены wrapper-файлы `m20260302_000001_create_scripts.rs` и `m20260302_000002_create_script_executions.rs`, подключена зависимость `alloy-scripting` в `migration/Cargo.toml`. | `apps/server/migration/src/lib.rs`, `apps/server/migration/src/m20260302_*.rs`, `apps/server/migration/Cargo.toml` | 7.6, 0.3 |
-| 25 | 🟡 Высокий | ✅ Исправлено | Миграция `search_index` существовала в `apps/server/migration/src/` (использует `PgSearchEngine`) но не была зарегистрирована в Migrator. Также конфликт имён модулей (`m20250130_000010` дважды). Файл переименован в `m20250130_000010a_create_search_index.rs`, добавлен в Migrator. | `apps/server/migration/src/lib.rs`, `apps/server/migration/src/m20250130_000010a_create_search_index.rs` | 0.3, 7.7 |
-| 26 | 🟡 Средний | ✅ Исправлено | Commerce DTOs (`CreateProductInput`, `UpdateProductInput`, `CreateVariantInput`, `UpdateVariantInput`, `PriceInput`) не имели `#[derive(Validate)]` и вызовы валидации в сервисах. Добавлены: `validator` в `rustok-commerce/Cargo.toml`, `#[derive(Validate)]` с аннотациями полей в DTO, вызов `.validate()?` в `CatalogService::create_product()` и `update_product()`. Также добавлены вызовы валидации в `NodeService` для `create_node_in_tx` и `update_node_in_tx`. | `crates/rustok-commerce/src/dto/product.rs`, `dto/variant.rs`, `services/catalog.rs`, `crates/rustok-content/src/services/node_service.rs`, `crates/rustok-commerce/Cargo.toml` | 18.4, 19.7 |
-| 27 | 🟡 Средний | ✅ Исправлено | Observability/Grafana конфигурация содержала дрейф от реального стека: datasources не имели стабильных `uid`, а Jaeger datasource ссылался на несуществующий Loki (`tracesToLogs.datasourceUid = loki`). Это ломало привязку dashboard → datasource и вводило в заблуждение операторов. Исправлено: добавлены `uid: prometheus` и `uid: jaeger`, удалена битая `tracesToLogs` ссылка, а в Compose-файлах убран устаревший ключ `version`, чтобы `docker compose config` проходил без предупреждений. | `grafana/datasources/datasources.yml`, `docker-compose.full-dev.yml`, `docker-compose.observability.yml`, `docs/PLATFORM_VERIFICATION_PLAN.md` | 0.5, 15.4 |
+| 1 | ?? Критический | ? Исправлено | `content` был помечен `required = true` в `modules.toml`, но `ContentModule::kind()` возвращает `ModuleKind::Optional`. Несоответствие приводило к ошибке `validate_registry_vs_manifest()` при старте. | `modules.toml` | 1.1 |
+| 2 | ?? Критический | ? Исправлено | `rustok-blog` и `rustok-forum` используют `event_bus.publish()` вместо `publish_in_tx()` — нарушение атомарности. Все сервисы переведены на `publish_in_tx()` с открытой транзакцией. | `crates/rustok-blog/src/services/post.rs`, `crates/rustok-forum/src/services/{topic,reply,moderation}.rs` | 6.2, 7.3, 7.4 |
+| 3 | ?? Высокий | ? Исправлено | `iggy` версия `0.9.2` не существует на crates.io. CI-сборка падала. Исправлено на `0.9.0`. | `Cargo.toml`, `crates/rustok-iggy-connector/Cargo.toml` | 0.6 |
+| 4 | ?? Критический | ? Исправлено | Контроллеры `blog/posts.rs`, `forum/topics.rs`, `forum/replies.rs`, `forum/categories.rs`, `pages.rs` использовали только `CurrentUser` без RBAC-проверок. Добавлены RBAC-экстракторы (`RequireBlogPostsCreate`, `RequireForumTopicsCreate`, и т.д.). Добавлена матрица Blog/Forum permissions для всех ролей в `rbac.rs`. | `apps/server/src/controllers/blog/posts.rs`, `forum/topics.rs`, `forum/replies.rs`, `forum/categories.rs`, `pages.rs`, `crates/rustok-core/src/rbac.rs`, `apps/server/src/extractors/rbac.rs` | 4.4, 18.2, 19.2 |
+| 5 | ?? Критический | ? Исправлено | `content/nodes.rs` использовал `CurrentUser` без RBAC-проверок для всех 5 endpoints. Заменён на RBAC extractors (`RequireNodesList`, `RequireNodesRead`, `RequireNodesCreate`, `RequireNodesUpdate`, `RequireNodesDelete`). OpenAPI 403 добавлен. | `apps/server/src/controllers/content/nodes.rs` | 4.4, 9.4, 18.2 |
+| 6 | ?? Критический | ? Исправлено | `admin_events.rs` (DLQ просмотр/replay) использовал `CurrentUser` без RBAC — доступен любому аутентифицированному пользователю. Заменён на `RequireLogsRead` (Admin/SuperAdmin only). Добавлен `Logs::Read` и `Logs::List` в `ADMIN_PERMISSIONS`. | `apps/server/src/controllers/admin_events.rs`, `crates/rustok-core/src/rbac.rs`, `apps/server/src/extractors/rbac.rs` | 4.4, 9.8, 18.2 |
+| 7 | ?? Высокий | ? Исправлено | GraphQL Blog mutations (`create_post`, `update_post`, `delete_post`, `publish_post`, `unpublish_post`, `archive_post`) имели только auth check, но не проверяли конкретные RBAC permissions. Добавлены проверки через `RbacService::has_any_permission()` для каждой операции. | `apps/server/src/graphql/blog/mutation.rs` | 4.3, 8.4 |
+| 8 | ?? Критический | ? Исправлено | GraphQL Commerce mutations (`create_product`, `update_product`, `publish_product`, `delete_product`) — без auth/RBAC. Добавлены проверки `RbacService::has_any_permission()` для PRODUCTS_CREATE/UPDATE/DELETE. | `apps/server/src/graphql/commerce/mutation.rs` | 4.3, 8.3 |
+| 9 | ?? Критический | ? Исправлено | GraphQL Content mutations (`create_node`, `update_node`, `delete_node`) — только auth check, без RBAC. Добавлены NODES_CREATE/UPDATE/DELETE через `RbacService::has_any_permission()`. Параметр `tenant_id` добавлен. | `apps/server/src/graphql/content/mutation.rs` | 4.3, 8.2 |
+| 10 | ?? Высокий | ? Исправлено | GraphQL Forum — stub реализация. Реализованы полноценные queries и mutations через TopicService, ReplyService, CategoryService с RBAC. | `apps/server/src/graphql/forum/mutation.rs`, `query.rs`, `types.rs` | 4.3, 8.5 |
+| 11 | ?? Высокий | ? Исправлено | GraphQL Pages mutations — без RBAC, использовали SecurityContext::system(). Добавлены PAGES_CREATE/UPDATE/DELETE через `RbacService::has_any_permission()`. | `apps/server/src/graphql/pages/mutation.rs` | 4.3, 8.7 |
+| 12 | ?? Высокий | ? Исправлено | RBAC extractors RequirePagesCreate/Read/Update/Delete использовали NODES_* permissions вместо PAGES_*. Исправлено. Добавлены константы PAGES_* и permissions для Manager/Customer. | `extractors/rbac.rs`, `permissions.rs`, `rbac.rs` | 4.1, 4.4 |
+| 13 | ?? Критический | ? Исправлено | REST контроллер `variants.rs`: `create_variant`, `update_variant`, `delete_variant` публиковали события `VariantCreated/Updated/Deleted` через `event_bus_from_context().publish()` **после** коммита транзакции. При сбое между commit и publish событие терялось. Исправлено: все три операции переведены на `publish_in_tx()` внутри транзакции до `commit()`. Update/Delete-операции получили обёртку в транзакцию. | `apps/server/src/controllers/commerce/variants.rs` | 6.2, 19.1 |
+| 14 | ?? Высокий | ? Исправлено | Миграция таблицы `sys_events` (outbox pattern) не была зарегистрирована в главном сервере. Создан файл `m20260211_000002_create_sys_events.rs` и добавлен в `apps/server/migration/src/lib.rs`. | `apps/server/migration/src/` | 2.2 |
+| 15 | ?? Высокий | ? Исправлено | Rate limiting middleware существовал в `middleware/rate_limit.rs` но **не был подключён** к роутеру. Все auth endpoints были уязвимы к брутфорс-атакам. Исправлено: добавлен `axum_middleware::from_fn` с per-IP sliding window limiter (20 req/60 сек) для `/api/auth/login`, `/api/auth/register`, `/api/auth/reset/*` в `app.rs::after_routes()`. | `apps/server/src/app.rs`, `apps/server/src/middleware/rate_limit.rs` | 9.10, 18.1 |
+| 16 | ?? Высокий | ? Исправлено | Entity `product_variant` имел поля `tenant_id, inventory_policy, inventory_management, inventory_quantity, weight_unit, option1/2/3, position`, которых не было в миграции `m20250130_000014_create_commerce_variants`. Добавлена миграция `m20260301_000001_alter_product_variants_add_fields`. | `apps/server/migration/src/m20260301_000001_alter_product_variants_add_fields.rs` | 7.2, 20.5 |
+| 17 | ?? Высокий | ? Исправлено | Entity `node` имел поля `deleted_at` и `version`, которых не было в миграции `m20250130_000005_create_nodes`. Добавлена миграция `m20260301_000002_alter_nodes_add_soft_delete`. | `apps/server/migration/src/m20260301_000002_alter_nodes_add_soft_delete.rs` | 7.1, 20.5 |
+| 18 | ?? Высокий | ? Исправлено | `ContentIndexer::build_index_content()` и `ProductIndexer::index_one()` были stub-реализациями (return Ok(None/0)). Реализованы с реальными JOIN-запросами к БД и UPSERT в index_content/index_products. | `crates/rustok-index/src/content/indexer.rs`, `crates/rustok-index/src/product/indexer.rs` | 6.3, 7.7 |
+| 19 | ?? Низкий | ? Исправлено | `ModuleLifecycleService` использовал hardcoded `CORE_MODULE_SLUGS` массив вместо `registry.is_core()`. При добавлении нового Core-модуля нужно было обновлять два места. Исправлено: `validate_core_toggle()` удалён, проверка инлайнена через `registry.is_core()`. Тесты обновлены. | `apps/server/src/services/module_lifecycle.rs` | 5.4 |
+| 20 | ?? Высокий | ? Исправлено | `ProductIndexer::reindex_all()` содержал SQL-запрос `WHERE tenant_id = $1 AND deleted_at IS NULL` — но таблица `products` не имеет поля `deleted_at` (продукты удаляются через hard delete). Убрана несуществующая колонка из WHERE. | `crates/rustok-index/src/product/indexer.rs` | 7.7, 20.5 |
+| 21 | ?? Низкий | ? Исправлено | `ProductIndexer::build_index_product()` использовал небезопасный `as i32` cast для `agg.total_inventory` и `agg.variant_count` (тип `i64`). Исправлено: используется `i32::try_from().unwrap_or(i32::MAX)`. | `crates/rustok-index/src/product/indexer.rs` | 20.1 |
+| 22 | ?? Высокий | ? Исправлено | `crates/rustok-tenant` содержал пустые stub-файлы (entities/mod.rs, services/mod.rs, dto/mod.rs — только комментарии). Реализованы SeaORM entities (`tenant.rs`, `tenant_module.rs`), DTOs (`CreateTenantInput`, `UpdateTenantInput`, `TenantResponse`, `ToggleModuleInput`) и `TenantService` с полным CRUD и toggle_module. | `crates/rustok-tenant/src/` | 7.9 |
+| 23 | ?? Высокий | ? Исправлено | `controllers/swagger.rs` содержал только `ApiDoc` struct без endpoint для отдачи OpenAPI spec. Добавлены handlers `openapi_json()` и `openapi_yaml()` для эндпоинтов `GET /api/openapi.json` и `GET /api/openapi.yaml`, маршруты зарегистрированы в `app.rs`. | `apps/server/src/controllers/swagger.rs`, `apps/server/src/app.rs` | 9.9 |
+| 24 | ?? Высокий | ? Исправлено | Миграции `ScriptsMigration` и `ScriptExecutionsMigration` из `alloy-scripting` не были включены в главный Migrator — таблицы `scripts` и `script_executions` не создавались при деплое. Добавлены wrapper-файлы `m20260302_000001_create_scripts.rs` и `m20260302_000002_create_script_executions.rs`, подключена зависимость `alloy-scripting` в `migration/Cargo.toml`. | `apps/server/migration/src/lib.rs`, `apps/server/migration/src/m20260302_*.rs`, `apps/server/migration/Cargo.toml` | 7.6, 0.3 |
+| 25 | ?? Высокий | ? Исправлено | Миграция `search_index` существовала в `apps/server/migration/src/` (использует `PgSearchEngine`) но не была зарегистрирована в Migrator. Также конфликт имён модулей (`m20250130_000010` дважды). Файл переименован в `m20250130_000010a_create_search_index.rs`, добавлен в Migrator. | `apps/server/migration/src/lib.rs`, `apps/server/migration/src/m20250130_000010a_create_search_index.rs` | 0.3, 7.7 |
+| 26 | ?? Средний | ? Исправлено | Commerce DTOs (`CreateProductInput`, `UpdateProductInput`, `CreateVariantInput`, `UpdateVariantInput`, `PriceInput`) не имели `#[derive(Validate)]` и вызовы валидации в сервисах. Добавлены: `validator` в `rustok-commerce/Cargo.toml`, `#[derive(Validate)]` с аннотациями полей в DTO, вызов `.validate()?` в `CatalogService::create_product()` и `update_product()`. Также добавлены вызовы валидации в `NodeService` для `create_node_in_tx` и `update_node_in_tx`. | `crates/rustok-commerce/src/dto/product.rs`, `dto/variant.rs`, `services/catalog.rs`, `crates/rustok-content/src/services/node_service.rs`, `crates/rustok-commerce/Cargo.toml` | 18.4, 19.7 |
+| 27 | ?? Средний | ? Исправлено | Observability/Grafana конфигурация содержала дрейф от реального стека: datasources не имели стабильных `uid`, а Jaeger datasource ссылался на несуществующий Loki (`tracesToLogs.datasourceUid = loki`). Это ломало привязку dashboard > datasource и вводило в заблуждение операторов. Исправлено: добавлены `uid: prometheus` и `uid: jaeger`, удалена битая `tracesToLogs` ссылка, а в Compose-файлах убран устаревший ключ `version`, чтобы `docker compose config` проходил без предупреждений. | `grafana/datasources/datasources.yml`, `docker-compose.full-dev.yml`, `docker-compose.observability.yml`, `docs/PLATFORM_VERIFICATION_PLAN.md` | 0.5, 15.4 |
 
 ### 21.1 Детали: Проблема #2 — Небезопасная публикация событий в blog/forum
 
@@ -1589,14 +1589,14 @@
 - Или: убрать дублирующие события в blog/forum — NodeService уже публикует `NodeCreated`/`NodeUpdated`/etc., а IndexService может слушать их напрямую.
 
 **Чеклист исправления:**
-- [x] Рефакторинг `PostService::create_post()` → `publish_in_tx()`
-- [x] Рефакторинг `PostService::update_post()` → `publish_in_tx()`
-- [x] Рефакторинг `PostService::publish_post()` → `publish_in_tx()`
-- [x] Рефакторинг `PostService::unpublish_post()` → `publish_in_tx()`
-- [x] Рефакторинг `PostService::delete_post()` → `publish_in_tx()`
-- [x] Рефакторинг `TopicService` → `publish_in_tx()`
-- [x] Рефакторинг `ReplyService::create_reply()` → `publish_in_tx()`
-- [x] Рефакторинг `ModerationService` (3 вызова) → `publish_in_tx()`
+- [x] Рефакторинг `PostService::create_post()` > `publish_in_tx()`
+- [x] Рефакторинг `PostService::update_post()` > `publish_in_tx()`
+- [x] Рефакторинг `PostService::publish_post()` > `publish_in_tx()`
+- [x] Рефакторинг `PostService::unpublish_post()` > `publish_in_tx()`
+- [x] Рефакторинг `PostService::delete_post()` > `publish_in_tx()`
+- [x] Рефакторинг `TopicService` > `publish_in_tx()`
+- [x] Рефакторинг `ReplyService::create_reply()` > `publish_in_tx()`
+- [x] Рефакторинг `ModerationService` (3 вызова) > `publish_in_tx()`
 - [x] Добавить integration тест: проверить что BlogPostCreated публикуется атомарно
   - Добавлены тесты в `crates/rustok-blog/tests/integration.rs`: happy-path для `MemoryTransport` и failure-path для не-transactional/failing transport (событие не наблюдается при ошибке публикации)
 
@@ -1653,5 +1653,7 @@
 ---
 
 > **Как использовать этот план:** Открываем каждую фазу последовательно. При нахождении проблемы — фиксим в коде и ставим `[x]`. Если что-то не реализовано — помечаем `[~]` и создаём задачу. По завершению — собираем итоговый отчёт.
+
+
 
 

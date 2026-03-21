@@ -39,8 +39,8 @@
 - Dev onboarding: `seed_development` creates/updates an idempotent demo tenant (`demo`), demo users, and enables core modules for local environments.
 - Admin UI embedding: embedded `/admin` assets are compiled only with Cargo feature `embed-admin-assets` (disabled by default for CI/check environments without frontend artifacts). When enabled, build `apps/admin/dist` before compiling `apps/server`; when disabled, `/admin/*` returns `503 Service Unavailable` with an explicit message that embedding is disabled.
 - Build pipeline: `BuildService::request_build` now publishes `BuildRequested` via configurable `BuildEventPublisher`; `EventBusBuildEventPublisher` maps it to `DomainEvent::BuildRequested`, while default noop publisher logs skipped dispatch when no runtime wiring is provided.
-- Event consumer runtime: long-lived server consumers (`server_event_forwarder`, GraphQL build-progress subscription) follow a shared contract from `rustok-core`: `Lagged -> warn + metric`, `Closed -> explicit stop`, reindex decision path documented in `docs/architecture/events.md`.
-- Tenant cache invalidation: Redis pubsub listener now uses supervised resubscribe with fixed backoff instead of one-shot startup; operational signals go through `rustok_event_consumer_restarted_total` and incident handling stays in the central events runbook.
+- Event consumer runtime: long-lived server consumers (`server_event_forwarder`, GraphQL build-progress subscription) follow a shared contract from `rustok-core`: `Lagged -> warn + metric`, `Closed -> explicit stop`, reindex decision path documented in `crates/rustok-outbox/docs/README.md`.
+- Tenant cache invalidation: Redis pubsub listener now uses supervised resubscribe with fixed backoff instead of one-shot startup; operational signals go through `rustok_event_consumer_restarted_total` and incident handling stays in `crates/rustok-outbox/docs/README.md`.
 - Health/readiness: `tenant_cache_invalidation` is now exposed in `/health/ready`, and current listener state is exported as `rustok_tenant_invalidation_listener_status`; see [`health.md`](./health.md).
 - Auth/session lifecycle: GraphQL `sign_out`, `change_password`, `reset_password` теперь используют soft-revoke через `sessions.revoked_at` (вместо hard delete) и выровнены по поведению с REST (`sign_out` отзывает только текущую сессию, `change_password` — все остальные, `reset_password` — все активные).
 
@@ -53,5 +53,15 @@
 - Auth rollout controls: канонические release gates, stop-the-line условия и rollback-процедура ведутся централизованно в `docs/architecture/api.md` (раздел «Auth lifecycle consistency и release-gate»); remediation backlog закрыт, в релизах используется operational handoff через `scripts/auth_release_gate.sh --require-all-gates`.
 - Auth rollout controls: helper `scripts/auth_release_gate.sh` автоматизирует сбор локального integration evidence (`cargo test -p rustok-server auth_lifecycle` + `cargo test -p rustok-server auth`), всегда формирует markdown gate-report с полями для parity/security evidence и завершает прогон с non-zero exit code при падении любого локального integration auth-среза.
 - RBAC/seed consistency: `seed_user` теперь вызывает `RbacService::assign_role_permissions` после создания пользователя, гарантируя наличие `user_roles` для всех seed-пользователей (dev bootstrap).
+- MCP management layer: `apps/server` теперь хранит persisted `mcp_clients`, `mcp_tokens`, `mcp_policies`, `mcp_audit_logs` и публикует management API через REST `/api/mcp/*` и GraphQL `mcp*`; это platform capability, а не tenant module.
+- MCP runtime bridge: `DbBackedMcpRuntimeBridge` регистрируется в server bootstrap, резолвит plaintext MCP token в `McpAccessContext` на старте stdio-сессии, обновляет `last_used_at` для client/token, пишет runtime allow/deny audit в `mcp_audit_logs` и может работать persisted draft-store backend для Alloy scaffold MCP tools.
+- Alloy scaffold draft control plane: `apps/server` теперь также хранит persisted scaffold drafts для Alloy module generation и публикует их через REST `/api/mcp/scaffold-drafts*` и GraphQL `mcpModuleScaffoldDraft*`.
 
 
+## Current RBAC contract
+
+- `apps/server` is the only transport/runtime layer that enforces RBAC.
+- Runtime modules publish their permission surface through `RusToKModule::permissions()`.
+- Runtime module interaction contracts live in `crates/<module>/README.md` under `## Interactions`.
+- Server adapters must use `RbacService`, RBAC extractors, or permission-aware `SecurityContext`.
+- Manual role-based authorization is not part of the live server contract.

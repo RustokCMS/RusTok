@@ -7,6 +7,7 @@ pub mod content;
 pub mod forum;
 pub mod graphql;
 pub mod health;
+pub mod mcp;
 #[cfg(feature = "mod-media")]
 pub mod media;
 pub mod metrics;

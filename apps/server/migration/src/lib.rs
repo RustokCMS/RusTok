@@ -18,6 +18,8 @@ mod m20260211_000001_add_event_versioning;
 mod m20260211_000002_create_sys_events;
 mod m20260315_000001_create_user_field_definitions;
 mod m20260316_000001_create_platform_settings;
+mod m20260319_000001_create_mcp_management_tables;
+mod m20260320_000001_create_mcp_scaffold_drafts;
 
 pub struct Migrator;
 
@@ -48,6 +50,12 @@ impl MigratorTrait for Migrator {
         ));
         all.push(Box::new(
             m20260316_000001_create_platform_settings::Migration,
+        ));
+        all.push(Box::new(
+            m20260319_000001_create_mcp_management_tables::Migration,
+        ));
+        all.push(Box::new(
+            m20260320_000001_create_mcp_scaffold_drafts::Migration,
         ));
 
         // Pull module-owned migrations from the domain crates and merge them into

@@ -38,13 +38,15 @@
 //! ```
 
 use async_trait::async_trait;
-use rustok_core::permissions::{Action, Permission, Resource};
+use rustok_core::permissions::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod graphql;
 pub mod locale;
 pub mod services;
 pub mod state_machine;
@@ -59,6 +61,7 @@ pub use dto::{
     TagResponse, UpdateCategoryInput, UpdateCommentInput, UpdatePostInput, UpdateTagInput,
 };
 pub use error::{BlogError, BlogResult};
+pub use graphql::{BlogMutation, BlogQuery};
 pub use services::{CategoryService, CommentService, PostService, TagService};
 pub use state_machine::{
     Archived, BlogPost, BlogPostStatus, CommentStatus, Draft, Published, ToBlogPostStatus,
@@ -110,6 +113,7 @@ impl MigrationSource for BlogModule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_core::permissions::{Action, Resource};
 
     #[test]
     fn module_metadata() {
@@ -127,17 +131,13 @@ mod tests {
 
         assert!(permissions
             .iter()
-            .any(|p| { p.resource == Resource::Posts && p.action == Action::Create }));
+            .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Create }));
         assert!(permissions
             .iter()
-            .any(|p| { p.resource == Resource::Posts && p.action == Action::Publish }));
+            .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Publish }));
         assert!(permissions
             .iter()
-            .any(|p| { p.resource == Resource::Comments && p.action == Action::Moderate }));
-        assert!(permissions
-            .iter()
-            .any(|p| p.resource == Resource::Categories));
-        assert!(permissions.iter().any(|p| p.resource == Resource::Tags));
+            .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Manage }));
     }
 
     #[test]

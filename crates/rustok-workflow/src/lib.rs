@@ -23,9 +23,11 @@ use rustok_core::permissions::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod graphql;
 pub mod migration;
 pub mod migrations;
 pub mod services;
@@ -34,6 +36,7 @@ pub mod templates;
 
 pub use dto::*;
 pub use error::{WorkflowError, WorkflowResult};
+pub use graphql::{WorkflowMutation, WorkflowQuery};
 pub use migration::{WorkflowPhase4Migration, WorkflowsMigration};
 pub use services::{
     WorkflowCronScheduler, WorkflowEngine, WorkflowService, WorkflowTriggerHandler,
@@ -59,10 +62,6 @@ impl RusToKModule for WorkflowModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
-    }
-
-    fn dependencies(&self) -> &[&'static str] {
-        &["alloy"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

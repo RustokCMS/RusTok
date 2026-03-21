@@ -8,7 +8,7 @@
 2. `docs/AI_CONTEXT.md`.
 3. `CRATE_API.md` целевого крейта (если существует).
 4. `README.md` целевого крейта.
-5. При event-изменениях: `docs/architecture/events.md` и `docs/architecture/events-transactional.md`.
+5. При event-изменениях: `crates/rustok-outbox/docs/README.md` и `docs/architecture/event-flow-contract.md`.
 
 ## Терминология: модули
 

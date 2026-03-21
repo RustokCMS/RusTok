@@ -258,6 +258,9 @@ define_permission_extractor!(
     rustok_core::Permission::SCRIPTS_MANAGE
 );
 
+define_permission_extractor!(RequireMcpRead, rustok_core::Permission::MCP_READ);
+define_permission_extractor!(RequireMcpManage, rustok_core::Permission::MCP_MANAGE);
+
 define_permission_extractor!(
     RequireWorkflowsCreate,
     rustok_core::Permission::WORKFLOWS_CREATE
@@ -291,10 +294,7 @@ define_permission_extractor!(
     rustok_core::Permission::WORKFLOW_EXECUTIONS_LIST
 );
 
-define_permission_extractor!(
-    RequireLogsRead,
-    rustok_core::Permission::LOGS_READ
-);
+define_permission_extractor!(RequireLogsRead, rustok_core::Permission::LOGS_READ);
 
 /// Helper to check permission inline without extractor
 ///

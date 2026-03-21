@@ -10,6 +10,12 @@
 
 - [Event flow contract (central)](../../../docs/architecture/event-flow-contract.md)
 
+## Transport adapters
+
+- GraphQL адаптеры модуля теперь живут в `crates/rustok-content/src/graphql/`.
+- REST-контроллеры модуля теперь живут в `crates/rustok-content/src/controllers/`.
+- `apps/server` для content больше не хранит бизнес-логику адаптеров и используется только как composition root / shim-слой для маршрутов и схемы.
+
 
 ## Orchestration
 

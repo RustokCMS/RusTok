@@ -2,6 +2,8 @@
 
 Визуальная автоматизация на платформенной очереди.
 
+Каноническая модульная документация workflow живёт в этом файле.
+
 ## Назначение
 
 `rustok-workflow` предоставляет визуальный конструктор автоматизаций (аналог n8n / Directus Flows),
@@ -61,6 +63,9 @@ Workflow **не владеет** транспортом событий — он 
 
 ## Связь с Alloy
 
+`rustok-workflow` использует Alloy как capability для отдельных шагов, но больше не объявляет
+runtime-зависимость `workflow -> alloy` в module registry.
+
 Workflow оркестрирует — Alloy исполняет. Alloy может быть шагом внутри workflow:
 
 ```
@@ -93,8 +98,13 @@ Trigger: order.paid
 ## Связанные документы
 
 - [CRATE_API](../CRATE_API.md)
-- [Архитектурное описание](../../../docs/architecture/workflow.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
+
+## Transport adapters
+
+- GraphQL адаптеры модуля теперь живут в `crates/rustok-workflow/src/graphql/`.
+- REST-контроллеры и webhook ingress теперь живут в `crates/rustok-workflow/src/controllers/`.
+- `apps/server` для workflow больше не хранит бизнес-логику transport-адаптеров и используется только как composition root / shim-слой.
 
 ## Event contracts
 

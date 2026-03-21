@@ -33,14 +33,14 @@ pub struct CurrentUser {
 impl CurrentUser {
     pub fn security_context(&self) -> rustok_core::SecurityContext {
         rustok_core::SecurityContext::from_permissions(
-            self.inferred_role,
+            self.inferred_role.clone(),
             Some(self.user.id),
             self.permissions.iter().copied(),
         )
     }
 }
 
-async fn resolve_current_user<S>(
+pub(crate) async fn resolve_current_user<S>(
     parts: &mut Parts,
     state: &S,
 ) -> Result<CurrentUser, (StatusCode, &'static str)>

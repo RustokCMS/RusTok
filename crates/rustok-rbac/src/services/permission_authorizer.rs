@@ -131,9 +131,7 @@ fn required_permissions_for_check(check: PermissionCheck<'_>) -> Vec<Permission>
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        authorize_all_permissions, authorize_any_permission, authorize_permission,
-    };
+    use super::{authorize_all_permissions, authorize_any_permission, authorize_permission};
     use crate::{AuthzEngine, PermissionResolution, PermissionResolver};
     use async_trait::async_trait;
     use rustok_core::{Permission, UserRole};

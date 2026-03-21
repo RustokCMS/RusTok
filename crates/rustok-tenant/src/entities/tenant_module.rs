@@ -1,4 +1,5 @@
 use sea_orm::entity::prelude::*;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
@@ -31,3 +32,20 @@ impl Related<super::tenant::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+impl Entity {
+    pub async fn is_enabled(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<bool, DbErr> {
+        let result = Self::find()
+            .filter(Column::TenantId.eq(tenant_id))
+            .filter(Column::ModuleSlug.eq(module_slug))
+            .filter(Column::Enabled.eq(true))
+            .one(db)
+            .await?;
+
+        Ok(result.is_some())
+    }
+}
