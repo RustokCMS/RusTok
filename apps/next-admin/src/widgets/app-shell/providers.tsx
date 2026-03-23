@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { SessionProvider } from 'next-auth/react';
-import { ActiveThemeProvider } from '../themes/active-theme';
+import { ActiveThemeProvider } from '@/shared/lib/themes/active-theme';
 
 export default function Providers({
   activeThemeValue,

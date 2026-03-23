@@ -48,6 +48,10 @@ pub struct ServerBuildConfig {
 pub struct AdminBuildConfig {
     #[serde(default)]
     pub stack: String,
+    #[serde(default)]
+    pub public_url: String,
+    #[serde(default)]
+    pub redirect_uris: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -56,6 +60,10 @@ pub struct StorefrontBuildConfig {
     pub id: String,
     #[serde(default)]
     pub stack: String,
+    #[serde(default)]
+    pub public_url: String,
+    #[serde(default)]
+    pub redirect_uris: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,6 +260,8 @@ pub enum ManifestError {
     RequiredMismatch(String),
     #[error("modules.toml depends_on conflict with ModuleRegistry dependencies: {0}")]
     DependencyMismatch(String),
+    #[error("Invalid build surface configuration: {0}")]
+    InvalidBuildSurface(String),
     #[error("Failed to read module package manifest {path}: {error}")]
     ModulePackageRead { path: String, error: String },
     #[error("Failed to parse module package manifest {path}: {error}")]
@@ -1004,6 +1014,8 @@ impl ManifestManager {
             }
         }
 
+        validate_build_surfaces(manifest)?;
+
         Ok(())
     }
 
@@ -1097,6 +1109,92 @@ impl ManifestManager {
     }
 }
 
+fn validate_build_surfaces(manifest: &ModulesManifest) -> Result<(), ManifestError> {
+    if !manifest.build.server.embed_admin && !manifest.build.admin.stack.trim().is_empty() {
+        if manifest.build.admin.public_url.trim().is_empty() {
+            return Err(ManifestError::InvalidBuildSurface(
+                "Standalone admin requires build.admin.public_url".to_string(),
+            ));
+        }
+
+        if manifest.build.admin.redirect_uris.is_empty() {
+            return Err(ManifestError::InvalidBuildSurface(
+                "Standalone admin requires at least one build.admin.redirect_uris entry"
+                    .to_string(),
+            ));
+        }
+
+        validate_urls(
+            &manifest.build.admin.redirect_uris,
+            "build.admin.redirect_uris",
+        )?;
+        validate_url(&manifest.build.admin.public_url, "build.admin.public_url")?;
+    }
+
+    let mut storefront_ids = HashSet::new();
+    for storefront in &manifest.build.storefront {
+        if storefront.id.trim().is_empty() {
+            return Err(ManifestError::InvalidBuildSurface(
+                "Each build.storefront entry requires a non-empty id".to_string(),
+            ));
+        }
+
+        if !storefront_ids.insert(storefront.id.clone()) {
+            return Err(ManifestError::InvalidBuildSurface(format!(
+                "Duplicate storefront id '{}'",
+                storefront.id
+            )));
+        }
+
+        let is_standalone = !manifest.build.server.embed_storefront || storefront.stack == "next";
+        if !is_standalone {
+            continue;
+        }
+
+        if storefront.public_url.trim().is_empty() {
+            return Err(ManifestError::InvalidBuildSurface(format!(
+                "Standalone storefront '{}' requires public_url",
+                storefront.id
+            )));
+        }
+
+        if storefront.redirect_uris.is_empty() {
+            return Err(ManifestError::InvalidBuildSurface(format!(
+                "Standalone storefront '{}' requires at least one redirect_uri",
+                storefront.id
+            )));
+        }
+
+        validate_url(
+            &storefront.public_url,
+            &format!("build.storefront[{}].public_url", storefront.id),
+        )?;
+        validate_urls(
+            &storefront.redirect_uris,
+            &format!("build.storefront[{}].redirect_uris", storefront.id),
+        )?;
+    }
+
+    Ok(())
+}
+
+fn validate_urls(urls: &[String], field: &str) -> Result<(), ManifestError> {
+    for value in urls {
+        validate_url(value, field)?;
+    }
+
+    Ok(())
+}
+
+fn validate_url(value: &str, field: &str) -> Result<(), ManifestError> {
+    reqwest::Url::parse(value).map_err(|error| {
+        ManifestError::InvalidBuildSurface(format!(
+            "{field} contains invalid URL '{value}': {error}"
+        ))
+    })?;
+    Ok(())
+}
+
 pub fn validate_registry_vs_manifest(registry: &ModuleRegistry) -> ServerResult<()> {
     let manifest = ManifestManager::load().map_err(|error| {
         ServerError::BadRequest(format!("modules.toml validation failed: {error}"))
@@ -1111,7 +1209,10 @@ pub fn validate_registry_vs_manifest(registry: &ModuleRegistry) -> ServerResult<
 
 #[cfg(test)]
 mod tests {
-    use super::{builtin_module_catalog, ManifestError, ManifestManager, ModulesManifest};
+    use super::{
+        builtin_module_catalog, ManifestError, ManifestManager, ModulesManifest,
+        StorefrontBuildConfig,
+    };
     use crate::models::build::DeploymentProfile;
     use crate::modules::build_registry;
     use serial_test::serial;
@@ -1192,6 +1293,43 @@ mod tests {
             plan.cargo_command,
             "cargo build -p rustok-server --release --target x86_64-unknown-linux-gnu --features embed-admin,embed-storefront"
         );
+    }
+
+    #[test]
+    fn rejects_standalone_admin_without_redirect_uris() {
+        let mut manifest = ModulesManifest::default();
+        manifest.build.server.embed_admin = false;
+        manifest.build.admin.stack = "next".to_string();
+        manifest.build.admin.public_url = "http://localhost:3001".to_string();
+
+        let result = ManifestManager::validate(&manifest);
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidBuildSurface(message))
+            if message.contains("build.admin.redirect_uris")
+        ));
+    }
+
+    #[test]
+    fn allows_standalone_surfaces_with_public_oauth_config() {
+        let mut manifest = ModulesManifest::default();
+        manifest.build.server.embed_admin = false;
+        manifest.build.server.embed_storefront = false;
+        manifest.build.admin.stack = "next".to_string();
+        manifest.build.admin.public_url = "http://localhost:3001".to_string();
+        manifest.build.admin.redirect_uris =
+            vec!["http://localhost:3001/auth/callback".to_string()];
+        manifest.build.storefront = vec![StorefrontBuildConfig {
+            id: "default".to_string(),
+            stack: "next".to_string(),
+            public_url: "http://localhost:3000".to_string(),
+            redirect_uris: vec!["http://localhost:3000/auth/callback".to_string()],
+        }];
+
+        let result = ManifestManager::validate(&manifest);
+
+        assert!(result.is_ok(), "expected valid standalone surface config");
     }
 
     #[test]

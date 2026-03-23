@@ -73,7 +73,7 @@ graph TD
 - [Схема базы данных](./architecture/database.md)
 - [Performance baseline](./architecture/performance-baseline.md) — repeatable workflow for `pg_stat_statements` and `EXPLAIN` evidence on hot paths.
 - [Архитектура API](./architecture/api.md)
-  - включает раздел Rich-text input contract (`markdown` + `rt_json_v1`/`content_json`) для blog/forum/pages
+  - включает раздел Rich-text/Page Builder input contract (`markdown` + `rt_json_v1` + `grapesjs_v1`/`content_json`) для blog/forum/pages
   - включает актуальный раздел по auth lifecycle consistency и release-gate (`AuthLifecycleService` + `scripts/auth_release_gate.sh`)
 - [DataLoader](./architecture/dataloader.md)
 - [Обзор модулей](./architecture/modules.md)
@@ -109,7 +109,7 @@ graph TD
 - [Реестр](./modules/registry.md)
 - [Реестр crate-ов RusToK](./modules/crates-registry.md)
 - [Манифест](./modules/manifest.md)
-- [Plan внедрения Tiptap/Page Builder](./modules/tiptap-page-builder-implementation-plan.md)
+- [Plan внедрения rich-text (Tiptap) и GrapesJS Page Builder](./modules/tiptap-page-builder-implementation-plan.md)
 - [Индекс модульной документации](./modules/_index.md)
 
 ### Стандарты (`docs/standards/`)

@@ -1,8 +1,8 @@
 import React from 'react';
-import { Card, CardContent, CardHeader } from './ui/card';
-import { Skeleton } from './ui/skeleton';
+import { Card, CardContent, CardHeader } from './shadcn/card';
+import { Skeleton } from './shadcn/skeleton';
 
-export default function FormCardSkeleton() {
+export function FormCardSkeleton() {
   return (
     <Card className='mx-auto w-full'>
       <CardHeader>
@@ -50,3 +50,5 @@ export default function FormCardSkeleton() {
     </Card>
   );
 }
+
+export default FormCardSkeleton;

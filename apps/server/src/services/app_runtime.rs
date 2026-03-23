@@ -24,6 +24,7 @@ use crate::services::index_dispatcher::spawn_index_dispatcher;
 use crate::services::marketplace_catalog::{
     MarketplaceCatalogService, SharedMarketplaceCatalogService,
 };
+use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
 use rustok_cache::CacheService;
 
 pub struct AppRuntimeBootstrap {
@@ -88,6 +89,7 @@ pub async fn bootstrap_app_runtime(
     ManifestManager::validate(&manifest)
         .and_then(|_| ManifestManager::validate_with_registry(&manifest, &registry))
         .map_err(|error| Error::BadRequest(format!("modules.toml validation failed: {error}")))?;
+    sync_manifest_managed_apps_for_all_tenants(&ctx.db, &manifest).await?;
     middleware::tenant::init_tenant_cache_infrastructure(ctx, &cache_service).await;
 
     #[cfg(feature = "mod-media")]

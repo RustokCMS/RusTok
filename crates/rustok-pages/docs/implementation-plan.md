@@ -33,6 +33,7 @@ compatibility with platform-level contracts.
 ### Phase 2 — Domain expansion (planned)
 
 - [ ] Implement prioritized domain capabilities for `rustok-pages`.
+- [ ] Promote `body.format=grapesjs_v1` as the canonical visual page-builder contract while keeping legacy block APIs migration-compatible.
 - [ ] Standardize cross-module integration points and events.
 - [ ] Document ownership and release gates for new capabilities.
 
@@ -41,6 +42,118 @@ compatibility with platform-level contracts.
 - [ ] Finalize rollout and migration strategy for incremental adoption.
 - [ ] Complete security/tenancy/rbac checks relevant to the module.
 - [ ] Validate observability, runbooks, and operational readiness.
+
+## Dedicated page-builder track
+
+This section isolates the visual page-builder work as a dedicated `rustok-pages`
+track. It is intentionally separate from OAuth/app-registration work and separate
+from the blog/forum rich-text rollout.
+
+### Goal
+
+Adopt a single visual page-builder model that:
+
+- uses `GrapesJS` as the primary editor runtime;
+- stores canonical page-builder state in `body.format = "grapesjs_v1"`;
+- remains frontend-agnostic enough for both `apps/next-admin` and future
+  `apps/admin`/Leptos integration;
+- preserves a safe migration path from legacy typed block editing.
+
+### Canonical direction
+
+- `grapesjs_v1` becomes the source of truth for newly edited visual pages.
+- `content_json` stores canonical GrapesJS `projectData`.
+- legacy `blocks` remain supported as a migration-compatible surface until
+  storefront rendering and editorial workflows are fully migrated.
+- `Tiptap` stays limited to blog/forum rich-text and is not reused as a pages editor.
+
+### Proposed implementation phases
+
+#### Phase PB0 — Contract freeze
+
+- [ ] Freeze `grapesjs_v1` as the canonical page-builder body format.
+- [ ] Document whether legacy `blocks` are read-only, write-compatible, or deprecated per flow.
+- [ ] Define a compatibility policy for existing pages without `body.format = "grapesjs_v1"`.
+- [ ] Document acceptable `projectData` validation boundaries in `rustok-core`.
+
+#### Phase PB1 — Backend contract hardening
+
+- [ ] Ensure create/update/read/publish paths in `rustok-pages` treat `grapesjs_v1`
+  as a first-class contract.
+- [ ] Keep GraphQL/REST surfaces aligned for page body operations.
+- [ ] Add contract tests for round-tripping GrapesJS `projectData`.
+- [ ] Explicitly document the role of legacy block endpoints during migration.
+
+#### Phase PB2 — Next Admin runtime
+
+- [ ] Run `PageBuilder` in `apps/next-admin` as the primary pages editor.
+- [ ] Support load/save flows against canonical `grapesjs_v1` payloads.
+- [ ] Expose validation/load/save failures as actionable UX states.
+- [ ] Confirm page selection, draft editing, and publish workflows work with real entities.
+
+#### Phase PB3 — Storefront rendering strategy
+
+- [ ] Decide how `grapesjs_v1` is rendered in storefront runtimes.
+- [ ] Choose between direct runtime rendering, server-side transform, or publish-time export.
+- [ ] Define preview behavior and parity expectations for `apps/storefront` and `apps/next-frontend`.
+- [ ] Document constraints around tenant assets, CSS isolation, and embeds.
+
+#### Phase PB4 — Leptos parity
+
+- [ ] Define how `apps/admin` consumes the same canonical payload without creating a divergent page model.
+- [ ] Decide whether Leptos embeds GrapesJS or uses a compatible shell/editor strategy.
+- [ ] Align permissions, navigation, and validation behavior across `apps/next-admin` and `apps/admin`.
+
+#### Phase PB5 — Migration and rollout
+
+- [ ] Define migration rules for legacy pages edited through block APIs.
+- [ ] Mark whether new pages may still be created through legacy block flows.
+- [ ] Prepare rollout sequencing for editor enablement, storefront rendering, and deprecation of legacy paths.
+- [ ] Document rollback strategy if GrapesJS-backed pages regress rendering or publishing.
+
+### Open questions
+
+- Should storefronts render GrapesJS `projectData` directly, or should the server
+  normalize/export it into a stricter runtime format?
+- Do we need a publish-time HTML/schema artifact in addition to stored `projectData`?
+- At what milestone do legacy typed block writes become deprecated for new pages?
+- Do we need mixed-mode support where a page can temporarily keep both legacy
+  `blocks` and canonical `grapesjs_v1` body data?
+
+### Risks
+
+- A frontend editor can become the accidental source of backend truth unless the
+  `grapesjs_v1` contract is clearly defined and versioned.
+- Storefront rendering may drift if `projectData` semantics are not normalized.
+- Keeping legacy `blocks` too long can create dual-write ambiguity for editors and consumers.
+- Leptos parity may lag if the canonical payload is defined around Next-only assumptions.
+
+### Test plan
+
+- Unit:
+  - validate accepted/rejected `grapesjs_v1` payload shapes;
+  - verify page body round-trip for `grapesjs_v1`;
+  - verify legacy non-GrapesJS pages still read safely.
+- Integration:
+  - create/update/get/publish page with `body.format = "grapesjs_v1"`;
+  - ensure GraphQL and REST expose equivalent behavior;
+  - verify RBAC enforcement on editor and publish actions.
+- UI:
+  - load existing GrapesJS page in `apps/next-admin`;
+  - save dirty state back to canonical payload;
+  - surface validation and transport failures clearly.
+- Rollout:
+  - confirm behavior for legacy pages with blocks only;
+  - confirm no data loss when first converting a page into `grapesjs_v1`;
+  - confirm storefront fallback or explicit incompatibility is documented before broad rollout.
+
+### Definition of done
+
+- new and edited visual pages persist through `grapesjs_v1`;
+- read/write/publish flows are covered by tests;
+- storefront rendering strategy is implemented and documented;
+- parity plan for Leptos exists and is tracked;
+- legacy block-path status is explicit: supported temporarily, restricted, or deprecated.
 
 ## Tracking and updates
 

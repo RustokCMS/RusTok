@@ -1,49 +1,86 @@
 use crate::entities::oauth_app::model::OAuthApp;
-use crate::shared::ui::ui_button as UiButton;
+use crate::features::oauth_apps::api::{
+    OAuthAppIdVariables, RotateOAuthAppSecretResponse, ROTATE_OAUTH_APP_SECRET_MUTATION,
+};
+use crate::shared::api::request;
+use crate::shared::ui::Button;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 
 #[component]
 pub fn RotateSecretDialog(
+    token: Option<String>,
+    tenant: Option<String>,
     app: OAuthApp,
-    on_success: impl Fn(String) + Send + Sync + 'static + Clone,
-    on_cancel: impl Fn() + 'static + Clone,
+    on_success: impl Fn(String, OAuthApp) + Send + Sync + 'static + Clone,
+    on_cancel: impl Fn() + Send + Sync + 'static + Clone,
 ) -> impl IntoView {
     let name = app.name.clone();
+    let (submitting, set_submitting) = signal(false);
+    let (error, set_error) = signal(None::<String>);
 
-    let rotate_action = Action::new(move |_: &()| {
+    let rotate = move || {
+        let Some(token_value) = token.clone() else {
+            set_error.set(Some("Sign in again to manage app connections.".to_string()));
+            return;
+        };
+
+        let tenant_value = tenant.clone();
         let on_success = on_success.clone();
-        async move {
-            // MOCK: GraphQL rotation logic
-            let new_secret = format!(
-                "sk_live_{}",
-                uuid::Uuid::new_v4().to_string().replace("-", "")
-            );
-            on_success(new_secret);
-        }
-    });
+        let variables = OAuthAppIdVariables { id: app.id };
+
+        set_submitting.set(true);
+        set_error.set(None);
+
+        spawn_local(async move {
+            let result = request::<OAuthAppIdVariables, RotateOAuthAppSecretResponse>(
+                ROTATE_OAUTH_APP_SECRET_MUTATION,
+                variables,
+                Some(token_value),
+                tenant_value,
+            )
+            .await;
+
+            set_submitting.set(false);
+            match result {
+                Ok(response) => on_success(
+                    response.rotate_oauth_app_secret.client_secret.clone(),
+                    response.rotate_oauth_app_secret.app,
+                ),
+                Err(err) => set_error.set(Some(err.to_string())),
+            }
+        });
+    };
 
     view! {
         <div class="space-y-4">
             <h3 class="text-lg font-medium">"Rotate Client Secret"</h3>
             <p class="text-sm text-slate-500">
-                "Are you sure you want to rotate the secret for "<span class="font-semibold">{name}</span>"?"
+                "Rotate the secret for "<span class="font-semibold">{name}</span>"."
                 <br/>
-                "The old secret will immediately stop working and all active sessions/tokens might be invalidated or require the new secret to refresh."
+                "The old secret stops working immediately."
             </p>
 
-            <div class="flex items-center gap-2 pt-4">
-                <UiButton
-                    variant=crate::shared::ui::ButtonVariant::Destructive
-                    on_click=Box::new(move || { rotate_action.dispatch(()); })
+            <Show when=move || error.get().is_some()>
+                <div class="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                    {move || error.get().unwrap_or_default()}
+                </div>
+            </Show>
+
+            <div class="flex items-center gap-2 pt-2">
+                <Button
+                    class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    disabled=Signal::derive(move || submitting.get())
+                    on_click=Callback::new(move |_| rotate())
                 >
-                    "Yes, Rotate Secret"
-                </UiButton>
-                <UiButton
-                    variant=crate::shared::ui::ButtonVariant::Outline
-                    on_click=Box::new(on_cancel)
+                    {move || if submitting.get() { "Rotating..." } else { "Rotate Secret" }}
+                </Button>
+                <Button
+                    class="bg-transparent text-foreground shadow-none ring-1 ring-border hover:bg-accent"
+                    on_click=Callback::new(move |_| on_cancel())
                 >
                     "Cancel"
-                </UiButton>
+                </Button>
             </div>
         </div>
     }

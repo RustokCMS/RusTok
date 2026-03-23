@@ -1,6 +1,9 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { signIn as rustokSignIn, fetchCurrentTenant } from '@/shared/api/auth-api';
+import {
+  signIn as rustokSignIn,
+  fetchCurrentTenant
+} from '@/shared/api/auth-api';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -11,7 +14,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         tenantSlug: { label: 'Workspace', type: 'text' }
       },
       authorize: async (credentials) => {
-        if (!credentials?.email || !credentials?.password || !credentials?.tenantSlug) {
+        if (
+          !credentials?.email ||
+          !credentials?.password ||
+          !credentials?.tenantSlug
+        ) {
           return null;
         }
         try {
@@ -51,21 +58,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     jwt({ token, user }) {
       if (user) {
         token.id = user.id ?? '';
-        token.role = user.role;
-        token.status = user.status;
-        token.tenantSlug = user.tenantSlug;
-        token.tenantId = user.tenantId;
-        token.rustokToken = user.rustokToken;
+        token.role = String(user.role ?? '');
+        token.status = String(user.status ?? '');
+        token.tenantSlug =
+          typeof user.tenantSlug === 'string' || user.tenantSlug === null
+            ? user.tenantSlug
+            : null;
+        token.tenantId =
+          typeof user.tenantId === 'string' || user.tenantId === null
+            ? user.tenantId
+            : null;
+        token.rustokToken = String(user.rustokToken ?? '');
       }
       return token;
     },
     session({ session, token }) {
-      session.user.id = token.id;
-      session.user.role = token.role;
-      session.user.status = token.status;
-      session.user.tenantSlug = token.tenantSlug;
-      session.user.tenantId = token.tenantId;
-      session.user.rustokToken = token.rustokToken;
+      session.user.id = String(token.id ?? '');
+      session.user.role = String(token.role ?? '');
+      session.user.status = String(token.status ?? '');
+      session.user.tenantSlug =
+        typeof token.tenantSlug === 'string' || token.tenantSlug === null
+          ? token.tenantSlug
+          : null;
+      session.user.tenantId =
+        typeof token.tenantId === 'string' || token.tenantId === null
+          ? token.tenantId
+          : null;
+      session.user.rustokToken = String(token.rustokToken ?? '');
       return session;
     }
   },

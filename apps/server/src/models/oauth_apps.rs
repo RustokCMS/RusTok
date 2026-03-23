@@ -50,6 +50,14 @@ impl Model {
         self.is_active && self.revoked_at.is_none()
     }
 
+    pub fn is_manual(&self) -> bool {
+        !self.auto_created
+    }
+
+    pub fn managed_by_manifest(&self) -> bool {
+        self.auto_created && self.manifest_ref.is_some()
+    }
+
     /// Parse scopes from JSONB field
     pub fn scopes_list(&self) -> Vec<String> {
         serde_json::from_value(self.scopes.clone()).unwrap_or_default()
@@ -68,5 +76,25 @@ impl Model {
     /// Check if the app supports a specific grant type
     pub fn supports_grant_type(&self, grant_type: &str) -> bool {
         self.grant_types_list().iter().any(|gt| gt == grant_type)
+    }
+
+    pub fn can_edit(&self) -> bool {
+        self.is_manual() && matches!(self.app_type.as_str(), "third_party" | "mobile" | "service")
+    }
+
+    pub fn can_rotate_secret(&self) -> bool {
+        if self.app_type == "embedded" {
+            return false;
+        }
+
+        self.client_secret_hash.is_some()
+    }
+
+    pub fn can_revoke(&self) -> bool {
+        self.is_manual() && matches!(self.app_type.as_str(), "third_party" | "mobile" | "service")
+    }
+
+    pub fn requires_user_consent(&self) -> bool {
+        self.app_type == "third_party"
     }
 }

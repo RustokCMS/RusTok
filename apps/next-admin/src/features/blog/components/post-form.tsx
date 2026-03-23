@@ -3,18 +3,23 @@
 import { FormInput, FormTextarea, FormSwitch, FormSelect } from '@/shared/ui/forms';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Form } from '@/components/ui/form';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useEffect, useMemo, useState } from 'react';
+import { useForm, type Resolver } from 'react-hook-form';
 import { toast } from 'sonner';
 import * as z from 'zod';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
 import { RtJsonEditor } from './rt-json-editor';
-import { markdownToRtDoc, stringifyRtDoc, parseRtDoc, type RtDoc } from './rt-json-format';
+import {
+  extractRtDoc,
+  markdownToRtDoc,
+  normalizeRtJsonPayload,
+  stringifyRtDoc,
+  type RtDoc
+} from './rt-json-format';
 
 const formSchema = z
   .object({
@@ -61,10 +66,10 @@ const formSchema = z
 
 type FormValues = z.infer<typeof formSchema>;
 
-function resolveInitialDoc(initialData: PostResponse | null): RtDoc {
+function resolveInitialDoc(initialData: PostResponse | null, locale: string): RtDoc {
   if (initialData?.contentJson) {
     try {
-      return parseRtDoc(initialData.contentJson);
+      return extractRtDoc(initialData.contentJson, locale);
     } catch {
       // fallthrough to markdown
     }
@@ -87,7 +92,11 @@ export default function PostForm({
   gqlOpts?: GqlOpts;
 }) {
   const router = useRouter();
-  const initialDoc = useMemo(() => resolveInitialDoc(initialData), [initialData]);
+  const defaultLocale = 'en';
+  const initialDoc = useMemo(
+    () => resolveInitialDoc(initialData, defaultLocale),
+    [initialData]
+  );
   const [rtDoc, setRtDoc] = useState<RtDoc>(initialDoc);
   const [migrationWarnings, setMigrationWarnings] = useState<string[]>(
     initialData?.body?.trim() && !initialData?.contentJson
@@ -98,10 +107,10 @@ export default function PostForm({
   const defaultValues: FormValues = {
     title: initialData?.title ?? '',
     slug: initialData?.slug ?? '',
-    locale: 'en',
+    locale: defaultLocale,
     bodyFormat: initialData?.contentJson ? 'rt_json_v1' : 'markdown',
     body: initialData?.body ?? '',
-    contentJson: initialData?.contentJson ? JSON.stringify(initialData.contentJson, null, 2) : '',
+    contentJson: initialData?.contentJson ? stringifyRtDoc(initialDoc, defaultLocale) : '',
     excerpt: initialData?.excerpt ?? '',
     tags: initialData?.tags?.join(', ') ?? '',
     featuredImageUrl: initialData?.featuredImageUrl ?? '',
@@ -111,19 +120,37 @@ export default function PostForm({
   };
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(formSchema) as Resolver<FormValues>,
     defaultValues
   });
 
+  const watchedLocale = form.watch('locale');
+  const watchedBodyFormat = form.watch('bodyFormat');
+
+  useEffect(() => {
+    if (watchedBodyFormat !== 'rt_json_v1') {
+      return;
+    }
+
+    const locale = watchedLocale?.trim() || defaultLocale;
+    form.setValue('contentJson', stringifyRtDoc(rtDoc, locale), {
+      shouldDirty: true,
+      shouldValidate: true
+    });
+  }, [defaultLocale, form, rtDoc, watchedBodyFormat, watchedLocale]);
+
   function convertMarkdownToRtJson() {
     const markdown = form.getValues('body');
+    const locale = form.getValues('locale')?.trim() || defaultLocale;
     if (!markdown.trim()) {
       toast.error('Markdown body is empty.');
       return;
     }
     const converted = markdownToRtDoc(markdown);
     setRtDoc(converted);
-    form.setValue('contentJson', stringifyRtDoc(converted), { shouldValidate: true });
+    form.setValue('contentJson', stringifyRtDoc(converted, locale), {
+      shouldValidate: true
+    });
     form.setValue('bodyFormat', 'rt_json_v1', { shouldValidate: true });
     const warnings = markdown.includes('```')
       ? ['Code blocks were migrated as plain text paragraphs.']
@@ -137,9 +164,13 @@ export default function PostForm({
       ? values.tags.split(',').map((t) => t.trim()).filter(Boolean)
       : [];
 
-    const contentJson = values.bodyFormat === 'rt_json_v1' && values.contentJson
-      ? JSON.parse(values.contentJson)
-      : undefined;
+    const contentJson =
+      values.bodyFormat === 'rt_json_v1'
+        ? normalizeRtJsonPayload(
+            values.contentJson || stringifyRtDoc(rtDoc, values.locale),
+            values.locale
+          )
+        : undefined;
 
     try {
       if (initialData) {
@@ -189,11 +220,7 @@ export default function PostForm({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <Form
-          form={form}
-          onSubmit={form.handleSubmit(onSubmit)}
-          className='space-y-8'
-        >
+        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-8'>
           <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
             <FormInput control={form.control} name='title' label='Title' placeholder='Enter post title' required />
             <FormInput control={form.control} name='slug' label='Slug' placeholder='auto-generated-if-empty' />
@@ -214,7 +241,7 @@ export default function PostForm({
             ]}
           />
 
-          {form.watch('bodyFormat') === 'markdown' ? (
+          {watchedBodyFormat === 'markdown' ? (
             <>
               <FormTextarea control={form.control} name='body' label='Body' placeholder='Write your post content...' required config={{ rows: 12 }} />
               <Button type='button' variant='outline' onClick={convertMarkdownToRtJson}>
@@ -226,8 +253,11 @@ export default function PostForm({
               label='Body (rt_json_v1)'
               value={rtDoc}
               onChange={(doc) => {
+                const locale = form.getValues('locale')?.trim() || defaultLocale;
                 setRtDoc(doc);
-                form.setValue('contentJson', stringifyRtDoc(doc), { shouldValidate: true });
+                form.setValue('contentJson', stringifyRtDoc(doc, locale), {
+                  shouldValidate: true
+                });
               }}
             />
           )}
@@ -245,7 +275,7 @@ export default function PostForm({
             </Alert>
           )}
 
-          {form.watch('bodyFormat') === 'rt_json_v1' && (
+          {watchedBodyFormat === 'rt_json_v1' && (
             <pre className='max-h-52 overflow-auto rounded-md border bg-muted p-3 text-xs'>
               {form.watch('contentJson')}
             </pre>
@@ -271,7 +301,7 @@ export default function PostForm({
           <Button type='submit'>
             {initialData ? 'Update Post' : 'Create Post'}
           </Button>
-        </Form>
+        </form>
       </CardContent>
     </Card>
   );

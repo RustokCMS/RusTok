@@ -20,7 +20,8 @@ use crate::models::build::{
 use crate::models::release::{
     ActiveModel as ReleaseActiveModel, Entity as ReleaseEntity, Model as Release, ReleaseStatus,
 };
-use crate::modules::BuildExecutionPlan;
+use crate::modules::{BuildExecutionPlan, ManifestManager};
+use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
 
 #[derive(Debug, Clone)]
 pub struct BuildRequest {
@@ -493,6 +494,13 @@ impl BuildService {
             })
             .await
             .map_err(|error| anyhow::anyhow!("Failed to activate release: {error}"))?;
+
+        let manifest = ManifestManager::load().map_err(|error| {
+            anyhow::anyhow!("Failed to load modules.toml after activation: {error}")
+        })?;
+        sync_manifest_managed_apps_for_all_tenants(&self.db, &manifest)
+            .await
+            .map_err(|error| anyhow::anyhow!("Failed to sync OAuth app connections: {error}"))?;
 
         Ok(updated)
     }

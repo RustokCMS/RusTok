@@ -104,17 +104,21 @@ where
         .await
         .expect("Failed to connect to test database");
 
-    loop {
-        let pending = M::get_pending_migrations(&db)
-            .await
-            .expect("Failed to load pending migrations");
-        let Some(next_migration) = pending.into_iter().next() else {
-            break;
-        };
-        let migration_name = next_migration.name().to_owned();
-        M::up(&db, Some(1))
-            .await
-            .unwrap_or_else(|error| panic!("Failed to run migration {migration_name}: {error:?}"));
+    let pending = M::get_pending_migrations(&db)
+        .await
+        .expect("Failed to load pending migrations");
+    let pending_names: Vec<String> = pending
+        .into_iter()
+        .map(|migration| migration.name().to_string())
+        .collect();
+
+    if !pending_names.is_empty() {
+        M::up(&db, None).await.unwrap_or_else(|error| {
+            panic!(
+                "Failed to run pending migrations {:?}: {error:?}",
+                pending_names
+            )
+        });
     }
 
     db

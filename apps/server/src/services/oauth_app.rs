@@ -10,7 +10,9 @@ use crate::models::oauth_consents::{
     ActiveModel as OAuthConsentActiveModel, Entity as OAuthConsents,
 };
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
+use crate::models::tenants;
 use chrono::Utc;
+use reqwest::Url;
 use rustok_api::context::scope_matches;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use subtle::ConstantTimeEq;
@@ -23,6 +25,18 @@ pub struct CreateOAuthAppInput {
     pub slug: String,
     pub description: Option<String>,
     pub app_type: String,
+    pub icon_url: Option<String>,
+    pub redirect_uris: Vec<String>,
+    pub scopes: Vec<String>,
+    pub grant_types: Vec<String>,
+}
+
+/// Input for updating a manual OAuth app
+#[derive(Debug, Clone)]
+pub struct UpdateOAuthAppInput {
+    pub name: String,
+    pub description: Option<String>,
+    pub icon_url: Option<String>,
     pub redirect_uris: Vec<String>,
     pub scopes: Vec<String>,
     pub grant_types: Vec<String>,
@@ -51,6 +65,13 @@ impl OAuthAppService {
         tenant_id: Uuid,
         input: CreateOAuthAppInput,
     ) -> Result<CreateOAuthAppResult> {
+        validate_manual_app_configuration(
+            &input.app_type,
+            &input.redirect_uris,
+            &input.scopes,
+            &input.grant_types,
+        )?;
+
         let client_id = Uuid::new_v4();
         let client_secret_plain = generate_client_secret();
         let client_secret_hash = auth::hash_password(&client_secret_plain)?;
@@ -62,7 +83,7 @@ impl OAuthAppService {
             slug: Set(input.slug),
             description: Set(input.description),
             app_type: Set(input.app_type),
-            icon_url: Set(None),
+            icon_url: Set(input.icon_url),
             client_id: Set(client_id),
             client_secret_hash: Set(Some(client_secret_hash)),
             redirect_uris: Set(serde_json::to_value(&input.redirect_uris)
@@ -90,6 +111,56 @@ impl OAuthAppService {
             app,
             client_secret: client_secret_plain,
         })
+    }
+
+    /// Update a manual OAuth app.
+    pub async fn update_app(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        app_id: Uuid,
+        input: UpdateOAuthAppInput,
+    ) -> Result<oauth_apps::Model> {
+        let app = OAuthApps::find_by_id(app_id)
+            .one(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
+
+        if app.tenant_id != tenant_id {
+            return Err(Error::NotFound);
+        }
+
+        if !app.can_edit() {
+            return Err(Error::BadRequest(
+                "This OAuth app is managed by manifest/config and cannot be edited manually"
+                    .to_string(),
+            ));
+        }
+
+        validate_manual_app_configuration(
+            &app.app_type,
+            &input.redirect_uris,
+            &input.scopes,
+            &input.grant_types,
+        )?;
+
+        let mut active: OAuthAppActiveModel = app.into();
+        active.name = Set(input.name);
+        active.description = Set(input.description);
+        active.icon_url = Set(input.icon_url);
+        active.redirect_uris =
+            Set(serde_json::to_value(&input.redirect_uris)
+                .map_err(|_| Error::InternalServerError)?);
+        active.scopes =
+            Set(serde_json::to_value(&input.scopes).map_err(|_| Error::InternalServerError)?);
+        active.grant_types =
+            Set(serde_json::to_value(&input.grant_types).map_err(|_| Error::InternalServerError)?);
+        active.updated_at = Set(Utc::now().into());
+
+        active
+            .update(db)
+            .await
+            .map_err(|_| Error::InternalServerError)
     }
 
     /// Find an active app by its public client_id
@@ -123,6 +194,12 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?
             .ok_or_else(|| Error::NotFound)?;
 
+        if !app.can_rotate_secret() {
+            return Err(Error::BadRequest(
+                "This OAuth app does not support client secret rotation".to_string(),
+            ));
+        }
+
         let new_secret = generate_client_secret();
         let new_hash = auth::hash_password(&new_secret)?;
 
@@ -148,6 +225,13 @@ impl OAuthAppService {
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or_else(|| Error::NotFound)?;
+
+        if !app.can_revoke() {
+            return Err(Error::BadRequest(
+                "This OAuth app is managed by manifest/config and cannot be revoked manually"
+                    .to_string(),
+            ));
+        }
 
         let now = Utc::now();
 
@@ -604,18 +688,20 @@ pub async fn sync_app_connections(
     tenant_id: Uuid,
     manifest: &crate::modules::ModulesManifest,
 ) -> Result<()> {
-    let existing = OAuthAppService::list_by_tenant(db, tenant_id).await?;
+    let existing = OAuthApps::find_by_tenant(db, tenant_id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
 
-    let mut active_slugs: Vec<String> = Vec::new();
+    let mut active_slugs = std::collections::HashSet::new();
 
     // 1. Embedded apps
     if manifest.build.server.embed_admin {
         upsert_embedded_app(db, tenant_id, "leptos-admin", &["*:*"]).await?;
-        active_slugs.push("leptos-admin".to_string());
+        active_slugs.insert("leptos-admin".to_string());
     }
     if manifest.build.server.embed_storefront {
         upsert_embedded_app(db, tenant_id, "leptos-storefront", &["*:*"]).await?;
-        active_slugs.push("leptos-storefront".to_string());
+        active_slugs.insert("leptos-storefront".to_string());
     }
 
     // 2. Standalone storefronts → FirstParty apps
@@ -626,11 +712,13 @@ pub async fn sync_app_connections(
                 tenant_id,
                 &sf.id,
                 &format!("{} storefront", sf.id),
+                &sf.public_url,
+                &sf.redirect_uris,
                 &["storefront:*"],
                 &["authorization_code", "client_credentials"],
             )
             .await?;
-            active_slugs.push(sf.id.clone());
+            active_slugs.insert(sf.id.clone());
         }
     }
 
@@ -642,22 +730,39 @@ pub async fn sync_app_connections(
             tenant_id,
             &slug,
             &format!("{} Admin", manifest.build.admin.stack),
+            &manifest.build.admin.public_url,
+            &manifest.build.admin.redirect_uris,
             &["admin:*"],
             &["authorization_code", "client_credentials"],
         )
         .await?;
-        active_slugs.push(slug);
+        active_slugs.insert(slug);
     }
 
     // 4. Deactivate orphaned auto-created apps
     for app in &existing {
-        if app.auto_created && !active_slugs.contains(&app.slug) {
+        if app.auto_created && app.is_active() && !active_slugs.contains(&app.slug) {
             let mut active: OAuthAppActiveModel = app.clone().into();
             active.is_active = Set(false);
             active.revoked_at = Set(Some(Utc::now().into()));
             active.updated_at = Set(Utc::now().into());
             let _ = active.update(db).await;
         }
+    }
+
+    Ok(())
+}
+
+pub async fn sync_manifest_managed_apps_for_all_tenants(
+    db: &DatabaseConnection,
+    manifest: &crate::modules::ModulesManifest,
+) -> Result<()> {
+    let tenants = tenants::Entity::find_active(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+
+    for tenant in tenants {
+        sync_app_connections(db, tenant.id, manifest).await?;
     }
 
     Ok(())
@@ -730,9 +835,20 @@ async fn upsert_first_party_app(
     tenant_id: Uuid,
     slug: &str,
     name: &str,
+    public_url: &str,
+    redirect_uris: &[String],
     scopes: &[&str],
     grant_types: &[&str],
 ) -> Result<()> {
+    let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
+    let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
+    validate_managed_app_configuration(
+        "first_party",
+        redirect_uris,
+        &scopes_vec,
+        &grant_types_vec,
+    )?;
+
     let existing = OAuthApps::find()
         .filter(
             sea_orm::Condition::all()
@@ -745,23 +861,26 @@ async fn upsert_first_party_app(
 
     if let Some(app) = existing {
         // Re-activate if deactivated; update scopes/grant_types
-        let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
-        let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
         let mut active: OAuthAppActiveModel = app.into();
         active.is_active = Set(true);
         active.revoked_at = Set(None);
+        active.name = Set(name.to_string());
+        active.description = Set(Some(format!("Auto-created for {slug}")));
         active.scopes =
             Set(serde_json::to_value(&scopes_vec).map_err(|_| Error::InternalServerError)?);
         active.grant_types =
             Set(serde_json::to_value(&grant_types_vec).map_err(|_| Error::InternalServerError)?);
+        active.redirect_uris =
+            Set(serde_json::to_value(redirect_uris).map_err(|_| Error::InternalServerError)?);
+        active.metadata = Set(build_manifest_managed_metadata(public_url));
+        active.manifest_ref = Set(Some(slug.to_string()));
+        active.auto_created = Set(true);
         active.updated_at = Set(Utc::now().into());
         active
             .update(db)
             .await
             .map_err(|_| Error::InternalServerError)?;
     } else {
-        let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
-        let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
         let client_secret_plain = generate_client_secret();
         let client_secret_hash = auth::hash_password(&client_secret_plain)?;
 
@@ -775,7 +894,9 @@ async fn upsert_first_party_app(
             icon_url: Set(None),
             client_id: Set(Uuid::new_v4()),
             client_secret_hash: Set(Some(client_secret_hash)),
-            redirect_uris: Set(serde_json::json!([])),
+            redirect_uris: Set(
+                serde_json::to_value(redirect_uris).map_err(|_| Error::InternalServerError)?
+            ),
             scopes: Set(serde_json::to_value(&scopes_vec).map_err(|_| Error::InternalServerError)?),
             grant_types: Set(
                 serde_json::to_value(&grant_types_vec).map_err(|_| Error::InternalServerError)?
@@ -785,7 +906,7 @@ async fn upsert_first_party_app(
             is_active: Set(true),
             revoked_at: Set(None),
             last_used_at: Set(None),
-            metadata: Set(serde_json::json!({})),
+            metadata: Set(build_manifest_managed_metadata(public_url)),
             created_at: Set(Utc::now().into()),
             updated_at: Set(Utc::now().into()),
         }
@@ -816,9 +937,144 @@ fn generate_client_secret() -> String {
     format!("sk_live_{token}")
 }
 
+fn validate_manual_app_configuration(
+    app_type: &str,
+    redirect_uris: &[String],
+    scopes: &[String],
+    grant_types: &[String],
+) -> Result<()> {
+    if !matches!(app_type, "third_party" | "mobile" | "service") {
+        return Err(Error::BadRequest(
+            "Only third_party, mobile, and service apps can be created or edited manually"
+                .to_string(),
+        ));
+    }
+
+    validate_app_configuration(app_type, redirect_uris, scopes, grant_types)
+}
+
+fn validate_managed_app_configuration(
+    app_type: &str,
+    redirect_uris: &[String],
+    scopes: &[String],
+    grant_types: &[String],
+) -> Result<()> {
+    validate_app_configuration(app_type, redirect_uris, scopes, grant_types)
+}
+
+fn validate_app_configuration(
+    app_type: &str,
+    redirect_uris: &[String],
+    scopes: &[String],
+    grant_types: &[String],
+) -> Result<()> {
+    if scopes.is_empty() {
+        return Err(Error::BadRequest(
+            "OAuth app must declare at least one scope".to_string(),
+        ));
+    }
+
+    if grant_types.is_empty() {
+        return Err(Error::BadRequest(
+            "OAuth app must declare at least one grant type".to_string(),
+        ));
+    }
+
+    for grant_type in grant_types {
+        if !matches!(
+            grant_type.as_str(),
+            "authorization_code" | "client_credentials" | "refresh_token"
+        ) {
+            return Err(Error::BadRequest(format!(
+                "Unsupported OAuth grant type '{grant_type}'"
+            )));
+        }
+    }
+
+    if app_type == "service" && grant_types.iter().any(|item| item == "authorization_code") {
+        return Err(Error::BadRequest(
+            "Service apps cannot use authorization_code grant".to_string(),
+        ));
+    }
+
+    if grant_types.iter().any(|item| item == "authorization_code") && redirect_uris.is_empty() {
+        return Err(Error::BadRequest(
+            "Apps using authorization_code grant must declare at least one redirect URI"
+                .to_string(),
+        ));
+    }
+
+    for redirect_uri in redirect_uris {
+        Url::parse(redirect_uri).map_err(|error| {
+            Error::BadRequest(format!("Invalid redirect URI '{redirect_uri}': {error}"))
+        })?;
+    }
+
+    Ok(())
+}
+
+fn build_manifest_managed_metadata(public_url: &str) -> serde_json::Value {
+    let mut metadata = serde_json::Map::new();
+    if !public_url.trim().is_empty() {
+        metadata.insert(
+            "public_url".to_string(),
+            serde_json::Value::String(public_url.to_string()),
+        );
+    }
+    serde_json::Value::Object(metadata)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::_entities::tenants::Model as TenantModel;
+    use crate::models::oauth_apps::Entity as OAuthAppsEntity;
+    use crate::models::oauth_tokens;
+    use migration::Migrator;
+    use rustok_test_utils::db::setup_test_db_with_migrations;
+    use sea_orm::{
+        ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
+        QueryFilter, Set, Statement,
+    };
+    use sea_orm_migration::SchemaManager;
+    use serial_test::serial;
+    use crate::models::tenants;
+
+    async fn test_db_with_tenant() -> (DatabaseConnection, TenantModel) {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        ensure_oauth_schema(&db).await;
+        let tenant = tenants::ActiveModel::new("Test tenant", &format!("tenant-{}", Uuid::new_v4()))
+            .insert(&db)
+            .await
+            .expect("failed to create tenant");
+
+        (db, tenant)
+    }
+
+    async fn ensure_oauth_schema(db: &DatabaseConnection) {
+        let has_oauth_apps = db
+            .query_one(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT 1 FROM oauth_apps LIMIT 1".to_string(),
+            ))
+            .await
+            .is_ok();
+
+        if has_oauth_apps {
+            return;
+        }
+
+        let manager = SchemaManager::new(db);
+        for migration in rustok_auth::migrations::migrations() {
+            if let Err(error) = migration.up(&manager).await {
+                let message = error.to_string();
+                if message.contains("already exists") {
+                    continue;
+                }
+                panic!("apply auth migrations for oauth tests: {error}");
+            }
+        }
+    }
 
     // ===================================================================
     // RFC 6749 — OAuth 2.0 Authorization Framework: Scope Validation
@@ -861,6 +1117,30 @@ mod tests {
         assert!(scope_matches(&allowed, "anything:here"));
         assert!(scope_matches(&allowed, "admin:users"));
         assert!(scope_matches(&allowed, "catalog:read"));
+    }
+
+    #[test]
+    fn manual_apps_cannot_use_first_party_type() {
+        let result = validate_manual_app_configuration(
+            "first_party",
+            &["http://localhost:3000/auth/callback".to_string()],
+            &["profile".to_string()],
+            &["authorization_code".to_string()],
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn authorization_code_requires_redirect_uri() {
+        let result = validate_manual_app_configuration(
+            "third_party",
+            &[],
+            &["profile".to_string()],
+            &["authorization_code".to_string()],
+        );
+
+        assert!(result.is_err());
     }
 
     #[test]
@@ -1333,5 +1613,259 @@ mod tests {
             code_ttl_minutes, 10,
             "Auth code TTL must be 10 minutes per RFC 6749"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn manual_app_crud_and_token_revocation_round_trip() {
+        let (db, tenant) = test_db_with_tenant().await;
+
+        let created = OAuthAppService::create_app(
+            &db,
+            tenant.id,
+            CreateOAuthAppInput {
+                name: "Partner app".to_string(),
+                slug: "partner-app".to_string(),
+                description: Some("Third-party integration".to_string()),
+                app_type: "third_party".to_string(),
+                icon_url: Some("https://example.com/icon.png".to_string()),
+                redirect_uris: vec!["https://partner.example.com/callback".to_string()],
+                scopes: vec!["catalog:read".to_string()],
+                grant_types: vec!["authorization_code".to_string(), "refresh_token".to_string()],
+            },
+        )
+        .await
+        .expect("create app");
+
+        assert!(created.app.can_edit());
+        assert!(created.app.can_rotate_secret());
+        assert!(created.app.can_revoke());
+        assert!(created.client_secret.starts_with("sk_live_"));
+        assert_eq!(
+            created.app.redirect_uris_list(),
+            vec!["https://partner.example.com/callback".to_string()]
+        );
+
+        let updated = OAuthAppService::update_app(
+            &db,
+            tenant.id,
+            created.app.id,
+            UpdateOAuthAppInput {
+                name: "Partner app v2".to_string(),
+                description: Some("Updated description".to_string()),
+                icon_url: None,
+                redirect_uris: vec!["https://partner.example.com/oauth/callback".to_string()],
+                scopes: vec!["catalog:*".to_string()],
+                grant_types: vec!["authorization_code".to_string(), "refresh_token".to_string()],
+            },
+        )
+        .await
+        .expect("update app");
+
+        assert_eq!(updated.name, "Partner app v2");
+        assert_eq!(
+            updated.redirect_uris_list(),
+            vec!["https://partner.example.com/oauth/callback".to_string()]
+        );
+        assert_eq!(updated.scopes_list(), vec!["catalog:*".to_string()]);
+
+        let rotated = OAuthAppService::rotate_secret(&db, created.app.id)
+            .await
+            .expect("rotate secret");
+        let rotated_hash = rotated
+            .app
+            .client_secret_hash
+            .as_deref()
+            .expect("rotated secret hash");
+        assert!(
+            OAuthAppService::verify_client_secret(&rotated.client_secret, rotated_hash)
+                .expect("verify rotated secret")
+        );
+
+        oauth_tokens::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            app_id: Set(created.app.id),
+            user_id: Set(Some(Uuid::new_v4())),
+            tenant_id: Set(tenant.id),
+            token_hash: Set("refresh-token-hash".to_string()),
+            grant_type: Set("authorization_code".to_string()),
+            scopes: Set(serde_json::json!(["catalog:*"])),
+            expires_at: Set((Utc::now() + chrono::Duration::days(1)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert oauth token");
+
+        let revoked = OAuthAppService::revoke_app(&db, created.app.id)
+            .await
+            .expect("revoke app");
+        assert!(!revoked.is_active);
+        assert!(revoked.revoked_at.is_some());
+
+        let revoked_tokens = oauth_tokens::Entity::find()
+            .filter(oauth_tokens::Column::AppId.eq(created.app.id))
+            .all(&db)
+            .await
+            .expect("load oauth tokens");
+        assert_eq!(revoked_tokens.len(), 1);
+        assert!(revoked_tokens[0].revoked_at.is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn manifest_managed_apps_are_read_only_but_secret_rotation_still_works() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let secret = generate_client_secret();
+        let secret_hash = auth::hash_password(&secret).expect("hash secret");
+
+        let managed = OAuthAppActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            name: Set("next-admin".to_string()),
+            slug: Set("next-admin".to_string()),
+            description: Set(Some("Auto-created".to_string())),
+            app_type: Set("first_party".to_string()),
+            icon_url: Set(None),
+            client_id: Set(Uuid::new_v4()),
+            client_secret_hash: Set(Some(secret_hash)),
+            redirect_uris: Set(serde_json::json!(["https://admin.example.com/auth/callback"])),
+            scopes: Set(serde_json::json!(["admin:*"])),
+            grant_types: Set(serde_json::json!(["authorization_code", "client_credentials"])),
+            manifest_ref: Set(Some("next-admin".to_string())),
+            auto_created: Set(true),
+            is_active: Set(true),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({"public_url":"https://admin.example.com"})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert managed app");
+
+        let edit_result = OAuthAppService::update_app(
+            &db,
+            tenant.id,
+            managed.id,
+            UpdateOAuthAppInput {
+                name: "mutated".to_string(),
+                description: None,
+                icon_url: None,
+                redirect_uris: vec!["https://evil.example.com/callback".to_string()],
+                scopes: vec!["admin:*".to_string()],
+                grant_types: vec!["authorization_code".to_string()],
+            },
+        )
+        .await;
+        assert!(edit_result.is_err());
+
+        let revoke_result = OAuthAppService::revoke_app(&db, managed.id).await;
+        assert!(revoke_result.is_err());
+
+        let rotated = OAuthAppService::rotate_secret(&db, managed.id)
+            .await
+            .expect("managed app secret rotation");
+        let rotated_hash = rotated
+            .app
+            .client_secret_hash
+            .as_deref()
+            .expect("rotated managed secret hash");
+        assert!(
+            OAuthAppService::verify_client_secret(&rotated.client_secret, rotated_hash)
+                .expect("verify managed secret")
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans() {
+        let (db, tenant) = test_db_with_tenant().await;
+
+        OAuthAppActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            name: Set("old-storefront".to_string()),
+            slug: Set("old-storefront".to_string()),
+            description: Set(Some("Old auto app".to_string())),
+            app_type: Set("first_party".to_string()),
+            icon_url: Set(None),
+            client_id: Set(Uuid::new_v4()),
+            client_secret_hash: Set(Some(auth::hash_password("old-secret").expect("hash"))),
+            redirect_uris: Set(serde_json::json!(["https://old.example.com/callback"])),
+            scopes: Set(serde_json::json!(["storefront:*"])),
+            grant_types: Set(serde_json::json!(["authorization_code", "client_credentials"])),
+            manifest_ref: Set(Some("old-storefront".to_string())),
+            auto_created: Set(true),
+            is_active: Set(true),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({"public_url":"https://old.example.com"})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert orphan app");
+
+        let mut manifest = crate::modules::ModulesManifest::default();
+        manifest.build.server.embed_admin = false;
+        manifest.build.server.embed_storefront = false;
+        manifest.build.admin.stack = "next".to_string();
+        manifest.build.admin.public_url = "https://admin.example.com".to_string();
+        manifest.build.admin.redirect_uris =
+            vec!["https://admin.example.com/auth/callback".to_string()];
+        manifest.build.storefront = serde_json::from_value(serde_json::json!([
+            {
+                "id": "shop",
+                "stack": "next",
+                "public_url": "https://shop.example.com",
+                "redirect_uris": ["https://shop.example.com/auth/callback"]
+            }
+        ]))
+        .expect("deserialize storefront build config");
+
+        sync_app_connections(&db, tenant.id, &manifest)
+            .await
+            .expect("sync app connections");
+
+        let apps = OAuthAppsEntity::find_by_tenant(&db, tenant.id)
+            .await
+            .expect("list apps");
+
+        let next_admin = apps
+            .iter()
+            .find(|app| app.slug == "next-admin")
+            .expect("next-admin app");
+        assert_eq!(next_admin.app_type, "first_party");
+        assert_eq!(
+            next_admin.redirect_uris_list(),
+            vec!["https://admin.example.com/auth/callback".to_string()]
+        );
+        assert_eq!(
+            next_admin.metadata["public_url"],
+            serde_json::json!("https://admin.example.com")
+        );
+
+        let storefront = apps
+            .iter()
+            .find(|app| app.slug == "shop")
+            .expect("shop storefront app");
+        assert_eq!(storefront.app_type, "first_party");
+        assert_eq!(
+            storefront.redirect_uris_list(),
+            vec!["https://shop.example.com/auth/callback".to_string()]
+        );
+
+        let orphan = apps
+            .iter()
+            .find(|app| app.slug == "old-storefront")
+            .expect("orphan app still queryable");
+        assert!(!orphan.is_active);
+        assert!(orphan.revoked_at.is_some());
     }
 }

@@ -86,7 +86,9 @@ export default function UsersView() {
                   <TableCell>{user.name || '—'}</TableCell>
                   <TableCell>{user.role}</TableCell>
                   <TableCell><Badge variant={user.status === 'ACTIVE' ? 'default' : 'secondary'}>{user.status}</Badge></TableCell>
-                  <TableCell className='text-muted-foreground text-xs'>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell className='text-muted-foreground text-xs'>
+                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

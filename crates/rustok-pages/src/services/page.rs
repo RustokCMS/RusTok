@@ -7,7 +7,8 @@ use rustok_content::{
     ListNodesFilter, NodeService, NodeTranslationInput, UpdateNodeInput,
 };
 use rustok_core::{
-    normalize_content_format, prepare_content_payload, SecurityContext, CONTENT_FORMAT_RT_JSON_V1,
+    normalize_content_format, prepare_content_payload, SecurityContext,
+    CONTENT_FORMAT_GRAPESJS_V1, CONTENT_FORMAT_RT_JSON_V1,
 };
 use rustok_outbox::TransactionalEventBus;
 
@@ -47,12 +48,12 @@ impl PageService {
         let bodies = if let Some(body) = input.body {
             let format =
                 normalize_content_format(body.format.as_deref()).map_err(PagesError::validation)?;
-            if format == CONTENT_FORMAT_RT_JSON_V1
+            if body_requires_json_payload(&format)
                 && body.content_json.is_none()
                 && body.content.trim().is_empty()
             {
                 return Err(PagesError::validation(
-                    "content_json is required for rt_json_v1 format",
+                    format!("content_json is required for {format} format"),
                 ));
             }
             let markdown_source = if body.content.trim().is_empty() {
@@ -285,12 +286,12 @@ impl PageService {
         let bodies = if let Some(body) = input.body {
             let format =
                 normalize_content_format(body.format.as_deref()).map_err(PagesError::validation)?;
-            if format == CONTENT_FORMAT_RT_JSON_V1
+            if body_requires_json_payload(&format)
                 && body.content_json.is_none()
                 && body.content.trim().is_empty()
             {
                 return Err(PagesError::validation(
-                    "content_json is required for rt_json_v1 format",
+                    format!("content_json is required for {format} format"),
                 ));
             }
             let markdown_source = if body.content.trim().is_empty() {
@@ -567,7 +568,7 @@ fn page_translation_response(
 fn page_body_response(body: &rustok_content::dto::BodyResponse) -> PageBodyResponse {
     let content = body.body.clone().unwrap_or_default();
     let format = body.format.clone();
-    let content_json = if format == "rt_json_v1" {
+    let content_json = if format == CONTENT_FORMAT_RT_JSON_V1 || format == CONTENT_FORMAT_GRAPESJS_V1 {
         serde_json::from_str(&content).ok()
     } else {
         None
@@ -580,6 +581,10 @@ fn page_body_response(body: &rustok_content::dto::BodyResponse) -> PageBodyRespo
         content_json,
         updated_at: body.updated_at.clone(),
     }
+}
+
+fn body_requires_json_payload(format: &str) -> bool {
+    format == CONTENT_FORMAT_RT_JSON_V1 || format == CONTENT_FORMAT_GRAPESJS_V1
 }
 
 #[cfg(test)]
@@ -632,6 +637,15 @@ mod tests {
         }
     }
 
+    fn grapes_body(locale: &str, content_json: serde_json::Value) -> BodyResponse {
+        BodyResponse {
+            locale: locale.to_string(),
+            body: Some(content_json.to_string()),
+            format: CONTENT_FORMAT_GRAPESJS_V1.to_string(),
+            updated_at: "2024-01-01T00:00:00Z".to_string(),
+        }
+    }
+
     #[test]
     fn node_to_page_with_locale_tracks_requested_and_effective_locale() {
         let node = make_page_node(
@@ -675,6 +689,32 @@ mod tests {
             page.body
                 .and_then(|selected_body| Some(selected_body.locale)),
             Some("en".to_string())
+        );
+    }
+
+    #[test]
+    fn page_body_response_parses_grapesjs_content_json() {
+        let node = make_page_node(
+            vec![translation("en", "Landing", "landing")],
+            vec![grapes_body(
+                "en",
+                serde_json::json!({
+                    "pages": [],
+                    "styles": [],
+                }),
+            )],
+        );
+
+        let page = node_to_page(node, vec![]);
+        let body = page.body.expect("page body");
+
+        assert_eq!(body.format, CONTENT_FORMAT_GRAPESJS_V1);
+        assert_eq!(
+            body.content_json,
+            Some(serde_json::json!({
+                "pages": [],
+                "styles": [],
+            }))
         );
     }
 }

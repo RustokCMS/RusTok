@@ -1,13 +1,16 @@
-# План внедрения Tiptap / Page Builder (blog/forum/pages/content)
+# План внедрения rich-text (Tiptap) и GrapesJS Page Builder
 
-Этот документ фиксирует **отдельный план реализации** внедрения Tiptap/Page Builder для модулей blog/forum/pages/content.
+Этот документ фиксирует **отдельный план реализации** для двух связанных, но разных контуров:
+- `Tiptap`/`rt_json_v1` для rich-text сценариев blog/forum;
+- `GrapesJS`/`grapesjs_v1` для визуального Page Builder в pages.
 
 ## 1. Цель и критерии готовности
 
-Цель: безопасно перевести admin UX и контентный поток на `rt_json_v1` без деградации RBAC, publish-пайплайна, индексации и storefront-rendering.
+Цель: безопасно перевести rich-text admin UX blog/forum на `rt_json_v1` и довести `GrapesJS`-based `PageBuilder` для pages без деградации RBAC, publish-пайплайна, индексации и storefront-rendering.
 
 Критерии завершения:
-- `rt_json_v1` используется как основной формат ввода в admin для blog/forum/pages;
+- `rt_json_v1` используется как основной rich-text формат ввода в admin для blog/forum;
+- pages редактируются через `GrapesJS`-builder с каноническим body-форматом `grapesjs_v1`, а не через Tiptap-rich-text flow;
 - миграция legacy markdown проведена tenant-by-tenant с подтверждённым rollback-сценарием;
 - интеграционные/e2e проверки и observability release-gate пройдены;
 - feature flag переведён в `default-on` после стабилизации.
@@ -15,7 +18,7 @@
 ## 2. Статус фаз
 
 - [x] **Фаза 0 — Контракт и backend-baseline зафиксированы**
-- [~] **Фаза 1 — Интеграция редакторов в admin runtime**
+- [~] **Фаза 1 — Интеграция rich-text editor'ов и Page Builder в admin runtime**
 - [ ] **Фаза 2 — Feature flags и стратегия rollout**
 - [ ] **Фаза 3 — Миграция legacy markdown → rt_json_v1**
 - [ ] **Фаза 4 — Release-gate: тесты, RBAC, observability**
@@ -28,22 +31,26 @@
 
 **Статус:** [x] Done
 
-- [x] Единый контракт rich-text в backend: `markdown` + `rt_json_v1`.
-- [x] Серверная sanitize/validation для `rt_json_v1` включена в write-path.
+- [x] Единый контракт rich-text/page-builder в backend: `markdown` + `rt_json_v1` + `grapesjs_v1`.
+- [x] Серверная sanitize/validation для `rt_json_v1` и schema-check для `grapesjs_v1` включены в write-path.
 - [x] Blog/Forum/Pages read-path возвращает `*_format` и `content_json` для rich payload.
 - [x] Доступен migration job `migrate_legacy_richtext` для tenant-scoped запуска.
 
 **Выход артефакта:** контракт готов к consumer-интеграции.
 
-### Фаза 1 — Интеграция редакторов в admin runtime
+### Фаза 1 — Интеграция rich-text editor'ов и Page Builder в admin runtime
 
 **Статус:** [~] In progress
 
-- [ ] Подключить `RtJsonEditor` в production CRUD-flow blog.
-- [ ] Подключить `ForumReplyEditor` в production CRUD-flow forum.
-- [ ] Подключить `PageBuilder` в production CRUD-flow pages.
+- [x] Подключить `RtJsonEditor` в production CRUD-flow blog.
+- [x] Подключить `ForumReplyEditor` в production CRUD-flow forum.
+- [x] Подключить `PageBuilder` в production CRUD-flow pages.
 - [ ] Зафиксировать parity-план для двух стеков: `apps/next-admin` и `apps/admin`.
 - [ ] Выровнять UX-обработку validation/sanitize ошибок в формах.
+
+Текущее состояние `apps/next-admin`: production-формы blog и forum снова используют реальный Tiptap-based editor, а сериализация в write-path идёт в канонический payload `rt_json_v1` (`version` / `locale` / `doc`) без textarea-fallback в основном UX. `PageBuilder` переведён на реальный `GrapesJS` runtime, сохраняет `projectData` в body-формат `grapesjs_v1`, работает с реальным выбором страниц и оставляет legacy `blocks` как отдельную migration-compatible поверхность.
+
+Отдельный детальный план по `pages` как модулю ведётся в `crates/rustok-pages/docs/implementation-plan.md` в секции `Dedicated page-builder track`, чтобы rollout visual builder не смешивался ни с OAuth/app-registration, ни с rich-text задачами blog/forum.
 
 **DoD фазы:** все целевые формы работают через компонентные редакторы, без ручного markdown-only fallback в основном UX.
 
@@ -108,4 +115,4 @@
 - `apps/next-admin/docs/implementation-plan.md` — интеграция admin runtime (Next.js).
 - `apps/admin/docs/implementation-plan.md` — интеграция admin runtime (Leptos).
 - `apps/storefront/docs/implementation-plan.md` и `apps/next-frontend/docs/implementation-plan.md` — rendering parity и rollout storefront.
-- `docs/architecture/api.md` и `docs/standards/rt-json-v1.md` — контракт и формат rich-text payload.
+- `docs/architecture/api.md` и `docs/standards/rt-json-v1.md` — контракт rich-text/page-builder payload.

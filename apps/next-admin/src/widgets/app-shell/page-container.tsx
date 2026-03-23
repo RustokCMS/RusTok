@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollArea } from '@/shared/ui/shadcn/scroll-area';
-import { Heading } from '../ui/heading';
+import { Heading } from '@/shared/ui/shadcn/heading';
 import type { InfobarContent } from '@/shared/ui/shadcn/infobar';
 
 function PageSkeleton() {

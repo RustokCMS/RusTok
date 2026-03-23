@@ -4,6 +4,35 @@
 - Status: Draft
 - Depends on: [Deployment Profiles ADR](../../DECISIONS/2026-03-07-deployment-profiles-and-ui-stack.md)
 
+## Актуальное состояние реализации
+
+По состоянию на текущую реализацию:
+
+- `embedded` и `first_party` приложения регистрируются автоматически из `modules.toml`.
+- source of truth для standalone frontend OAuth-настроек:
+  - `build.admin.public_url`
+  - `build.admin.redirect_uris`
+  - `build.storefront[*].public_url`
+  - `build.storefront[*].redirect_uris`
+- reconcile manifest-managed приложений выполняется:
+  - при bootstrap сервера после валидации manifest
+  - после активации релиза
+- browser install/login flow использует `GET /api/oauth/authorize`
+- browser auth state для server-hosted consent flow держится во временной HttpOnly cookie,
+  создаваемой через `POST /api/oauth/browser-session`
+- server-hosted consent flow использует `POST /api/oauth/consent`
+- JSON/API flow для SPA/native automation сохранён на `POST /api/oauth/authorize`
+- `third_party` приложения требуют consent
+- `first_party` приложения пропускают consent
+- обе admin UI работают через реальные GraphQL operations:
+  - `createOAuthApp`
+  - `updateOAuthApp`
+  - `rotateOAuthAppSecret`
+  - `revokeOAuthApp`
+  - `oauthApps`
+  - `myAuthorizedApps`
+- manifest-managed приложения отображаются в UI как read-only для edit/revoke
+
 ## Зачем это нужно
 
 Composable deployment layers (ADR v2) решают *как собрать платформу*. Но когда

@@ -18,10 +18,14 @@ embed_storefront = true      # Встроить Leptos storefront в бинар�
 
 [build.admin]
 stack = "leptos"             # "leptos" | "next"
+public_url = "http://localhost:3001"
+redirect_uris = ["http://localhost:3001/auth/callback"]
 
 [[build.storefront]]
 id = "default"
 stack = "leptos"             # "leptos" | "next"
+public_url = "http://localhost:3000"
+redirect_uris = ["http://localhost:3000/auth/callback"]
 
 # ───────────────────────────────────────────────
 # Modules: состав модулей платформы

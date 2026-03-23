@@ -13,7 +13,7 @@ import RenderResults from './render-result';
 import useThemeSwitching from './use-theme-switching';
 import { useFilteredNavItems } from '@/shared/hooks/use-nav';
 
-export default function KBar({ children }: { children: React.ReactNode }) {
+function KBar({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const filteredItems = useFilteredNavItems(navItems);
 
@@ -83,3 +83,6 @@ const KBarComponent = ({ children }: { children: React.ReactNode }) => {
     </>
   );
 };
+
+export { KBar };
+export default KBar;

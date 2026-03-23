@@ -39,13 +39,15 @@
 - Держать `pnpm --filter next-admin type-check` и `pnpm --filter next-admin build` в зелёном baseline после каждого изменения FSD/UI структуры.
 
 
-## Готовность Blog/Forum/Pages к rich-text (Tiptap/Page Builder)
+## Готовность Blog/Forum к rich-text (Tiptap) и Pages к GrapesJS Builder
 
-- [x] Подключена Tiptap-форма постов из `@rustok/blog-admin` к маршрутам dashboard для блога.
+- [x] Production-форма постов использует реальный Tiptap-based `RtJsonEditor` и сериализует rich-text в канонический `rt_json_v1`.
 - [x] Добавлены отдельные маршруты для сценариев:
-  - `/dashboard/blog/page-builder` для блочного конструктора `PageBuilder` (функционал страниц внутри меню блога).
+  - `/dashboard/blog/page-builder` для визуального `GrapesJS`-конструктора `PageBuilder` (функционал страниц внутри меню блога).
   - `/dashboard/forum/reply` для `ForumReplyEditor` (`rt_json_v1`) внутри меню форума.
-- [ ] Заменить placeholder ID на выбор реальных сущностей (селекторы page/topic) через live GraphQL-запросы.
+- [x] `ForumReplyEditor` использует тот же Tiptap-based `RtJsonEditor` и тот же контракт `rt_json_v1`, что и production CRUD-flow блога.
+- [x] Placeholder ID заменены на выбор реальных сущностей (селекторы page/topic) через live GraphQL-запросы.
+- [x] `PageBuilder` сохраняет pages в канонический body-формат `grapesjs_v1`; legacy `blocks` остаются read-compatible до отдельного storefront migration slice.
 
 ## Паритет стеков (Leptos/Next.js)
 
@@ -65,10 +67,10 @@
 - Довести parity-check с `apps/admin` по loading/error/permission-gated UX и navigation contract.
 - Удерживать `@iu/*` и `UI/docs/api-contracts.md` как source of truth для cross-stack UI API.
 
-### Текущий статус rich-text (blog/forum/pages)
+### Текущий статус rich-text/blog-forum и GrapesJS pages
 
 - **Админка (Leptos, `apps/admin`)**: [ ] Не начато / в процессе синхронизации с Next.js-реализацией.
-- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (подключены Tiptap/Page Builder маршруты, требуется завершить работу с реальными entity ID и parity-check с Leptos).
+- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (production blog/forum уже используют реальный Tiptap-based editor и канонический `rt_json_v1`, pages переведены на `GrapesJS` + `grapesjs_v1`, forum flow использует live entity selection, остаётся parity-check с Leptos и storefront rendering slice).
 - **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
 - **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
 

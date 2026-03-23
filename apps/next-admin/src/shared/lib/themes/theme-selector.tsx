@@ -13,7 +13,7 @@ import {
   SelectValue
 } from '@/shared/ui/shadcn/select';
 
-import { Icons } from '../icons';
+import { Icons } from '@/shared/ui/icons';
 import { THEMES } from './theme.config';
 
 export function ThemeSelector() {

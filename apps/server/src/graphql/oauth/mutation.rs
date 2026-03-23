@@ -12,6 +12,7 @@ use super::ensure_oauth_admin;
 
 use super::types::{
     CreateOAuthAppInput, CreateOAuthAppResultGql, OAuthAppGql, RotateSecretResultGql,
+    UpdateOAuthAppInput,
 };
 
 #[derive(Default)]
@@ -41,6 +42,7 @@ impl OAuthMutation {
             slug: input.slug,
             description: input.description,
             app_type: input.app_type.as_str().to_string(),
+            icon_url: input.icon_url,
             redirect_uris: input.redirect_uris.unwrap_or_default(),
             scopes: input.scopes,
             grant_types: input.grant_types,
@@ -54,6 +56,47 @@ impl OAuthMutation {
             app: OAuthAppGql(result.app),
             client_secret: result.client_secret,
         })
+    }
+
+    /// Update a manual OAuth app (admin only).
+    async fn update_oauth_app(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: UpdateOAuthAppInput,
+    ) -> Result<OAuthAppGql> {
+        let auth = require_auth_context(ctx)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+
+        ensure_oauth_admin(auth, db).await?;
+
+        let app = crate::models::oauth_apps::Entity::find_by_id(id)
+            .one(db)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Database error: {e}")))?
+            .ok_or_else(|| async_graphql::Error::new("App not found"))?;
+
+        if app.tenant_id != auth.tenant_id {
+            return Err("App not found".into());
+        }
+
+        let updated = OAuthAppService::update_app(
+            db,
+            auth.tenant_id,
+            id,
+            oauth_app::UpdateOAuthAppInput {
+                name: input.name,
+                description: input.description,
+                icon_url: input.icon_url,
+                redirect_uris: input.redirect_uris,
+                scopes: input.scopes,
+                grant_types: input.grant_types,
+            },
+        )
+        .await
+        .map_err(|e| async_graphql::Error::new(format!("Failed to update app: {e}")))?;
+
+        Ok(OAuthAppGql(updated))
     }
 
     /// Rotate client_secret for an OAuth app (admin only).

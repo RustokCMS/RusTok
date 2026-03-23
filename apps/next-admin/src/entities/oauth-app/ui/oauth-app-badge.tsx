@@ -3,7 +3,7 @@ import { AppType } from '../model';
 
 export function OAuthAppTypeBadge({ appType }: { appType: AppType }) {
   let variant: 'default' | 'secondary' | 'outline' | 'destructive' = 'default';
-  let label = appType;
+  let label: string = appType;
 
   switch (appType) {
     case 'Embedded':
@@ -26,7 +26,7 @@ export function OAuthAppTypeBadge({ appType }: { appType: AppType }) {
   }
 
   return (
-    <Badge variant={variant} className="whitespace-nowrap">
+    <Badge variant={variant} className='whitespace-nowrap'>
       {label}
     </Badge>
   );

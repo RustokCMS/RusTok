@@ -60,7 +60,7 @@
 ### Текущий статус rich-text (blog/forum/pages)
 
 - **Админка (Leptos, `apps/admin`)**: [ ] Не начато / в процессе синхронизации с Next.js-реализацией.
-- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (подключены Tiptap/Page Builder маршруты, требуется завершить работу с реальными entity ID и parity-check с Leptos).
+- **Админка (Next.js, `apps/next-admin`)**: [~] Частично реализовано (blog/forum используют реальный Tiptap, pages переведены на GrapesJS + `grapesjs_v1`, требуется parity-check с Leptos и storefront rendering slice).
 - **Витрина (Leptos SSR, `apps/storefront`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
 - **Витрина (Next.js, `apps/next-frontend`)**: [ ] Не начато (rich-text rendering parity для blog/forum/pages запланирован).
 

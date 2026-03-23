@@ -89,18 +89,26 @@ impl MigrationTrait for Migration {
                             .to(Alias::new("users"), Alias::new("id"))
                             .on_delete(ForeignKeyAction::SetNull),
                     )
-                    .index(
-                        Index::create()
-                            .name("idx_mcp_scaffold_drafts_tenant_created")
-                            .col(McpScaffoldDrafts::TenantId)
-                            .col(McpScaffoldDrafts::CreatedAt),
-                    )
-                    .index(
-                        Index::create()
-                            .name("idx_mcp_scaffold_drafts_tenant_status")
-                            .col(McpScaffoldDrafts::TenantId)
-                            .col(McpScaffoldDrafts::Status),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_scaffold_drafts_tenant_created")
+                    .table(McpScaffoldDrafts::Table)
+                    .col(McpScaffoldDrafts::TenantId)
+                    .col(McpScaffoldDrafts::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_scaffold_drafts_tenant_status")
+                    .table(McpScaffoldDrafts::Table)
+                    .col(McpScaffoldDrafts::TenantId)
+                    .col(McpScaffoldDrafts::Status)
                     .to_owned(),
             )
             .await

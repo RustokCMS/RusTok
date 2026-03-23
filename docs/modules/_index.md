@@ -73,6 +73,6 @@ docs/modules/_template/
 - [Module overview](./overview.md) вЂ” which modules are registered and their kinds
 - [Module & application registry](./registry.md) вЂ” full component directory with dependencies
 - [Module manifest](./manifest.md) вЂ” modules.toml format and rebuild lifecycle
-- [Tiptap/Page Builder implementation plan](./tiptap-page-builder-implementation-plan.md) вЂ” phased rollout plan with completion marks
+- [Rich-text (Tiptap) and GrapesJS Page Builder implementation plan](./tiptap-page-builder-implementation-plan.md) вЂ” phased rollout plan with completion marks
 - [Flex docs](../../crates/flex/docs/README.md) вЂ” Flex module concept
 

@@ -1,5 +1,7 @@
 import { Product } from '@/entities/product';
 
+export type { Product };
+
 export interface SaleUser {
   id: number;
   name: string;

@@ -16,6 +16,7 @@ pub struct GqlPage {
     pub translation: Option<GqlPageTranslation>,
     pub translations: Vec<GqlPageTranslation>,
     pub body: Option<GqlPageBody>,
+    pub blocks: Vec<GqlBlock>,
     pub metadata: String,
 }
 
@@ -150,6 +151,7 @@ impl From<crate::PageResponse> for GqlPage {
             translation: r.translation.map(Into::into),
             translations: r.translations.into_iter().map(Into::into).collect(),
             body: r.body.map(Into::into),
+            blocks: r.blocks.into_iter().map(Into::into).collect(),
             metadata: r.metadata.to_string(),
         }
     }

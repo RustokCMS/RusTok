@@ -1,9 +1,11 @@
 use serde_json::Value;
 
+use crate::grapesjs::validate_grapesjs_project;
 use crate::rt_json::{validate_and_sanitize_rt_json, RtJsonValidationConfig};
 
 pub const CONTENT_FORMAT_MARKDOWN: &str = "markdown";
 pub const CONTENT_FORMAT_RT_JSON_V1: &str = "rt_json_v1";
+pub const CONTENT_FORMAT_GRAPESJS_V1: &str = "grapesjs_v1";
 const LEGACY_CONTENT_FORMAT_RT_JSON: &str = "rt_json";
 
 #[derive(Debug, Clone)]
@@ -23,8 +25,9 @@ pub fn normalize_content_format(format: Option<&str>) -> Result<String, String> 
         CONTENT_FORMAT_RT_JSON_V1 | LEGACY_CONTENT_FORMAT_RT_JSON => {
             Ok(CONTENT_FORMAT_RT_JSON_V1.to_string())
         }
+        CONTENT_FORMAT_GRAPESJS_V1 => Ok(CONTENT_FORMAT_GRAPESJS_V1.to_string()),
         _ => Err(format!(
-            "Unsupported content format '{normalized}'. Supported formats: markdown, rt_json_v1"
+            "Unsupported content format '{normalized}'. Supported formats: markdown, rt_json_v1, grapesjs_v1"
         )),
     }
 }
@@ -60,12 +63,23 @@ pub fn prepare_content_payload(
             .map_err(|_| "content_json must be valid rt_json_v1 JSON payload".to_string())?
     };
 
-    let validation =
-        validate_and_sanitize_rt_json(&json_payload, &RtJsonValidationConfig::for_locale(locale))?;
+    if normalized == CONTENT_FORMAT_RT_JSON_V1 {
+        let validation = validate_and_sanitize_rt_json(
+            &json_payload,
+            &RtJsonValidationConfig::for_locale(locale),
+        )?;
+
+        return Ok(PreparedContent {
+            format: normalized,
+            body: validation.sanitized.to_string(),
+        });
+    }
+
+    validate_grapesjs_project(&json_payload)?;
 
     Ok(PreparedContent {
         format: normalized,
-        body: validation.sanitized.to_string(),
+        body: json_payload.to_string(),
     })
 }
 
@@ -79,5 +93,25 @@ mod tests {
             normalize_content_format(Some("rt_json")).expect("format"),
             CONTENT_FORMAT_RT_JSON_V1
         );
+    }
+
+    #[test]
+    fn normalize_accepts_grapesjs_format() {
+        assert_eq!(
+            normalize_content_format(Some("grapesjs_v1")).expect("format"),
+            CONTENT_FORMAT_GRAPESJS_V1
+        );
+    }
+
+    #[test]
+    fn prepare_grapesjs_payload_requires_object() {
+        assert!(prepare_content_payload(
+            Some(CONTENT_FORMAT_GRAPESJS_V1),
+            None,
+            Some(&serde_json::json!(["bad"])),
+            "en",
+            "Body",
+        )
+        .is_err());
     }
 }

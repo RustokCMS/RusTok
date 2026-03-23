@@ -85,19 +85,27 @@ impl MigrationTrait for Migration {
                             .to(Alias::new("users"), Alias::new("id"))
                             .on_delete(ForeignKeyAction::SetNull),
                     )
-                    .index(
-                        Index::create()
-                            .name("idx_mcp_clients_tenant_slug")
-                            .unique()
-                            .col(McpClients::TenantId)
-                            .col(McpClients::Slug),
-                    )
-                    .index(
-                        Index::create()
-                            .name("idx_mcp_clients_client_key")
-                            .unique()
-                            .col(McpClients::ClientKey),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_clients_tenant_slug")
+                    .table(McpClients::Table)
+                    .unique()
+                    .col(McpClients::TenantId)
+                    .col(McpClients::Slug)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_clients_client_key")
+                    .table(McpClients::Table)
+                    .unique()
+                    .col(McpClients::ClientKey)
                     .to_owned(),
             )
             .await?;
@@ -176,18 +184,26 @@ impl MigrationTrait for Migration {
                             .to(Alias::new("users"), Alias::new("id"))
                             .on_delete(ForeignKeyAction::SetNull),
                     )
-                    .index(
-                        Index::create()
-                            .name("idx_mcp_tokens_hash")
-                            .unique()
-                            .col(McpTokens::TokenHash),
-                    )
-                    .index(
-                        Index::create()
-                            .name("idx_mcp_tokens_client_revoked")
-                            .col(McpTokens::ClientId)
-                            .col(McpTokens::RevokedAt),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_tokens_hash")
+                    .table(McpTokens::Table)
+                    .unique()
+                    .col(McpTokens::TokenHash)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_tokens_client_revoked")
+                    .table(McpTokens::Table)
+                    .col(McpTokens::ClientId)
+                    .col(McpTokens::RevokedAt)
                     .to_owned(),
             )
             .await?;
@@ -266,12 +282,16 @@ impl MigrationTrait for Migration {
                             .to(Alias::new("users"), Alias::new("id"))
                             .on_delete(ForeignKeyAction::SetNull),
                     )
-                    .index(
-                        Index::create()
-                            .name("idx_mcp_policies_client_id")
-                            .unique()
-                            .col(McpPolicies::ClientId),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_policies_client_id")
+                    .table(McpPolicies::Table)
+                    .unique()
+                    .col(McpPolicies::ClientId)
                     .to_owned(),
             )
             .await?;
@@ -350,18 +370,26 @@ impl MigrationTrait for Migration {
                             .to(Alias::new("users"), Alias::new("id"))
                             .on_delete(ForeignKeyAction::SetNull),
                     )
-                    .index(
-                        Index::create()
-                            .name("idx_mcp_audit_tenant_created")
-                            .col(McpAuditLogs::TenantId)
-                            .col(McpAuditLogs::CreatedAt),
-                    )
-                    .index(
-                        Index::create()
-                            .name("idx_mcp_audit_client_created")
-                            .col(McpAuditLogs::ClientId)
-                            .col(McpAuditLogs::CreatedAt),
-                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_audit_tenant_created")
+                    .table(McpAuditLogs::Table)
+                    .col(McpAuditLogs::TenantId)
+                    .col(McpAuditLogs::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_mcp_audit_client_created")
+                    .table(McpAuditLogs::Table)
+                    .col(McpAuditLogs::ClientId)
+                    .col(McpAuditLogs::CreatedAt)
                     .to_owned(),
             )
             .await

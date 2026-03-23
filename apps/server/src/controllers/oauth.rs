@@ -3,20 +3,28 @@
 //! `POST /oauth/token` — Token endpoint (client_credentials flow)
 
 use axum::{
-    extract::State,
-    response::IntoResponse,
+    extract::{Form, Query, State},
+    http::{
+        header::{AUTHORIZATION, COOKIE, LOCATION, SET_COOKIE},
+        HeaderMap, StatusCode,
+    },
+    response::{Html, IntoResponse},
     routing::{get, post},
     Json,
 };
 use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::auth_config_from_ctx;
 use crate::context::TenantContext;
-use crate::extractors::auth::CurrentUser;
+use crate::extractors::auth::{resolve_current_user_from_access_token, CurrentUser};
 use crate::services::oauth_app::OAuthAppService;
+
+const OAUTH_BROWSER_SESSION_COOKIE: &str = "rustok_oauth_browser_session";
+const OAUTH_BROWSER_SESSION_TTL_SECS: u64 = 10 * 60;
 
 /// OAuth2 Token Request (application/json or application/x-www-form-urlencoded)
 #[derive(Debug, Deserialize)]
@@ -49,6 +57,35 @@ pub struct AuthorizeRequest {
     pub code_challenge_method: Option<String>, // Should be "S256"
 }
 
+/// Browser OAuth2 Authorization Request.
+#[derive(Debug, Deserialize, Clone)]
+pub struct BrowserAuthorizeRequest {
+    pub response_type: String,
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub scope: Option<String>,
+    pub state: Option<String>,
+    pub code_challenge: String,
+    pub code_challenge_method: Option<String>,
+}
+
+/// Server-hosted consent form submission.
+#[derive(Debug, Deserialize)]
+pub struct ConsentRequest {
+    pub action: String,
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub scope: Option<String>,
+    pub state: Option<String>,
+    pub code_challenge: String,
+    pub code_challenge_method: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BrowserSessionResponse {
+    pub status: &'static str,
+}
+
 /// OAuth2 Token Response (RFC 6749 §5.1)
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {
@@ -70,13 +107,22 @@ pub struct TokenErrorResponse {
 impl axum::response::IntoResponse for TokenErrorResponse {
     fn into_response(self) -> axum::response::Response {
         let status = match self.error.as_str() {
-            "invalid_client" => axum::http::StatusCode::UNAUTHORIZED,
-            "invalid_grant" | "unsupported_grant_type" => axum::http::StatusCode::BAD_REQUEST,
-            "invalid_scope" => axum::http::StatusCode::BAD_REQUEST,
-            _ => axum::http::StatusCode::BAD_REQUEST,
+            "invalid_client" => StatusCode::UNAUTHORIZED,
+            "invalid_grant" | "unsupported_grant_type" => StatusCode::BAD_REQUEST,
+            "invalid_scope" => StatusCode::BAD_REQUEST,
+            _ => StatusCode::BAD_REQUEST,
         };
         (status, Json(self)).into_response()
     }
+}
+
+#[derive(Debug, Clone)]
+struct ValidatedAuthorizeRequest {
+    app: crate::models::oauth_apps::Model,
+    redirect_uri: String,
+    requested_scopes: Vec<String>,
+    state: Option<String>,
+    code_challenge: String,
 }
 
 async fn token_handler(
@@ -404,30 +450,296 @@ async fn handle_refresh_token(
 async fn authorize_handler(
     State(ctx): State<AppContext>,
     tenant_ctx: TenantContext,
-    current_user: CurrentUser, // Requires authenticated user
+    current_user: CurrentUser,
     Json(req): Json<AuthorizeRequest>,
 ) -> Result<Json<serde_json::Value>, TokenErrorResponse> {
-    // 1. Verify standard parameters
-    if req.response_type != "code" {
+    let validated = validate_authorize_request(
+        &ctx,
+        tenant_ctx.id,
+        req.client_id,
+        req.redirect_uri,
+        req.scope,
+        req.state,
+        req.response_type,
+        req.code_challenge,
+        req.code_challenge_method,
+    )
+    .await?;
+
+    if validated.app.requires_user_consent() {
+        let has_consent = OAuthAppService::get_active_consent(
+            &ctx.db,
+            validated.app.id,
+            current_user.user.id,
+            &validated.requested_scopes,
+        )
+        .await
+        .map_err(|_| TokenErrorResponse {
+            error: "server_error".to_string(),
+            error_description: "Failed to verify consent".to_string(),
+        })?;
+
+        if !has_consent {
+            return Err(TokenErrorResponse {
+                error: "interaction_required".to_string(),
+                error_description:
+                    "User consent is required. Please prompt the user to grant access.".to_string(),
+            });
+        }
+    }
+
+    let code =
+        issue_authorization_code(&ctx, tenant_ctx.id, &validated, current_user.user.id).await?;
+
+    let mut response = serde_json::json!({
+        "code": code,
+        "redirect_uri": validated.redirect_uri,
+    });
+
+    if let Some(state) = validated.state {
+        response["state"] = serde_json::json!(state);
+    }
+
+    Ok(Json(response))
+}
+
+async fn authorize_browser_handler(
+    State(ctx): State<AppContext>,
+    tenant_ctx: TenantContext,
+    headers: HeaderMap,
+    Query(req): Query<BrowserAuthorizeRequest>,
+) -> axum::response::Response {
+    let validated = match validate_authorize_request(
+        &ctx,
+        tenant_ctx.id,
+        req.client_id.clone(),
+        req.redirect_uri.clone(),
+        req.scope.clone(),
+        req.state.clone(),
+        req.response_type.clone(),
+        req.code_challenge.clone(),
+        req.code_challenge_method.clone(),
+    )
+    .await
+    {
+        Ok(validated) => validated,
+        Err(error) => return error.into_response(),
+    };
+
+    let access_token = extract_browser_access_token(&headers);
+    let Some(access_token) = access_token else {
+        return render_authorization_required(&validated.app.name).into_response();
+    };
+
+    let current_user =
+        match resolve_current_user_from_access_token(&ctx, tenant_ctx.id, &access_token).await {
+            Ok(current_user) => current_user,
+            Err((status, message)) => {
+                return (
+                    status,
+                    Html(render_error_page(
+                        "Authorization required",
+                        &format!("Sign in again to continue: {message}"),
+                    )),
+                )
+                    .into_response();
+            }
+        };
+
+    if !validated.app.requires_user_consent() {
+        return match issue_authorization_code(&ctx, tenant_ctx.id, &validated, current_user.user.id)
+            .await
+        {
+            Ok(code) => {
+                redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
+                    .into_response()
+            }
+            Err(error) => error.into_response(),
+        };
+    }
+
+    let has_consent = match OAuthAppService::get_active_consent(
+        &ctx.db,
+        validated.app.id,
+        current_user.user.id,
+        &validated.requested_scopes,
+    )
+    .await
+    {
+        Ok(has_consent) => has_consent,
+        Err(_) => {
+            return TokenErrorResponse {
+                error: "server_error".to_string(),
+                error_description: "Failed to verify consent".to_string(),
+            }
+            .into_response();
+        }
+    };
+
+    if has_consent {
+        return match issue_authorization_code(&ctx, tenant_ctx.id, &validated, current_user.user.id)
+            .await
+        {
+            Ok(code) => {
+                redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
+                    .into_response()
+            }
+            Err(error) => error.into_response(),
+        };
+    }
+
+    Html(render_consent_page(
+        &validated,
+        &req,
+        &current_user.user.email,
+    ))
+    .into_response()
+}
+
+async fn consent_handler(
+    State(ctx): State<AppContext>,
+    tenant_ctx: TenantContext,
+    headers: HeaderMap,
+    Form(req): Form<ConsentRequest>,
+) -> axum::response::Response {
+    let validated = match validate_authorize_request(
+        &ctx,
+        tenant_ctx.id,
+        req.client_id.clone(),
+        req.redirect_uri.clone(),
+        req.scope.clone(),
+        req.state.clone(),
+        "code".to_string(),
+        req.code_challenge.clone(),
+        req.code_challenge_method.clone(),
+    )
+    .await
+    {
+        Ok(validated) => validated,
+        Err(error) => return error.into_response(),
+    };
+
+    let access_token = extract_browser_access_token(&headers);
+    let Some(access_token) = access_token else {
+        return render_authorization_required(&validated.app.name).into_response();
+    };
+
+    let current_user =
+        match resolve_current_user_from_access_token(&ctx, tenant_ctx.id, &access_token).await {
+            Ok(current_user) => current_user,
+            Err((status, message)) => {
+                return (
+                    status,
+                    Html(render_error_page(
+                        "Authorization required",
+                        &format!("Sign in again to continue: {message}"),
+                    )),
+                )
+                    .into_response();
+            }
+        };
+
+    if req.action == "deny" {
+        return redirect_with_error(
+            &validated.redirect_uri,
+            "access_denied",
+            "The user denied the authorization request",
+            validated.state.as_deref(),
+        )
+        .into_response();
+    }
+
+    if req.action != "approve" {
+        return TokenErrorResponse {
+            error: "invalid_request".to_string(),
+            error_description: "Unknown consent action".to_string(),
+        }
+        .into_response();
+    }
+
+    if let Err(error) = OAuthAppService::grant_consent(
+        &ctx.db,
+        validated.app.id,
+        current_user.user.id,
+        tenant_ctx.id,
+        validated.requested_scopes.clone(),
+    )
+    .await
+    {
+        return TokenErrorResponse {
+            error: "server_error".to_string(),
+            error_description: format!("Failed to grant consent: {error}"),
+        }
+        .into_response();
+    }
+
+    match issue_authorization_code(&ctx, tenant_ctx.id, &validated, current_user.user.id).await {
+        Ok(code) => redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
+            .into_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
+async fn create_browser_session_handler(
+    headers: HeaderMap,
+    _current_user: CurrentUser,
+) -> axum::response::Response {
+    let Some(access_token) = extract_bearer_token(&headers) else {
+        return TokenErrorResponse {
+            error: "invalid_request".to_string(),
+            error_description: "Missing bearer token for OAuth browser session".to_string(),
+        }
+        .into_response();
+    };
+
+    (
+        StatusCode::NO_CONTENT,
+        [(
+            SET_COOKIE,
+            build_oauth_browser_session_cookie(&access_token, &headers),
+        )],
+    )
+        .into_response()
+}
+
+async fn clear_browser_session_handler(headers: HeaderMap) -> axum::response::Response {
+    (
+        StatusCode::NO_CONTENT,
+        [(SET_COOKIE, clear_oauth_browser_session_cookie(&headers))],
+    )
+        .into_response()
+}
+
+async fn validate_authorize_request(
+    ctx: &AppContext,
+    tenant_id: Uuid,
+    client_id: String,
+    redirect_uri: String,
+    scope: Option<String>,
+    state: Option<String>,
+    response_type: String,
+    code_challenge: String,
+    code_challenge_method: Option<String>,
+) -> Result<ValidatedAuthorizeRequest, TokenErrorResponse> {
+    if response_type != "code" {
         return Err(TokenErrorResponse {
             error: "unsupported_response_type".to_string(),
             error_description: "Only response_type=code is supported".to_string(),
         });
     }
 
-    if req.code_challenge_method.as_deref() != Some("S256") {
+    if code_challenge_method.as_deref() != Some("S256") {
         return Err(TokenErrorResponse {
             error: "invalid_request".to_string(),
             error_description: "code_challenge_method must be S256".to_string(),
         });
     }
 
-    let client_id = Uuid::parse_str(&req.client_id).map_err(|_| TokenErrorResponse {
+    let client_id = Uuid::parse_str(&client_id).map_err(|_| TokenErrorResponse {
         error: "invalid_client".to_string(),
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    // 2. Find and check app
     let app = OAuthAppService::find_by_client_id(&ctx.db, client_id)
         .await
         .map_err(|_| TokenErrorResponse {
@@ -439,95 +751,257 @@ async fn authorize_handler(
             error_description: "Unknown client_id".to_string(),
         })?;
 
-    if app.tenant_id != tenant_ctx.id {
+    if app.tenant_id != tenant_id {
         return Err(TokenErrorResponse {
             error: "invalid_client".to_string(),
             error_description: "Client not registered for this tenant".to_string(),
         });
     }
 
-    // Check if the redirect URI is allowed
-    let allowed_uris = app.redirect_uris_list();
-    if !allowed_uris.contains(&req.redirect_uri) {
+    if !app.supports_grant_type("authorization_code") {
+        return Err(TokenErrorResponse {
+            error: "invalid_grant".to_string(),
+            error_description: "This app does not support authorization_code grant".to_string(),
+        });
+    }
+
+    if !app.redirect_uris_list().contains(&redirect_uri) {
         return Err(TokenErrorResponse {
             error: "invalid_request".to_string(),
             error_description: "redirect_uri is not configured for this client".to_string(),
         });
     }
 
-    // 3. Parse requested scopes and ensure they are allowed
     let allowed_scopes = app.scopes_list();
-    let requested_scopes: Vec<String> = req
-        .scope
+    let requested_scopes: Vec<String> = scope
         .as_deref()
-        .map(|s| s.split_whitespace().map(String::from).collect())
-        .unwrap_or_default();
+        .map(|value| value.split_whitespace().map(String::from).collect())
+        .unwrap_or_else(|| allowed_scopes.clone());
 
-    let granted_scopes = if requested_scopes.is_empty() {
-        allowed_scopes.clone()
-    } else {
-        requested_scopes
-            .iter()
-            .filter(|s| crate::context::scope_matches(&allowed_scopes, s))
-            .cloned()
-            .collect()
-    };
-
-    // 4. Check consent if app is ThirdParty
-    if app.app_type == "third_party" {
-        let has_consent = OAuthAppService::get_active_consent(
-            &ctx.db,
-            app.id,
-            current_user.user.id,
-            &granted_scopes,
-        )
-        .await
-        .map_err(|_| TokenErrorResponse {
-            error: "server_error".to_string(),
-            error_description: "Failed to verify consent".to_string(),
-        })?;
-
-        if !has_consent {
-            // App needs consent from user.
-            // In a real environment, we would redirect to a consent UI.
-            // But since this is API-first, we return interaction_required.
+    for requested_scope in &requested_scopes {
+        if !crate::context::scope_matches(&allowed_scopes, requested_scope) {
             return Err(TokenErrorResponse {
-                error: "interaction_required".to_string(),
-                error_description:
-                    "User consent is required. Please prompt the user to grant access.".to_string(),
+                error: "invalid_scope".to_string(),
+                error_description: format!(
+                    "Scope '{requested_scope}' is not allowed for this client"
+                ),
             });
         }
     }
 
-    // 5. Generate Auth Code
-    let code = OAuthAppService::generate_authorization_code(
+    Ok(ValidatedAuthorizeRequest {
+        app,
+        redirect_uri,
+        requested_scopes,
+        state,
+        code_challenge,
+    })
+}
+
+async fn issue_authorization_code(
+    ctx: &AppContext,
+    tenant_id: Uuid,
+    validated: &ValidatedAuthorizeRequest,
+    user_id: Uuid,
+) -> Result<String, TokenErrorResponse> {
+    OAuthAppService::generate_authorization_code(
         &ctx.db,
-        app.id,
-        current_user.user.id,
-        tenant_ctx.id,
-        req.redirect_uri.clone(),
-        granted_scopes,
-        req.code_challenge,
+        validated.app.id,
+        user_id,
+        tenant_id,
+        validated.redirect_uri.clone(),
+        validated.requested_scopes.clone(),
+        validated.code_challenge.clone(),
     )
     .await
     .map_err(|_| TokenErrorResponse {
         error: "server_error".to_string(),
         error_description: "Failed to generate authorization code".to_string(),
-    })?;
+    })
+}
 
-    // Return the result (in a real browser flow, this would be a 302 Redirect)
-    // Here we return JSON so frontends can handle the redirect manually,
-    // which works well for SPA architectures.
-    let mut response = serde_json::json!({
-        "code": code,
-        "redirect_uri": req.redirect_uri,
-    });
+fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
 
-    if let Some(state) = req.state {
-        response["state"] = serde_json::json!(state);
+fn extract_browser_access_token(headers: &HeaderMap) -> Option<String> {
+    extract_bearer_token(headers).or_else(|| {
+        headers
+            .get(COOKIE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(parse_oauth_browser_cookie)
+    })
+}
+
+fn parse_oauth_browser_cookie(cookie_header: &str) -> Option<String> {
+    cookie_header.split(';').find_map(|part| {
+        let (name, value) = part.trim().split_once('=')?;
+        (name == OAUTH_BROWSER_SESSION_COOKIE && !value.trim().is_empty())
+            .then(|| value.trim().to_string())
+    })
+}
+
+fn build_oauth_browser_session_cookie(access_token: &str, headers: &HeaderMap) -> String {
+    build_oauth_browser_session_cookie_for_secure(
+        access_token,
+        should_use_secure_cookie(headers),
+        Some(OAUTH_BROWSER_SESSION_TTL_SECS),
+    )
+}
+
+fn clear_oauth_browser_session_cookie(headers: &HeaderMap) -> String {
+    build_oauth_browser_session_cookie_for_secure("", should_use_secure_cookie(headers), Some(0))
+}
+
+fn clear_oauth_browser_session_cookie_for_redirect(redirect_uri: &str) -> String {
+    let secure = Url::parse(redirect_uri)
+        .map(|url| url.scheme() == "https")
+        .unwrap_or(false);
+    build_oauth_browser_session_cookie_for_secure("", secure, Some(0))
+}
+
+fn build_oauth_browser_session_cookie_for_secure(
+    access_token: &str,
+    secure: bool,
+    max_age: Option<u64>,
+) -> String {
+    let mut cookie = format!(
+        "{OAUTH_BROWSER_SESSION_COOKIE}={access_token}; Path=/api/oauth; HttpOnly; SameSite=Lax"
+    );
+    if let Some(max_age) = max_age {
+        cookie.push_str(&format!("; Max-Age={max_age}"));
     }
+    if secure {
+        cookie.push_str("; Secure");
+    }
+    cookie
+}
 
-    Ok(Json(response))
+fn should_use_secure_cookie(headers: &HeaderMap) -> bool {
+    headers
+        .get("x-forwarded-proto")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.eq_ignore_ascii_case("https"))
+        .unwrap_or(false)
+}
+
+fn redirect_with_code(
+    redirect_uri: &str,
+    code: &str,
+    state: Option<&str>,
+) -> (StatusCode, [(axum::http::header::HeaderName, String); 2]) {
+    let mut url = Url::parse(redirect_uri).expect("validated redirect URI");
+    {
+        let mut query = url.query_pairs_mut();
+        query.append_pair("code", code);
+        if let Some(state) = state {
+            query.append_pair("state", state);
+        }
+    }
+    (
+        StatusCode::FOUND,
+        [
+            (LOCATION, url.to_string()),
+            (
+                SET_COOKIE,
+                clear_oauth_browser_session_cookie_for_redirect(redirect_uri),
+            ),
+        ],
+    )
+}
+
+fn redirect_with_error(
+    redirect_uri: &str,
+    error: &str,
+    description: &str,
+    state: Option<&str>,
+) -> (StatusCode, [(axum::http::header::HeaderName, String); 2]) {
+    let mut url = Url::parse(redirect_uri).expect("validated redirect URI");
+    {
+        let mut query = url.query_pairs_mut();
+        query.append_pair("error", error);
+        query.append_pair("error_description", description);
+        if let Some(state) = state {
+            query.append_pair("state", state);
+        }
+    }
+    (
+        StatusCode::FOUND,
+        [
+            (LOCATION, url.to_string()),
+            (
+                SET_COOKIE,
+                clear_oauth_browser_session_cookie_for_redirect(redirect_uri),
+            ),
+        ],
+    )
+}
+
+fn render_authorization_required(app_name: &str) -> (StatusCode, Html<String>) {
+    (
+        StatusCode::UNAUTHORIZED,
+        Html(render_error_page(
+            "Authorization required",
+            &format!(
+                "Create an OAuth browser session first, then retry authorization for '{}'. First-party frontends should POST /api/oauth/browser-session with the current bearer token before opening the browser authorization URL.",
+                app_name
+            ),
+        )),
+    )
+}
+
+fn render_error_page(title: &str, message: &str) -> String {
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{}</title><style>body{{font-family:system-ui,sans-serif;max-width:720px;margin:48px auto;padding:0 16px;color:#111827}}.card{{border:1px solid #d1d5db;border-radius:12px;padding:24px;background:#fff}}p{{line-height:1.5;color:#374151}}</style></head><body><div class=\"card\"><h1>{}</h1><p>{}</p></div></body></html>",
+        escape_html(title),
+        escape_html(title),
+        escape_html(message)
+    )
+}
+
+fn render_consent_page(
+    validated: &ValidatedAuthorizeRequest,
+    request: &BrowserAuthorizeRequest,
+    user_email: &str,
+) -> String {
+    let scopes = validated
+        .requested_scopes
+        .iter()
+        .map(|scope| format!("<li>{}</li>", escape_html(scope)))
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Authorize {app}</title><style>body{{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;max-width:760px;margin:40px auto;padding:0 16px}}.card{{background:#fff;border:1px solid #dbe3f0;border-radius:16px;padding:24px;box-shadow:0 12px 30px rgba(15,23,42,0.08)}}.meta{{color:#475569}}ul{{padding-left:20px}}form{{display:flex;gap:12px;margin-top:24px}}button{{border:0;border-radius:10px;padding:12px 18px;font-weight:600;cursor:pointer}}.approve{{background:#0f766e;color:white}}.deny{{background:#e2e8f0;color:#0f172a}}</style></head><body><div class=\"card\"><h1>Authorize {app}</h1><p class=\"meta\">Signed in as {user}. This app is requesting access to:</p><ul>{scopes}</ul><p class=\"meta\">Redirect URI: {redirect}</p><form method=\"post\" action=\"/api/oauth/consent\"><input type=\"hidden\" name=\"client_id\" value=\"{client_id}\"><input type=\"hidden\" name=\"redirect_uri\" value=\"{redirect_attr}\"><input type=\"hidden\" name=\"scope\" value=\"{scope_attr}\"><input type=\"hidden\" name=\"state\" value=\"{state_attr}\"><input type=\"hidden\" name=\"code_challenge\" value=\"{challenge_attr}\"><input type=\"hidden\" name=\"code_challenge_method\" value=\"S256\"><button class=\"approve\" type=\"submit\" name=\"action\" value=\"approve\">Approve</button><button class=\"deny\" type=\"submit\" name=\"action\" value=\"deny\">Deny</button></form></div></body></html>",
+        app = escape_html(&validated.app.name),
+        user = escape_html(user_email),
+        scopes = scopes,
+        redirect = escape_html(&validated.redirect_uri),
+        client_id = escape_attr(&request.client_id),
+        redirect_attr = escape_attr(&request.redirect_uri),
+        scope_attr = escape_attr(request.scope.as_deref().unwrap_or_default()),
+        state_attr = escape_attr(request.state.as_deref().unwrap_or_default()),
+        challenge_attr = escape_attr(&request.code_challenge),
+    )
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn escape_attr(value: &str) -> String {
+    escape_html(value)
 }
 
 /// OAuth2 Token Revocation Request (RFC 7009)
@@ -647,8 +1121,170 @@ async fn userinfo_handler(
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/oauth")
-        .add("/authorize", post(authorize_handler))
+        .add(
+            "/authorize",
+            get(authorize_browser_handler).post(authorize_handler),
+        )
+        .add(
+            "/browser-session",
+            post(create_browser_session_handler).delete(clear_browser_session_handler),
+        )
+        .add("/consent", post(consent_handler))
         .add("/token", post(token_handler))
         .add("/userinfo", get(userinfo_handler))
         .add("/revoke", post(revoke_handler))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{header::HeaderValue, HeaderName};
+    use chrono::Utc;
+
+    fn sample_app(app_type: &str) -> crate::models::oauth_apps::Model {
+        crate::models::oauth_apps::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            name: "Example App".to_string(),
+            slug: "example-app".to_string(),
+            description: Some("Example".to_string()),
+            app_type: app_type.to_string(),
+            icon_url: None,
+            client_id: Uuid::new_v4(),
+            client_secret_hash: Some("hash".to_string()),
+            redirect_uris: serde_json::json!(["https://client.example.com/callback"]),
+            scopes: serde_json::json!(["profile", "catalog:read"]),
+            grant_types: serde_json::json!(["authorization_code", "refresh_token"]),
+            manifest_ref: None,
+            auto_created: false,
+            is_active: true,
+            revoked_at: None,
+            last_used_at: None,
+            metadata: serde_json::json!({}),
+            created_at: Utc::now().into(),
+            updated_at: Utc::now().into(),
+        }
+    }
+
+    fn validated_request(app_type: &str) -> ValidatedAuthorizeRequest {
+        ValidatedAuthorizeRequest {
+            app: sample_app(app_type),
+            redirect_uri: "https://client.example.com/callback".to_string(),
+            requested_scopes: vec!["profile".to_string(), "catalog:read".to_string()],
+            state: Some("opaque-state".to_string()),
+            code_challenge: "challenge-value".to_string(),
+        }
+    }
+
+    #[test]
+    fn browser_cookie_is_parsed_and_authorization_header_wins() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            COOKIE,
+            HeaderValue::from_static(
+                "other=1; rustok_oauth_browser_session=session-token; another=2",
+            ),
+        );
+        assert_eq!(
+            extract_browser_access_token(&headers).as_deref(),
+            Some("session-token")
+        );
+
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer header-token"));
+        assert_eq!(
+            extract_browser_access_token(&headers).as_deref(),
+            Some("header-token")
+        );
+    }
+
+    #[test]
+    fn browser_session_cookie_respects_secure_forwarding() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("x-forwarded-proto"),
+            HeaderValue::from_static("https"),
+        );
+
+        let cookie = build_oauth_browser_session_cookie("token-123", &headers);
+        assert!(cookie.contains("rustok_oauth_browser_session=token-123"));
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("SameSite=Lax"));
+        assert!(cookie.contains("Max-Age=600"));
+        assert!(cookie.contains("Secure"));
+
+        let cleared = clear_oauth_browser_session_cookie(&headers);
+        assert!(cleared.contains("Max-Age=0"));
+        assert!(cleared.contains("Secure"));
+    }
+
+    #[test]
+    fn redirect_helpers_append_query_and_clear_cookie() {
+        let (status, headers) = redirect_with_code(
+            "https://client.example.com/callback",
+            "auth-code",
+            Some("state-123"),
+        );
+        assert_eq!(status, StatusCode::FOUND);
+        assert_eq!(
+            headers[0].1,
+            "https://client.example.com/callback?code=auth-code&state=state-123"
+        );
+        assert!(headers[1].1.contains("Max-Age=0"));
+        assert!(headers[1].1.contains("Secure"));
+
+        let (status, headers) = redirect_with_error(
+            "https://client.example.com/callback",
+            "access_denied",
+            "The user denied access",
+            Some("state-123"),
+        );
+        assert_eq!(status, StatusCode::FOUND);
+        assert!(headers[0].1.contains("error=access_denied"));
+        assert!(headers[0].1.contains("state=state-123"));
+        assert!(headers[1].1.contains("Max-Age=0"));
+    }
+
+    #[test]
+    fn authorization_required_page_mentions_browser_session_endpoint() {
+        let (status, html) = render_authorization_required("Admin App");
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(html.0.contains("POST /api/oauth/browser-session"));
+        assert!(html.0.contains("Admin App"));
+    }
+
+    #[test]
+    fn consent_page_escapes_fields_and_contains_expected_form_inputs() {
+        let mut validated = validated_request("third_party");
+        validated.app.name = "Partner <App>".to_string();
+        validated.redirect_uri = "https://client.example.com/callback?from=<unsafe>".to_string();
+        validated.requested_scopes = vec!["profile".to_string(), "catalog:read".to_string()];
+
+        let request = BrowserAuthorizeRequest {
+            response_type: "code".to_string(),
+            client_id: validated.app.client_id.to_string(),
+            redirect_uri: validated.redirect_uri.clone(),
+            scope: Some("profile catalog:read".to_string()),
+            state: Some("\"quoted-state\"".to_string()),
+            code_challenge: "challenge<&>".to_string(),
+            code_challenge_method: Some("S256".to_string()),
+        };
+
+        let html = render_consent_page(&validated, &request, "user+test@example.com");
+        assert!(html.contains("Authorize Partner &lt;App&gt;"));
+        assert!(html.contains("user+test@example.com"));
+        assert!(html.contains("name=\"client_id\""));
+        assert!(html.contains("name=\"redirect_uri\""));
+        assert!(html.contains("name=\"scope\""));
+        assert!(html.contains("name=\"state\""));
+        assert!(html.contains("name=\"code_challenge\""));
+        assert!(html.contains("&lt;unsafe&gt;"));
+        assert!(html.contains("challenge&lt;&amp;&gt;"));
+        assert!(html.contains("&quot;quoted-state&quot;"));
+    }
+
+    #[test]
+    fn consent_requirement_depends_on_app_type() {
+        assert!(validated_request("third_party").app.requires_user_consent());
+        assert!(!validated_request("first_party").app.requires_user_consent());
+    }
 }

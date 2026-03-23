@@ -9,8 +9,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use rustok_core::{
-    sanitize_rt_json_before_html_render, Action, DomainEvent, PermissionScope, Resource,
-    RtJsonValidationConfig, SecurityContext,
+    prepare_content_payload, Action, DomainEvent, PermissionScope, Resource, SecurityContext,
 };
 use rustok_outbox::TransactionalEventBus;
 
@@ -1069,26 +1068,24 @@ fn normalize_body_input(input: BodyInput) -> ContentResult<BodyInput> {
         .clone()
         .unwrap_or_else(|| "markdown".to_string());
 
-    if format == "rt_json" || format == "rt_json_v1" {
+    if format == "rt_json" || format == "rt_json_v1" || format == "grapesjs_v1" {
         let locale = input.locale.clone();
         let body = input
             .body
             .ok_or_else(|| ContentError::Validation(format!("{format} body is required")))?;
-
-        let body_json: serde_json::Value = serde_json::from_str(&body).map_err(|_| {
-            ContentError::Validation(format!("{format} body must be a valid JSON payload"))
-        })?;
-
-        let sanitized = sanitize_rt_json_before_html_render(
-            &body_json,
-            &RtJsonValidationConfig::for_locale(&locale),
+        let prepared = prepare_content_payload(
+            Some(&format),
+            Some(&body),
+            None,
+            &locale,
+            &format!("{format} body"),
         )
         .map_err(ContentError::Validation)?;
 
         return Ok(BodyInput {
             locale,
-            body: Some(sanitized.to_string()),
-            format: Some("rt_json_v1".to_string()),
+            body: Some(prepared.body),
+            format: Some(prepared.format),
         });
     }
 

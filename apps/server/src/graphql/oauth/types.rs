@@ -1,10 +1,12 @@
 //! GraphQL types for OAuth App management
 
-use async_graphql::{Enum, InputObject, Object, SimpleObject};
+use async_graphql::{Context, Enum, InputObject, Object, SimpleObject};
 use chrono::{DateTime, Utc};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::models::oauth_apps;
+use crate::models::oauth_tokens;
 
 /// OAuth App Type enum for GraphQL
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
@@ -65,6 +67,10 @@ impl OAuthAppGql {
         self.0.description.as_deref()
     }
 
+    async fn icon_url(&self) -> Option<&str> {
+        self.0.icon_url.as_deref()
+    }
+
     async fn app_type(&self) -> AppType {
         AppType::from_str(&self.0.app_type)
     }
@@ -93,8 +99,31 @@ impl OAuthAppGql {
         self.0.auto_created
     }
 
+    async fn managed_by_manifest(&self) -> bool {
+        self.0.managed_by_manifest()
+    }
+
     async fn is_active(&self) -> bool {
         self.0.is_active()
+    }
+
+    async fn can_edit(&self) -> bool {
+        self.0.can_edit()
+    }
+
+    async fn can_rotate_secret(&self) -> bool {
+        self.0.can_rotate_secret()
+    }
+
+    async fn can_revoke(&self) -> bool {
+        self.0.can_revoke()
+    }
+
+    async fn active_token_count(&self, ctx: &Context<'_>) -> async_graphql::Result<u64> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        oauth_tokens::Entity::count_active_by_app(db, self.0.id)
+            .await
+            .map_err(|e| async_graphql::Error::new(format!("Failed to count active tokens: {e}")))
     }
 
     async fn last_used_at(&self) -> Option<DateTime<Utc>> {
@@ -113,7 +142,19 @@ pub struct CreateOAuthAppInput {
     pub slug: String,
     pub description: Option<String>,
     pub app_type: AppType,
+    pub icon_url: Option<String>,
     pub redirect_uris: Option<Vec<String>>,
+    pub scopes: Vec<String>,
+    pub grant_types: Vec<String>,
+}
+
+/// Input for updating a manual OAuth app
+#[derive(Debug, InputObject)]
+pub struct UpdateOAuthAppInput {
+    pub name: String,
+    pub description: Option<String>,
+    pub icon_url: Option<String>,
+    pub redirect_uris: Vec<String>,
     pub scopes: Vec<String>,
     pub grant_types: Vec<String>,
 }

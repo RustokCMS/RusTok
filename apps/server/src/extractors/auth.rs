@@ -60,14 +60,22 @@ where
             .await
             .map_err(|_| (StatusCode::UNAUTHORIZED, "Missing or invalid token"))?;
 
-    let auth_config = auth_config_from_ctx(&ctx).map_err(|_| {
+    resolve_current_user_from_access_token(&ctx, tenant_id, bearer.token()).await
+}
+
+pub async fn resolve_current_user_from_access_token(
+    ctx: &AppContext,
+    tenant_id: uuid::Uuid,
+    access_token: &str,
+) -> Result<CurrentUser, (StatusCode, &'static str)> {
+    let auth_config = auth_config_from_ctx(ctx).map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "JWT secret not configured",
         )
     })?;
 
-    let claims = decode_access_token(&auth_config, bearer.token())
+    let claims = decode_access_token(&auth_config, access_token)
         .map_err(|_| (StatusCode::UNAUTHORIZED, "Invalid token signature"))?;
 
     if claims.tenant_id != tenant_id {

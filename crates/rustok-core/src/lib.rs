@@ -9,6 +9,7 @@ pub mod context;
 pub mod error;
 pub mod events;
 pub mod field_schema;
+pub mod grapesjs;
 pub mod health;
 pub mod i18n;
 pub mod id;
@@ -47,8 +48,8 @@ pub use config::{
     ServerConfig,
 };
 pub use content_format::{
-    normalize_content_format, prepare_content_payload, PreparedContent, CONTENT_FORMAT_MARKDOWN,
-    CONTENT_FORMAT_RT_JSON_V1,
+    normalize_content_format, prepare_content_payload, PreparedContent,
+    CONTENT_FORMAT_GRAPESJS_V1, CONTENT_FORMAT_MARKDOWN, CONTENT_FORMAT_RT_JSON_V1,
 };
 pub use context::{AppContext, CacheBackend, SearchBackend};
 pub use error::{
@@ -68,6 +69,7 @@ pub use field_schema::{
     FieldValidationError, FlexError, HasCustomFields, SelectOption, ValidationRule,
     MAX_JSON_NESTING_DEPTH,
 };
+pub use grapesjs::validate_grapesjs_project;
 pub use health::{
     checks::{DatabaseHealthCheck, FnHealthCheck},
     HealthCheck, HealthRegistry, HealthResult, HealthStatus, OverallHealth,

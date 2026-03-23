@@ -97,6 +97,7 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::UnknownDefaultEnabled(_)
         | ManifestError::VersionUnchanged(_, _)
         | ManifestError::InvalidVersion
+        | ManifestError::InvalidBuildSurface(_)
         | ManifestError::MissingInRegistry(_)
         | ManifestError::RequiredMismatch(_)
         | ManifestError::DependencyMismatch(_)
