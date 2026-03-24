@@ -19,10 +19,18 @@ pub struct AdminComponentRegistration {
 }
 
 #[derive(Clone)]
+pub struct AdminChildPageRegistration {
+    pub subpath: &'static str,
+    pub title: &'static str,
+    pub nav_label: &'static str,
+}
+
+#[derive(Clone)]
 pub struct AdminPageRegistration {
     pub module_slug: &'static str,
     pub route_segment: &'static str,
     pub title: &'static str,
+    pub child_pages: &'static [AdminChildPageRegistration],
     pub render: fn() -> AnyView,
 }
 
@@ -87,4 +95,65 @@ pub fn page_for_route_segment(
             })
             .cloned()
     })
+}
+
+impl AdminPageRegistration {
+    pub fn child_page_for_subpath(&self, subpath: &str) -> Option<AdminChildPageRegistration> {
+        let normalized = subpath.trim_matches('/');
+        if normalized.is_empty() {
+            return None;
+        }
+
+        self.child_pages
+            .iter()
+            .find(|child| {
+                normalized == child.subpath
+                    || normalized.starts_with(&format!("{}/", child.subpath))
+            })
+            .cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use leptos::prelude::IntoAny;
+
+    use super::{AdminChildPageRegistration, AdminPageRegistration};
+
+    #[test]
+    fn child_page_resolution_matches_exact_and_nested_paths() {
+        let registration = AdminPageRegistration {
+            module_slug: "workflow",
+            route_segment: "workflow",
+            title: "Workflow",
+            child_pages: &[
+                AdminChildPageRegistration {
+                    subpath: "templates",
+                    title: "Workflow Templates",
+                    nav_label: "Templates",
+                },
+                AdminChildPageRegistration {
+                    subpath: "history/runs",
+                    title: "Execution Runs",
+                    nav_label: "Runs",
+                },
+            ],
+            render: || ().into_any(),
+        };
+
+        assert_eq!(
+            registration
+                .child_page_for_subpath("templates")
+                .map(|page| page.title),
+            Some("Workflow Templates")
+        );
+        assert_eq!(
+            registration
+                .child_page_for_subpath("history/runs/2026")
+                .map(|page| page.nav_label),
+            Some("Runs")
+        );
+        assert!(registration.child_page_for_subpath("").is_none());
+        assert!(registration.child_page_for_subpath("unknown").is_none());
+    }
 }

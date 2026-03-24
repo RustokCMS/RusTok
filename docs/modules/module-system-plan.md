@@ -31,7 +31,7 @@
 - ⚠️ `ManifestManager` уже валидирует metadata path-модулей и конфликты admin surface-ов, но semver-диапазоны зависимостей и продуктовые runtime-конфликты модулей ещё не покрыты.
 - ⚠️ `updateModuleSettings` уже появился в базовом виде: есть GraphQL mutation и JSON editor в `/modules`, но schema-driven форма и валидация из `rustok-module.toml` ещё не доведены до конца.
 - ✅ `buildProgress` теперь работает end-to-end: `apps/server` поднимает GraphQL WS transport на `/api/graphql/ws`, а `/modules` в `apps/admin` подписывается на live progress и держит polling только как fallback.
-- ⚠️ `apps/server/build.rs` уже генерирует optional module registry, GraphQL schema fragments и HTTP routes из `modules.toml`; explicit server entry-point contract через `[crate]` / `[provides.graphql]` / `[provides.http]` уже поднят, `apps/admin/build.rs` уже доведён до generic module root pages/nav/dashboard wiring, `apps/storefront/build.rs` уже поддерживает multi-slot storefront sections и generic module route `/modules/:route_segment`, `pages` стал следующим publishable Leptos package после `blog`/`workflow`, но перенос остальных модулей и richer nested admin contract всё ещё открыты.
+- ⚠️ `apps/server/build.rs` уже генерирует optional module registry, GraphQL schema fragments и HTTP routes из `modules.toml`; explicit server entry-point contract через `[crate]` / `[provides.graphql]` / `[provides.http]` уже поднят, `apps/admin/build.rs` уже доведён до generic module root pages/nav/dashboard wiring и nested route metadata из `[[provides.admin_ui.pages]]`, `apps/storefront/build.rs` уже поддерживает multi-slot storefront sections, generic module route `/modules/:route_segment`, streaming SSR и module-agnostic `UiRouteContext`, а `pages`, `blog` и `workflow/templates` теперь служат рабочими Leptos exemplar-ами с реальным admin/storefront data flow. Перенос остальных модулей и внешний registry всё ещё открыты.
 
 > [!NOTE]
 > Раздел 9 ниже и этот статус-блок являются канонической точкой отсчёта на 2026-03-23.
@@ -662,7 +662,7 @@ app_routes_codegen.rs
 
 Что ещё остаётся:
 
-- richer nested admin route/page contract поверх уже существующего module root route wiring;
+- расширение manifest-driven nested admin metadata beyond current wildcard route + secondary nav, если модулям понадобятся более строгие host-level guarantees;
 - richer storefront slot/page contract поверх уже существующего generated slot wiring;
 - правило namespace-safety для GraphQL-visible типов модулей: после включения server codegen пришлось развести `BlogPostStatus` и `GqlContentStatus`, и новые модули не должны публиковать конфликтующие GraphQL names.
 
@@ -733,13 +733,13 @@ register_component(AdminComponentRegistration {
 Состояние на 2026-03-23:
 - generated host wiring для admin уже монтирует module-owned `<PascalSlug>Admin`
   как `DashboardSection`, `NavItem` и `AdminPageRegistration`;
-- единый host route `/modules/:module_slug` резолвит модульную страницу через generated registry;
-- `[provides.admin_ui]` дополнительно поддерживает optional `route_segment` и `nav_label`.
+- host routes `/modules/:module_slug` и `/modules/:module_slug/*module_path` резолвят модульную страницу через generated registry и прокидывают `UiRouteContext`;
+- `[provides.admin_ui]` дополнительно поддерживает optional `route_segment`, `nav_label` и `[[provides.admin_ui.pages]]` для generic secondary nav.
 - `workflow` уже имеет publishable Leptos admin crate (`crates/rustok-workflow/admin`) и больше не зависит от вручную зашитого nav item в `apps/admin`.
+- `workflow` уже использует nested contract на `/modules/workflow/templates`, не требуя ручного router/sidebar special-case в `apps/admin`.
 - `pages` теперь тоже имеет publishable Leptos admin crate (`crates/rustok-pages/admin`) и storefront crate (`crates/rustok-pages/storefront`) по тому же стандарту подпакетов модуля.
 
 Что ещё остаётся открытым:
-- nested route/page contract для модулей с несколькими admin screens;
 - более явный entry-point contract для внешних crate-ов вместо чистых naming conventions.
 
 3. **`apps/storefront/build.rs`** уже генерирует `register_component()` и `register_page()`:
@@ -787,12 +787,11 @@ leptos_crate  = "rustok-workflow-storefront"
 |---|---|---|---|
 | **1** | **Semver-диапазоны и продуктовые конфликты модулей в `ManifestManager`** | Малая | Высокая — защита от broken installs и нечестных marketplace-совместимостей |
 | 2 | `updateModuleSettings` mutation + UI-форма из `[settings]` | Малая | Высокая — persisted settings уже есть, но не доведены до оператора |
-| 3 | Перенос Leptos UI в publishable module packages beyond `rustok-blog` | Большая | Критическая — `workflow` и `pages` уже стали следующими шаблонами, но остальные модули ещё не переведены |
-| 4 | Richer nested admin route/page contract поверх текущего module root route wiring | Средняя | Высокая — нужен для сложных модулей с несколькими admin screens |
-| 5 | Внешний реестр V1 (read-only catalog) | Большая | Высокая — фундамент marketplace |
-| 6 | Внешний реестр V2 + publish/governance | Очень большая | Средняя — следующий шаг после read-only каталога |
+| 3 | Перенос Leptos UI в publishable module packages beyond `rustok-pages` и `rustok-blog` | Большая | Критическая — `workflow` уже дал root-page template, `pages` и `blog` стали рабочими exemplar-ами, но остальные модули ещё не переведены и новые scaffold-only пакеты больше не должны считаться достаточным результатом |
+| 4 | Внешний реестр V1 (read-only catalog) | Большая | Высокая — фундамент marketplace |
+| 5 | Внешний реестр V2 + publish/governance | Очень большая | Средняя — следующий шаг после read-only каталога |
 
-> Пп. 3 и 4 — текущий оставшийся UI/extensibility блок. Они нужны вместе, чтобы сторонний модуль полноценно заработал как платформа, а не как одноразовая интеграция.
+> П. 3 остаётся текущим UI/extensibility блоком: после закрытия nested admin contract главный остаток — перевести больше модулей в publishable пакеты без scaffold-only результата.
 
 ### Р§С‚Рѕ РёР·РјРµРЅРёР»РѕСЃСЊ (2026-03-18) вЂ” С„РёРЅР°Р»СЊРЅС‹Р№ РѕСЂРёРµРЅС‚РёСЂ
 

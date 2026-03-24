@@ -8,7 +8,7 @@ use std::cell::Cell;
 
 pub use registry::{
     components_for_slot, page_for_route_segment, register_component, register_page,
-    AdminComponentRegistration, AdminPageRegistration, AdminSlot,
+    AdminChildPageRegistration, AdminComponentRegistration, AdminPageRegistration, AdminSlot,
 };
 
 thread_local! {

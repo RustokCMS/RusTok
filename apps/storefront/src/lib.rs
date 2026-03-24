@@ -45,21 +45,34 @@ async fn enabled_modules_or_empty() -> Vec<String> {
     }
 }
 
-pub async fn render_shell(locale: &str) -> String {
+pub async fn render_shell(
+    locale: &str,
+    query_params: std::collections::HashMap<String, String>,
+) -> String {
     let locale_owned = locale.to_string();
     let enabled_modules = enabled_modules_or_empty().await;
 
     let app_html = {
         let locale = locale_owned.clone();
-        view! { <StorefrontShell locale=locale enabled_modules=enabled_modules /> }
-            .to_html_stream_in_order()
-            .collect::<String>()
-            .await
+        view! {
+            <StorefrontShell
+                locale=locale
+                enabled_modules=enabled_modules
+                query_params=query_params
+            />
+        }
+        .to_html_stream_in_order()
+        .collect::<String>()
+        .await
     };
     render_document(locale, "RusToK Storefront", app_html)
 }
 
-pub async fn render_module_page(locale: &str, route_segment: &str) -> String {
+pub async fn render_module_page(
+    locale: &str,
+    route_segment: &str,
+    query_params: std::collections::HashMap<String, String>,
+) -> String {
     let locale_owned = locale.to_string();
     let route_segment_owned = route_segment.to_string();
     let enabled_modules = enabled_modules_or_empty().await;
@@ -72,6 +85,7 @@ pub async fn render_module_page(locale: &str, route_segment: &str) -> String {
                 locale=locale
                 enabled_modules=enabled_modules
                 route_segment=route_segment
+                query_params=query_params
             />
         }
         .to_html_stream_in_order()
@@ -93,7 +107,7 @@ pub fn router() -> Router {
                         .get("lang")
                         .map(|value| value.to_lowercase())
                         .unwrap_or_else(|| "en".to_string());
-                    render_shell(locale.as_str()).await
+                    render_shell(locale.as_str(), params).await
                 },
             ),
         )
@@ -108,7 +122,7 @@ pub fn router() -> Router {
                         .get("lang")
                         .map(|value| value.to_lowercase())
                         .unwrap_or_else(|| "en".to_string());
-                    render_module_page(locale.as_str(), route_segment.as_str()).await
+                    render_module_page(locale.as_str(), route_segment.as_str(), params).await
                 },
             ),
         )

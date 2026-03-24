@@ -5,6 +5,7 @@
 
 ## Responsibilities
 - Provide reusable tenant and auth request context types.
+- Provide thin UI host route context types when module-owned frontend packages need generic host data such as route segment, nested subpath, locale, and query params.
 - Provide GraphQL helper types and error helpers shared across modules.
 - Provide request-level locale and tenant resolution primitives that do not belong in domain crates.
 - Keep web-framework-oriented dependencies out of `rustok-core` while still allowing modular reuse.
@@ -26,6 +27,7 @@
 - `src/lib.rs`
 - `src/context/`
 - `src/request.rs`
+- `src/ui.rs`
 - `src/graphql/`
 
 ## Documentation

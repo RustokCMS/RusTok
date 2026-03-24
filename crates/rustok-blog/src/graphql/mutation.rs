@@ -1,7 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
-    has_any_effective_permission, AuthContext,
+    has_any_effective_permission, AuthContext, TenantContext,
 };
 use rustok_core::Permission;
 use rustok_outbox::TransactionalEventBus;
@@ -22,8 +22,8 @@ impl BlogMutation {
     async fn create_post(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
         input: CreatePostInput,
+        tenant_id: Option<Uuid>,
     ) -> Result<Uuid> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
@@ -33,6 +33,8 @@ impl BlogMutation {
             &[Permission::BLOG_POSTS_CREATE],
             "Permission denied: blog_posts:create required",
         )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
 
         let service = PostService::new(db.clone(), event_bus.clone());
         let post_id = service
@@ -46,8 +48,8 @@ impl BlogMutation {
         &self,
         ctx: &Context<'_>,
         id: Uuid,
-        tenant_id: Uuid,
         input: UpdatePostInput,
+        tenant_id: Option<Uuid>,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
@@ -57,6 +59,8 @@ impl BlogMutation {
             &[Permission::BLOG_POSTS_UPDATE],
             "Permission denied: blog_posts:update required",
         )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
 
         let service = PostService::new(db.clone(), event_bus.clone());
         let domain_input = DomainUpdatePostInput {
@@ -83,7 +87,12 @@ impl BlogMutation {
         Ok(true)
     }
 
-    async fn delete_post(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<bool> {
+    async fn delete_post(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -92,6 +101,8 @@ impl BlogMutation {
             &[Permission::BLOG_POSTS_DELETE],
             "Permission denied: blog_posts:delete required",
         )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
@@ -101,7 +112,12 @@ impl BlogMutation {
         Ok(true)
     }
 
-    async fn publish_post(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<bool> {
+    async fn publish_post(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -110,6 +126,8 @@ impl BlogMutation {
             &[Permission::BLOG_POSTS_PUBLISH],
             "Permission denied: blog_posts:publish required",
         )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
@@ -119,7 +137,12 @@ impl BlogMutation {
         Ok(true)
     }
 
-    async fn unpublish_post(&self, ctx: &Context<'_>, id: Uuid, tenant_id: Uuid) -> Result<bool> {
+    async fn unpublish_post(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        tenant_id: Option<Uuid>,
+    ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -128,6 +151,8 @@ impl BlogMutation {
             &[Permission::BLOG_POSTS_PUBLISH],
             "Permission denied: blog_posts:publish required",
         )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service
@@ -141,8 +166,8 @@ impl BlogMutation {
         &self,
         ctx: &Context<'_>,
         id: Uuid,
-        tenant_id: Uuid,
         reason: Option<String>,
+        tenant_id: Option<Uuid>,
     ) -> Result<bool> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
@@ -152,6 +177,8 @@ impl BlogMutation {
             &[Permission::BLOG_POSTS_UPDATE],
             "Permission denied: blog_posts:update required",
         )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
 
         let service = PostService::new(db.clone(), event_bus.clone());
         service

@@ -25,14 +25,15 @@ impl BlogQuery {
     async fn post(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
         id: Uuid,
         locale: Option<String>,
+        tenant_id: Option<Uuid>,
     ) -> Result<Option<GqlPost>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = PostService::new(db.clone(), event_bus.clone());
@@ -56,16 +57,45 @@ impl BlogQuery {
         Ok(Some(post.into()))
     }
 
+    async fn post_by_slug(
+        &self,
+        ctx: &Context<'_>,
+        slug: String,
+        locale: Option<String>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<GqlPost>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+
+        let service = PostService::new(db.clone(), event_bus.clone());
+        let post = service
+            .get_post_by_slug_with_locale_fallback(
+                tenant_id,
+                &locale,
+                &slug,
+                Some(tenant.default_locale.as_str()),
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(post.map(Into::into))
+    }
+
     async fn posts(
         &self,
         ctx: &Context<'_>,
-        tenant_id: Uuid,
         filter: Option<PostsFilter>,
+        tenant_id: Option<Uuid>,
     ) -> Result<GqlPostList> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
 
         let filter = filter.unwrap_or(PostsFilter {
             status: None,

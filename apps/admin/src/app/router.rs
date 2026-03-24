@@ -30,6 +30,10 @@ pub fn App() -> impl IntoView {
                                 <Route path=path!("/profile") view=Profile />
                                 <Route path=path!("/security") view=Security />
                                 <Route path=path!("/modules/:module_slug") view=ModuleAdminPage />
+                                <Route
+                                    path=path!("/modules/:module_slug/*module_path")
+                                    view=ModuleAdminPage
+                                />
                                 <Route path=path!("/modules") view=Modules />
                                 <Route path=path!("/users") view=Users />
                                 <Route path=path!("/users/:id") view=UserDetails />

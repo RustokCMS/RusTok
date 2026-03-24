@@ -406,7 +406,52 @@ impl PostService {
         fallback_locale: Option<&str>,
     ) -> BlogResult<PostResponse> {
         let node = self.ensure_post_kind(tenant_id, post_id).await?;
+        Ok(self.node_to_post_response(node, locale, fallback_locale))
+    }
 
+    #[instrument(skip(self))]
+    pub async fn get_post_by_slug(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        slug: &str,
+    ) -> BlogResult<Option<PostResponse>> {
+        self.get_post_by_slug_with_locale_fallback(tenant_id, locale, slug, None)
+            .await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_post_by_slug_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        slug: &str,
+        fallback_locale: Option<&str>,
+    ) -> BlogResult<Option<PostResponse>> {
+        let node = self
+            .nodes
+            .get_by_slug(tenant_id, KIND_POST, locale, slug)
+            .await
+            .map_err(BlogError::from)?;
+
+        match node {
+            Some(node) if map_content_status(node.status.clone()) == BlogPostStatus::Published => {
+                Ok(Some(self.node_to_post_response(
+                    node,
+                    locale,
+                    fallback_locale,
+                )))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn node_to_post_response(
+        &self,
+        node: rustok_content::NodeResponse,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> PostResponse {
         let tr = resolve_translation_with_fallback(&node.translations, locale, fallback_locale);
         let br = resolve_body_with_fallback(&node.bodies, locale, fallback_locale);
         let all_locales = available_locales(&node.translations);
@@ -459,7 +504,7 @@ impl PostService {
             None
         };
 
-        Ok(PostResponse {
+        PostResponse {
             id: node.id,
             tenant_id: node.tenant_id,
             author_id: node.author_id.unwrap_or_default(),
@@ -495,7 +540,7 @@ impl PostService {
                 .unwrap_or_else(|_| chrono::Utc::now()),
             published_at: node.published_at.and_then(|p| p.parse().ok()),
             version: node.version,
-        })
+        }
     }
 
     #[instrument(skip(self, security))]
@@ -1082,5 +1127,88 @@ mod tests {
                 .expect_err("deleted post should be missing"),
             BlogError::Content(rustok_content::ContentError::NodeNotFound(id)) if id == post_id
         ));
+    }
+
+    #[tokio::test]
+    async fn get_post_by_slug_returns_only_published_posts() {
+        let db = setup_test_db().await;
+        ensure_blog_schema(&db).await;
+
+        let transport = MemoryTransport::new();
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
+        let post_service = PostService::new(db.clone(), event_bus);
+
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let security = SecurityContext::new(UserRole::Admin, Some(actor_id));
+
+        let draft_post_id = post_service
+            .create_post(
+                tenant_id,
+                security.clone(),
+                CreatePostInput {
+                    locale: "en".to_string(),
+                    title: "Draft post".to_string(),
+                    body: "Draft body".to_string(),
+                    excerpt: None,
+                    slug: Some("draft-post".to_string()),
+                    publish: false,
+                    tags: vec![],
+                    category_id: None,
+                    featured_image_url: None,
+                    seo_title: None,
+                    seo_description: None,
+                    metadata: None,
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                },
+            )
+            .await
+            .expect("draft post should be created");
+
+        let published_post_id = post_service
+            .create_post(
+                tenant_id,
+                security.clone(),
+                CreatePostInput {
+                    locale: "en".to_string(),
+                    title: "Published post".to_string(),
+                    body: "Published body".to_string(),
+                    excerpt: None,
+                    slug: Some("published-post".to_string()),
+                    publish: true,
+                    tags: vec!["news".to_string()],
+                    category_id: None,
+                    featured_image_url: None,
+                    seo_title: None,
+                    seo_description: None,
+                    metadata: None,
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                },
+            )
+            .await
+            .expect("published post should be created");
+
+        assert!(
+            post_service
+                .get_post_by_slug(tenant_id, "en", "draft-post")
+                .await
+                .expect("draft lookup should succeed")
+                .is_none(),
+            "draft post should not be visible by slug"
+        );
+
+        let published = post_service
+            .get_post_by_slug(tenant_id, "en", "published-post")
+            .await
+            .expect("published lookup should succeed")
+            .expect("published post should be visible by slug");
+
+        assert_eq!(published.id, published_post_id);
+        assert_eq!(published.slug, "published-post");
+        assert_eq!(published.status, BlogPostStatus::Published);
+        assert_ne!(published.id, draft_post_id);
     }
 }

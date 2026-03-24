@@ -15,14 +15,16 @@
 - `apps/admin/build.rs` теперь читает `modules.toml` и модульные `rustok-module.toml`, а затем генерирует manifest-driven wiring в `OUT_DIR`.
 - Текущий convention-based contract для publishable Leptos admin UI: `[provides.admin_ui].leptos_crate` плюс экспорт корневого компонента `<PascalSlug>Admin`.
 - Host регистрирует три generic surface-а без знания о конкретном модуле: `AdminSlot::DashboardSection`, `AdminSlot::NavItem` и `AdminPageRegistration`.
-- Для module-owned admin pages используется единый host route `/modules/:module_slug`: `ModuleAdminPage` резолвит модуль по generated registry и рендерит его root component, если модуль включён у tenant.
-- `[provides.admin_ui]` может дополнительно задать `route_segment` и `nav_label`; если они не указаны, host берёт `module.slug` и `module.name`.
+- Для module-owned admin pages используется единый host route `/modules/:module_slug` и его nested-вариант `/modules/:module_slug/*module_path`: `ModuleAdminPage` резолвит модуль по generated registry, прокидывает generic `UiRouteContext` и рендерит root component, если модуль включён у tenant.
+- `[provides.admin_ui]` может дополнительно задать `route_segment`, `nav_label` и `[[provides.admin_ui.pages]]` для manifest-driven secondary nav; если optional поля не указаны, host берёт `module.slug` и `module.name`.
 - Референсные publishable admin packages в workspace сейчас: `rustok-blog-admin`, `rustok-workflow-admin` и `rustok-pages-admin`.
+- `rustok-pages-admin` остаётся первым честным working exemplar для базового page CRUD.
+- `rustok-blog-admin` теперь служит вторым рабочим эталоном для обычного контентного CRUD: пакет сам делает list/create/edit/update/publish/archive/delete через модульный GraphQL, без blog-specific логики в `apps/admin`.
 
 ## Ограничения
 
-- Закрыт только module root page contract. Более богатый nested route/page contract для модульных admin-crate’ов пока не реализован.
-- `workflow` уже имеет publishable root page в `crates/rustok-workflow/admin`, но detail/edit flow пока ещё живёт на legacy-маршрутах `/workflows/*`.
+- Nested contract сейчас остаётся intentionally thin: host знает только wildcard route, `UiRouteContext` и manifest-driven secondary nav, а само ветвление по subpath остаётся внутри module package.
+- `workflow` уже использует этот contract для `/modules/workflow/templates`, но detail/edit flow пока ещё живёт на legacy-маршрутах `/workflows/*`.
 - Для внешних crate-ов вне текущего workspace всё ещё нужен более явный entry-point contract, чем текущие naming conventions.
 
 ## Связанные документы

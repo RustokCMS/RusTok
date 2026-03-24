@@ -24,6 +24,7 @@ leptos-next-metadata = { workspace = true }
 leptos_query = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 futures = "0.3"
+rustok-api.workspace = true
 rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront" }
 rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront" }
 

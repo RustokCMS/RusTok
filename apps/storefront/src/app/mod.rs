@@ -3,10 +3,12 @@ use crate::modules::{
 };
 use crate::pages::home::HomePage;
 use crate::shared::context::enabled_modules::{use_enabled_modules, EnabledModulesProvider};
+use crate::shared::context::module_request::ModuleRequestProvider;
 use crate::shared::local::{featured_products, locale_strings};
 use crate::widgets::footer::Footer;
 use crate::widgets::header::Header;
 use leptos::prelude::*;
+use std::collections::HashMap;
 
 #[component]
 fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
@@ -127,12 +129,23 @@ fn StorefrontModulePageContent(locale: String, route_segment: String) -> impl In
 }
 
 #[component]
-pub fn StorefrontShell(locale: String, enabled_modules: Vec<String>) -> impl IntoView {
+pub fn StorefrontShell(
+    locale: String,
+    enabled_modules: Vec<String>,
+    query_params: HashMap<String, String>,
+) -> impl IntoView {
     init_modules();
 
     view! {
         <EnabledModulesProvider initial_modules=enabled_modules>
-            <StorefrontShellContent locale=locale />
+            <ModuleRequestProvider
+                locale=Some(locale.clone())
+                route_segment=None
+                subpath=None
+                query_params=query_params
+            >
+                <StorefrontShellContent locale=locale />
+            </ModuleRequestProvider>
         </EnabledModulesProvider>
     }
 }
@@ -142,12 +155,20 @@ pub fn StorefrontModulePage(
     locale: String,
     enabled_modules: Vec<String>,
     route_segment: String,
+    query_params: HashMap<String, String>,
 ) -> impl IntoView {
     init_modules();
 
     view! {
         <EnabledModulesProvider initial_modules=enabled_modules>
-            <StorefrontModulePageContent locale=locale route_segment=route_segment />
+            <ModuleRequestProvider
+                locale=Some(locale.clone())
+                route_segment=Some(route_segment.clone())
+                subpath=None
+                query_params=query_params
+            >
+                <StorefrontModulePageContent locale=locale route_segment=route_segment />
+            </ModuleRequestProvider>
         </EnabledModulesProvider>
     }
 }

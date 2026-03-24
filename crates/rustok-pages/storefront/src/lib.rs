@@ -2,14 +2,22 @@ mod api;
 mod model;
 
 use leptos::prelude::*;
+use rustok_api::UiRouteContext;
 
 use crate::model::{PageDetail, PageListItem, StorefrontPagesData};
 
 #[component]
 pub fn PagesView() -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let selected_slug = route_context
+        .query_value("slug")
+        .unwrap_or("home")
+        .to_string();
+    let selected_locale = route_context.locale.clone();
+
     let pages_resource = Resource::new_blocking(
-        || (),
-        |_| async move { api::fetch_storefront_pages().await },
+        move || (selected_slug.clone(), selected_locale.clone()),
+        move |(page_slug, locale)| async move { api::fetch_storefront_pages(page_slug, locale).await },
     );
 
     view! {
@@ -22,7 +30,7 @@ pub fn PagesView() -> impl IntoView {
                     "Page-driven storefront experiences"
                 </h2>
                 <p class="text-sm text-muted-foreground">
-                    "This module package now renders real page data through the pages module contract instead of a static placeholder."
+                    "This module package renders real page data through the pages module GraphQL contract."
                 </p>
             </div>
 
@@ -59,41 +67,41 @@ pub fn PagesView() -> impl IntoView {
 fn PagesShowcase(data: StorefrontPagesData) -> impl IntoView {
     view! {
         <div class="space-y-6">
-            <HomePageCard home=data.home />
+            <SelectedPageCard page=data.selected_page />
             <PublishedPagesList items=data.pages.items total=data.pages.total />
         </div>
     }
 }
 
 #[component]
-fn HomePageCard(home: Option<PageDetail>) -> impl IntoView {
-    let Some(home) = home else {
+fn SelectedPageCard(page: Option<PageDetail>) -> impl IntoView {
+    let Some(page) = page else {
         return view! {
             <article class="rounded-2xl border border-dashed border-border p-6">
-                <h3 class="text-lg font-semibold text-card-foreground">"Home page is not published yet"</h3>
+                <h3 class="text-lg font-semibold text-card-foreground">"Requested page is not published yet"</h3>
                 <p class="mt-2 text-sm text-muted-foreground">
-                    "Create and publish a page with slug `home` in the pages admin package to populate this storefront surface."
+                    "Choose a page from the list below with `?slug=` or publish it from the pages admin package."
                 </p>
             </article>
         }
         .into_any();
     };
 
-    let title = home
+    let title = page
         .translation
         .as_ref()
         .and_then(|translation| translation.title.clone())
-        .unwrap_or_else(|| "Home".to_string());
-    let slug = home
+        .unwrap_or_else(|| "Page".to_string());
+    let slug = page
         .translation
         .as_ref()
         .and_then(|translation| translation.slug.clone())
         .unwrap_or_else(|| "home".to_string());
-    let effective_locale = home
+    let effective_locale = page
         .effective_locale
         .clone()
         .unwrap_or_else(|| "default".to_string());
-    let body = home
+    let body = page
         .body
         .as_ref()
         .map(|body| summarize_content(body.content.as_str(), body.format.as_str()))
@@ -102,7 +110,7 @@ fn HomePageCard(home: Option<PageDetail>) -> impl IntoView {
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground">
-                <span>{format!("slug: {slug}")}</span>
+                <span>{format!("selected slug: {slug}")}</span>
                 <span>"·"</span>
                 <span>{format!("locale: {effective_locale}")}</span>
             </div>
@@ -115,6 +123,11 @@ fn HomePageCard(home: Option<PageDetail>) -> impl IntoView {
 
 #[component]
 fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let route_segment = route_context
+        .route_segment
+        .unwrap_or_else(|| "pages".to_string());
+
     if items.is_empty() {
         return view! {
             <article class="rounded-2xl border border-dashed border-border p-6">
@@ -136,6 +149,8 @@ fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
                 {items
                     .into_iter()
                     .map(|page| {
+                        let slug = page.slug.unwrap_or_else(|| "missing-slug".to_string());
+                        let href = format!("/modules/{route_segment}?slug={slug}");
                         view! {
                             <article class="rounded-2xl border border-border bg-background p-5">
                                 <div class="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
@@ -144,12 +159,9 @@ fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
                                 <h4 class="mt-2 text-base font-semibold text-foreground">
                                     {page.title.unwrap_or_else(|| "Untitled page".to_string())}
                                 </h4>
-                                <p class="mt-2 text-sm text-muted-foreground">
-                                    {format!(
-                                        "/{}",
-                                        page.slug.unwrap_or_else(|| "missing-slug".to_string())
-                                    )}
-                                </p>
+                                <a class="mt-2 inline-flex text-sm text-primary hover:underline" href=href>
+                                    {format!("Open {slug}")}
+                                </a>
                                 <p class="mt-3 text-xs text-muted-foreground">
                                     {format!("template: {}", page.template)}
                                 </p>

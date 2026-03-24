@@ -111,10 +111,13 @@ default_enabled = ["content", "commerce", "pages"]
 >
 > Для Leptos-host приложений foundation тоже уже поднят частично:
 > `apps/admin/build.rs` генерирует dashboard/nav/page registry wiring из `[provides.admin_ui].leptos_crate`
-> и соглашения `<PascalSlug>Admin`, а `apps/admin` монтирует module root pages через generic route
-> `/modules/:module_slug`. `apps/storefront/build.rs` генерирует slot/page wiring
+> и соглашения `<PascalSlug>Admin`, а `apps/admin` монтирует module root pages через generic routes
+> `/modules/:module_slug` и `/modules/:module_slug/*module_path`, прокидывая module-agnostic `UiRouteContext`
+> и manifest-driven secondary nav из optional `[[provides.admin_ui.pages]]`. `apps/storefront/build.rs` генерирует slot/page wiring
 > из `[provides.storefront_ui].leptos_crate`, optional `slot`, `route_segment`, `page_title`
-> и соглашения `<PascalSlug>View`. Nested admin route contract остаётся отдельным шагом.
+> и соглашения `<PascalSlug>View`. `apps/storefront` рендерит эти async surface-ы через streaming SSR
+> и прокидывает module-agnostic `UiRouteContext` (locale, route segment, subpath, query params), а модули `pages`
+> и `blog`, плюс `workflow/templates`, теперь служат рабочими exemplar-ами для module-owned Leptos UI.
 
 
 ## UI-контракты модулей в манифесте и сборке
@@ -127,6 +130,9 @@ default_enabled = ["content", "commerce", "pages"]
 - `leptos_crate` (в `rustok-module.toml`) — указывает имя Rust-субкрейта для админки или витрины.
 - `route_segment` (optional, только для `[provides.admin_ui]`) — относительный segment для host route `/modules/:module_slug`; по умолчанию равен `module.slug`.
 - `nav_label` (optional, только для `[provides.admin_ui]`) — подпись generated nav item; по умолчанию равна `module.name`.
+- `[[provides.admin_ui.pages]]` (optional) — декларативный список nested admin subpages для generic host secondary nav.
+- `provides.admin_ui.pages[].subpath` — относительный subpath внутри `/modules/:module_slug/*module_path`, который пакет сам обрабатывает через `UiRouteContext`.
+- `provides.admin_ui.pages[].title` / `nav_label` — optional metadata для secondary nav и заголовков host-обвязки.
 - `slot` (optional, только для `[provides.storefront_ui]`) — host storefront slot (`home_after_hero`, `home_after_catalog`, `home_before_footer`); по умолчанию `home_after_hero`.
 - `route_segment` (optional, для `[provides.storefront_ui]`) — segment для generic storefront route `/modules/:route_segment`; по умолчанию равен `module.slug`.
 - `page_title` (optional, только для `[provides.storefront_ui]`) — заголовок generic storefront module page; по умолчанию равен `module.name`.
@@ -159,7 +165,7 @@ page_title = "Blog"
 
 Leptos-host приложения (`apps/admin`, `apps/storefront`) подключают модульные пакеты через свои `build.rs`, а `BuildExecutor` затем собирает реальные host-артефакты по manifest-derived plan. Приложения Next.js требуют ручного добавления зависимостей в `package.json` и ручной пересборки.
 
-Референсные образцы для Leptos: модуль `blog` (`crates/rustok-blog/admin/` и `crates/rustok-blog/storefront/`), модуль `workflow` (`crates/rustok-workflow/admin/` как root-page package поверх legacy detail flow) и модуль `pages` (`crates/rustok-pages/admin/` и `crates/rustok-pages/storefront/`).
+Референсные образцы для Leptos: модуль `workflow` (`crates/rustok-workflow/admin/` как root-page package поверх legacy detail flow), модуль `pages` (`crates/rustok-pages/admin/` и `crates/rustok-pages/storefront/`) как рабочий end-to-end exemplar для page-driven surfaces и модуль `blog` (`crates/rustok-blog/admin/` и `crates/rustok-blog/storefront/`) как второй рабочий exemplar для обычного content CRUD/read-path через тот же host-contract и `UiRouteContext`.
 
 Исключение:
 

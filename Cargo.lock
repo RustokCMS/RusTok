@@ -9606,6 +9606,7 @@ dependencies = [
  "leptos_router",
  "log",
  "reqwest 0.13.2",
+ "rustok-api",
  "rustok-blog-admin",
  "rustok-pages-admin",
  "rustok-workflow-admin",
@@ -9724,8 +9725,11 @@ name = "rustok-blog-storefront"
 version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
+ "leptos-graphql",
+ "rustok-api",
  "rustok-blog",
  "rustok-core",
+ "serde",
 ]
 
 [[package]]
@@ -10049,6 +10053,7 @@ version = "0.1.0"
 dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
+ "rustok-api",
  "serde",
 ]
 
@@ -10182,6 +10187,7 @@ dependencies = [
  "leptos_i18n_build",
  "leptos_query",
  "leptos_router",
+ "rustok-api",
  "rustok-blog-storefront",
  "rustok-pages-storefront",
  "serde",
@@ -10279,6 +10285,7 @@ dependencies = [
  "leptos-auth",
  "leptos-graphql",
  "leptos_router",
+ "rustok-api",
  "serde",
  "serde_json",
  "web-sys",

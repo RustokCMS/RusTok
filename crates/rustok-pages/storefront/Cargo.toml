@@ -9,3 +9,4 @@ description = "Leptos storefront UI package for the rustok-pages module"
 leptos.workspace = true
 leptos-graphql.workspace = true
 serde = { workspace = true, features = ["derive"] }
+rustok-api.workspace = true

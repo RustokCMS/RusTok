@@ -44,6 +44,17 @@ struct LeptosUiContract {
     route_segment: Option<String>,
     #[serde(default)]
     nav_label: Option<String>,
+    #[serde(default)]
+    pages: Vec<AdminNestedPageContract>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct AdminNestedPageContract {
+    subpath: String,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    nav_label: Option<String>,
 }
 
 #[derive(Debug)]
@@ -53,6 +64,14 @@ struct AdminUiEntry {
     crate_ident: String,
     component_name: String,
     route_segment: String,
+    nav_label: String,
+    child_pages: Vec<AdminChildPageEntry>,
+}
+
+#[derive(Debug)]
+struct AdminChildPageEntry {
+    subpath: String,
+    title: String,
     nav_label: String,
 }
 
@@ -107,6 +126,22 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
             component_name: format!("{}Admin", pascal_case(&slug)),
             route_segment: admin_ui.route_segment.unwrap_or_else(|| slug.clone()),
             nav_label: admin_ui.nav_label.unwrap_or_else(|| name.clone()),
+            child_pages: admin_ui
+                .pages
+                .into_iter()
+                .filter_map(|page| {
+                    let subpath = page.subpath.trim_matches('/').to_string();
+                    if subpath.is_empty() {
+                        return None;
+                    }
+                    let fallback = title_case(subpath.rsplit('/').next().unwrap_or("page"));
+                    Some(AdminChildPageEntry {
+                        title: page.title.unwrap_or_else(|| fallback.clone()),
+                        nav_label: page.nav_label.unwrap_or_else(|| fallback.clone()),
+                        subpath,
+                    })
+                })
+                .collect(),
             slug,
             name,
             crate_ident: leptos_crate.replace('-', "_"),
@@ -126,8 +161,28 @@ fn render_admin_registry_codegen(entries: &[AdminUiEntry]) -> String {
     let mut out = String::new();
     out.push_str("use leptos::prelude::*;\n");
     out.push_str(
-        "use crate::app::modules::{register_component, register_page, AdminComponentRegistration, AdminPageRegistration, AdminSlot};\n\n",
+        "use crate::app::modules::{register_component, register_page, AdminChildPageRegistration, AdminComponentRegistration, AdminPageRegistration, AdminSlot};\n\n",
     );
+
+    for entry in entries {
+        if entry.child_pages.is_empty() {
+            continue;
+        }
+        out.push_str(&format!(
+            "const {const_name}: &[AdminChildPageRegistration] = &[\n",
+            const_name = admin_child_pages_const_name(&entry.slug),
+        ));
+        for page in &entry.child_pages {
+            out.push_str(&format!(
+                "    AdminChildPageRegistration {{ subpath: \"{subpath}\", title: \"{title}\", nav_label: \"{nav_label}\" }},\n",
+                subpath = page.subpath,
+                title = page.title,
+                nav_label = page.nav_label,
+            ));
+        }
+        out.push_str("];\n\n");
+    }
+
     out.push_str("pub fn register_generated_components() {\n");
     if entries.is_empty() {
         out.push_str("}\n\n");
@@ -140,10 +195,15 @@ fn render_admin_registry_codegen(entries: &[AdminUiEntry]) -> String {
                 fn_name = admin_render_fn_name(&entry.slug),
             ));
             out.push_str(&format!(
-                "    register_page(AdminPageRegistration {{ module_slug: \"{slug}\", route_segment: \"{route_segment}\", title: \"{title}\", render: {page_fn} }});\n",
+                "    register_page(AdminPageRegistration {{ module_slug: \"{slug}\", route_segment: \"{route_segment}\", title: \"{title}\", child_pages: {child_pages}, render: {page_fn} }});\n",
                 slug = entry.slug,
                 route_segment = entry.route_segment,
                 title = entry.nav_label,
+                child_pages = if entry.child_pages.is_empty() {
+                    "&[]".to_string()
+                } else {
+                    admin_child_pages_const_name(&entry.slug)
+                },
                 page_fn = admin_page_render_fn_name(&entry.slug),
             ));
             out.push_str(&format!(
@@ -249,6 +309,13 @@ fn admin_nav_render_fn_name(slug: &str) -> String {
     format!("render_{}_nav_item", slug.replace('-', "_"))
 }
 
+fn admin_child_pages_const_name(slug: &str) -> String {
+    format!(
+        "{}_ADMIN_CHILD_PAGES",
+        slug.replace('-', "_").to_ascii_uppercase()
+    )
+}
+
 fn pascal_case(value: &str) -> String {
     value
         .split(['-', '_'])
@@ -261,6 +328,21 @@ fn pascal_case(value: &str) -> String {
             }
         })
         .collect()
+}
+
+fn title_case(value: &str) -> String {
+    value
+        .split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn workspace_root() -> PathBuf {

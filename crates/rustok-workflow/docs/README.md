@@ -87,10 +87,10 @@ Trigger: order.paid
 ## Admin UI
 
 - Publishable Leptos root page package: `crates/rustok-workflow/admin`.
-- `rustok-module.toml [provides.admin_ui]` теперь объявляет `rustok-workflow-admin`, `route_segment = "workflow"` и `nav_label = "Workflow"`.
-- `apps/admin` монтирует этот пакет через generic route `/modules/workflow`, не зная о модуле по имени в router или sidebar.
-- Root page уже живёт в модульном crate и покрывает templates + overview/list.
-- Legacy detail/edit flow пока ещё остаётся на маршрутах `/workflows/*` внутри `apps/admin` до richer nested admin route contract.
+- `rustok-module.toml [provides.admin_ui]` теперь объявляет `rustok-workflow-admin`, `route_segment = "workflow"`, `nav_label = "Workflow"` и nested subpage `templates` через `[[provides.admin_ui.pages]]`.
+- `apps/admin` монтирует этот пакет через generic routes `/modules/workflow` и `/modules/workflow/templates`, не зная о модуле по имени в router или sidebar.
+- Root page уже живёт в модульном crate и покрывает overview/list, а templates теперь открываются как module-owned nested route поверх generic host contract.
+- Legacy detail/edit flow всё ещё остаётся на маршрутах `/workflows/*` внутри `apps/admin`; новый nested contract пока закрывает package-owned overview/templates слой, а не весь legacy workflow editor.
 
 ## Связанные документы
 

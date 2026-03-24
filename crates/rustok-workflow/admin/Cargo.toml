@@ -15,4 +15,5 @@ leptos-graphql.workspace = true
 leptos_router.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+rustok-api.workspace = true
 web-sys = { version = "0.3", features = ["Location", "Window"] }

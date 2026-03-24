@@ -8,12 +8,12 @@
 
 - Export the module-owned `PagesAdmin` root component for `apps/admin`.
 - Keep pages-specific admin UI inside the module boundary instead of `apps/admin`.
-- Act as the publishable root package for future page CRUD, menu, and builder screens.
+- Act as the canonical working admin vertical slice for module-owned page CRUD.
 
 ## Interactions
 
 - Used by `apps/admin` through manifest-driven generated wiring.
-- Depends on `rustok-pages` for module ownership and shared types.
+- Uses the pages module GraphQL contract for list/create/edit/update/publish/delete flows.
 - Follows the generic host route contract `/modules/:module_slug`.
 
 ## Entry points

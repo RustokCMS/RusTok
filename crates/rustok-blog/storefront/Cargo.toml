@@ -6,5 +6,8 @@ license.workspace = true
 
 [dependencies]
 leptos.workspace = true
+leptos-graphql.workspace = true
+serde = { workspace = true, features = ["derive"] }
 rustok-core.workspace = true
 rustok-blog.workspace = true
+rustok-api.workspace = true

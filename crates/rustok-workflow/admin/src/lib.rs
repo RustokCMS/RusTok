@@ -5,6 +5,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::components::A;
+use rustok_api::UiRouteContext;
 
 use crate::model::{WorkflowStatus, WorkflowSummary, WorkflowTemplateDto};
 
@@ -12,9 +13,13 @@ use crate::model::{WorkflowStatus, WorkflowSummary, WorkflowTemplateDto};
 pub fn WorkflowAdmin() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
-
-    let (show_templates, set_show_templates) = signal(false);
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let route_segment = route_context
+        .route_segment
+        .clone()
+        .unwrap_or_else(|| "workflow".to_string());
+    let showing_templates = route_context.subpath_matches("templates");
 
     let workflows_resource = Resource::new(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
@@ -36,12 +41,16 @@ pub fn WorkflowAdmin() -> impl IntoView {
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <button
-                        on:click=move |_| set_show_templates.update(|value| *value = !*value)
-                        class="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground"
+                    <A
+                        href=if showing_templates {
+                            format!("/modules/{route_segment}")
+                        } else {
+                            format!("/modules/{route_segment}/templates")
+                        }
+                        attr:class="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground"
                     >
-                        "Templates"
-                    </button>
+                        {if showing_templates { "Open overview" } else { "Open templates" }}
+                    </A>
                     <A
                         href="/workflows"
                         attr:class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
@@ -51,13 +60,12 @@ pub fn WorkflowAdmin() -> impl IntoView {
                 </div>
             </header>
 
-            <Show when=move || show_templates.get()>
+            <Show when=move || showing_templates>
                 <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <TemplateGallery
                         token=token.get()
                         tenant_slug=tenant.get()
                         on_created=Callback::new(move |_| {
-                            set_show_templates.set(false);
                             set_refresh_nonce.update(|value| *value += 1);
                         })
                     />

@@ -25,6 +25,22 @@ pub struct PageTranslation {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PageBody {
+    pub locale: String,
+    pub content: String,
+    pub format: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PageDetail {
+    pub id: String,
+    pub status: String,
+    pub template: String,
+    pub translation: Option<PageTranslation>,
+    pub body: Option<PageBody>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageMutationResult {
     pub id: String,
     pub status: String,

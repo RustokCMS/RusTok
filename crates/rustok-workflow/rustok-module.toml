@@ -22,3 +22,8 @@ webhook_routes = "controllers::webhook_routes"
 leptos_crate = "rustok-workflow-admin"
 route_segment = "workflow"
 nav_label = "Workflow"
+
+[[provides.admin_ui.pages]]
+subpath = "templates"
+title = "Workflow Templates"
+nav_label = "Templates"

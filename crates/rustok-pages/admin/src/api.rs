@@ -1,18 +1,20 @@
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{CreatePageDraft, PageList, PageMutationResult};
+use crate::model::{CreatePageDraft, PageDetail, PageList, PageMutationResult};
 
 pub type ApiError = GraphqlHttpError;
 
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
+const PAGE_QUERY: &str =
+    "query PageAdmin($id: UUID!) { page(id: $id) { id status template translation { locale title slug } body { locale content format } } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id status updatedAt translation { locale title slug } } }";
+const UPDATE_PAGE_MUTATION: &str = "mutation UpdatePage($id: UUID!, $input: UpdateGqlPageInput!) { updatePage(id: $id, input: $input) { id status updatedAt translation { locale title slug } } }";
 const PUBLISH_PAGE_MUTATION: &str =
     "mutation PublishPage($id: UUID!) { publishPage(id: $id) { id status updatedAt translation { locale title slug } } }";
 const UNPUBLISH_PAGE_MUTATION: &str =
     "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id status updatedAt translation { locale title slug } } }";
-const DELETE_PAGE_MUTATION: &str =
-    "mutation DeletePage($id: UUID!) { deletePage(id: $id) }";
+const DELETE_PAGE_MUTATION: &str = "mutation DeletePage($id: UUID!) { deletePage(id: $id) }";
 
 #[derive(Debug, Deserialize)]
 struct PagesResponse {
@@ -23,6 +25,17 @@ struct PagesResponse {
 struct CreatePageResponse {
     #[serde(rename = "createPage")]
     create_page: PageMutationResult,
+}
+
+#[derive(Debug, Deserialize)]
+struct PageResponse {
+    page: Option<PageDetail>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdatePageResponse {
+    #[serde(rename = "updatePage")]
+    update_page: PageMutationResult,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,6 +74,12 @@ struct CreatePageVariables {
 }
 
 #[derive(Debug, Serialize)]
+struct UpdatePageVariables {
+    id: String,
+    input: UpdatePageInput,
+}
+
+#[derive(Debug, Serialize)]
 struct CreatePageInput {
     translations: Vec<CreatePageTranslationInput>,
     template: Option<String>,
@@ -68,6 +87,13 @@ struct CreatePageInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     blocks: Option<Vec<()>>,
     publish: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdatePageInput {
+    translations: Option<Vec<CreatePageTranslationInput>>,
+    template: Option<String>,
+    body: Option<CreatePageBodyInput>,
 }
 
 #[derive(Debug, Serialize)]
@@ -152,6 +178,16 @@ pub async fn fetch_pages(
     Ok(response.pages)
 }
 
+pub async fn fetch_page(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<Option<PageDetail>, ApiError> {
+    let response: PageResponse =
+        request(PAGE_QUERY, PageIdVariables { id }, token, tenant_slug).await?;
+    Ok(response.page)
+}
+
 pub async fn create_page(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -185,13 +221,51 @@ pub async fn create_page(
     Ok(response.create_page)
 }
 
+pub async fn update_page(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    draft: CreatePageDraft,
+) -> Result<PageMutationResult, ApiError> {
+    let response: UpdatePageResponse = request(
+        UPDATE_PAGE_MUTATION,
+        UpdatePageVariables {
+            id,
+            input: UpdatePageInput {
+                translations: Some(vec![CreatePageTranslationInput {
+                    locale: draft.locale.clone(),
+                    title: draft.title,
+                    slug: Some(draft.slug),
+                    meta_title: None,
+                    meta_description: None,
+                }]),
+                template: draft.template,
+                body: Some(CreatePageBodyInput {
+                    locale: draft.locale,
+                    content: draft.body,
+                    format: Some("markdown".to_string()),
+                }),
+            },
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.update_page)
+}
+
 pub async fn publish_page(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<PageMutationResult, ApiError> {
-    let response: PublishPageResponse =
-        request(PUBLISH_PAGE_MUTATION, PageIdVariables { id }, token, tenant_slug).await?;
+    let response: PublishPageResponse = request(
+        PUBLISH_PAGE_MUTATION,
+        PageIdVariables { id },
+        token,
+        tenant_slug,
+    )
+    .await?;
     Ok(response.publish_page)
 }
 
@@ -200,8 +274,13 @@ pub async fn unpublish_page(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<PageMutationResult, ApiError> {
-    let response: UnpublishPageResponse =
-        request(UNPUBLISH_PAGE_MUTATION, PageIdVariables { id }, token, tenant_slug).await?;
+    let response: UnpublishPageResponse = request(
+        UNPUBLISH_PAGE_MUTATION,
+        PageIdVariables { id },
+        token,
+        tenant_slug,
+    )
+    .await?;
     Ok(response.unpublish_page)
 }
 
@@ -210,7 +289,12 @@ pub async fn delete_page(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<bool, ApiError> {
-    let response: DeletePageResponse =
-        request(DELETE_PAGE_MUTATION, PageIdVariables { id }, token, tenant_slug).await?;
+    let response: DeletePageResponse = request(
+        DELETE_PAGE_MUTATION,
+        PageIdVariables { id },
+        token,
+        tenant_slug,
+    )
+    .await?;
     Ok(response.delete_page)
 }

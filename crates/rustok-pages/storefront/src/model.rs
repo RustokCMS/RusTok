@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StorefrontPagesData {
-    pub home: Option<PageDetail>,
+    pub selected_page: Option<PageDetail>,
     pub pages: PageList,
 }
 

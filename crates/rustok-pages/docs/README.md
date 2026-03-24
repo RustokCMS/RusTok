@@ -33,6 +33,8 @@
 - REST reorder: `POST /api/admin/pages/{id}/blocks/reorder` с `block_ids`.
 - GraphQL mutations: `createPage`/`updatePage` (поддерживают `body.format=grapesjs_v1`), `addBlock`, `updateBlock`, `deleteBlock`, `reorderBlocks`.
 - Для блоковых операций используется существующая RBAC-модель `pages:*`; проверка делается по `AuthContext.permissions`, а затем в сервисы передаётся `SecurityContext`.
+- GraphQL read/write entry points pages теперь по умолчанию берут tenant из `TenantContext`; optional
+  `tenantId` остаётся только как override-аргумент, чтобы publishable UI-пакеты не зависели от tenant UUID в host-е.
 
 На текущем этапе `body.format=grapesjs_v1` считается каноническим write-path для нового visual page-builder, а block endpoints сохраняются как legacy/migration-compatible поверхность до синхронизации storefront renderers.
 
@@ -43,3 +45,5 @@ OpenAPI и GraphQL типы/мутации должны поддерживать
 - `crates/rustok-pages/admin/` — publishable Leptos admin root package (`PagesAdmin`).
 - `crates/rustok-pages/storefront/` — publishable Leptos storefront root package (`PagesView`).
 - Host applications подключают их через manifest-driven generated wiring, без ручной pages-логики в `apps/admin` и `apps/storefront`.
+- `PagesAdmin` теперь уже не scaffold: пакет делает реальный list/create/edit/update/publish/delete flow через модульный GraphQL.
+- `PagesView` теперь рендерит реальный storefront read-path поверх `pageBySlug(slug: ...)`, каталога опубликованных страниц и generic `UiRouteContext`, который host передаёт без knowledge о конкретном модуле.

@@ -1,29 +1,31 @@
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
-use crate::model::StorefrontPagesData;
+use crate::model::StorefrontBlogData;
 
 pub type ApiError = GraphqlHttpError;
 
-const STOREFRONT_PAGES_QUERY: &str = "query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) { selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) { effectiveLocale translation { locale title slug metaTitle metaDescription } body { locale content format } } pages(filter: $filter) { total items { id title slug status template } } }";
+const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt body bodyFormat status publishedAt tags featuredImageUrl } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status publishedAt } } }";
 
 #[derive(Debug, Deserialize)]
-struct StorefrontPagesResponse {
-    #[serde(rename = "selectedPage")]
-    selected_page: Option<crate::model::PageDetail>,
-    pages: crate::model::PageList,
+struct StorefrontBlogResponse {
+    #[serde(rename = "selectedPost")]
+    selected_post: Option<crate::model::BlogPostDetail>,
+    posts: crate::model::BlogPostList,
 }
 
 #[derive(Debug, Serialize)]
-struct StorefrontPagesVariables {
-    #[serde(rename = "pageSlug")]
-    page_slug: String,
-    filter: ListPagesFilter,
+struct StorefrontBlogVariables {
+    #[serde(rename = "postSlug")]
+    post_slug: String,
+    filter: PostsFilter,
     locale: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
-struct ListPagesFilter {
+struct PostsFilter {
+    status: Option<String>,
+    locale: Option<String>,
     page: u64,
     #[serde(rename = "perPage")]
     per_page: u64,
@@ -83,15 +85,17 @@ where
     .await
 }
 
-pub async fn fetch_storefront_pages(
-    page_slug: String,
+pub async fn fetch_storefront_blog(
+    post_slug: String,
     locale: Option<String>,
-) -> Result<StorefrontPagesData, ApiError> {
-    let response: StorefrontPagesResponse = request(
-        STOREFRONT_PAGES_QUERY,
-        StorefrontPagesVariables {
-            page_slug,
-            filter: ListPagesFilter {
+) -> Result<StorefrontBlogData, ApiError> {
+    let response: StorefrontBlogResponse = request(
+        STOREFRONT_BLOG_QUERY,
+        StorefrontBlogVariables {
+            post_slug,
+            filter: PostsFilter {
+                status: Some("PUBLISHED".to_string()),
+                locale: locale.clone(),
                 page: 1,
                 per_page: 6,
             },
@@ -100,8 +104,8 @@ pub async fn fetch_storefront_pages(
     )
     .await?;
 
-    Ok(StorefrontPagesData {
-        selected_page: response.selected_page,
-        pages: response.pages,
+    Ok(StorefrontBlogData {
+        selected_post: response.selected_post,
+        posts: response.posts,
     })
 }

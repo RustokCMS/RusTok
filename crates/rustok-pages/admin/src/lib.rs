@@ -14,12 +14,13 @@ pub fn PagesAdmin() -> impl IntoView {
     let tenant = use_tenant();
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    let (editing_page_id, set_editing_page_id) = signal(Option::<String>::None);
     let (title, set_title) = signal(String::new());
     let (slug, set_slug) = signal(String::new());
     let (body, set_body) = signal(String::new());
     let (locale, set_locale) = signal("en".to_string());
     let (publish_now, set_publish_now) = signal(false);
-    let (busy_page_id, set_busy_page_id) = signal(Option::<String>::None);
+    let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_error, set_submit_error) = signal(Option::<String>::None);
 
     let pages_resource = Resource::new(
@@ -29,7 +30,64 @@ pub fn PagesAdmin() -> impl IntoView {
         },
     );
 
-    let create_page = move |ev: SubmitEvent| {
+    let reset_form = move || {
+        set_editing_page_id.set(None);
+        set_title.set(String::new());
+        set_slug.set(String::new());
+        set_body.set(String::new());
+        set_locale.set("en".to_string());
+        set_publish_now.set(false);
+    };
+
+    let edit_page = Callback::new(move |page_id: String| {
+        let token_value = token.get_untracked();
+        let tenant_value = tenant.get_untracked();
+        set_submit_error.set(None);
+        set_busy_key.set(Some(format!("edit:{page_id}")));
+
+        spawn_local(async move {
+            match api::fetch_page(token_value, tenant_value, page_id.clone()).await {
+                Ok(Some(page)) => {
+                    let page_locale = page
+                        .translation
+                        .as_ref()
+                        .map(|translation| translation.locale.clone())
+                        .or_else(|| page.body.as_ref().map(|page_body| page_body.locale.clone()))
+                        .unwrap_or_else(|| "en".to_string());
+                    let page_title = page
+                        .translation
+                        .as_ref()
+                        .and_then(|translation| translation.title.clone())
+                        .unwrap_or_default();
+                    let page_slug = page
+                        .translation
+                        .as_ref()
+                        .and_then(|translation| translation.slug.clone())
+                        .unwrap_or_default();
+                    let page_body = page
+                        .body
+                        .map(|page_body| page_body.content)
+                        .unwrap_or_default();
+
+                    set_editing_page_id.set(Some(page_id.clone()));
+                    set_locale.set(page_locale);
+                    set_title.set(page_title);
+                    set_slug.set(page_slug);
+                    set_body.set(page_body);
+                    set_publish_now.set(page.status.eq_ignore_ascii_case("published"));
+                }
+                Ok(None) => {
+                    set_submit_error.set(Some("Page not found for editing.".to_string()));
+                }
+                Err(err) => {
+                    set_submit_error.set(Some(format!("Failed to load page: {err}")));
+                }
+            }
+            set_busy_key.set(None);
+        });
+    });
+
+    let submit_page = move |ev: SubmitEvent| {
         ev.prevent_default();
         set_submit_error.set(None);
 
@@ -44,29 +102,41 @@ pub fn PagesAdmin() -> impl IntoView {
 
         if draft.title.is_empty() || draft.slug.is_empty() || draft.body.is_empty() {
             set_submit_error.set(Some(
-                "Title, slug and body are required to create a working page.".to_string(),
+                "Title, slug and body are required to save a page.".to_string(),
             ));
             return;
         }
 
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
-        set_busy_page_id.set(Some("create".to_string()));
+        let editing_page = editing_page_id.get_untracked();
+        set_busy_key.set(Some(if let Some(page_id) = editing_page.as_ref() {
+            format!("save:{page_id}")
+        } else {
+            "create".to_string()
+        }));
 
         spawn_local(async move {
-            match api::create_page(token_value, tenant_value, draft).await {
-                Ok(_) => {
-                    set_title.set(String::new());
-                    set_slug.set(String::new());
-                    set_body.set(String::new());
-                    set_publish_now.set(false);
+            let result = match editing_page {
+                Some(page_id) => api::update_page(token_value, tenant_value, page_id, draft).await,
+                None => api::create_page(token_value, tenant_value, draft).await,
+            };
+
+            match result {
+                Ok(page) => {
+                    let status = page.status.to_lowercase();
+                    set_editing_page_id.set(Some(page.id));
+                    if status == "published" {
+                        set_publish_now.set(true);
+                    }
                     set_refresh_nonce.update(|value| *value += 1);
                 }
                 Err(err) => {
-                    set_submit_error.set(Some(format!("Failed to create page: {err}")));
+                    set_submit_error.set(Some(format!("Failed to save page: {err}")));
                 }
             }
-            set_busy_page_id.set(None);
+
+            set_busy_key.set(None);
         });
     };
 
@@ -74,22 +144,28 @@ pub fn PagesAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         set_submit_error.set(None);
-        set_busy_page_id.set(Some(page_id.clone()));
+        set_busy_key.set(Some(format!("publish:{page_id}")));
 
         spawn_local(async move {
             let result = if publish {
-                api::publish_page(token_value, tenant_value, page_id).await
+                api::publish_page(token_value, tenant_value, page_id.clone()).await
             } else {
-                api::unpublish_page(token_value, tenant_value, page_id).await
+                api::unpublish_page(token_value, tenant_value, page_id.clone()).await
             };
 
-            if let Err(err) = result {
-                set_submit_error.set(Some(format!("Failed to update page status: {err}")));
-            } else {
-                set_refresh_nonce.update(|value| *value += 1);
+            match result {
+                Ok(page) => {
+                    if editing_page_id.get_untracked().as_deref() == Some(page.id.as_str()) {
+                        set_publish_now.set(page.status.eq_ignore_ascii_case("published"));
+                    }
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(err) => {
+                    set_submit_error.set(Some(format!("Failed to update page status: {err}")));
+                }
             }
 
-            set_busy_page_id.set(None);
+            set_busy_key.set(None);
         });
     });
 
@@ -97,11 +173,16 @@ pub fn PagesAdmin() -> impl IntoView {
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         set_submit_error.set(None);
-        set_busy_page_id.set(Some(page_id.clone()));
+        set_busy_key.set(Some(format!("delete:{page_id}")));
 
         spawn_local(async move {
-            match api::delete_page(token_value, tenant_value, page_id).await {
-                Ok(true) => set_refresh_nonce.update(|value| *value += 1),
+            match api::delete_page(token_value, tenant_value, page_id.clone()).await {
+                Ok(true) => {
+                    if editing_page_id.get_untracked().as_deref() == Some(page_id.as_str()) {
+                        reset_form();
+                    }
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
                 Ok(false) => {
                     set_submit_error.set(Some("Delete page returned false.".to_string()));
                 }
@@ -109,7 +190,7 @@ pub fn PagesAdmin() -> impl IntoView {
                     set_submit_error.set(Some(format!("Failed to delete page: {err}")));
                 }
             }
-            set_busy_page_id.set(None);
+            set_busy_key.set(None);
         });
     });
 
@@ -122,12 +203,12 @@ pub fn PagesAdmin() -> impl IntoView {
                     </span>
                     <h1 class="text-2xl font-semibold text-card-foreground">"Pages Builder"</h1>
                     <p class="max-w-2xl text-sm text-muted-foreground">
-                        "Canonical module-owned admin slice: list, create, publish and delete pages through the pages module GraphQL contract."
+                        "Canonical module-owned admin slice: list, create, edit, publish and delete pages through the pages module GraphQL contract."
                     </p>
                 </div>
             </header>
 
-            <section class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+            <section class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
                 <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="mb-4 flex items-start justify-between gap-4">
                         <div>
@@ -154,7 +235,9 @@ pub fn PagesAdmin() -> impl IntoView {
                                         <PagesTable
                                             items=page_list.items
                                             total=page_list.total
-                                            busy_page_id=busy_page_id.get()
+                                            editing_page_id=editing_page_id.get()
+                                            busy_key=busy_key.get()
+                                            on_edit=edit_page
                                             on_toggle_publish=publish_page
                                             on_delete=delete_page
                                         />
@@ -172,13 +255,41 @@ pub fn PagesAdmin() -> impl IntoView {
 
                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="space-y-1">
-                        <h2 class="text-lg font-semibold text-card-foreground">"Create page"</h2>
+                        <h2 class="text-lg font-semibold text-card-foreground">
+                            {move || {
+                                if editing_page_id.get().is_some() {
+                                    "Edit page"
+                                } else {
+                                    "Create page"
+                                }
+                            }}
+                        </h2>
                         <p class="text-sm text-muted-foreground">
-                            "A minimal working create flow for the module-owned package."
+                            "A standard module-owned CRUD form that lives entirely inside the package."
                         </p>
                     </div>
 
-                    <form class="mt-5 space-y-4" on:submit=create_page>
+                    <Show when=move || editing_page_id.get().is_some()>
+                        <div class="mt-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
+                            <div class="text-sm text-muted-foreground">
+                                {move || {
+                                    editing_page_id
+                                        .get()
+                                        .map(|page_id| format!("Editing page {page_id}"))
+                                        .unwrap_or_default()
+                                }}
+                            </div>
+                            <button
+                                type="button"
+                                class="text-xs font-medium text-primary hover:underline"
+                                on:click=move |_| reset_form()
+                            >
+                                "Create new instead"
+                            </button>
+                        </div>
+                    </Show>
+
+                    <form class="mt-5 space-y-4" on:submit=submit_page>
                         <label class="block space-y-2">
                             <span class="text-sm font-medium text-card-foreground">"Title"</span>
                             <input
@@ -242,11 +353,26 @@ pub fn PagesAdmin() -> impl IntoView {
                         <button
                             type="submit"
                             class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
-                            disabled=move || busy_page_id.get().as_deref() == Some("create")
+                            disabled=move || {
+                                busy_key.get().as_deref() == Some("create")
+                                    || busy_key
+                                        .get()
+                                        .as_deref()
+                                        .map(|key| key.starts_with("save:"))
+                                        .unwrap_or(false)
+                            }
                         >
                             {move || {
-                                if busy_page_id.get().as_deref() == Some("create") {
-                                    "Creating..."
+                                if busy_key.get().as_deref() == Some("create")
+                                    || busy_key
+                                        .get()
+                                        .as_deref()
+                                        .map(|key| key.starts_with("save:"))
+                                        .unwrap_or(false)
+                                {
+                                    "Saving..."
+                                } else if editing_page_id.get().is_some() {
+                                    "Update page"
                                 } else {
                                     "Create page"
                                 }
@@ -263,7 +389,9 @@ pub fn PagesAdmin() -> impl IntoView {
 fn PagesTable(
     items: Vec<PageListItem>,
     total: u64,
-    busy_page_id: Option<String>,
+    editing_page_id: Option<String>,
+    busy_key: Option<String>,
+    on_edit: Callback<String>,
     on_toggle_publish: Callback<(String, bool)>,
     on_delete: Callback<String>,
 ) -> impl IntoView {
@@ -297,10 +425,16 @@ fn PagesTable(
                             .into_iter()
                             .map(|page| {
                                 let page_id = page.id.clone();
-                                let is_busy = busy_page_id.as_deref() == Some(page_id.as_str());
+                                let is_editing =
+                                    editing_page_id.as_deref() == Some(page_id.as_str());
                                 let is_published = page.status.eq_ignore_ascii_case("published");
+                                let is_busy = busy_key
+                                    .as_deref()
+                                    .map(|key| key.ends_with(page_id.as_str()))
+                                    .unwrap_or(false);
+
                                 view! {
-                                    <tr class="transition-colors hover:bg-muted/30">
+                                    <tr class=("bg-primary/5", is_editing)>
                                         <td class="px-4 py-3">
                                             <div class="font-medium text-foreground">
                                                 {page.title.unwrap_or_else(|| "Untitled page".to_string())}
@@ -321,10 +455,34 @@ fn PagesTable(
                                                     disabled=is_busy
                                                     on:click={
                                                         let page_id = page.id.clone();
+                                                        move |_| on_edit.run(page_id.clone())
+                                                    }
+                                                >
+                                                    {if is_busy && busy_key
+                                                        .as_deref()
+                                                        .map(|key| key.starts_with("edit:"))
+                                                        .unwrap_or(false)
+                                                    {
+                                                        "...".to_string()
+                                                    } else if is_editing {
+                                                        "Editing".to_string()
+                                                    } else {
+                                                        "Edit".to_string()
+                                                    }}
+                                                </button>
+                                                <button
+                                                    class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+                                                    disabled=is_busy
+                                                    on:click={
+                                                        let page_id = page.id.clone();
                                                         move |_| on_toggle_publish.run((page_id.clone(), !is_published))
                                                     }
                                                 >
-                                                    {if is_busy {
+                                                    {if is_busy && busy_key
+                                                        .as_deref()
+                                                        .map(|key| key.starts_with("publish:"))
+                                                        .unwrap_or(false)
+                                                    {
                                                         "...".to_string()
                                                     } else if is_published {
                                                         "Unpublish".to_string()
@@ -340,7 +498,15 @@ fn PagesTable(
                                                         move |_| on_delete.run(page_id.clone())
                                                     }
                                                 >
-                                                    "Delete"
+                                                    {if is_busy && busy_key
+                                                        .as_deref()
+                                                        .map(|key| key.starts_with("delete:"))
+                                                        .unwrap_or(false)
+                                                    {
+                                                        "...".to_string()
+                                                    } else {
+                                                        "Delete".to_string()
+                                                    }}
                                                 </button>
                                             </div>
                                         </td>

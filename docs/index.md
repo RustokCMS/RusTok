@@ -168,7 +168,7 @@ graph TD
 - [План реализации Server](../apps/server/docs/implementation-plan.md)
 - [Migration guide Flex Phase 4.5 (Server)](../apps/server/docs/flex-phase45-migration-guide.md)
 - [Реестр Loco governance](../apps/server/docs/LOCO_FEATURE_SUPPORT.md#governance-register) — входная точка для архитектурных решений по возможностям Loco в server runtime.
-- [Документация Leptos Admin](../apps/admin/docs/README.md) — текущий Leptos-host contract, включая manifest-driven dashboard/nav/page wiring и generic route `/modules/:module_slug` для module-owned admin UI (`blog`, `workflow`, `pages` уже подключаются этим путём).
+- [Документация Leptos Admin](../apps/admin/docs/README.md) — текущий Leptos-host contract, включая manifest-driven dashboard/nav/page wiring, generic routes `/modules/:module_slug` + `/modules/:module_slug/*module_path` и `UiRouteContext` для module-owned admin UI; `pages`, `blog` и `workflow/templates` уже служат живыми proof point-ами.
 - [План реализации Leptos Admin](../apps/admin/docs/implementation-plan.md)
 - [README Next.js Admin](../apps/next-admin/README.md) — экспериментальная headless-альтернатива, ручная сборка
 - [Документация Next.js Admin](../apps/next-admin/docs/README.md)
@@ -177,7 +177,7 @@ graph TD
 - [Настройка Clerk для Next.js Admin](../apps/next-admin/docs/clerk_setup.md)
 - [Темы Next.js Admin](../apps/next-admin/docs/themes.md)
 - [README Leptos Storefront](../apps/storefront/README.md)
-- [Документация Leptos Storefront](../apps/storefront/docs/README.md) — текущий Leptos-host contract, включая manifest-driven multi-slot wiring и generic route `/modules/:route_segment` для module-owned storefront UI.
+- [Документация Leptos Storefront](../apps/storefront/docs/README.md) — текущий Leptos-host contract, включая manifest-driven multi-slot wiring, generic route `/modules/:route_segment`, streaming SSR и `UiRouteContext` для async module-owned storefront UI; `pages` и `blog` служат рабочими data-driven exemplar-ами.
 - [План реализации Leptos Storefront](../apps/storefront/docs/implementation-plan.md)
 - [Документация Next.js Storefront](../apps/next-frontend/docs/README.md) — экспериментальный headless, ручная сборка
 - [План реализации Next.js Storefront](../apps/next-frontend/docs/implementation-plan.md)
@@ -194,7 +194,7 @@ graph TD
 - [Карта реестра доменных модулей](./modules/registry.md)
 - [README платформенного ядра](../crates/rustok-core/README.md)
 - [План реализации платформенного ядра](../crates/rustok-core/docs/implementation-plan.md)
-- [README crate `rustok-api`](../crates/rustok-api/README.md) — общий API-слой для tenant/auth/request/GraphQL helper-ов между `apps/server` и модульными web-адаптерами.
+- [README crate `rustok-api`](../crates/rustok-api/README.md) — общий API-слой для tenant/auth/request/GraphQL helper-ов и thin UI host-contracts между host-приложениями и модульными адаптерами.
 - [Документация crate `rustok-api`](../crates/rustok-api/docs/README.md)
 - [README crate-контрактов событий](../crates/rustok-events/README.md) — канонический источник `DomainEvent`/`EventEnvelope`.
 - [Документация crate-контрактов событий](../crates/rustok-events/docs/README.md)

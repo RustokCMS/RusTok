@@ -1,18 +1,22 @@
 use leptos::prelude::*;
-use leptos_router::hooks::use_params;
+use leptos_router::components::A;
+use leptos_router::hooks::{use_params, use_query_map};
 use leptos_router::params::Params;
 
 use crate::app::modules::page_for_route_segment;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
+use crate::shared::context::module_request::ModuleRequestProvider;
 
 #[derive(Params, PartialEq)]
 struct ModuleAdminParams {
     module_slug: Option<String>,
+    module_path: Option<String>,
 }
 
 #[component]
 pub fn ModuleAdminPage() -> impl IntoView {
     let params = use_params::<ModuleAdminParams>();
+    let query = use_query_map();
     let enabled_modules = use_enabled_modules_context();
 
     let route_segment = Signal::derive(move || {
@@ -22,6 +26,16 @@ pub fn ModuleAdminPage() -> impl IntoView {
                 .ok()
                 .and_then(|params| params.module_slug.clone())
                 .unwrap_or_default()
+        })
+    });
+    let module_subpath = Signal::derive(move || {
+        params.with(|params| {
+            params
+                .as_ref()
+                .ok()
+                .and_then(|params| params.module_path.clone())
+                .map(|subpath| subpath.trim_matches('/').to_string())
+                .filter(|subpath| !subpath.is_empty())
         })
     });
 
@@ -46,7 +60,27 @@ pub fn ModuleAdminPage() -> impl IntoView {
                 }
 
                 match (any_page.get(), enabled_page.get()) {
-                    (_, Some(page)) => (page.render)(),
+                    (_, Some(page)) => {
+                        let route_segment_value = route_segment.get();
+                        let subpath_value = module_subpath.get();
+                        let query_params = query.get();
+                        view! {
+                            <div class="space-y-6">
+                                <ModulePageSecondaryNav
+                                    page=page.clone()
+                                    active_subpath=subpath_value.clone()
+                                />
+                                <ModuleRequestProvider
+                                    route_segment=Some(route_segment_value)
+                                    subpath=subpath_value
+                                    query_params=query_params
+                                >
+                                    {(page.render)()}
+                                </ModuleRequestProvider>
+                            </div>
+                        }
+                        .into_any()
+                    }
                     (Some(page), None) => view! {
                         <div class="rounded-2xl border border-border bg-card p-8 shadow-sm">
                             <div class="max-w-2xl space-y-3">
@@ -79,4 +113,67 @@ pub fn ModuleAdminPage() -> impl IntoView {
             }}
         </section>
     }
+}
+
+#[component]
+fn ModulePageSecondaryNav(
+    page: crate::app::modules::AdminPageRegistration,
+    active_subpath: Option<String>,
+) -> impl IntoView {
+    if page.child_pages.is_empty() {
+        return view! { <></> }.into_any();
+    }
+
+    let route_segment = page.route_segment;
+    let root_href = format!("/modules/{route_segment}");
+    let root_is_active = active_subpath.is_none();
+
+    view! {
+        <nav class="rounded-2xl border border-border bg-card p-3 shadow-sm">
+            <div class="flex flex-wrap gap-2">
+                <A
+                    href=root_href
+                    attr:class=move || secondary_nav_class(root_is_active)
+                >
+                    {page.title}
+                </A>
+                {page
+                    .child_pages
+                    .iter()
+                    .map(|child| {
+                        let href = format!("/modules/{route_segment}/{}", child.subpath);
+                        let child_subpath = child.subpath.to_string();
+                        let active_subpath = active_subpath.clone();
+                        let is_active = active_subpath
+                            .as_deref()
+                            .map(|active| {
+                                active == child_subpath
+                                    || active.starts_with(&format!("{child_subpath}/"))
+                            })
+                            .unwrap_or(false);
+                        view! {
+                            <A
+                                href=href
+                                attr:class=move || secondary_nav_class(is_active)
+                            >
+                                {child.nav_label}
+                            </A>
+                        }
+                    })
+                    .collect_view()}
+            </div>
+        </nav>
+    }
+    .into_any()
+}
+
+fn secondary_nav_class(is_active: bool) -> String {
+    format!(
+        "inline-flex items-center rounded-lg px-3 py-2 text-sm font-medium transition {}",
+        if is_active {
+            "bg-primary text-primary-foreground"
+        } else {
+            "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        }
+    )
 }

@@ -7,6 +7,8 @@
 - Host storefront рендерит shell, домашнюю страницу, generic module pages и slot-based module sections.
 - Enabled modules резолвятся отдельно и фильтруют storefront registry перед рендером.
 - `StorefrontSlot` теперь поддерживает несколько host extension points для module-owned UI: `HomeAfterHero`, `HomeAfterCatalog`, `HomeBeforeFooter`.
+- SSR host теперь рендерит Leptos через in-order HTML streaming, чтобы async module-owned storefront surfaces могли честно получать данные во время server-side render.
+- Host также прокидывает module-agnostic `UiRouteContext` (locale, route segment, query params), чтобы publishable storefront packages могли читать generic route state без knowledge о конкретном модуле.
 
 ## Generated module UI wiring
 
@@ -14,6 +16,8 @@
 - Текущий contract для publishable Leptos storefront UI: `[provides.storefront_ui].leptos_crate` плюс экспорт корневого компонента `<PascalSlug>View`, optional `slot`, `route_segment` и `page_title`.
 - Live generated wiring регистрирует module-owned storefront sections в выбранный host slot и публикует generic storefront route `/modules/:route_segment`.
 - Референсные publishable storefront packages в workspace сейчас: `rustok-blog-storefront` и `rustok-pages-storefront`.
+- `rustok-pages-storefront` остаётся первым data-driven exemplar для page-driven storefront surface.
+- `rustok-blog-storefront` теперь служит вторым рабочим эталоном для контентного storefront read-path: пакет сам читает published post по `?slug=` и список публикаций через модульный GraphQL и `UiRouteContext`.
 
 ## Ограничения
 

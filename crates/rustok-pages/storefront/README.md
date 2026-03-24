@@ -8,12 +8,12 @@
 
 - Export the module-owned `PagesView` root component for `apps/storefront`.
 - Keep pages-specific storefront rendering inside the module boundary.
-- Act as the publishable storefront package for future page and menu rendering flows.
+- Act as the canonical working storefront read-path for published pages.
 
 ## Interactions
 
 - Used by `apps/storefront` through manifest-driven generated wiring.
-- Depends on `rustok-pages` for module ownership and shared types.
+- Uses the pages module GraphQL read contract plus shared `UiRouteContext` to render a slug-selected page and a small page directory.
 - Follows the generic storefront host contract: slots plus `/modules/:route_segment`.
 
 ## Entry points
