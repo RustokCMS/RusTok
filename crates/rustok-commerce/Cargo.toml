@@ -31,5 +31,5 @@ validator.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 rustok-test-utils.workspace = true
-proptest = "1.5"
+proptest = "1.11"
 rust_decimal_macros = "1.36"
