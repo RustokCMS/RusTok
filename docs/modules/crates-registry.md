@@ -24,11 +24,16 @@
 | `rustok-core` | Базовые платформенные контракты: модульная модель, события, RBAC-примитивы, shared types. | `RusToKModule`, `ModuleRegistry`, `Permission`, `Resource`, `Action`, `DomainEvent`, `EventEnvelope`. | Дублировать core-контракты в приложениях и модулях. |
 | `rustok-api` | Общий web/API слой для transport-адаптеров: tenant/auth/request context, GraphQL helper'ы, extractor-friendly types. | `AuthContext`, `TenantContext`, `RequestContext`, `PageInfo`, `PaginationInput`, `GraphQLError`, `scope_matches`. | Возвращать общие HTTP/GraphQL helper'ы обратно в `apps/server` или в `rustok-core`. |
 | `rustok-content` | Контентный домен и его GraphQL/REST adapters. | `ContentModule`, `NodeService`, `graphql::ContentQuery`, `graphql::ContentMutation`, `controllers::routes`. | Писать content transport-логику в `apps/server` или обходить сервисы direct SQL-операциями. |
+| `rustok-cart` | Дефолтный cart submodule семейства `ecommerce`: cart storage, line items, totals и lifecycle корзины. | `CartModule`, `CartService`, `dto::*`, `entities::*`. | Тянуть зависимость на `rustok-commerce` как на нижний shared layer или пришивать обязательные FK на product/order tables. |
+| `rustok-customer` | Дефолтный storefront customer submodule семейства `ecommerce`: отдельный customer profile и optional linkage на `user_id`. | `CustomerModule`, `CustomerService`, `dto::*`, `entities::*`. | Схлопывать customer profile обратно в platform/admin user или тянуть зависимость на `rustok-commerce` как на нижний shared layer. |
 | `rustok-commerce` | Root umbrella module семейства `ecommerce`: orchestration, compatibility facade, legacy GraphQL/REST adapters и верхний transport/API entry point. | `CommerceModule`, `CatalogService`, `PricingService`, `InventoryService`, `graphql::*`, `controllers::*`. | Возвращать продуктовую/pricing/inventory бизнес-логику обратно в umbrella-crate или реализовывать commerce transport/API поверх `apps/server` мимо crate. |
 | `rustok-commerce-foundation` | Internal support crate семейства `ecommerce`: shared DTO/entities/errors/search helpers. | `dto::*`, `entities::*`, `CommerceError`, `CommerceResult`. | Делать его самостоятельным platform module или переносить в него orchestration/facade-логику. |
 | `rustok-product` | Дефолтный catalog submodule семейства `ecommerce`. | `ProductModule`, `CatalogService`. | Тянуть зависимость на `rustok-commerce` как на нижний shared layer. |
 | `rustok-pricing` | Дефолтный pricing submodule семейства `ecommerce`. | `PricingModule`, `PricingService`. | Тянуть зависимость на `rustok-commerce` как на нижний shared layer. |
 | `rustok-inventory` | Дефолтный inventory submodule семейства `ecommerce`. | `InventoryModule`, `InventoryService`. | Тянуть зависимость на `rustok-commerce` как на нижний shared layer. |
+| `rustok-order` | Дефолтный order submodule семейства `ecommerce`: storage, lifecycle, line item snapshots, order events. | `OrderModule`, `OrderService`, `dto::*`, `entities::*`. | Тянуть зависимость на `rustok-commerce` как на нижний shared layer или пришивать обязательные FK на product/catalog tables. |
+| `rustok-payment` | Дефолтный payment submodule семейства `ecommerce`: payment collections, payment attempts и lifecycle авторизации/капчура. | `PaymentModule`, `PaymentService`, `dto::*`, `entities::*`. | Смешивать базовую payment domain model с provider-specific логикой вроде Stripe вместо отдельного следующего подмодуля. |
+| `rustok-fulfillment` | Дефолтный fulfillment submodule семейства `ecommerce`: shipping options, fulfillment records и shipment lifecycle. | `FulfillmentModule`, `FulfillmentService`, `dto::*`, `entities::*`. | Смешивать базовую shipping-модель с carrier/provider-specific логикой вместо отдельного следующего подмодуля. |
 | `rustok-blog` | Blog-домен поверх content и transport-адаптеры. | `BlogModule`, `PostService`, `CommentService`, `graphql::*`, `controllers::*`. | Обходить blog-правила напрямую через `rustok-content` или SQL. |
 | `rustok-forum` | Forum-домен и transport-адаптеры. | `ForumModule`, `TopicService`, `ReplyService`, `graphql::*`, `controllers::*`. | Обходить forum-сервисы через server-only handlers. |
 | `rustok-pages` | Pages/menus/blocks и transport-адаптеры. | `PagesModule`, `PageService`, `graphql::*`, `controllers::*`. | Оставлять pages GraphQL/REST в `apps/server`. |
@@ -60,6 +65,10 @@ RBAC-контракт задаётся тремя источниками:
 - `rustok-tenant` -> `tenants:*`, `modules:*`
 - `rustok-rbac` -> `settings:*`, `logs:*`
 - `rustok-content` -> content resources
+- `rustok-customer` -> `customers:*`
+- `rustok-order` -> `orders:*`
+- `rustok-payment` -> `payments:*`
+- `rustok-fulfillment` -> `fulfillments:*`
 - `rustok-commerce` -> commerce resources
 - `rustok-blog` -> `blog_posts:*`
 - `rustok-forum` -> `forum_categories:*`, `forum_topics:*`, `forum_replies:*`

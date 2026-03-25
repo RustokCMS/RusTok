@@ -1,0 +1,41 @@
+use async_trait::async_trait;
+use rustok_core::{MigrationSource, RusToKModule};
+use sea_orm_migration::MigrationTrait;
+
+pub mod dto;
+pub mod entities;
+pub mod error;
+pub mod migrations;
+pub mod services;
+
+pub use dto::*;
+pub use entities::*;
+pub use error::{CartError, CartResult};
+pub use services::CartService;
+
+pub struct CartModule;
+
+#[async_trait]
+impl RusToKModule for CartModule {
+    fn slug(&self) -> &'static str {
+        "cart"
+    }
+
+    fn name(&self) -> &'static str {
+        "Cart"
+    }
+
+    fn description(&self) -> &'static str {
+        "Default cart submodule in the ecommerce family"
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+}
+
+impl MigrationSource for CartModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        migrations::migrations()
+    }
+}

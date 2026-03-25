@@ -6,3 +6,18 @@ description = "Umbrella/root module for the ecommerce family and compatibility s
 ownership = "first_party"
 trust_level = "verified"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[crate]
+entry_type = "CommerceModule"
+
+[provides.graphql]
+query = "graphql::CommerceQuery"
+mutation = "graphql::CommerceMutation"
+
+[provides.http]
+routes = "controllers::routes"
+
+[provides.admin_ui]
+leptos_crate = "rustok-commerce-admin"
+route_segment = "commerce"
+nav_label = "Commerce"

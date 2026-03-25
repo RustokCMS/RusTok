@@ -45,11 +45,13 @@ Persistent analytics are stored in `search_query_logs` and `search_query_clicks`
 - `rustok_search_query_duration_seconds{surface,engine}`
 - `rustok_search_results_returned{surface,engine}`
 - `rustok_search_zero_results_total{surface,engine}`
+- `rustok_search_rate_limit_outcomes_total{surface,namespace,outcome}`
 
 `surface` is expected to be one of:
 
 - `search_preview`
 - `storefront_search`
+- `storefront_search_suggestions`
 
 ### Indexing and rebuild path
 
@@ -95,6 +97,20 @@ Common `operation` values:
 - abandonment query leaderboard
 - query-intelligence candidates
 
+### Admin audit trail signals
+
+- `rustok_search_audit_events_total{action,status}`
+
+Expected `action` values:
+
+- `update_settings`
+- `trigger_rebuild`
+
+Expected `status` values:
+
+- `published`
+- `publish_failed`
+
 ## Admin diagnostics interpretation
 
 When reviewing `searchDiagnostics`:
@@ -123,6 +139,22 @@ When reviewing `searchAnalytics`:
 `trackSearchClick` feeds CTR and abandonment by writing to `search_query_clicks`.
 The analytics layer waits a short grace window before treating a successful
 query as abandoned so fresh queries are not marked as failures immediately.
+
+When reviewing rate-limit behavior:
+
+- rising `rustok_search_rate_limit_outcomes_total{outcome="exceeded"}` on
+  `storefront_search` usually means the public surface is receiving bursts from
+  a small set of clients or bots
+- non-zero `rustok_search_rate_limit_outcomes_total{outcome="backend_unavailable"}`
+  means the shared limiter backend is degraded and storefront search protection
+  has partially failed open at the infrastructure layer
+
+When reviewing audit delivery:
+
+- `rustok_search_audit_events_total{status="publish_failed"}` should normally
+  stay at zero
+- if publish failures rise while admin mutations still succeed, inspect the
+  outbox/event transport path rather than the search control plane itself
 
 ## Recovery procedures
 
@@ -179,6 +211,8 @@ Recommended starter alerts:
 - repeated errors in `rustok_search_indexing_operations_total{status!="success"}`
 - non-zero `rustok_search_bootstrap_pending_tenants_total` after rollout
 - growing `rustok_search_lagging_tenants_total`
+- sustained `rustok_search_rate_limit_outcomes_total{outcome="backend_unavailable"} > 0`
+- sustained increase in `rustok_search_audit_events_total{status="publish_failed"}`
 
 ## Dashboard starter panels
 
@@ -187,7 +221,9 @@ Recommended first dashboard:
 - query volume by `surface`
 - p50/p95 search latency by `surface`
 - zero-result rate by `surface`
+- rate-limit outcomes by `surface` and `outcome`
 - indexing operations by `operation` and `status`
+- audit-event publication by `action` and `status`
 - lagging tenants
 - bootstrap-pending tenants
 - max lag seconds

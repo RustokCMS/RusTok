@@ -16,6 +16,8 @@ pub enum Resource {
     Categories,
     Orders,
     Customers,
+    Payments,
+    Fulfillments,
     Inventory,
     Discounts,
     Posts,
@@ -54,6 +56,8 @@ impl fmt::Display for Resource {
             Self::Categories => "categories",
             Self::Orders => "orders",
             Self::Customers => "customers",
+            Self::Payments => "payments",
+            Self::Fulfillments => "fulfillments",
             Self::Inventory => "inventory",
             Self::Discounts => "discounts",
             Self::Posts => "posts",
@@ -93,6 +97,8 @@ impl FromStr for Resource {
             "categories" => Ok(Self::Categories),
             "orders" => Ok(Self::Orders),
             "customers" => Ok(Self::Customers),
+            "payments" => Ok(Self::Payments),
+            "fulfillments" => Ok(Self::Fulfillments),
             "inventory" => Ok(Self::Inventory),
             "discounts" => Ok(Self::Discounts),
             "posts" => Ok(Self::Posts),
@@ -241,6 +247,27 @@ impl Permission {
     pub const ORDERS_DELETE: Self = Self::new(Resource::Orders, Action::Delete);
     pub const ORDERS_LIST: Self = Self::new(Resource::Orders, Action::List);
     pub const ORDERS_MANAGE: Self = Self::new(Resource::Orders, Action::Manage);
+
+    pub const CUSTOMERS_CREATE: Self = Self::new(Resource::Customers, Action::Create);
+    pub const CUSTOMERS_READ: Self = Self::new(Resource::Customers, Action::Read);
+    pub const CUSTOMERS_UPDATE: Self = Self::new(Resource::Customers, Action::Update);
+    pub const CUSTOMERS_DELETE: Self = Self::new(Resource::Customers, Action::Delete);
+    pub const CUSTOMERS_LIST: Self = Self::new(Resource::Customers, Action::List);
+    pub const CUSTOMERS_MANAGE: Self = Self::new(Resource::Customers, Action::Manage);
+
+    pub const PAYMENTS_CREATE: Self = Self::new(Resource::Payments, Action::Create);
+    pub const PAYMENTS_READ: Self = Self::new(Resource::Payments, Action::Read);
+    pub const PAYMENTS_UPDATE: Self = Self::new(Resource::Payments, Action::Update);
+    pub const PAYMENTS_DELETE: Self = Self::new(Resource::Payments, Action::Delete);
+    pub const PAYMENTS_LIST: Self = Self::new(Resource::Payments, Action::List);
+    pub const PAYMENTS_MANAGE: Self = Self::new(Resource::Payments, Action::Manage);
+
+    pub const FULFILLMENTS_CREATE: Self = Self::new(Resource::Fulfillments, Action::Create);
+    pub const FULFILLMENTS_READ: Self = Self::new(Resource::Fulfillments, Action::Read);
+    pub const FULFILLMENTS_UPDATE: Self = Self::new(Resource::Fulfillments, Action::Update);
+    pub const FULFILLMENTS_DELETE: Self = Self::new(Resource::Fulfillments, Action::Delete);
+    pub const FULFILLMENTS_LIST: Self = Self::new(Resource::Fulfillments, Action::List);
+    pub const FULFILLMENTS_MANAGE: Self = Self::new(Resource::Fulfillments, Action::Manage);
 
     pub const POSTS_CREATE: Self = Self::new(Resource::Posts, Action::Create);
     pub const POSTS_READ: Self = Self::new(Resource::Posts, Action::Read);

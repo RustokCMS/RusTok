@@ -38,8 +38,8 @@ Medusa v2.
 - order lifecycle частично представлен type-safe state machine, но не завершен как полноценный order module;
 - read-path каталога уже завязан на `rustok-index`;
 - тестовая поддержка commerce поднимает SQLite-таблицы из entities, а не проверяет production-путь миграций Postgres;
-- inventory в runtime до сих пор завязан на `product_variants.inventory_quantity`,
-  хотя в миграционной базе уже есть задел под нормализованную inventory-модель.
+- inventory baseline переведен на `stock_locations`, `inventory_items`, `inventory_levels`
+  и `reservation_items`; read/write-path больше не опирается на `product_variants.inventory_quantity`.
 
 ## Целевая модель из исследования
 
@@ -109,11 +109,11 @@ flowchart LR
 |---|---|---|---|
 | `BL-01` | Root-module topology для ecommerce family vs исходный монолитный `commerce` | исследовательский split vs старая platform topology | закрыто: принят ADR, обновлены `modules.toml`, runtime wiring и docs; дальнейший шаг — provider/capability selection поверх новой topology |
 | `BL-02` | Entities vs migrations vs indexer SQL | runtime entities и production schema не полностью синхронны | провести schema hardening и добавить Postgres migration tests |
-| `BL-03` | `inventory_quantity` vs inventory levels / reservations | текущая runtime-модель vs целевая Medusa-like inventory-модель | завершить переход на `stock_locations`, `inventory_items`, `inventory_levels`, `reservation_items` |
-| `BL-04` | Order state machine есть, order module как продуктового контура нет | lifecycle описан, но persistence/API не завершены | достроить `rustok-order` как полноценный модуль с storage, API и integrations |
+| `BL-03` | `inventory_quantity` vs inventory levels / reservations | текущая runtime-модель vs целевая Medusa-like inventory-модель | закрыто: runtime переведен на `stock_locations`, `inventory_items`, `inventory_levels`, `reservation_items`, а read/write-path, catalog responses, indexer и search больше не зависят от `inventory_quantity` |
+| `BL-04` | Order state machine есть, order module как продуктового контура нет | lifecycle описан, но persistence/API не завершены | in progress: выделен `rustok-order` с storage, line items, lifecycle service и outbox events; следующий шаг — transport/API и checkout integration |
 | `BL-05` | `/store/*` и `/admin/*` могут конфликтовать со встроенными UI маршрутами | target API prefix vs текущий embedded routing | определить route precedence и покрыть smoke-тестами |
 | `BL-06` | Medusa-compat нужен, но scope совместимости пока не закреплен как контракт | “хотим быть совместимы” vs отсутствие точной contract boundary | зафиксировать список обязательных endpoints/semantics и гонять их против официальных docs/OpenAPI |
-| `BL-07` | Customer domain в Medusa отделен от admin user, в RusToK это не разведено как commerce-модуль | Medusa customer context vs platform users/sessions | описать и внедрить storefront-customer boundary |
+| `BL-07` | Customer domain в Medusa отделен от admin user, в RusToK это не разведено как commerce-модуль | Medusa customer context vs platform users/sessions | закрыто: выделен `rustok-customer` с отдельной схемой `customers`, storefront-customer boundary, optional linkage на `user_id` и migration-backed smoke tests |
 | `BL-08` | Checkout flow требует идемпотентности и многошаговой транзакционной целостности | cart -> payment -> order цепочка vs текущий незавершенный runtime | зафиксировать orchestration и retry/compensation policy |
 
 ## Официальные ссылки Medusa v2 для сверки
@@ -229,17 +229,18 @@ flowchart LR
 - выделить `rustok-product`;
 - выделить `rustok-pricing`;
 - выделить `rustok-inventory`;
-- подготовить каркасы `rustok-cart`, `rustok-order`, `rustok-customer`,
-  `rustok-payment`, `rustok-fulfillment`;
+- выделить `rustok-cart`, `rustok-order`, `rustok-customer`,
+  `rustok-payment`;
+- подготовить каркасы `rustok-fulfillment`;
 - оставить `rustok-commerce` как root umbrella module, orchestration/compatibility facade и верхний вход в ecommerce family;
 - обновить registry/runtime wiring в соответствии с решением Phase 0.
 
 Что уже сделано:
 
-- выделены `rustok-product`, `rustok-pricing`, `rustok-inventory`;
+- выделены `rustok-cart`, `rustok-customer`, `rustok-product`, `rustok-pricing`, `rustok-inventory`, `rustok-order`, `rustok-payment`;
 - общий shared слой вынесен в `rustok-commerce-foundation`;
 - `rustok-commerce` оставлен как umbrella/root module с compatibility surface;
-- обновлены manifests, server wiring, migration aggregation и базовые module tests.
+- обновлены manifests, server wiring, migration aggregation, migration-backed smoke tests и базовые module tests.
 
 Критерий завершения:
 
@@ -248,7 +249,7 @@ flowchart LR
 
 ### Phase 2. Schema hardening и доведение доменной модели
 
-Статус: `not started`
+Статус: `in progress`
 
 Цель:
 
@@ -263,6 +264,16 @@ flowchart LR
 - утвердить единый money contract;
 - подготовить backfill и switch plan.
 
+Что уже сделано:
+
+- добавлены migration-driven smoke tests для ecommerce schema baseline;
+- убраны дубли child-migrations из `commerce` umbrella;
+- выровнен catalog runtime с migrated schema для product-level multilingual;
+- добавлен decimal runtime compatibility layer для `prices` поверх migrated schema.
+- inventory runtime переведен на нормализованные `stock_locations / inventory_items / inventory_levels / reservation_items`;
+- create/read/delete-path переведены на normalized inventory model без compatibility shadow;
+- добавлены inventory regression/smoke tests, подтверждающие reservation flow и migrated-schema baseline.
+
 Критерий завершения:
 
 - production schema поднимается и проверяется через миграции;
@@ -271,7 +282,7 @@ flowchart LR
 
 ### Phase 3. Checkout и доменные модули заказа
 
-Статус: `not started`
+Статус: `in progress`
 
 Цель:
 
@@ -282,14 +293,23 @@ flowchart LR
 - реализовать `rustok-cart`;
 - реализовать `rustok-order`;
 - реализовать `rustok-customer`;
-- реализовать каркас `rustok-payment`;
-- реализовать каркас `rustok-fulfillment`;
+- реализовать `rustok-payment`;
+- реализовать `rustok-fulfillment`;
 - закрыть region/currency/locale policy;
 - определить retry/idempotency/compensation policy.
 
+Что уже сделано:
+
+- выделен `rustok-cart` со схемой `carts / cart_line_items` и lifecycle `active -> completed/abandoned`;
+- выделен `rustok-order` со схемой `orders / order_line_items`, lifecycle и outbox events;
+- выделен `rustok-customer` со схемой `customers` и storefront-customer boundary;
+- выделен `rustok-payment` со схемой `payment_collections / payments` и базовым lifecycle `pending -> authorized -> captured/cancelled`;
+- выделен `rustok-fulfillment` со схемой `shipping_options / fulfillments` и базовым shipment lifecycle `pending -> shipped -> delivered/cancelled`;
+- migration smoke подтверждает cart/order/customer/payment/fulfillment baseline на реальном server migrator.
+
 Критерий завершения:
 
-- есть рабочий путь `cart -> payment -> order`;
+- есть рабочий путь `cart -> payment -> order -> fulfillment`;
 - order persistence и API полноценны;
 - storefront flow больше не зависит от старой “каталог-only” модели.
 

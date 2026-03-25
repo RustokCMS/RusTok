@@ -3,6 +3,7 @@ mod m20260324_000002_create_search_documents;
 mod m20260325_000003_create_search_query_logs;
 mod m20260325_000004_create_search_query_clicks;
 mod m20260325_000005_create_search_dictionaries;
+mod m20260325_000006_add_search_typo_tolerance_indexes;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -13,5 +14,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260325_000003_create_search_query_logs::Migration),
         Box::new(m20260325_000004_create_search_query_clicks::Migration),
         Box::new(m20260325_000005_create_search_dictionaries::Migration),
+        Box::new(m20260325_000006_add_search_typo_tolerance_indexes::Migration),
     ]
 }

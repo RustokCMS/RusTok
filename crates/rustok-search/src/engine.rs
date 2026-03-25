@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::ranking::SearchRankingProfile;
 use rustok_core::Result;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +66,8 @@ pub struct SearchQuery {
     pub locale: Option<String>,
     pub original_query: String,
     pub query: String,
+    pub ranking_profile: SearchRankingProfile,
+    pub preset_key: Option<String>,
     pub limit: usize,
     pub offset: usize,
     pub published_only: bool,
@@ -103,6 +106,7 @@ pub struct SearchResult {
     pub total: u64,
     pub took_ms: u64,
     pub engine: SearchEngineKind,
+    pub ranking_profile: SearchRankingProfile,
     pub facets: Vec<SearchFacetGroup>,
 }
 

@@ -46,9 +46,11 @@ type SearchAdminBootstrap = {
 
 type SearchPreviewPayload = {
   queryLogId: string | null;
+  presetKey: string | null;
   total: number;
   tookMs: number;
   engine: string;
+  rankingProfile: string;
   items: Array<{
     id: string;
     entityType: string;
@@ -63,6 +65,15 @@ type SearchPreviewPayload = {
     name: string;
     buckets: Array<{ value: string; count: number }>;
   }>;
+};
+
+type SearchFilterPresetPayload = {
+  key: string;
+  label: string;
+  entityTypes: string[];
+  sourceModules: string[];
+  statuses: string[];
+  rankingProfile: string | null;
 };
 
 type LaggingSearchDocumentPayload = {
@@ -172,9 +183,22 @@ const SEARCH_ADMIN_BOOTSTRAP_QUERY = `
 const SEARCH_PREVIEW_QUERY = `
   query SearchPreview($input: SearchPreviewInput!) {
     searchPreview(input: $input) {
-      queryLogId total tookMs engine
+      queryLogId presetKey total tookMs engine rankingProfile
       items { id entityType sourceModule title snippet score locale url payload }
       facets { name buckets { value count } }
+    }
+  }
+`;
+
+const SEARCH_FILTER_PRESETS_QUERY = `
+  query SearchFilterPresets($input: SearchFilterPresetsInput!) {
+    searchFilterPresets(input: $input) {
+      key
+      label
+      entityTypes
+      sourceModules
+      statuses
+      rankingProfile
     }
   }
 `;
@@ -362,6 +386,15 @@ export function SearchAdminPage({
   const [entityTypes, setEntityTypes] = React.useState('');
   const [sourceModules, setSourceModules] = React.useState('');
   const [statuses, setStatuses] = React.useState('');
+  const [rankingProfile, setRankingProfile] = React.useState('');
+  const [presetKey, setPresetKey] = React.useState('');
+  const [filterPresets, setFilterPresets] = React.useState<
+    SearchFilterPresetPayload[]
+  >([]);
+  const [filterPresetsLoading, setFilterPresetsLoading] = React.useState(false);
+  const [filterPresetsError, setFilterPresetsError] = React.useState<
+    string | null
+  >(null);
   const [preview, setPreview] = React.useState<SearchPreviewPayload | null>(
     null
   );
@@ -384,7 +417,12 @@ export function SearchAdminPage({
   );
 
   const runPreviewRequest = React.useEffectEvent(
-    async (queryValue: string, filters: SearchPreviewFiltersInput) => {
+    async (
+      queryValue: string,
+      filters: SearchPreviewFiltersInput,
+      selectedRankingProfile: string,
+      selectedPresetKey: string
+    ) => {
       if (!token || !tenantSlug) {
         setPreviewError('Search preview requires token and tenant slug.');
         return;
@@ -403,6 +441,8 @@ export function SearchAdminPage({
               query: queryValue,
               limit: 12,
               offset: 0,
+              rankingProfile: optionalText(selectedRankingProfile),
+              presetKey: optionalText(selectedPresetKey),
               entityTypes: filters.entityTypes.length
                 ? filters.entityTypes
                 : undefined,
@@ -428,13 +468,64 @@ export function SearchAdminPage({
     setQuery(initialQuery);
     if (initialQuery.trim().length > 0) {
       setActiveTab('playground');
-      void runPreviewRequest(initialQuery, {
-        entityTypes: [],
-        sourceModules: [],
-        statuses: []
-      });
+      void runPreviewRequest(
+        initialQuery,
+        {
+          entityTypes: [],
+          sourceModules: [],
+          statuses: []
+        },
+        rankingProfile,
+        presetKey
+      );
     }
-  }, [initialQuery, runPreviewRequest]);
+  }, [initialQuery, presetKey, rankingProfile, runPreviewRequest]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!token || !tenantSlug) {
+      setFilterPresets([]);
+      setFilterPresetsError(null);
+      setFilterPresetsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setFilterPresetsLoading(true);
+    setFilterPresetsError(null);
+
+    void graphqlRequest<{
+      searchFilterPresets: SearchFilterPresetPayload[];
+    }>(
+      SEARCH_FILTER_PRESETS_QUERY,
+      {
+        input: {
+          surface: 'search_preview'
+        }
+      },
+      { token, tenantSlug, graphqlUrl }
+    )
+      .then((data) => {
+        if (!cancelled) {
+          setFilterPresets(data.searchFilterPresets);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setFilterPresetsError(errorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setFilterPresetsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, tenantSlug, graphqlUrl, refreshNonce]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -553,11 +644,16 @@ export function SearchAdminPage({
     event: React.FormEvent<HTMLFormElement>
   ): Promise<void> {
     event.preventDefault();
-    await runPreviewRequest(query, {
-      entityTypes: parseCsv(entityTypes),
-      sourceModules: parseCsv(sourceModules),
-      statuses: parseCsv(statuses)
-    });
+    await runPreviewRequest(
+      query,
+      {
+        entityTypes: parseCsv(entityTypes),
+        sourceModules: parseCsv(sourceModules),
+        statuses: parseCsv(statuses)
+      },
+      rankingProfile,
+      presetKey
+    );
   }
 
   async function queueRebuild(): Promise<void> {
@@ -698,6 +794,11 @@ export function SearchAdminPage({
       ) : activeTab === 'playground' ? (
         <PlaygroundPanel
           query={query}
+          presetKey={presetKey}
+          filterPresets={filterPresets}
+          filterPresetsLoading={filterPresetsLoading}
+          filterPresetsError={filterPresetsError}
+          rankingProfile={rankingProfile}
           entityTypes={entityTypes}
           sourceModules={sourceModules}
           statuses={statuses}
@@ -708,6 +809,8 @@ export function SearchAdminPage({
           tenantSlug={tenantSlug}
           graphqlUrl={graphqlUrl}
           onQueryChange={setQuery}
+          onPresetKeyChange={setPresetKey}
+          onRankingProfileChange={setRankingProfile}
           onEntityTypesChange={setEntityTypes}
           onSourceModulesChange={setSourceModules}
           onStatusesChange={setStatuses}
@@ -938,6 +1041,11 @@ function OverviewPanel(props: {
 
 function PlaygroundPanel(props: {
   query: string;
+  presetKey: string;
+  filterPresets: SearchFilterPresetPayload[];
+  filterPresetsLoading: boolean;
+  filterPresetsError: string | null;
+  rankingProfile: string;
   entityTypes: string;
   sourceModules: string;
   statuses: string;
@@ -948,6 +1056,8 @@ function PlaygroundPanel(props: {
   tenantSlug: string | null;
   graphqlUrl?: string;
   onQueryChange: (value: string) => void;
+  onPresetKeyChange: (value: string) => void;
+  onRankingProfileChange: (value: string) => void;
   onEntityTypesChange: (value: string) => void;
   onSourceModulesChange: (value: string) => void;
   onStatusesChange: (value: string) => void;
@@ -962,7 +1072,7 @@ function PlaygroundPanel(props: {
         <h2 className='text-lg font-semibold text-zinc-900'>Search Preview</h2>
         <p className='text-sm text-zinc-600'>
           Runs the current PostgreSQL FTS preview path over rustok-search
-          documents.
+          documents and lets you compare presets and ranking profiles.
         </p>
         <Field label='Query'>
           <input
@@ -970,6 +1080,43 @@ function PlaygroundPanel(props: {
             onChange={(event) => props.onQueryChange(event.target.value)}
             className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
           />
+        </Field>
+        <Field label='Filter preset'>
+          <select
+            value={props.presetKey}
+            onChange={(event) => props.onPresetKeyChange(event.target.value)}
+            className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+          >
+            <option value=''>auto</option>
+            {props.filterPresets.map((preset) => (
+              <option key={preset.key} value={preset.key}>
+                {preset.label} ({preset.key})
+              </option>
+            ))}
+          </select>
+          <p className='mt-2 text-xs text-zinc-500'>
+            {props.filterPresetsLoading
+              ? 'Loading tenant presets...'
+              : props.filterPresetsError
+                ? `Preset load failed: ${props.filterPresetsError}`
+                : 'Presets come from search_settings.config.filter_presets.search_preview.'}
+          </p>
+        </Field>
+        <Field label='Ranking profile'>
+          <select
+            value={props.rankingProfile}
+            onChange={(event) =>
+              props.onRankingProfileChange(event.target.value)
+            }
+            className='w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm'
+          >
+            <option value=''>auto</option>
+            <option value='balanced'>balanced</option>
+            <option value='exact'>exact</option>
+            <option value='fresh'>fresh</option>
+            <option value='catalog'>catalog</option>
+            <option value='content'>content</option>
+          </select>
         </Field>
         <Field label='Entity types (CSV)'>
           <input
@@ -1662,7 +1809,9 @@ function PreviewPanel({
     <article className='rounded-3xl border border-zinc-200 bg-white p-6'>
       <h2 className='text-lg font-semibold text-zinc-900'>Preview Results</h2>
       <p className='mt-2 text-sm text-zinc-600'>
-        {payload.total} results in {payload.tookMs} ms via {payload.engine}
+        {payload.total} results in {payload.tookMs} ms via {payload.engine} (
+        {payload.rankingProfile})
+        {payload.presetKey ? ` preset ${payload.presetKey}` : ''}
       </p>
       <div className='mt-5 grid gap-4 lg:grid-cols-3'>
         {payload.facets.map((facet) => (

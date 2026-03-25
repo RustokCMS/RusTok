@@ -1,11 +1,16 @@
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{SearchPreviewFilters, SearchPreviewPayload, TrackSearchClickPayload};
+use crate::model::{
+    SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload, SearchSuggestion,
+    TrackSearchClickPayload,
+};
 
 pub type ApiError = GraphqlHttpError;
 
-const STOREFRONT_SEARCH_QUERY: &str = "query StorefrontSearch($input: SearchPreviewInput!) { storefrontSearch(input: $input) { queryLogId total tookMs engine items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value count } } } }";
+const STOREFRONT_SEARCH_QUERY: &str = "query StorefrontSearch($input: SearchPreviewInput!) { storefrontSearch(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value count } } } }";
+const STOREFRONT_FILTER_PRESETS_QUERY: &str = "query StorefrontSearchFilterPresets { storefrontSearchFilterPresets { key label entityTypes sourceModules statuses rankingProfile } }";
+const STOREFRONT_SEARCH_SUGGESTIONS_QUERY: &str = "query StorefrontSearchSuggestions($input: SearchSuggestionsInput!) { storefrontSearchSuggestions(input: $input) { text kind documentId entityType sourceModule locale url score } }";
 const TRACK_SEARCH_CLICK_MUTATION: &str = "mutation TrackSearchClick($input: TrackSearchClickInput!) { trackSearchClick(input: $input) { success tracked } }";
 
 #[derive(Debug, Deserialize)]
@@ -14,9 +19,26 @@ struct StorefrontSearchResponse {
     storefront_search: SearchPreviewPayload,
 }
 
+#[derive(Debug, Deserialize)]
+struct StorefrontSearchSuggestionsResponse {
+    #[serde(rename = "storefrontSearchSuggestions")]
+    storefront_search_suggestions: Vec<SearchSuggestion>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StorefrontFilterPresetsResponse {
+    #[serde(rename = "storefrontSearchFilterPresets")]
+    storefront_search_filter_presets: Vec<SearchFilterPreset>,
+}
+
 #[derive(Debug, Serialize)]
 struct SearchPreviewVariables {
     input: SearchPreviewInput,
+}
+
+#[derive(Debug, Serialize)]
+struct SearchSuggestionsVariables {
+    input: SearchSuggestionsInput,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,11 +58,20 @@ struct SearchPreviewInput {
     locale: Option<String>,
     limit: Option<i32>,
     offset: Option<i32>,
+    #[serde(rename = "presetKey")]
+    preset_key: Option<String>,
     #[serde(rename = "entityTypes")]
     entity_types: Option<Vec<String>>,
     #[serde(rename = "sourceModules")]
     source_modules: Option<Vec<String>>,
     statuses: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+struct SearchSuggestionsInput {
+    query: String,
+    locale: Option<String>,
+    limit: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -110,6 +141,7 @@ where
 pub async fn fetch_storefront_search(
     query: String,
     locale: Option<String>,
+    preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, ApiError> {
     let response: StorefrontSearchResponse = request(
@@ -120,6 +152,7 @@ pub async fn fetch_storefront_search(
                 locale,
                 limit: Some(12),
                 offset: Some(0),
+                preset_key,
                 entity_types: (!filters.entity_types.is_empty()).then_some(filters.entity_types),
                 source_modules: (!filters.source_modules.is_empty())
                     .then_some(filters.source_modules),
@@ -130,6 +163,32 @@ pub async fn fetch_storefront_search(
     .await?;
 
     Ok(response.storefront_search)
+}
+
+pub async fn fetch_storefront_filter_presets() -> Result<Vec<SearchFilterPreset>, ApiError> {
+    let response: StorefrontFilterPresetsResponse =
+        request(STOREFRONT_FILTER_PRESETS_QUERY, ()).await?;
+
+    Ok(response.storefront_search_filter_presets)
+}
+
+pub async fn fetch_storefront_suggestions(
+    query: String,
+    locale: Option<String>,
+) -> Result<Vec<SearchSuggestion>, ApiError> {
+    let response: StorefrontSearchSuggestionsResponse = request(
+        STOREFRONT_SEARCH_SUGGESTIONS_QUERY,
+        SearchSuggestionsVariables {
+            input: SearchSuggestionsInput {
+                query,
+                locale,
+                limit: Some(6),
+            },
+        },
+    )
+    .await?;
+
+    Ok(response.storefront_search_suggestions)
 }
 
 pub async fn track_search_click(

@@ -50,6 +50,12 @@ mod contract_tests {
     const TENANT_README: &str = include_str!("../../../../crates/rustok-tenant/README.md");
     const RBAC_README: &str = include_str!("../../../../crates/rustok-rbac/README.md");
     const CONTENT_README: &str = include_str!("../../../../crates/rustok-content/README.md");
+    const CART_README: &str = include_str!("../../../../crates/rustok-cart/README.md");
+    const CUSTOMER_README: &str = include_str!("../../../../crates/rustok-customer/README.md");
+    const ORDER_README: &str = include_str!("../../../../crates/rustok-order/README.md");
+    const PAYMENT_README: &str = include_str!("../../../../crates/rustok-payment/README.md");
+    const FULFILLMENT_README: &str =
+        include_str!("../../../../crates/rustok-fulfillment/README.md");
     const COMMERCE_README: &str = include_str!("../../../../crates/rustok-commerce/README.md");
     const BLOG_README: &str = include_str!("../../../../crates/rustok-blog/README.md");
     const FORUM_README: &str = include_str!("../../../../crates/rustok-forum/README.md");
@@ -70,6 +76,11 @@ mod contract_tests {
             ("tenant", TENANT_README),
             ("rbac", RBAC_README),
             ("content", CONTENT_README),
+            ("cart", CART_README),
+            ("customer", CUSTOMER_README),
+            ("order", ORDER_README),
+            ("payment", PAYMENT_README),
+            ("fulfillment", FULFILLMENT_README),
             ("commerce", COMMERCE_README),
             ("blog", BLOG_README),
             ("forum", FORUM_README),
@@ -93,6 +104,11 @@ mod contract_tests {
         let blog = registry.get("blog").expect("blog module");
         let forum = registry.get("forum").expect("forum module");
         let media = registry.get("media").expect("media module");
+        let cart = registry.get("cart").expect("cart module");
+        let customer = registry.get("customer").expect("customer module");
+        let order = registry.get("order").expect("order module");
+        let payment = registry.get("payment").expect("payment module");
+        let fulfillment = registry.get("fulfillment").expect("fulfillment module");
         let pages = registry.get("pages").expect("pages module");
         let workflow = registry.get("workflow").expect("workflow module");
 
@@ -105,6 +121,15 @@ mod contract_tests {
         assert!(forum
             .permissions()
             .contains(&Permission::FORUM_TOPICS_MANAGE));
+        assert!(cart.permissions().is_empty());
+        assert!(customer
+            .permissions()
+            .contains(&Permission::CUSTOMERS_MANAGE));
+        assert!(order.permissions().contains(&Permission::ORDERS_MANAGE));
+        assert!(payment.permissions().contains(&Permission::PAYMENTS_MANAGE));
+        assert!(fulfillment
+            .permissions()
+            .contains(&Permission::FULFILLMENTS_MANAGE));
         assert!(media
             .permissions()
             .contains(&Permission::new(Resource::Media, Action::Manage)));
@@ -117,12 +142,34 @@ mod contract_tests {
     #[test]
     fn registry_dependencies_match_runtime_contract() {
         let registry = build_registry();
+        let cart = registry.get("cart").expect("cart module");
+        let customer = registry.get("customer").expect("customer module");
+        let payment = registry.get("payment").expect("payment module");
+        let fulfillment = registry.get("fulfillment").expect("fulfillment module");
+        let commerce = registry.get("commerce").expect("commerce module");
         let outbox = registry.get("outbox").expect("outbox module");
         let pages = registry.get("pages").expect("pages module");
         let workflow = registry.get("workflow").expect("workflow module");
 
         assert!(registry.is_core("outbox"));
+        assert!(cart.dependencies().is_empty());
+        assert!(customer.dependencies().is_empty());
+        assert!(payment.dependencies().is_empty());
+        assert!(fulfillment.dependencies().is_empty());
         assert!(outbox.dependencies().is_empty());
+        assert_eq!(
+            commerce.dependencies(),
+            &[
+                "cart",
+                "customer",
+                "product",
+                "pricing",
+                "inventory",
+                "order",
+                "payment",
+                "fulfillment"
+            ]
+        );
         assert_eq!(pages.dependencies(), &["content"]);
         assert!(workflow.dependencies().is_empty());
     }

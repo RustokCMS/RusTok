@@ -7,6 +7,7 @@ use axum::{
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
         State,
     },
+    http::HeaderMap,
     response::IntoResponse,
     routing::get,
     Extension, Json,
@@ -33,6 +34,7 @@ async fn graphql_handler(
     request_context: RequestContext,
     OptionalCurrentUser(current_user): OptionalCurrentUser,
     Extension(locale): Extension<Locale>,
+    headers: HeaderMap,
     Json(req): Json<async_graphql::Request>,
 ) -> Json<async_graphql::Response> {
     if is_critical_admin_operation(&req) {
@@ -51,6 +53,7 @@ async fn graphql_handler(
         .data(ctx)
         .data(tenant_ctx)
         .data(request_context)
+        .data(headers)
         .data(registry)
         .data(locale);
 

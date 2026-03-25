@@ -14,6 +14,6 @@ rustok-outbox.workspace = true
 rustok-commerce-foundation.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 uuid.workspace = true
-

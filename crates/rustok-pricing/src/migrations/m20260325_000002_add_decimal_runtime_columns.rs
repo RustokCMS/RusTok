@@ -8,11 +8,11 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let mut amount_decimal = ColumnDef::new(Prices::AmountDecimal);
-        amount_decimal.decimal_len(20, 6).not_null().default(0);
+        amount_decimal.decimal_len(16, 6).not_null().default(0);
         add_column_if_missing(manager, Prices::Table, amount_decimal).await?;
 
         let mut compare_at_amount_decimal = ColumnDef::new(Prices::CompareAtAmountDecimal);
-        compare_at_amount_decimal.decimal_len(20, 6);
+        compare_at_amount_decimal.decimal_len(16, 6);
         add_column_if_missing(manager, Prices::Table, compare_at_amount_decimal).await?;
 
         manager
@@ -67,12 +67,7 @@ where
     C: IntoIden,
 {
     manager
-        .alter_table(
-            Table::alter()
-                .table(table)
-                .drop_column(column)
-                .to_owned(),
-        )
+        .alter_table(Table::alter().table(table).drop_column(column).to_owned())
         .await
 }
 

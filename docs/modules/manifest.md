@@ -155,7 +155,7 @@ fallback-режимом для модулей без `[settings]`, а серве
 > из `[provides.storefront_ui].leptos_crate`, optional `slot`, `route_segment`, `page_title`
 > и соглашения `<PascalSlug>View`. `apps/storefront` рендерит эти async surface-ы через streaming SSR
 > и прокидывает module-agnostic `UiRouteContext` (locale, route segment, subpath, query params), а модули `pages`,
-> `blog`, `content`, `forum` и `workflow/templates` теперь служат рабочими exemplar-ами для module-owned Leptos UI.
+> `blog`, `commerce`, `content`, `forum` и `workflow/templates` теперь служат рабочими exemplar-ами для module-owned Leptos UI.
 
 
 ## UI-контракты модулей в манифесте и сборке
@@ -203,7 +203,7 @@ page_title = "Blog"
 
 Leptos-host приложения (`apps/admin`, `apps/storefront`) подключают модульные пакеты через свои `build.rs`, а `BuildExecutor` затем собирает реальные host-артефакты по manifest-derived plan. Приложения Next.js требуют ручного добавления зависимостей в `package.json` и ручной пересборки.
 
-Референсные образцы для Leptos: модуль `workflow` (`crates/rustok-workflow/admin/` как root-page package поверх legacy detail flow), модуль `pages` (`crates/rustok-pages/admin/` и `crates/rustok-pages/storefront/`) как рабочий end-to-end exemplar для page-driven surfaces, модуль `blog` (`crates/rustok-blog/admin/` и `crates/rustok-blog/storefront/`) как рабочий exemplar для обычного content CRUD/read-path, модуль `content` (`crates/rustok-content/admin/` и `crates/rustok-content/storefront/`) как exemplar для core node CRUD/read-path с tenant bootstrap через `currentTenant`, и модуль `forum` (`crates/rustok-forum/admin/` и `crates/rustok-forum/storefront/`) как exemplar для NodeBB-inspired admin/storefront surfaces поверх собственного GraphQL/REST contract.
+Референсные образцы для Leptos: модуль `workflow` (`crates/rustok-workflow/admin/` как root-page package поверх legacy detail flow), модуль `pages` (`crates/rustok-pages/admin/` и `crates/rustok-pages/storefront/`) как рабочий end-to-end exemplar для page-driven surfaces, модуль `blog` (`crates/rustok-blog/admin/` и `crates/rustok-blog/storefront/`) как рабочий exemplar для обычного content CRUD/read-path, модуль `commerce` (`crates/rustok-commerce/admin/` и `crates/rustok-commerce/storefront/`) как exemplar для catalog CRUD/public catalog read-path поверх собственного GraphQL contract, модуль `content` (`crates/rustok-content/admin/` и `crates/rustok-content/storefront/`) как exemplar для core node CRUD/read-path с tenant bootstrap через `currentTenant`, и модуль `forum` (`crates/rustok-forum/admin/` и `crates/rustok-forum/storefront/`) как exemplar для NodeBB-inspired admin/storefront surfaces поверх собственного GraphQL/REST contract.
 
 Исключение:
 

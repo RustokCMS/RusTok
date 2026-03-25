@@ -6938,12 +6938,17 @@ dependencies = [
  "alloy-scripting",
  "rust_decimal",
  "rustok-auth",
+ "rustok-cart",
  "rustok-commerce",
  "rustok-content",
  "rustok-core",
+ "rustok-customer",
  "rustok-forum",
+ "rustok-fulfillment",
  "rustok-index",
  "rustok-inventory",
+ "rustok-order",
+ "rustok-payment",
  "rustok-pricing",
  "rustok-product",
  "rustok-test-utils",
@@ -9615,6 +9620,7 @@ dependencies = [
  "reqwest 0.13.2",
  "rustok-api",
  "rustok-blog-admin",
+ "rustok-commerce-admin",
  "rustok-content-admin",
  "rustok-forum-admin",
  "rustok-pages-admin",
@@ -9756,6 +9762,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-cart"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rust_decimal",
+ "rustok-core",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "validator",
+]
+
+[[package]]
 name = "rustok-commerce"
 version = "0.1.0"
 dependencies = [
@@ -9768,11 +9794,16 @@ dependencies = [
  "rust_decimal",
  "rust_decimal_macros",
  "rustok-api",
+ "rustok-cart",
  "rustok-commerce-foundation",
  "rustok-core",
+ "rustok-customer",
  "rustok-events",
+ "rustok-fulfillment",
  "rustok-inventory",
+ "rustok-order",
  "rustok-outbox",
+ "rustok-payment",
  "rustok-pricing",
  "rustok-product",
  "rustok-telemetry",
@@ -9791,6 +9822,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-commerce-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-graphql",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rustok-commerce-foundation"
 version = "0.1.0"
 dependencies = [
@@ -9804,6 +9846,16 @@ dependencies = [
  "utoipa",
  "uuid",
  "validator",
+]
+
+[[package]]
+name = "rustok-commerce-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-graphql",
+ "rustok-api",
+ "serde",
 ]
 
 [[package]]
@@ -9898,6 +9950,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-customer"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-core",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "validator",
+]
+
+[[package]]
 name = "rustok-email"
 version = "0.1.0"
 dependencies = [
@@ -9974,6 +10045,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-fulfillment"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rust_decimal",
+ "rustok-core",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "validator",
+]
+
+[[package]]
 name = "rustok-iggy"
 version = "0.1.0"
 dependencies = [
@@ -10035,6 +10126,7 @@ dependencies = [
  "rustok-outbox",
  "sea-orm",
  "sea-orm-migration",
+ "serde_json",
  "tracing",
  "uuid",
 ]
@@ -10080,6 +10172,28 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "rustok-order"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rust_decimal",
+ "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "validator",
 ]
 
 [[package]]
@@ -10145,6 +10259,26 @@ dependencies = [
  "leptos-graphql",
  "rustok-api",
  "serde",
+]
+
+[[package]]
+name = "rustok-payment"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rust_decimal",
+ "rustok-core",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "validator",
 ]
 
 [[package]]
@@ -10276,19 +10410,24 @@ dependencies = [
  "rustok-auth",
  "rustok-blog",
  "rustok-cache",
+ "rustok-cart",
  "rustok-commerce",
  "rustok-content",
  "rustok-core",
+ "rustok-customer",
  "rustok-email",
  "rustok-events",
  "rustok-forum",
+ "rustok-fulfillment",
  "rustok-iggy",
  "rustok-index",
  "rustok-inventory",
  "rustok-mcp",
  "rustok-media",
+ "rustok-order",
  "rustok-outbox",
  "rustok-pages",
+ "rustok-payment",
  "rustok-pricing",
  "rustok-product",
  "rustok-rbac",
@@ -10360,6 +10499,7 @@ dependencies = [
  "leptos_router",
  "rustok-api",
  "rustok-blog-storefront",
+ "rustok-commerce-storefront",
  "rustok-content-storefront",
  "rustok-forum-storefront",
  "rustok-pages-storefront",

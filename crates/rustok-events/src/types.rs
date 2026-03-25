@@ -344,6 +344,16 @@ pub enum DomainEvent {
         category: String,
         changed_by: Uuid,
     },
+    SearchSettingsChanged {
+        active_engine: String,
+        fallback_engine: String,
+        changed_by: Uuid,
+    },
+    SearchRebuildQueued {
+        target_type: String,
+        target_id: Option<Uuid>,
+        queued_by: Uuid,
+    },
 
     // ════════════════════════════════════════════════════════════════
     // FLEX — FIELD DEFINITION EVENTS
@@ -467,6 +477,8 @@ impl DomainEvent {
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
             Self::PlatformSettingsChanged { .. } => "platform_settings.changed",
+            Self::SearchSettingsChanged { .. } => "search.settings_changed",
+            Self::SearchRebuildQueued { .. } => "search.rebuild_queued",
 
             // Flex field definition events
             Self::FieldDefinitionCreated { .. } => "field_definition.created",
@@ -565,6 +577,8 @@ impl DomainEvent {
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
             Self::PlatformSettingsChanged { .. } => 1,
+            Self::SearchSettingsChanged { .. } => 1,
+            Self::SearchRebuildQueued { .. } => 1,
 
             // Flex field definition events (v1)
             Self::FieldDefinitionCreated { .. } => 1,
@@ -1100,6 +1114,29 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("changed_by", changed_by)?;
                 validators::validate_not_empty("category", category)?;
                 validators::validate_max_length("category", category, 64)?;
+                Ok(())
+            }
+            Self::SearchSettingsChanged {
+                active_engine,
+                fallback_engine,
+                changed_by,
+            } => {
+                validators::validate_not_nil_uuid("changed_by", changed_by)?;
+                validators::validate_not_empty("active_engine", active_engine)?;
+                validators::validate_max_length("active_engine", active_engine, 64)?;
+                validators::validate_not_empty("fallback_engine", fallback_engine)?;
+                validators::validate_max_length("fallback_engine", fallback_engine, 64)?;
+                Ok(())
+            }
+            Self::SearchRebuildQueued {
+                target_type,
+                target_id,
+                queued_by,
+            } => {
+                validators::validate_not_nil_uuid("queued_by", queued_by)?;
+                validators::validate_not_empty("target_type", target_type)?;
+                validators::validate_max_length("target_type", target_type, 64)?;
+                validators::validate_optional_uuid("target_id", target_id)?;
                 Ok(())
             }
 

@@ -24,6 +24,48 @@ impl SearchSettingsRecord {
             config: serde_json::json!({
                 "connector_mode": "settings_driven",
                 "available_external_engines": [],
+                "ranking_profiles": {
+                    "default": "balanced",
+                    "search_preview": "balanced",
+                    "storefront_search": "balanced",
+                    "admin_global_search": "exact"
+                },
+                "filter_presets": {
+                    "storefront_search": [
+                        {
+                            "key": "all",
+                            "label": "All results"
+                        },
+                        {
+                            "key": "products",
+                            "label": "Products",
+                            "entity_types": ["product"],
+                            "source_modules": ["commerce"],
+                            "ranking_profile": "catalog"
+                        },
+                        {
+                            "key": "content",
+                            "label": "Content",
+                            "entity_types": ["node"],
+                            "ranking_profile": "content"
+                        }
+                    ],
+                    "search_preview": [
+                        {
+                            "key": "products",
+                            "label": "Products",
+                            "entity_types": ["product"],
+                            "source_modules": ["commerce"],
+                            "ranking_profile": "catalog"
+                        },
+                        {
+                            "key": "content",
+                            "label": "Content",
+                            "entity_types": ["node"],
+                            "ranking_profile": "content"
+                        }
+                    ]
+                },
                 "notes": "PostgreSQL is the default engine until optional connector crates are installed."
             }),
             updated_at: Utc::now(),

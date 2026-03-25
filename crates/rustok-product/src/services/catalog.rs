@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, Set, TransactionTrait,
 };
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, info, instrument, warn};
@@ -182,6 +182,8 @@ impl CatalogService {
             "Product options inserted"
         );
 
+        let default_stock_location = Self::ensure_default_stock_location(&txn, tenant_id).await?;
+
         for (position, var_input) in input.variants.iter().enumerate() {
             let variant_id = generate_id();
 
@@ -207,7 +209,7 @@ impl CatalogService {
                 upc: Set(None),
                 inventory_policy: Set(var_input.inventory_policy.clone()),
                 inventory_management: Set("manual".into()),
-                inventory_quantity: Set(var_input.inventory_quantity),
+                inventory_quantity: Set(0),
                 weight: Set(var_input.weight),
                 weight_unit: Set(var_input.weight_unit.clone()),
                 option1: Set(var_input.option1.clone()),
@@ -218,6 +220,15 @@ impl CatalogService {
                 updated_at: Set(now.into()),
             };
             variant.insert(&txn).await?;
+
+            Self::create_initial_inventory_records(
+                &txn,
+                &default_stock_location,
+                variant_id,
+                var_input.sku.clone(),
+                var_input.inventory_quantity,
+            )
+            .await?;
 
             let variant_title = Self::generate_variant_title_from_inputs(
                 var_input.option1.as_deref(),
@@ -245,9 +256,9 @@ impl CatalogService {
                     amount: Set(price_input.amount),
                     compare_at_amount: Set(price_input.compare_at_amount),
                     legacy_amount: Set(Self::decimal_to_cents(price_input.amount)),
-                    legacy_compare_at_amount: Set(
-                        price_input.compare_at_amount.and_then(Self::decimal_to_cents),
-                    ),
+                    legacy_compare_at_amount: Set(price_input
+                        .compare_at_amount
+                        .and_then(Self::decimal_to_cents)),
                     min_quantity: Set(None),
                     max_quantity: Set(None),
                 };
@@ -371,6 +382,8 @@ impl CatalogService {
         } else {
             Vec::new()
         };
+        let available_inventory_by_variant =
+            Self::load_available_quantities(&self.db, &variant_ids).await?;
 
         // Group prices by variant_id
         let mut prices_by_variant: HashMap<Uuid, Vec<entities::price::Model>> = HashMap::new();
@@ -438,6 +451,10 @@ impl CatalogService {
                     .collect();
 
                 let title = Self::generate_variant_title(&variant);
+                let available_inventory = available_inventory_by_variant
+                    .get(&variant.id)
+                    .copied()
+                    .unwrap_or(0);
 
                 VariantResponse {
                     id: variant.id,
@@ -458,10 +475,9 @@ impl CatalogService {
                     option2: variant.option2,
                     option3: variant.option3,
                     prices: price_responses,
-                    inventory_quantity: variant.inventory_quantity,
+                    inventory_quantity: available_inventory,
                     inventory_policy: variant.inventory_policy.clone(),
-                    in_stock: variant.inventory_quantity > 0
-                        || variant.inventory_policy == "continue",
+                    in_stock: available_inventory > 0 || variant.inventory_policy == "continue",
                     weight: variant.weight,
                     weight_unit: variant.weight_unit,
                     position: variant.position,
@@ -784,6 +800,37 @@ impl CatalogService {
         let variant_ids: Vec<Uuid> = variants.iter().map(|variant| variant.id).collect();
 
         if !variant_ids.is_empty() {
+            let inventory_item_ids: Vec<Uuid> = entities::inventory_item::Entity::find()
+                .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.clone()))
+                .all(&txn)
+                .await?
+                .into_iter()
+                .map(|item| item.id)
+                .collect();
+
+            if !inventory_item_ids.is_empty() {
+                entities::reservation_item::Entity::delete_many()
+                    .filter(
+                        entities::reservation_item::Column::InventoryItemId
+                            .is_in(inventory_item_ids.clone()),
+                    )
+                    .exec(&txn)
+                    .await?;
+
+                entities::inventory_level::Entity::delete_many()
+                    .filter(
+                        entities::inventory_level::Column::InventoryItemId
+                            .is_in(inventory_item_ids.clone()),
+                    )
+                    .exec(&txn)
+                    .await?;
+
+                entities::inventory_item::Entity::delete_many()
+                    .filter(entities::inventory_item::Column::Id.is_in(inventory_item_ids))
+                    .exec(&txn)
+                    .await?;
+            }
+
             entities::price::Entity::delete_many()
                 .filter(entities::price::Column::VariantId.is_in(variant_ids.clone()))
                 .exec(&txn)
@@ -1011,5 +1058,126 @@ impl CatalogService {
         (amount * rust_decimal::Decimal::from(100))
             .round_dp(0)
             .to_i64()
+    }
+
+    async fn ensure_default_stock_location<C>(
+        conn: &C,
+        tenant_id: Uuid,
+    ) -> CommerceResult<entities::stock_location::Model>
+    where
+        C: ConnectionTrait,
+    {
+        if let Some(location) = entities::stock_location::Entity::find()
+            .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
+            .filter(entities::stock_location::Column::DeletedAt.is_null())
+            .one(conn)
+            .await?
+        {
+            return Ok(location);
+        }
+
+        let now = Utc::now();
+        entities::stock_location::ActiveModel {
+            id: Set(generate_id()),
+            tenant_id: Set(tenant_id),
+            name: Set("Default".to_string()),
+            code: Set(Some("default".to_string())),
+            address_line1: Set(None),
+            address_line2: Set(None),
+            city: Set(None),
+            province: Set(None),
+            postal_code: Set(None),
+            country_code: Set(None),
+            phone: Set(None),
+            metadata: Set(serde_json::json!({ "source": "catalog_service" })),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+            deleted_at: Set(None),
+        }
+        .insert(conn)
+        .await
+        .map_err(CommerceError::from)
+    }
+
+    async fn create_initial_inventory_records<C>(
+        conn: &C,
+        default_stock_location: &entities::stock_location::Model,
+        variant_id: Uuid,
+        sku: Option<String>,
+        quantity: i32,
+    ) -> CommerceResult<()>
+    where
+        C: ConnectionTrait,
+    {
+        let now = Utc::now();
+        let inventory_item = entities::inventory_item::ActiveModel {
+            id: Set(generate_id()),
+            variant_id: Set(variant_id),
+            sku: Set(sku),
+            requires_shipping: Set(true),
+            metadata: Set(serde_json::json!({ "source": "catalog_service" })),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(conn)
+        .await?;
+
+        entities::inventory_level::ActiveModel {
+            id: Set(generate_id()),
+            inventory_item_id: Set(inventory_item.id),
+            location_id: Set(default_stock_location.id),
+            stocked_quantity: Set(quantity),
+            reserved_quantity: Set(0),
+            incoming_quantity: Set(0),
+            low_stock_threshold: Set(None),
+            updated_at: Set(now.into()),
+        }
+        .insert(conn)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn load_available_quantities<C>(
+        conn: &C,
+        variant_ids: &[Uuid],
+    ) -> CommerceResult<HashMap<Uuid, i32>>
+    where
+        C: ConnectionTrait,
+    {
+        if variant_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let inventory_items = entities::inventory_item::Entity::find()
+            .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
+            .all(conn)
+            .await?;
+
+        if inventory_items.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
+            .iter()
+            .map(|item| (item.id, item.variant_id))
+            .collect();
+        let levels = entities::inventory_level::Entity::find()
+            .filter(
+                entities::inventory_level::Column::InventoryItemId
+                    .is_in(item_to_variant.keys().copied()),
+            )
+            .all(conn)
+            .await?;
+
+        let mut available_by_variant = HashMap::new();
+        for level in levels {
+            if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
+                *available_by_variant.entry(*variant_id).or_insert(0) +=
+                    level.stocked_quantity - level.reserved_quantity;
+            }
+        }
+
+        Ok(available_by_variant)
     }
 }

@@ -557,11 +557,23 @@ impl SearchProjector {
             LEFT JOIN LATERAL (
                 SELECT
                     COUNT(pv.id)::bigint AS variant_count,
-                    COALESCE(SUM(pv.inventory_quantity), 0) > 0 AS in_stock,
-                    MIN(pr.amount)::bigint AS price_min,
-                    MAX(pr.amount)::bigint AS price_max
+                    COALESCE(SUM(inv.available_quantity), 0) > 0 AS in_stock,
+                    MIN(price_agg.min_amount)::bigint AS price_min,
+                    MAX(price_agg.max_amount)::bigint AS price_max
                 FROM product_variants pv
-                LEFT JOIN prices pr ON pr.variant_id = pv.id
+                LEFT JOIN LATERAL (
+                    SELECT COALESCE(SUM(il.stocked_quantity - il.reserved_quantity), 0) AS available_quantity
+                    FROM inventory_items ii
+                    LEFT JOIN inventory_levels il ON il.inventory_item_id = ii.id
+                    WHERE ii.variant_id = pv.id
+                ) inv ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT
+                        MIN(pr.amount) AS min_amount,
+                        MAX(pr.amount) AS max_amount
+                    FROM prices pr
+                    WHERE pr.variant_id = pv.id
+                ) price_agg ON TRUE
                 WHERE pv.product_id = p.id
                   AND pv.tenant_id = p.tenant_id
             ) agg ON TRUE

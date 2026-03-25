@@ -175,9 +175,9 @@ impl PricingService {
                         amount: Set(price_input.amount),
                         compare_at_amount: Set(price_input.compare_at_amount),
                         legacy_amount: Set(decimal_to_cents(price_input.amount)),
-                        legacy_compare_at_amount: Set(
-                            price_input.compare_at_amount.and_then(decimal_to_cents),
-                        ),
+                        legacy_compare_at_amount: Set(price_input
+                            .compare_at_amount
+                            .and_then(decimal_to_cents)),
                         min_quantity: Set(None),
                         max_quantity: Set(None),
                     };

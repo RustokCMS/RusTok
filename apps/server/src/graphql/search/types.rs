@@ -2,8 +2,9 @@ use async_graphql::{InputObject, SimpleObject};
 use rustok_search::{
     LaggingSearchDocument, SearchAnalyticsInsightRow, SearchAnalyticsQueryRow,
     SearchAnalyticsSnapshot, SearchAnalyticsSummary, SearchConnectorDescriptor,
-    SearchDiagnosticsSnapshot, SearchDictionarySnapshot, SearchQueryRuleRecord, SearchResult,
-    SearchResultItem, SearchSettingsRecord, SearchStopWordRecord, SearchSynonymRecord,
+    SearchDiagnosticsSnapshot, SearchDictionarySnapshot, SearchFilterPreset, SearchQueryRuleRecord,
+    SearchResult, SearchResultItem, SearchSettingsRecord, SearchStopWordRecord, SearchSuggestion,
+    SearchSynonymRecord,
 };
 
 #[derive(Debug, Clone, SimpleObject)]
@@ -75,9 +76,47 @@ pub struct SearchPreviewInput {
     pub tenant_id: Option<String>,
     pub limit: Option<i32>,
     pub offset: Option<i32>,
+    pub ranking_profile: Option<String>,
+    pub preset_key: Option<String>,
     pub entity_types: Option<Vec<String>>,
     pub source_modules: Option<Vec<String>>,
     pub statuses: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct SearchFilterPresetsInput {
+    pub tenant_id: Option<String>,
+    pub surface: String,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchFilterPresetPayload {
+    pub key: String,
+    pub label: String,
+    pub entity_types: Vec<String>,
+    pub source_modules: Vec<String>,
+    pub statuses: Vec<String>,
+    pub ranking_profile: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct SearchSuggestionsInput {
+    pub query: String,
+    pub locale: Option<String>,
+    pub tenant_id: Option<String>,
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct SearchSuggestionPayload {
+    pub text: String,
+    pub kind: String,
+    pub document_id: Option<String>,
+    pub entity_type: Option<String>,
+    pub source_module: Option<String>,
+    pub locale: Option<String>,
+    pub url: Option<String>,
+    pub score: f64,
 }
 
 #[derive(Debug, Clone, SimpleObject)]
@@ -108,10 +147,12 @@ pub struct SearchPreviewResultItem {
 #[derive(Debug, Clone, SimpleObject)]
 pub struct SearchPreviewPayload {
     pub query_log_id: Option<String>,
+    pub preset_key: Option<String>,
     pub items: Vec<SearchPreviewResultItem>,
     pub total: u64,
     pub took_ms: u64,
     pub engine: String,
+    pub ranking_profile: String,
     pub facets: Vec<SearchFacetGroupPayload>,
 }
 
@@ -339,10 +380,12 @@ impl From<SearchResult> for SearchPreviewPayload {
     fn from(value: SearchResult) -> Self {
         Self {
             query_log_id: None,
+            preset_key: None,
             items: value.items.into_iter().map(Into::into).collect(),
             total: value.total,
             took_ms: value.took_ms,
             engine: value.engine.as_str().to_string(),
+            ranking_profile: value.ranking_profile.as_str().to_string(),
             facets: value
                 .facets
                 .into_iter()
@@ -358,6 +401,21 @@ impl From<SearchResult> for SearchPreviewPayload {
                         .collect(),
                 })
                 .collect(),
+        }
+    }
+}
+
+impl From<SearchFilterPreset> for SearchFilterPresetPayload {
+    fn from(value: SearchFilterPreset) -> Self {
+        Self {
+            key: value.key,
+            label: value.label,
+            entity_types: value.entity_types,
+            source_modules: value.source_modules,
+            statuses: value.statuses,
+            ranking_profile: value
+                .ranking_profile
+                .map(|value| value.as_str().to_string()),
         }
     }
 }
@@ -517,6 +575,21 @@ impl From<SearchDictionarySnapshot> for SearchDictionarySnapshotPayload {
             synonyms: value.synonyms.into_iter().map(Into::into).collect(),
             stop_words: value.stop_words.into_iter().map(Into::into).collect(),
             query_rules: value.query_rules.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<SearchSuggestion> for SearchSuggestionPayload {
+    fn from(value: SearchSuggestion) -> Self {
+        Self {
+            text: value.text,
+            kind: value.kind.as_str().to_string(),
+            document_id: value.document_id.map(|value| value.to_string()),
+            entity_type: value.entity_type,
+            source_module: value.source_module,
+            locale: value.locale,
+            url: value.url,
+            score: value.score,
         }
     }
 }

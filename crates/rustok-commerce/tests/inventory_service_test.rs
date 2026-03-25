@@ -7,10 +7,11 @@ use rustok_commerce::dto::{
     AdjustInventoryInput, CreateProductInput, CreateVariantInput, PriceInput,
     ProductTranslationInput,
 };
+use rustok_commerce::entities;
 use rustok_commerce::services::{CatalogService, InventoryService};
 use rustok_commerce::CommerceError;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
-use sea_orm::DatabaseConnection;
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -559,13 +560,17 @@ async fn test_inventory_workflow() {
         .adjust_inventory(tenant_id, actor_id, input)
         .await
         .unwrap();
-    assert_eq!(qty, 90);
+    assert_eq!(qty, 80);
 
     let available2 = service
         .check_availability(tenant_id, variant_id, 95)
         .await
         .unwrap();
     assert!(!available2);
+    assert!(service
+        .check_availability(tenant_id, variant_id, 80)
+        .await
+        .unwrap());
 }
 
 #[tokio::test]
@@ -685,4 +690,83 @@ async fn test_inventory_boundary_at_threshold() {
     assert!(result.is_ok());
     let quantity = result.unwrap();
     assert_eq!(quantity, 5);
+}
+
+#[tokio::test]
+async fn test_set_inventory_creates_normalized_inventory_records() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_inventory(tenant_id, actor_id, variant_id, 25)
+        .await
+        .unwrap();
+
+    let inventory_item = entities::inventory_item::Entity::find()
+        .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
+        .one(&_db)
+        .await
+        .unwrap()
+        .expect("inventory item should be created");
+    let level = entities::inventory_level::Entity::find()
+        .filter(entities::inventory_level::Column::InventoryItemId.eq(inventory_item.id))
+        .one(&_db)
+        .await
+        .unwrap()
+        .expect("inventory level should be created");
+    let location_count = entities::stock_location::Entity::find()
+        .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
+        .count(&_db)
+        .await
+        .unwrap();
+
+    assert_eq!(level.stocked_quantity, 25);
+    assert_eq!(level.reserved_quantity, 0);
+    assert_eq!(location_count, 1);
+}
+
+#[tokio::test]
+async fn test_reserve_creates_reservation_and_syncs_available_shadow() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_inventory(tenant_id, actor_id, variant_id, 20)
+        .await
+        .unwrap();
+    service.reserve(tenant_id, variant_id, 7).await.unwrap();
+
+    let inventory_item = entities::inventory_item::Entity::find()
+        .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
+        .one(&_db)
+        .await
+        .unwrap()
+        .expect("inventory item should exist");
+    let level = entities::inventory_level::Entity::find()
+        .filter(entities::inventory_level::Column::InventoryItemId.eq(inventory_item.id))
+        .one(&_db)
+        .await
+        .unwrap()
+        .expect("inventory level should exist");
+    let reservation = entities::reservation_item::Entity::find()
+        .filter(entities::reservation_item::Column::InventoryItemId.eq(inventory_item.id))
+        .one(&_db)
+        .await
+        .unwrap()
+        .expect("reservation item should be created");
+    assert_eq!(level.stocked_quantity, 20);
+    assert_eq!(level.reserved_quantity, 7);
+    assert_eq!(reservation.quantity, 7);
+    assert!(service
+        .check_availability(tenant_id, variant_id, 13)
+        .await
+        .unwrap());
+    assert!(!service
+        .check_availability(tenant_id, variant_id, 14)
+        .await
+        .unwrap());
 }

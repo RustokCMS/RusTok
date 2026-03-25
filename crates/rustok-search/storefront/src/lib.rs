@@ -1,18 +1,27 @@
 mod api;
 mod model;
 
-use leptos::ev::MouseEvent;
+use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::web_sys;
 use rustok_api::UiRouteContext;
 
-use crate::model::{SearchFacetGroup, SearchPreviewFilters, SearchPreviewPayload};
+use crate::model::{
+    SearchFacetGroup, SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload,
+    SearchSuggestion,
+};
 
 #[component]
 pub fn SearchView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let query = route_context.query_value("q").unwrap_or("").to_string();
+    let (search_input, set_search_input) = signal(query.clone());
+    let preset_key = route_context
+        .query_value("preset")
+        .unwrap_or("")
+        .to_string();
+    let (selected_preset, set_selected_preset) = signal(preset_key.clone());
     let locale = route_context.locale.clone();
     let entity_types = parse_csv(route_context.query_value("entity_types").unwrap_or(""));
     let source_modules = parse_csv(route_context.query_value("source_modules").unwrap_or(""));
@@ -26,6 +35,9 @@ pub fn SearchView() -> impl IntoView {
     let locale_for_resource = locale.clone();
     let filters_for_resource = filters.clone();
     let query_for_view = query.clone();
+    let preset_for_view = preset_key.clone();
+    let locale_for_suggestions = locale.clone();
+    let preset_for_resource = preset_key.clone();
     let results = Resource::new_blocking(
         move || {
             (
@@ -34,15 +46,38 @@ pub fn SearchView() -> impl IntoView {
                 filters_for_resource.clone(),
             )
         },
-        move |(query, locale, filters)| async move {
-            if query.trim().is_empty() {
-                Ok(None)
-            } else {
-                api::fetch_storefront_search(query, locale, filters)
+        move |(query, locale, filters)| {
+            let preset_key = preset_for_resource.clone();
+            async move {
+                if query.trim().is_empty() {
+                    Ok(None)
+                } else {
+                    api::fetch_storefront_search(
+                        query,
+                        locale,
+                        (!preset_key.is_empty()).then_some(preset_key.clone()),
+                        filters,
+                    )
                     .await
                     .map(Some)
+                }
             }
         },
+    );
+    let suggestions = Resource::new(
+        move || (search_input.get(), locale_for_suggestions.clone()),
+        move |(query, locale)| async move {
+            let trimmed = query.trim().to_string();
+            if trimmed.len() < 2 {
+                Ok(Vec::new())
+            } else {
+                api::fetch_storefront_suggestions(trimmed, locale).await
+            }
+        },
+    );
+    let filter_presets = Resource::new(
+        || (),
+        move |_| async move { api::fetch_storefront_filter_presets().await },
     );
 
     view! {
@@ -59,7 +94,70 @@ pub fn SearchView() -> impl IntoView {
                 </p>
             </div>
 
-            <div class="mt-8">
+            <div class="mt-8 space-y-4">
+                <form
+                    class="rounded-2xl border border-border bg-background p-4"
+                    on:submit=move |ev| submit_search(ev, search_input.get(), selected_preset.get())
+                >
+                    <label class="block text-sm font-medium text-card-foreground" for="storefront-search-input">
+                        "Search query"
+                    </label>
+                    <div class="mt-3 flex flex-col gap-3 md:flex-row">
+                        <input
+                            id="storefront-search-input"
+                            class="min-w-0 flex-1 rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground"
+                            prop:value=move || search_input.get()
+                            on:input=move |ev| set_search_input.set(event_target_value(&ev))
+                            placeholder="Search products and published content"
+                        />
+                        <button
+                            class="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground"
+                            type="submit"
+                        >
+                            "Search"
+                        </button>
+                    </div>
+                    <Suspense fallback=|| view! { <div class="mt-3 h-10 animate-pulse rounded-xl bg-muted"></div> }>
+                        {move || filter_presets.get().map(|result| match result {
+                            Ok(presets) if !presets.is_empty() => view! {
+                                <PresetChips presets selected_preset set_selected_preset query=search_input.get() />
+                            }.into_any(),
+                            Ok(_) => view! { <></> }.into_any(),
+                            Err(err) => view! { <div class="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{format!("Failed to load presets: {err}")}</div> }.into_any(),
+                        })}
+                    </Suspense>
+                    <p class="mt-3 text-xs text-muted-foreground">
+                        "Autocomplete uses popular successful queries and matching published document titles from rustok-search."
+                    </p>
+                </form>
+
+                <Suspense fallback=|| view! {
+                    <div class="rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
+                        "Loading suggestions..."
+                    </div>
+                }>
+                    {move || {
+                        let suggestions = suggestions.clone();
+                        Suspend::new(async move {
+                            match suggestions.await {
+                                Ok(items) if !items.is_empty() => view! {
+                                    <SearchSuggestionList suggestions=items />
+                                }.into_any(),
+                                Ok(_) => view! {
+                                    <div class="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                                        "Type at least 2 characters to see autocomplete suggestions."
+                                    </div>
+                                }.into_any(),
+                                Err(err) => view! {
+                                    <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                                        {format!("Failed to load search suggestions: {err}")}
+                                    </div>
+                                }.into_any(),
+                            }
+                        })
+                    }}
+                </Suspense>
+
                 <Suspense fallback=|| view! {
                     <div class="space-y-4">
                         <div class="h-28 animate-pulse rounded-2xl bg-muted"></div>
@@ -74,10 +172,11 @@ pub fn SearchView() -> impl IntoView {
                     {move || {
                         let results = results.clone();
                         let query = query_for_view.clone();
+                        let preset_key = preset_for_view.clone();
                         Suspend::new(async move {
                             match results.await {
                                 Ok(Some(payload)) => view! {
-                                    <SearchResults query=query.clone() payload />
+                                    <SearchResults query=query.clone() selected_preset=preset_key.clone() payload />
                                 }.into_any(),
                                 Ok(None) => view! {
                                     <EmptyState
@@ -100,7 +199,110 @@ pub fn SearchView() -> impl IntoView {
 }
 
 #[component]
-fn SearchResults(query: String, payload: SearchPreviewPayload) -> impl IntoView {
+fn SearchSuggestionList(suggestions: Vec<SearchSuggestion>) -> impl IntoView {
+    view! {
+        <article class="rounded-2xl border border-border bg-background p-4">
+            <div class="flex items-center justify-between gap-3">
+                <div class="text-sm font-semibold text-card-foreground">
+                    "Suggestions"
+                </div>
+                <div class="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    "autocomplete"
+                </div>
+            </div>
+            <div class="mt-3 grid gap-2">
+                {suggestions
+                    .into_iter()
+                    .map(|suggestion| {
+                        let suggestion_text = suggestion.text.clone();
+                        let suggestion_kind = suggestion.kind.clone();
+                        let suggestion_locale = suggestion.locale.clone();
+                        let href = suggestion.url.clone();
+                        view! {
+                            <button
+                                class="flex w-full items-start justify-between gap-4 rounded-xl border border-border px-4 py-3 text-left hover:bg-muted/30"
+                                on:click=move |_| {
+                                    if suggestion_kind == "document" {
+                                        if let Some(href) = href.clone() {
+                                            navigate_to_href(&href);
+                                        } else {
+                                            navigate_to_search_query(&suggestion_text, None);
+                                        }
+                                    } else {
+                                        navigate_to_search_query(&suggestion_text, None);
+                                    }
+                                }
+                                type="button"
+                            >
+                                <span class="min-w-0">
+                                    <span class="block truncate text-sm font-medium text-card-foreground">
+                                        {suggestion_text.clone()}
+                                    </span>
+                                    <span class="mt-1 block text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                                        {format!(
+                                            "{}{}",
+                                            suggestion_kind,
+                                            suggestion_locale
+                                                .as_deref()
+                                                .map(|locale| format!(" • {locale}"))
+                                                .unwrap_or_default()
+                                        )}
+                                    </span>
+                                </span>
+                                <span class="shrink-0 text-xs text-muted-foreground">
+                                    {if suggestion_kind == "document" { "Open" } else { "Search" }}
+                                </span>
+                            </button>
+                        }
+                    })
+                    .collect_view()}
+            </div>
+        </article>
+    }
+}
+
+#[component]
+fn PresetChips(
+    presets: Vec<SearchFilterPreset>,
+    selected_preset: ReadSignal<String>,
+    set_selected_preset: WriteSignal<String>,
+    query: String,
+) -> impl IntoView {
+    view! {
+        <div class="mt-3 flex flex-wrap gap-2">
+            {presets.into_iter().map(|preset| {
+                let key = preset.key.clone();
+                let label = preset.label.clone();
+                let class_key = key.clone();
+                let query_value = query.clone();
+                view! {
+                    <button
+                        class=move || if selected_preset.get() == class_key {
+                            "inline-flex items-center rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
+                        } else {
+                            "inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground"
+                        }
+                        on:click=move |_| {
+                            let next = if selected_preset.get() == key { String::new() } else { key.clone() };
+                            set_selected_preset.set(next.clone());
+                            navigate_to_search_query(&query_value, Some(next));
+                        }
+                        type="button"
+                    >
+                        {label}
+                    </button>
+                }
+            }).collect_view()}
+        </div>
+    }
+}
+
+#[component]
+fn SearchResults(
+    query: String,
+    selected_preset: String,
+    payload: SearchPreviewPayload,
+) -> impl IntoView {
     let locale = payload
         .items
         .first()
@@ -108,10 +310,12 @@ fn SearchResults(query: String, payload: SearchPreviewPayload) -> impl IntoView 
         .unwrap_or_else(|| "all".to_string());
     let SearchPreviewPayload {
         query_log_id,
+        preset_key: applied_preset_key,
         items,
         total,
         took_ms,
         engine,
+        ranking_profile,
         facets,
     } = payload;
     let has_items = !items.is_empty();
@@ -155,7 +359,15 @@ fn SearchResults(query: String, payload: SearchPreviewPayload) -> impl IntoView 
                             </div>
                             <h3 class="mt-2 text-xl font-semibold text-foreground">{query}</h3>
                             <p class="mt-2 text-sm text-muted-foreground">
-                                {format!("{total} results in {took_ms} ms via {engine}")}
+                                {format!("{total} results in {took_ms} ms via {engine} ({ranking_profile})")}
+                            </p>
+                            <p class="mt-2 text-xs text-muted-foreground">
+                                {format!(
+                                    "preset = {}",
+                                    applied_preset_key
+                                        .filter(|value| !value.is_empty())
+                                        .unwrap_or_else(|| if selected_preset.is_empty() { "none".to_string() } else { selected_preset.clone() })
+                                )}
                             </p>
                         </div>
                         <div class="rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm text-card-foreground">
@@ -302,4 +514,50 @@ fn parse_csv(value: &str) -> Vec<String> {
         .filter(|segment| !segment.is_empty())
         .map(ToOwned::to_owned)
         .collect()
+}
+
+fn submit_search(ev: SubmitEvent, query: String, preset_key: String) {
+    ev.prevent_default();
+    navigate_to_search_query(&query, Some(preset_key));
+}
+
+fn navigate_to_search_query(query: &str, preset_key: Option<String>) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+
+    let Ok(current_href) = window.location().href() else {
+        return;
+    };
+
+    let Ok(url) = web_sys::Url::new(&current_href) else {
+        return;
+    };
+
+    if query.trim().is_empty() {
+        let _ = url.search_params().delete("q");
+    } else {
+        url.search_params().set("q", query.trim());
+    }
+
+    match preset_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value) => url.search_params().set("preset", value),
+        None => {
+            let _ = url.search_params().delete("preset");
+        }
+    }
+
+    let _ = window.location().set_href(&url.href());
+}
+
+fn navigate_to_href(href: &str) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+
+    let _ = window.location().set_href(href);
 }

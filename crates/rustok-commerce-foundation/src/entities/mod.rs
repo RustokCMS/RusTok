@@ -1,3 +1,5 @@
+pub mod inventory_item;
+pub mod inventory_level;
 pub mod price;
 pub mod product;
 pub mod product_image;
@@ -8,8 +10,12 @@ pub mod product_option_value;
 pub mod product_option_value_translation;
 pub mod product_translation;
 pub mod product_variant;
+pub mod reservation_item;
+pub mod stock_location;
 pub mod variant_translation;
 
+pub use inventory_item::Entity as InventoryItem;
+pub use inventory_level::Entity as InventoryLevel;
 pub use price::Entity as Price;
 pub use product::Entity as Product;
 pub use product_image::Entity as ProductImage;
@@ -20,4 +26,6 @@ pub use product_option_value::Entity as ProductOptionValue;
 pub use product_option_value_translation::Entity as ProductOptionValueTranslation;
 pub use product_translation::Entity as ProductTranslation;
 pub use product_variant::Entity as ProductVariant;
+pub use reservation_item::Entity as ReservationItem;
+pub use stock_location::Entity as StockLocation;
 pub use variant_translation::Entity as VariantTranslation;

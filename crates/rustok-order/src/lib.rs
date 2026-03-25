@@ -1,0 +1,53 @@
+use async_trait::async_trait;
+use rustok_core::permissions::Permission;
+use rustok_core::{MigrationSource, RusToKModule};
+use sea_orm_migration::MigrationTrait;
+
+pub mod dto;
+pub mod entities;
+pub mod error;
+pub mod migrations;
+pub mod services;
+
+pub use dto::*;
+pub use entities::*;
+pub use error::{OrderError, OrderResult};
+pub use services::OrderService;
+
+pub struct OrderModule;
+
+#[async_trait]
+impl RusToKModule for OrderModule {
+    fn slug(&self) -> &'static str {
+        "order"
+    }
+
+    fn name(&self) -> &'static str {
+        "Order"
+    }
+
+    fn description(&self) -> &'static str {
+        "Default order submodule in the ecommerce family"
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            Permission::ORDERS_CREATE,
+            Permission::ORDERS_READ,
+            Permission::ORDERS_UPDATE,
+            Permission::ORDERS_DELETE,
+            Permission::ORDERS_LIST,
+            Permission::ORDERS_MANAGE,
+        ]
+    }
+}
+
+impl MigrationSource for OrderModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        migrations::migrations()
+    }
+}

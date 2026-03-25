@@ -45,7 +45,15 @@
 | Slug | Crate | Depends on |
 |---|---|---|
 | `content` | `rustok-content` | — |
-| `commerce` | `rustok-commerce` | — |
+| `cart` | `rustok-cart` | — |
+| `customer` | `rustok-customer` | — |
+| `product` | `rustok-product` | — |
+| `pricing` | `rustok-pricing` | `product` |
+| `inventory` | `rustok-inventory` | `product` |
+| `order` | `rustok-order` | — |
+| `payment` | `rustok-payment` | — |
+| `fulfillment` | `rustok-fulfillment` | — |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` |
 | `blog` | `rustok-blog` | `content` |
 | `forum` | `rustok-forum` | `content` |
 | `pages` | `rustok-pages` | `content` |

@@ -8,7 +8,7 @@
 
 ## Главные правила
 
-1. Для platform modules существует только два статуса: `Core` и `Optional`.
+1. Для platform modules существуют только два статуса: `Core` и `Optional`.
 2. Источник истины по составу platform modules — `modules.toml`.
 3. `ModuleRegistry`, bootstrap в `apps/server` и codegen в `build.rs` — это способы wiring, а не отдельные типы модулей.
 4. `rustok-outbox` — **Core module**. То, что event runtime использует его ещё и напрямую, не меняет его архитектурный статус.
@@ -38,9 +38,14 @@ graph TD
 
     subgraph OptionalModules["Optional modules"]
         CONTENT["rustok-content"]
+        CART["rustok-cart"]
+        CUSTOMER["rustok-customer"]
         PRODUCT["rustok-product"]
         PRICING["rustok-pricing"]
         INVENTORY["rustok-inventory"]
+        ORDER["rustok-order"]
+        PAYMENT["rustok-payment"]
+        FULFILLMENT["rustok-fulfillment"]
         COMMERCE["rustok-commerce"]
         BLOG["rustok-blog"]
         FORUM["rustok-forum"]
@@ -71,9 +76,14 @@ graph TD
     SERVER --> TENANT
     SERVER --> RBAC
     SERVER --> CONTENT
+    SERVER --> CART
+    SERVER --> CUSTOMER
     SERVER --> PRODUCT
     SERVER --> PRICING
     SERVER --> INVENTORY
+    SERVER --> ORDER
+    SERVER --> PAYMENT
+    SERVER --> FULFILLMENT
     SERVER --> COMMERCE
     SERVER --> BLOG
     SERVER --> FORUM
@@ -81,9 +91,14 @@ graph TD
     SERVER --> MEDIA
     SERVER --> WORKFLOW
 
+    COMMERCE --> CART
+    COMMERCE --> CUSTOMER
     COMMERCE --> PRODUCT
     COMMERCE --> PRICING
     COMMERCE --> INVENTORY
+    COMMERCE --> ORDER
+    COMMERCE --> PAYMENT
+    COMMERCE --> FULFILLMENT
     PRODUCT --> COMMERCE_FOUNDATION
     PRICING --> COMMERCE_FOUNDATION
     INVENTORY --> COMMERCE_FOUNDATION
@@ -125,10 +140,15 @@ Optional modules компонуются в сборку и затем могут
 | Slug | Crate | Зависимости | Роль |
 |---|---|---|---|
 | `content` | `rustok-content` | — | Базовый контентный домен |
-| `product` | `rustok-product` | — | Дефолтный каталоговый подмодуль семейства `commerce/ecommerce` |
+| `cart` | `rustok-cart` | — | Дефолтный cart-подмодуль семейства `commerce/ecommerce`: cart lifecycle, line items и totals |
+| `customer` | `rustok-customer` | — | Дефолтный storefront customer-подмодуль семейства `commerce/ecommerce`: отдельный customer profile и optional linkage на `user_id` |
+| `product` | `rustok-product` | — | Дефолтный catalog-подмодуль семейства `commerce/ecommerce` |
 | `pricing` | `rustok-pricing` | `product` | Дефолтный pricing-подмодуль семейства `commerce/ecommerce` |
-| `inventory` | `rustok-inventory` | `product` | Дефолтный inventory-подмодуль семейства `commerce/ecommerce` |
-| `commerce` | `rustok-commerce` | `product`, `pricing`, `inventory` | Root umbrella module семейства `ecommerce`: orchestration, compatibility facade и верхний вход в commerce family |
+| `inventory` | `rustok-inventory` | `product` | Дефолтный inventory-подмодуль семейства `commerce/ecommerce` с нормализованными stock levels и reservations |
+| `order` | `rustok-order` | — | Дефолтный order-подмодуль семейства `commerce/ecommerce`: lifecycle, line item snapshots, order events |
+| `payment` | `rustok-payment` | — | Дефолтный payment-подмодуль семейства `commerce/ecommerce`: payment collections, attempts и базовый lifecycle авторизации/капчура |
+| `fulfillment` | `rustok-fulfillment` | — | Дефолтный fulfillment-подмодуль семейства `commerce/ecommerce`: shipping options, fulfillment records и shipment lifecycle |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Root umbrella module семейства `ecommerce`: orchestration, compatibility facade и верхний вход в commerce family |
 | `blog` | `rustok-blog` | `content` | Блог поверх content |
 | `forum` | `rustok-forum` | `content` | Форум поверх content |
 | `pages` | `rustok-pages` | `content` | Страницы, блоки и меню |

@@ -11,8 +11,8 @@ use rustok_api::UiRouteContext;
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAdminBootstrap, SearchAnalyticsPayload,
     SearchDiagnosticsPayload, SearchDictionarySnapshotPayload, SearchFacetGroup,
-    SearchPreviewFilters, SearchPreviewPayload, SearchQueryRulePayload, SearchStopWordPayload,
-    SearchSynonymPayload,
+    SearchFilterPresetPayload, SearchPreviewFilters, SearchPreviewPayload, SearchQueryRulePayload,
+    SearchStopWordPayload, SearchSynonymPayload,
 };
 
 #[component]
@@ -35,6 +35,8 @@ pub fn SearchAdmin() -> impl IntoView {
     let (entity_types, set_entity_types) = signal(String::new());
     let (source_modules, set_source_modules) = signal(String::new());
     let (statuses, set_statuses) = signal(String::new());
+    let (ranking_profile, set_ranking_profile) = signal(String::new());
+    let (preset_key, set_preset_key) = signal(String::new());
     let (preview, set_preview) = signal(Option::<SearchPreviewPayload>::None);
     let (preview_error, set_preview_error) = signal(Option::<String>::None);
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
@@ -67,6 +69,12 @@ pub fn SearchAdmin() -> impl IntoView {
             api::fetch_search_analytics(token_value, tenant_value, Some(7), Some(10)).await
         },
     );
+    let filter_presets = Resource::new(
+        move || (token.get(), tenant.get(), refresh_nonce.get()),
+        move |(token_value, tenant_value, _)| async move {
+            api::fetch_filter_presets(token_value, tenant_value, "search_preview").await
+        },
+    );
 
     Effect::new(move |_| {
         if let Some(Ok(bootstrap)) = bootstrap.get() {
@@ -92,6 +100,8 @@ pub fn SearchAdmin() -> impl IntoView {
             let token_value = token.get_untracked();
             let tenant_value = tenant.get_untracked();
             let query_value = query.get_untracked();
+            let ranking_profile_value = ranking_profile.get_untracked();
+            let preset_key_value = optional_text(preset_key.get_untracked());
             let locale_value = initial_locale.clone();
             async move {
                 match api::fetch_search_preview(
@@ -99,6 +109,8 @@ pub fn SearchAdmin() -> impl IntoView {
                     tenant_value,
                     query_value,
                     locale_value,
+                    optional_text(ranking_profile_value),
+                    preset_key_value,
                     filters,
                 )
                 .await
@@ -182,6 +194,11 @@ pub fn SearchAdmin() -> impl IntoView {
                                     set_source_modules,
                                     statuses,
                                     set_statuses,
+                                    ranking_profile,
+                                    set_ranking_profile,
+                                    preset_key,
+                                    set_preset_key,
+                                    filter_presets,
                                     preview,
                                     preview_error,
                                     busy,
@@ -400,6 +417,11 @@ fn playground_view(
     set_source_modules: WriteSignal<String>,
     statuses: ReadSignal<String>,
     set_statuses: WriteSignal<String>,
+    ranking_profile: ReadSignal<String>,
+    set_ranking_profile: WriteSignal<String>,
+    preset_key: ReadSignal<String>,
+    set_preset_key: WriteSignal<String>,
+    filter_presets: Resource<Result<Vec<SearchFilterPresetPayload>, api::ApiError>>,
     preview: ReadSignal<Option<SearchPreviewPayload>>,
     preview_error: ReadSignal<Option<String>>,
     busy: ReadSignal<bool>,
@@ -409,6 +431,31 @@ fn playground_view(
         <form class="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm" on:submit=move |ev| run_preview.run(ev)>
             <div class="space-y-1"><h2 class="text-lg font-semibold text-card-foreground">"Search Preview"</h2><p class="text-sm text-muted-foreground">"Runs the current PostgreSQL FTS preview path over rustok-search documents."</p></div>
             <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">"Query"</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=query on:input=move |ev| set_query.set(event_target_value(&ev)) /></label>
+            <label class="block space-y-2">
+                <span class="text-sm font-medium text-card-foreground">"Filter preset"</span>
+                <Suspense fallback=move || view! { <div class="h-10 animate-pulse rounded-lg bg-muted"></div> }>
+                    {move || filter_presets.get().map(|result| match result {
+                        Ok(presets) => view! {
+                            <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=preset_key on:change=move |ev| set_preset_key.set(event_target_value(&ev))>
+                                <option value="">"auto"</option>
+                                {presets.into_iter().map(|preset| view! { <option value=preset.key.clone()>{preset.label}</option> }).collect_view()}
+                            </select>
+                        }.into_any(),
+                        Err(err) => view! { <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{format!("Failed to load presets: {err}")}</div> }.into_any(),
+                    })}
+                </Suspense>
+            </label>
+            <label class="block space-y-2">
+                <span class="text-sm font-medium text-card-foreground">"Ranking profile"</span>
+                <select class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=ranking_profile on:change=move |ev| set_ranking_profile.set(event_target_value(&ev))>
+                    <option value="">"auto"</option>
+                    <option value="balanced">"balanced"</option>
+                    <option value="exact">"exact"</option>
+                    <option value="fresh">"fresh"</option>
+                    <option value="catalog">"catalog"</option>
+                    <option value="content">"content"</option>
+                </select>
+            </label>
             <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">"Entity types (CSV)"</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=entity_types on:input=move |ev| set_entity_types.set(event_target_value(&ev)) /></label>
             <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">"Source modules (CSV)"</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=source_modules on:input=move |ev| set_source_modules.set(event_target_value(&ev)) /></label>
             <label class="block space-y-2"><span class="text-sm font-medium text-card-foreground">"Statuses (CSV)"</span><input type="text" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" prop:value=statuses on:input=move |ev| set_statuses.set(event_target_value(&ev)) /></label>
@@ -528,7 +575,7 @@ fn analytics_panel(analytics: SearchAnalyticsPayload) -> impl IntoView {
 
 fn preview_panel(payload: SearchPreviewPayload) -> impl IntoView {
     view! { <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <div><h2 class="text-lg font-semibold text-card-foreground">"Preview Results"</h2><p class="text-sm text-muted-foreground">{format!("{} results in {} ms via {}", payload.total, payload.took_ms, payload.engine)}</p></div>
+        <div><h2 class="text-lg font-semibold text-card-foreground">"Preview Results"</h2><p class="text-sm text-muted-foreground">{format!("{} results in {} ms via {} ({})", payload.total, payload.took_ms, payload.engine, payload.ranking_profile)}</p><p class="mt-2 text-xs text-muted-foreground">{format!("preset = {}", payload.preset_key.unwrap_or_else(|| "none".to_string()))}</p></div>
         <div class="mt-5 grid gap-4 lg:grid-cols-3">{payload.facets.iter().map(|facet| view! { <FacetCard facet=facet.clone() /> }).collect_view()}</div>
         <div class="mt-6 space-y-3">{payload.items.into_iter().enumerate().map(|(index, item)| view! {
             <article class="rounded-xl border border-border bg-background p-4">

@@ -1,10 +1,16 @@
 use async_graphql::{Context, Object, Result};
-use rustok_api::graphql::{require_module_enabled, resolve_graphql_locale};
+use rustok_api::{
+    graphql::{require_module_enabled, resolve_graphql_locale},
+    TenantContext,
+};
 use rustok_core::Permission;
+use rustok_outbox::TransactionalEventBus;
 use rustok_telemetry::metrics;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{
@@ -34,8 +40,9 @@ impl CommerceQuery {
             "Permission denied: products:read required",
         )?;
 
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = CatalogService::new(db.clone(), event_bus.clone());
@@ -45,18 +52,8 @@ impl CommerceQuery {
             Err(err) => return Err(err.to_string().into()),
         };
 
-        let filtered_translations = product
-            .translations
-            .into_iter()
-            .filter(|translation| translation.locale == locale)
-            .collect::<Vec<_>>();
-
         Ok(Some(
-            crate::dto::ProductResponse {
-                translations: filtered_translations,
-                ..product
-            }
-            .into(),
+            localized_product_response(product, &locale, tenant.default_locale.as_str()).into(),
         ))
     }
 
@@ -74,7 +71,8 @@ impl CommerceQuery {
             "Permission denied: products:list required",
         )?;
 
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let filter = filter.unwrap_or(ProductsFilter {
             status: None,
@@ -84,7 +82,6 @@ impl CommerceQuery {
             per_page: Some(20),
         });
         let requested_limit = filter.per_page.map(|value| value.max(0) as u64);
-
         let page = filter.page.unwrap_or(1).max(1);
         let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
         let offset = (page.saturating_sub(1)) * per_page;
@@ -114,43 +111,14 @@ impl CommerceQuery {
             .all(db)
             .await?;
 
-        let product_ids = products
-            .iter()
-            .map(|product| product.id)
-            .collect::<Vec<_>>();
-        let translations = if product_ids.is_empty() {
-            Vec::new()
-        } else {
-            product_translation::Entity::find()
-                .filter(product_translation::Column::ProductId.is_in(product_ids))
-                .filter(product_translation::Column::Locale.eq(&locale))
-                .all(db)
-                .await?
-        };
-
-        let translation_map = translations
-            .into_iter()
-            .map(|translation| (translation.product_id, translation))
-            .collect::<std::collections::HashMap<_, _>>();
-
-        let items = products
-            .into_iter()
-            .map(|product| {
-                let translation = translation_map.get(&product.id);
-                GqlProductListItem {
-                    id: product.id,
-                    status: product.status.into(),
-                    title: translation
-                        .map(|value| value.title.clone())
-                        .unwrap_or_default(),
-                    handle: translation
-                        .map(|value| value.handle.clone())
-                        .unwrap_or_default(),
-                    vendor: product.vendor,
-                    created_at: product.created_at.to_rfc3339(),
-                }
-            })
-            .collect::<Vec<_>>();
+        let items = load_product_list_items(
+            db,
+            products,
+            &locale,
+            tenant.default_locale.as_str(),
+            product_list_path("commerce.products"),
+        )
+        .await?;
 
         metrics::record_read_path_budget(
             "graphql",
@@ -168,4 +136,329 @@ impl CommerceQuery {
             has_next: page * per_page < total,
         })
     }
+
+    async fn storefront_product(
+        &self,
+        ctx: &Context<'_>,
+        id: Option<Uuid>,
+        handle: Option<String>,
+        locale: Option<String>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<GqlProduct>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+
+        let product_id = match (id, handle.as_deref().map(str::trim)) {
+            (Some(id), _) => Some(id),
+            (None, Some(handle)) if !handle.is_empty() => {
+                find_published_product_id_by_handle(
+                    db,
+                    tenant_id,
+                    handle,
+                    &locale,
+                    tenant.default_locale.as_str(),
+                )
+                .await?
+            }
+            _ => {
+                return Err(async_graphql::Error::new(
+                    "Either `id` or non-empty `handle` is required",
+                ))
+            }
+        };
+
+        let Some(product_id) = product_id else {
+            return Ok(None);
+        };
+
+        let service = CatalogService::new(db.clone(), event_bus.clone());
+        let product = match service.get_product(tenant_id, product_id).await {
+            Ok(product) => product,
+            Err(CommerceError::ProductNotFound(_)) => return Ok(None),
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        if product.status != crate::entities::product::ProductStatus::Active
+            || product.published_at.is_none()
+        {
+            return Ok(None);
+        }
+
+        Ok(Some(
+            localized_product_response(product, &locale, tenant.default_locale.as_str()).into(),
+        ))
+    }
+
+    async fn storefront_products(
+        &self,
+        ctx: &Context<'_>,
+        locale: Option<String>,
+        tenant_id: Option<Uuid>,
+        filter: Option<StorefrontProductsFilter>,
+    ) -> Result<GqlProductList> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let filter = filter.unwrap_or(StorefrontProductsFilter {
+            vendor: None,
+            product_type: None,
+            search: None,
+            page: Some(1),
+            per_page: Some(12),
+        });
+        let requested_limit = filter.per_page.map(|value| value.max(0) as u64);
+        let page = filter.page.unwrap_or(1).max(1);
+        let per_page = filter.per_page.unwrap_or(12).clamp(1, 48);
+        let offset = (page.saturating_sub(1)) * per_page;
+
+        let mut query = product::Entity::find()
+            .filter(product::Column::TenantId.eq(tenant_id))
+            .filter(product::Column::Status.eq(crate::entities::product::ProductStatus::Active))
+            .filter(product::Column::PublishedAt.is_not_null());
+
+        if let Some(vendor) = &filter.vendor {
+            query = query.filter(product::Column::Vendor.eq(vendor));
+        }
+        if let Some(product_type) = &filter.product_type {
+            query = query.filter(product::Column::ProductType.eq(product_type));
+        }
+        if let Some(search) = &filter.search {
+            query = query.filter(product_translation_title_search_condition(
+                db.get_database_backend(),
+                &locale,
+                search,
+            ));
+        }
+
+        let total = query.clone().count(db).await?;
+        let products = query
+            .order_by_desc(product::Column::PublishedAt)
+            .order_by_desc(product::Column::CreatedAt)
+            .offset(offset)
+            .limit(per_page)
+            .all(db)
+            .await?;
+
+        let items = load_product_list_items(
+            db,
+            products,
+            &locale,
+            tenant.default_locale.as_str(),
+            product_list_path("commerce.storefront_products"),
+        )
+        .await?;
+
+        metrics::record_read_path_budget(
+            "graphql",
+            "commerce.storefront_products",
+            requested_limit,
+            per_page,
+            items.len(),
+        );
+
+        Ok(GqlProductList {
+            items,
+            total,
+            page,
+            per_page,
+            has_next: page * per_page < total,
+        })
+    }
+}
+
+async fn load_product_list_items(
+    db: &DatabaseConnection,
+    products: Vec<product::Model>,
+    locale: &str,
+    default_locale: &str,
+    metric_path: &str,
+) -> Result<Vec<GqlProductListItem>> {
+    let product_ids = products
+        .iter()
+        .map(|product| product.id)
+        .collect::<Vec<_>>();
+    let translations_started_at = std::time::Instant::now();
+    let translations = if product_ids.is_empty() {
+        Vec::new()
+    } else {
+        product_translation::Entity::find()
+            .filter(product_translation::Column::ProductId.is_in(product_ids))
+            .all(db)
+            .await?
+    };
+    metrics::record_read_path_query(
+        "graphql",
+        metric_path,
+        "translations",
+        translations_started_at.elapsed().as_secs_f64(),
+        translations.len() as u64,
+    );
+
+    let mut translations_by_product: HashMap<Uuid, Vec<product_translation::Model>> =
+        HashMap::new();
+    for translation in translations {
+        translations_by_product
+            .entry(translation.product_id)
+            .or_default()
+            .push(translation);
+    }
+
+    Ok(products
+        .into_iter()
+        .map(|product| {
+            let translation = translations_by_product
+                .get(&product.id)
+                .and_then(|items| pick_translation(items, locale, default_locale));
+            GqlProductListItem {
+                id: product.id,
+                status: product.status.into(),
+                title: translation
+                    .map(|value| value.title.clone())
+                    .unwrap_or_else(|| "Untitled product".to_string()),
+                handle: translation
+                    .map(|value| value.handle.clone())
+                    .unwrap_or_default(),
+                vendor: product.vendor,
+                product_type: product.product_type,
+                created_at: product.created_at.to_rfc3339(),
+                published_at: product.published_at.map(|value| value.to_rfc3339()),
+            }
+        })
+        .collect())
+}
+
+fn localized_product_response(
+    mut product: crate::dto::ProductResponse,
+    locale: &str,
+    default_locale: &str,
+) -> crate::dto::ProductResponse {
+    let selected_translation =
+        pick_response_translation(&product.translations, locale, default_locale)
+            .cloned()
+            .into_iter()
+            .collect::<Vec<_>>();
+    if !selected_translation.is_empty() {
+        product.translations = selected_translation;
+    }
+    product
+}
+
+fn pick_translation<'a>(
+    translations: &'a [product_translation::Model],
+    locale: &str,
+    default_locale: &str,
+) -> Option<&'a product_translation::Model> {
+    translations
+        .iter()
+        .find(|translation| translation.locale == locale)
+        .or_else(|| {
+            (default_locale != locale).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| translation.locale == default_locale)
+            })?
+        })
+        .or_else(|| translations.first())
+}
+
+fn pick_response_translation<'a>(
+    translations: &'a [crate::dto::ProductTranslationResponse],
+    locale: &str,
+    default_locale: &str,
+) -> Option<&'a crate::dto::ProductTranslationResponse> {
+    translations
+        .iter()
+        .find(|translation| translation.locale == locale)
+        .or_else(|| {
+            (default_locale != locale).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| translation.locale == default_locale)
+            })?
+        })
+        .or_else(|| translations.first())
+}
+
+async fn find_published_product_id_by_handle(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    handle: &str,
+    locale: &str,
+    default_locale: &str,
+) -> Result<Option<Uuid>> {
+    if let Some(product_id) =
+        find_published_product_id_for_locale(db, tenant_id, handle, locale).await?
+    {
+        return Ok(Some(product_id));
+    }
+
+    if default_locale != locale {
+        if let Some(product_id) =
+            find_published_product_id_for_locale(db, tenant_id, handle, default_locale).await?
+        {
+            return Ok(Some(product_id));
+        }
+    }
+
+    find_published_product_id_any_locale(db, tenant_id, handle).await
+}
+
+async fn find_published_product_id_for_locale(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    handle: &str,
+    locale: &str,
+) -> Result<Option<Uuid>> {
+    let translations = product_translation::Entity::find()
+        .filter(product_translation::Column::Handle.eq(handle))
+        .filter(product_translation::Column::Locale.eq(locale))
+        .all(db)
+        .await?;
+
+    find_first_published_product(db, tenant_id, translations).await
+}
+
+async fn find_published_product_id_any_locale(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    handle: &str,
+) -> Result<Option<Uuid>> {
+    let translations = product_translation::Entity::find()
+        .filter(product_translation::Column::Handle.eq(handle))
+        .all(db)
+        .await?;
+
+    find_first_published_product(db, tenant_id, translations).await
+}
+
+async fn find_first_published_product(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    translations: Vec<product_translation::Model>,
+) -> Result<Option<Uuid>> {
+    for translation in translations {
+        let product = product::Entity::find_by_id(translation.product_id)
+            .filter(product::Column::TenantId.eq(tenant_id))
+            .filter(product::Column::Status.eq(crate::entities::product::ProductStatus::Active))
+            .filter(product::Column::PublishedAt.is_not_null())
+            .one(db)
+            .await?;
+        if product.is_some() {
+            return Ok(Some(translation.product_id));
+        }
+    }
+
+    Ok(None)
+}
+
+fn product_list_path(path: &'static str) -> &'static str {
+    path
 }

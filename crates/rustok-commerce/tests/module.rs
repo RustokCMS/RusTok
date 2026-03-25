@@ -11,7 +11,19 @@ fn module_metadata() {
         "Ecommerce umbrella/root module for the commerce family, compatibility facade, and orchestration surface"
     );
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-    assert_eq!(module.dependencies(), ["product", "pricing", "inventory"]);
+    assert_eq!(
+        module.dependencies(),
+        [
+            "cart",
+            "customer",
+            "product",
+            "pricing",
+            "inventory",
+            "order",
+            "payment",
+            "fulfillment"
+        ]
+    );
 }
 
 #[test]

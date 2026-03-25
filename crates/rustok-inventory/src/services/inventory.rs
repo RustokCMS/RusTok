@@ -3,6 +3,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
     TransactionTrait,
 };
+use serde_json::json;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -43,13 +44,13 @@ impl InventoryService {
     ) -> CommerceResult<i32> {
         let txn = self.db.begin().await?;
 
-        let variant = entities::product_variant::Entity::find_by_id(input.variant_id)
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::VariantNotFound(input.variant_id))?;
-
-        let old_quantity = variant.inventory_quantity;
+        let variant = self.load_variant(&txn, tenant_id, input.variant_id).await?;
+        let state = self
+            .ensure_inventory_state(&txn, tenant_id, &variant)
+            .await?;
+        let old_quantity = self
+            .available_quantity(&txn, state.inventory_item.id)
+            .await?;
         let new_quantity = old_quantity + input.adjustment;
 
         if new_quantity < 0 && variant.inventory_policy == "deny" {
@@ -59,16 +60,16 @@ impl InventoryService {
             });
         }
 
-        let mut variant_active: entities::product_variant::ActiveModel = variant.clone().into();
-        variant_active.inventory_quantity = Set(new_quantity);
-        variant_active.updated_at = Set(Utc::now().into());
-        variant_active.update(&txn).await?;
+        let mut level_active: entities::inventory_level::ActiveModel = state.level.clone().into();
+        level_active.stocked_quantity = Set(state.level.stocked_quantity + input.adjustment);
+        level_active.updated_at = Set(Utc::now().into());
+        level_active.update(&txn).await?;
 
         // Create and validate event
         let event = DomainEvent::InventoryUpdated {
             variant_id: input.variant_id,
             product_id: variant.product_id,
-            location_id: Uuid::new_v4(),
+            location_id: state.location.id,
             old_quantity,
             new_quantity,
         };
@@ -111,24 +112,31 @@ impl InventoryService {
     ) -> CommerceResult<i32> {
         let txn = self.db.begin().await?;
 
-        let variant = entities::product_variant::Entity::find_by_id(variant_id)
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&txn)
-            .await?
-            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
+        let state = self
+            .ensure_inventory_state(&txn, tenant_id, &variant)
+            .await?;
+        let old_quantity = self
+            .available_quantity(&txn, state.inventory_item.id)
+            .await?;
 
-        let old_quantity = variant.inventory_quantity;
+        if quantity < 0 && variant.inventory_policy == "deny" {
+            return Err(CommerceError::InsufficientInventory {
+                requested: -quantity,
+                available: old_quantity,
+            });
+        }
 
-        let mut variant_active: entities::product_variant::ActiveModel = variant.clone().into();
-        variant_active.inventory_quantity = Set(quantity);
-        variant_active.updated_at = Set(Utc::now().into());
-        variant_active.update(&txn).await?;
+        let mut level_active: entities::inventory_level::ActiveModel = state.level.clone().into();
+        level_active.stocked_quantity = Set(quantity);
+        level_active.updated_at = Set(Utc::now().into());
+        level_active.update(&txn).await?;
 
         // Create and validate event
         let event = DomainEvent::InventoryUpdated {
             variant_id,
             product_id: variant.product_id,
-            location_id: Uuid::new_v4(),
+            location_id: state.location.id,
             old_quantity,
             new_quantity: quantity,
         };
@@ -151,17 +159,23 @@ impl InventoryService {
         variant_id: Uuid,
         requested_quantity: i32,
     ) -> CommerceResult<bool> {
-        let variant = entities::product_variant::Entity::find_by_id(variant_id)
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        let variant = self.load_variant(&self.db, tenant_id, variant_id).await?;
 
         if variant.inventory_policy == "continue" {
             return Ok(true);
         }
 
-        Ok(variant.inventory_quantity >= requested_quantity)
+        let available = if let Some(inventory_item) = entities::inventory_item::Entity::find()
+            .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
+            .one(&self.db)
+            .await?
+        {
+            self.available_quantity(&self.db, inventory_item.id).await?
+        } else {
+            0
+        };
+
+        Ok(available >= requested_quantity)
     }
 
     #[instrument(skip(self))]
@@ -171,21 +185,221 @@ impl InventoryService {
         variant_id: Uuid,
         quantity: i32,
     ) -> CommerceResult<()> {
-        if !self
-            .check_availability(tenant_id, variant_id, quantity)
-            .await?
-        {
-            let variant = entities::product_variant::Entity::find_by_id(variant_id)
-                .one(&self.db)
-                .await?
-                .ok_or(CommerceError::VariantNotFound(variant_id))?;
+        if quantity < 0 {
+            return Err(CommerceError::Validation(
+                "Reservation quantity must be non-negative".to_string(),
+            ));
+        }
 
+        if quantity == 0 {
+            return Ok(());
+        }
+
+        let txn = self.db.begin().await?;
+        let variant = self.load_variant(&txn, tenant_id, variant_id).await?;
+        let state = self
+            .ensure_inventory_state(&txn, tenant_id, &variant)
+            .await?;
+        let available = self
+            .available_quantity(&txn, state.inventory_item.id)
+            .await?;
+
+        if variant.inventory_policy != "continue" && available < quantity {
             return Err(CommerceError::InsufficientInventory {
                 requested: quantity,
-                available: variant.inventory_quantity,
+                available,
             });
         }
 
+        let mut level_active: entities::inventory_level::ActiveModel = state.level.clone().into();
+        level_active.reserved_quantity = Set(state.level.reserved_quantity + quantity);
+        level_active.updated_at = Set(Utc::now().into());
+        level_active.update(&txn).await?;
+
+        entities::reservation_item::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            inventory_item_id: Set(state.inventory_item.id),
+            location_id: Set(state.location.id),
+            quantity: Set(quantity),
+            line_item_id: Set(None),
+            description: Set(Some("Legacy inventory reservation".to_string())),
+            external_id: Set(None),
+            metadata: Set(json!({
+                "source": "legacy_inventory_service",
+                "variant_id": variant_id,
+            })),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+            deleted_at: Set(None),
+        }
+        .insert(&txn)
+        .await?;
+
+        txn.commit().await?;
         Ok(())
     }
+
+    async fn load_variant<C>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+    ) -> CommerceResult<entities::product_variant::Model>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        entities::product_variant::Entity::find_by_id(variant_id)
+            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
+            .one(conn)
+            .await?
+            .ok_or(CommerceError::VariantNotFound(variant_id))
+    }
+
+    async fn ensure_inventory_state<C>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        variant: &entities::product_variant::Model,
+    ) -> CommerceResult<InventoryState>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        let location = self.ensure_default_location(conn, tenant_id).await?;
+        let inventory_item = self.ensure_inventory_item(conn, variant).await?;
+        let level = self
+            .ensure_inventory_level(conn, &inventory_item, &location, 0)
+            .await?;
+
+        Ok(InventoryState {
+            location,
+            inventory_item,
+            level,
+        })
+    }
+
+    async fn ensure_default_location<C>(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+    ) -> CommerceResult<entities::stock_location::Model>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        if let Some(location) = entities::stock_location::Entity::find()
+            .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
+            .filter(entities::stock_location::Column::DeletedAt.is_null())
+            .one(conn)
+            .await?
+        {
+            return Ok(location);
+        }
+
+        let now = Utc::now();
+        entities::stock_location::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            name: Set("Default".to_string()),
+            code: Set(Some("default".to_string())),
+            address_line1: Set(None),
+            address_line2: Set(None),
+            city: Set(None),
+            province: Set(None),
+            postal_code: Set(None),
+            country_code: Set(None),
+            phone: Set(None),
+            metadata: Set(json!({ "source": "legacy_inventory_service" })),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+            deleted_at: Set(None),
+        }
+        .insert(conn)
+        .await
+        .map_err(CommerceError::from)
+    }
+
+    async fn ensure_inventory_item<C>(
+        &self,
+        conn: &C,
+        variant: &entities::product_variant::Model,
+    ) -> CommerceResult<entities::inventory_item::Model>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        if let Some(item) = entities::inventory_item::Entity::find()
+            .filter(entities::inventory_item::Column::VariantId.eq(variant.id))
+            .one(conn)
+            .await?
+        {
+            return Ok(item);
+        }
+
+        let now = Utc::now();
+        entities::inventory_item::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            variant_id: Set(variant.id),
+            sku: Set(variant.sku.clone()),
+            requires_shipping: Set(true),
+            metadata: Set(json!({ "source": "legacy_inventory_service" })),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(conn)
+        .await
+        .map_err(CommerceError::from)
+    }
+
+    async fn ensure_inventory_level<C>(
+        &self,
+        conn: &C,
+        inventory_item: &entities::inventory_item::Model,
+        location: &entities::stock_location::Model,
+        initial_available_quantity: i32,
+    ) -> CommerceResult<entities::inventory_level::Model>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        if let Some(level) = entities::inventory_level::Entity::find()
+            .filter(entities::inventory_level::Column::InventoryItemId.eq(inventory_item.id))
+            .filter(entities::inventory_level::Column::LocationId.eq(location.id))
+            .one(conn)
+            .await?
+        {
+            return Ok(level);
+        }
+
+        entities::inventory_level::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            inventory_item_id: Set(inventory_item.id),
+            location_id: Set(location.id),
+            stocked_quantity: Set(initial_available_quantity),
+            reserved_quantity: Set(0),
+            incoming_quantity: Set(0),
+            low_stock_threshold: Set(Some(self.low_stock_threshold)),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(conn)
+        .await
+        .map_err(CommerceError::from)
+    }
+
+    async fn available_quantity<C>(&self, conn: &C, inventory_item_id: Uuid) -> CommerceResult<i32>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        let levels = entities::inventory_level::Entity::find()
+            .filter(entities::inventory_level::Column::InventoryItemId.eq(inventory_item_id))
+            .all(conn)
+            .await?;
+
+        Ok(levels
+            .into_iter()
+            .map(|level| level.stocked_quantity - level.reserved_quantity)
+            .sum())
+    }
+}
+
+struct InventoryState {
+    location: entities::stock_location::Model,
+    inventory_item: entities::inventory_item::Model,
+    level: entities::inventory_level::Model,
 }

@@ -7,6 +7,8 @@
 ## Responsibilities
 
 - Pricing service, price-related migrations, and pricing runtime metadata.
+- Keep the decimal money contract working on the current runtime while preserving
+  compatibility with legacy `prices.amount` / `compare_at_amount` storage.
 
 ## Interactions
 

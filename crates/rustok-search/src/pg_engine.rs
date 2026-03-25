@@ -7,6 +7,7 @@ use crate::engine::{
     SearchConnectorDescriptor, SearchEngine, SearchEngineKind, SearchFacetBucket, SearchFacetGroup,
     SearchQuery, SearchResult, SearchResultItem,
 };
+use crate::ranking::SearchRankingProfile;
 pub struct PgSearchEngine {
     db: DatabaseConnection,
 }
@@ -41,133 +42,44 @@ impl SearchEngine for PgSearchEngine {
                 total: 0,
                 took_ms: 0,
                 engine: SearchEngineKind::Postgres,
+                ranking_profile: query.ranking_profile,
                 facets: empty_facets(),
             });
         }
 
-        let started_at = std::time::Instant::now();
         let tenant_id = query.tenant_id.ok_or_else(|| {
             Error::Validation("search preview currently requires tenant_id".to_string())
         })?;
         let locale = query.locale.clone().unwrap_or_default();
         let limit = query.limit.clamp(1, 50) as i64;
         let offset = query.offset as i64;
-        let filters = build_filter_clause(&query, 4);
-        let cte = r#"
-            WITH q AS (
-                SELECT websearch_to_tsquery('simple', $3) AS ts_query
-            ),
-            ranked AS (
-                SELECT
-                    sd.document_id AS id,
-                    sd.entity_type AS entity_type,
-                    sd.source_module AS source_module,
-                    sd.status AS status,
-                    sd.locale AS locale,
-                    sd.title AS title,
-                    ts_headline('simple', sd.body, q.ts_query) AS snippet,
-                    ts_rank_cd(sd.search_vector, q.ts_query) AS score,
-                    sd.payload AS payload,
-                    sd.is_public AS is_public,
-                    sd.updated_at AS updated_at
-                FROM search_documents sd
-                CROSS JOIN q
-                WHERE sd.tenant_id = $1
-                  AND ($2 = '' OR sd.locale = $2)
-                  AND sd.search_vector @@ q.ts_query
-            )
-        "#;
+        let started_at = std::time::Instant::now();
+        let mut result = run_fts_search(
+            &self.db,
+            tenant_id,
+            &locale,
+            &trimmed_query,
+            &query,
+            offset,
+            limit,
+        )
+        .await?;
 
-        let total_statement = Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            format!(
-                "{cte} SELECT COUNT(*) AS total FROM ranked WHERE {}",
-                filters.clause
-            ),
-            build_base_values(tenant_id, &locale, &trimmed_query, &filters.values),
-        );
-        let total = self
-            .db
-            .query_one(total_statement)
-            .await
-            .map_err(Error::Database)?
-            .and_then(|row| row.try_get::<i64>("", "total").ok())
-            .unwrap_or(0)
-            .max(0) as u64;
-
-        let offset_param = 4 + filters.values.len();
-        let limit_param = offset_param + 1;
-        let items_statement = Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            format!(
-                "{cte}
-                 SELECT id, entity_type, source_module, locale, title, snippet, score, payload
-                 FROM ranked
-                 WHERE {}
-                 ORDER BY score DESC, updated_at DESC
-                 OFFSET ${offset_param}
-                 LIMIT ${limit_param}",
-                filters.clause
-            ),
-            build_paged_values(
+        if result.total == 0 && should_run_typo_fallback(&trimmed_query) {
+            result = run_typo_tolerant_search(
+                &self.db,
                 tenant_id,
                 &locale,
                 &trimmed_query,
-                &filters.values,
+                &query,
                 offset,
                 limit,
-            ),
-        );
-        let items = self
-            .db
-            .query_all(items_statement)
-            .await
-            .map_err(Error::Database)?
-            .into_iter()
-            .map(map_row_to_result_item)
-            .collect::<Result<Vec<_>>>()?;
+            )
+            .await?;
+        }
 
-        let facets_statement = Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            format!(
-                "{cte}
-                 SELECT 'entity_type'::text AS facet_name, entity_type AS facet_value, COUNT(*)::bigint AS facet_count
-                 FROM ranked
-                 WHERE {}
-                 GROUP BY entity_type
-
-                 UNION ALL
-
-                 SELECT 'source_module'::text AS facet_name, source_module AS facet_value, COUNT(*)::bigint AS facet_count
-                 FROM ranked
-                 WHERE {}
-                 GROUP BY source_module
-
-                 UNION ALL
-
-                 SELECT 'status'::text AS facet_name, status AS facet_value, COUNT(*)::bigint AS facet_count
-                 FROM ranked
-                 WHERE {}
-                 GROUP BY status
-                 ORDER BY facet_name, facet_count DESC, facet_value ASC",
-                filters.clause, filters.clause, filters.clause
-            ),
-            build_base_values(tenant_id, &locale, &trimmed_query, &filters.values),
-        );
-        let facets = build_facets(
-            self.db
-                .query_all(facets_statement)
-                .await
-                .map_err(Error::Database)?,
-        )?;
-
-        Ok(SearchResult {
-            items,
-            total,
-            took_ms: started_at.elapsed().as_millis() as u64,
-            engine: SearchEngineKind::Postgres,
-            facets,
-        })
+        result.took_ms = started_at.elapsed().as_millis() as u64;
+        Ok(result)
     }
 }
 
@@ -213,6 +125,213 @@ fn build_filter_clause(query: &SearchQuery, starting_param: usize) -> FilterClau
     FilterClause { clause, values }
 }
 
+async fn run_fts_search(
+    db: &DatabaseConnection,
+    tenant_id: uuid::Uuid,
+    locale: &str,
+    trimmed_query: &str,
+    query: &SearchQuery,
+    offset: i64,
+    limit: i64,
+) -> Result<SearchResult> {
+    let filters = build_filter_clause(query, 4);
+    let cte = build_fts_cte(query.ranking_profile);
+
+    finalize_ranked_search(
+        db,
+        &cte,
+        build_base_values(tenant_id, locale, trimmed_query, &filters.values),
+        &filters,
+        query.ranking_profile,
+        offset,
+        limit,
+    )
+    .await
+}
+
+async fn run_typo_tolerant_search(
+    db: &DatabaseConnection,
+    tenant_id: uuid::Uuid,
+    locale: &str,
+    trimmed_query: &str,
+    query: &SearchQuery,
+    offset: i64,
+    limit: i64,
+) -> Result<SearchResult> {
+    let filters = build_filter_clause(query, 4);
+    let cte = build_typo_cte(query.ranking_profile);
+
+    finalize_ranked_search(
+        db,
+        &cte,
+        build_base_values(
+            tenant_id,
+            locale,
+            &trimmed_query.to_ascii_lowercase(),
+            &filters.values,
+        ),
+        &filters,
+        query.ranking_profile,
+        offset,
+        limit,
+    )
+    .await
+}
+
+async fn finalize_ranked_search(
+    db: &DatabaseConnection,
+    cte: &str,
+    base_values: Vec<Value>,
+    filters: &FilterClause,
+    ranking_profile: SearchRankingProfile,
+    offset: i64,
+    limit: i64,
+) -> Result<SearchResult> {
+    let total_statement = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        format!(
+            "{cte} SELECT COUNT(*) AS total FROM ranked WHERE {}",
+            filters.clause
+        ),
+        base_values.clone(),
+    );
+    let total = db
+        .query_one(total_statement)
+        .await
+        .map_err(Error::Database)?
+        .and_then(|row| row.try_get::<i64>("", "total").ok())
+        .unwrap_or(0)
+        .max(0) as u64;
+
+    let offset_param = 4 + filters.values.len();
+    let limit_param = offset_param + 1;
+    let items_statement = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        format!(
+            "{cte}
+             SELECT id, entity_type, source_module, locale, title, snippet, score, payload
+             FROM ranked
+             WHERE {}
+             ORDER BY score DESC, updated_at DESC
+             OFFSET ${offset_param}
+             LIMIT ${limit_param}",
+            filters.clause
+        ),
+        build_paged_values_from_base(base_values.clone(), offset, limit),
+    );
+    let items = db
+        .query_all(items_statement)
+        .await
+        .map_err(Error::Database)?
+        .into_iter()
+        .map(map_row_to_result_item)
+        .collect::<Result<Vec<_>>>()?;
+
+    let facets_statement = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        format!(
+            "{cte}
+             SELECT 'entity_type'::text AS facet_name, entity_type AS facet_value, COUNT(*)::bigint AS facet_count
+             FROM ranked
+             WHERE {}
+             GROUP BY entity_type
+
+             UNION ALL
+
+             SELECT 'source_module'::text AS facet_name, source_module AS facet_value, COUNT(*)::bigint AS facet_count
+             FROM ranked
+             WHERE {}
+             GROUP BY source_module
+
+             UNION ALL
+
+             SELECT 'status'::text AS facet_name, status AS facet_value, COUNT(*)::bigint AS facet_count
+             FROM ranked
+             WHERE {}
+             GROUP BY status
+             ORDER BY facet_name, facet_count DESC, facet_value ASC",
+            filters.clause, filters.clause, filters.clause
+        ),
+        base_values,
+    );
+    let facets = build_facets(
+        db.query_all(facets_statement)
+            .await
+            .map_err(Error::Database)?,
+    )?;
+
+    Ok(SearchResult {
+        items,
+        total,
+        took_ms: 0,
+        engine: SearchEngineKind::Postgres,
+        ranking_profile,
+        facets,
+    })
+}
+
+fn build_fts_cte(profile: SearchRankingProfile) -> String {
+    let score_sql = profile.fts_score_sql();
+    r#"
+        WITH q AS (
+            SELECT websearch_to_tsquery('simple', $3) AS ts_query
+        ),
+        ranked AS (
+            SELECT
+                sd.document_id AS id,
+                sd.entity_type AS entity_type,
+                sd.source_module AS source_module,
+                sd.status AS status,
+                sd.locale AS locale,
+                sd.title AS title,
+                ts_headline('simple', sd.body, q.ts_query) AS snippet,
+                __SCORE_SQL__ AS score,
+                sd.payload AS payload,
+                sd.is_public AS is_public,
+                sd.updated_at AS updated_at
+            FROM search_documents sd
+            CROSS JOIN q
+            WHERE sd.tenant_id = $1
+              AND ($2 = '' OR sd.locale = $2)
+              AND sd.search_vector @@ q.ts_query
+        )
+    "#
+    .replace("__SCORE_SQL__", score_sql)
+}
+
+fn build_typo_cte(profile: SearchRankingProfile) -> String {
+    let score_sql = profile.typo_score_sql();
+    r#"
+        WITH ranked AS (
+            SELECT
+                sd.document_id AS id,
+                sd.entity_type AS entity_type,
+                sd.source_module AS source_module,
+                sd.status AS status,
+                sd.locale AS locale,
+                sd.title AS title,
+                NULLIF(
+                    COALESCE(sd.subtitle, sd.slug, sd.handle, ''),
+                    ''
+                ) AS snippet,
+                __SCORE_SQL__ AS score,
+                sd.payload AS payload,
+                sd.is_public AS is_public,
+                sd.updated_at AS updated_at
+            FROM search_documents sd
+            WHERE sd.tenant_id = $1
+              AND ($2 = '' OR sd.locale = $2)
+              AND (
+                  lower(sd.title) % $3
+                  OR lower(COALESCE(sd.slug, '')) % $3
+                  OR lower(COALESCE(sd.handle, '')) % $3
+                  OR lower(COALESCE(sd.keywords_text, '')) % $3
+              )
+        )
+    "#
+    .replace("__SCORE_SQL__", score_sql)
+}
+
 fn bind_list(values: &[String], bound_values: &mut Vec<Value>, next_param: &mut usize) -> String {
     values
         .iter()
@@ -241,18 +360,15 @@ fn build_base_values(
     values
 }
 
-fn build_paged_values(
-    tenant_id: uuid::Uuid,
-    locale: &str,
-    trimmed_query: &str,
-    filter_values: &[Value],
-    offset: i64,
-    limit: i64,
-) -> Vec<Value> {
-    let mut values = build_base_values(tenant_id, locale, trimmed_query, filter_values);
+fn build_paged_values_from_base(mut values: Vec<Value>, offset: i64, limit: i64) -> Vec<Value> {
     values.push(offset.into());
     values.push(limit.into());
     values
+}
+
+fn should_run_typo_fallback(query: &str) -> bool {
+    let normalized = query.trim();
+    normalized.len() >= 4 && normalized.split_whitespace().all(|token| token.len() >= 3)
 }
 
 fn map_row_to_result_item(row: QueryResult) -> Result<SearchResultItem> {
@@ -357,8 +473,8 @@ fn empty_facets() -> Vec<SearchFacetGroup> {
 
 #[cfg(test)]
 mod tests {
-    use super::build_filter_clause;
-    use crate::engine::SearchQuery;
+    use super::{build_filter_clause, should_run_typo_fallback};
+    use crate::{engine::SearchQuery, SearchRankingProfile};
 
     #[test]
     fn filter_clause_uses_bound_parameters() {
@@ -368,6 +484,8 @@ mod tests {
                 locale: None,
                 original_query: "phone".to_string(),
                 query: "phone".to_string(),
+                ranking_profile: SearchRankingProfile::Balanced,
+                preset_key: None,
                 limit: 10,
                 offset: 0,
                 published_only: true,
@@ -383,5 +501,13 @@ mod tests {
             "is_public = TRUE AND entity_type IN ($4) AND source_module IN ($5) AND status IN ($6)"
         );
         assert_eq!(filters.values.len(), 3);
+    }
+
+    #[test]
+    fn typo_fallback_requires_meaningful_query_length() {
+        assert!(!should_run_typo_fallback("tv"));
+        assert!(!should_run_typo_fallback("red tv"));
+        assert!(should_run_typo_fallback("iphnoe"));
+        assert!(should_run_typo_fallback("samsnug phone"));
     }
 }

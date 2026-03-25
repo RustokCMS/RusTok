@@ -1,21 +1,28 @@
 use async_graphql::{Context, FieldError, Object, Result};
+use axum::http::HeaderMap;
 use loco_rs::app::AppContext;
 use std::time::Instant;
 use uuid::Uuid;
 
+use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::errors::GraphQLError;
+use crate::middleware::rate_limit::{
+    extract_client_id_pub, RateLimitCheckError, SharedSearchRateLimiter,
+};
 use crate::services::rbac_service::RbacService;
 use rustok_search::{
     PgSearchEngine, SearchAnalyticsService, SearchDiagnosticsService, SearchDictionaryService,
-    SearchEngine, SearchModule, SearchQuery, SearchQueryLogRecord, SearchSettingsService,
+    SearchEngine, SearchFilterPresetService, SearchModule, SearchQuery, SearchQueryLogRecord,
+    SearchRankingProfile, SearchSettingsService, SearchSuggestionQuery, SearchSuggestionService,
 };
 use rustok_telemetry::metrics;
 
 use super::types::{
     LaggingSearchDocumentPayload, SearchAnalyticsPayload, SearchDiagnosticsPayload,
-    SearchDictionarySnapshotPayload, SearchEngineDescriptor, SearchPreviewInput,
-    SearchPreviewPayload, SearchSettingsPayload,
+    SearchDictionarySnapshotPayload, SearchEngineDescriptor, SearchFilterPresetPayload,
+    SearchFilterPresetsInput, SearchPreviewInput, SearchPreviewPayload, SearchSettingsPayload,
+    SearchSuggestionPayload, SearchSuggestionsInput,
 };
 
 #[derive(Default)]
@@ -27,6 +34,8 @@ const MAX_FILTER_VALUE_LEN: usize = 64;
 const MAX_LOCALE_LEN: usize = 16;
 const DEFAULT_ANALYTICS_WINDOW_DAYS: u32 = 7;
 const DEFAULT_ANALYTICS_LIMIT: usize = 10;
+const DEFAULT_SUGGESTIONS_LIMIT: usize = 6;
+const MAX_SUGGESTIONS_LIMIT: usize = 10;
 
 #[Object]
 impl SearchQueryRoot {
@@ -151,6 +160,29 @@ impl SearchQueryRoot {
         Ok(snapshot.into())
     }
 
+    /// Returns tenant-local filter presets configured for a given search surface.
+    async fn search_filter_presets(
+        &self,
+        ctx: &Context<'_>,
+        input: SearchFilterPresetsInput,
+    ) -> Result<Vec<SearchFilterPresetPayload>> {
+        ensure_settings_read_permission(ctx).await?;
+
+        let app_ctx = ctx.data::<AppContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id =
+            resolve_tenant_scope(tenant, parse_optional_uuid(input.tenant_id.as_deref())?)?;
+        let surface = normalize_surface(&input.surface)?;
+        let settings = SearchSettingsService::load_effective(&app_ctx.db, Some(tenant_id))
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        Ok(SearchFilterPresetService::list(&settings.config, &surface)
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
     /// Executes a PostgreSQL-backed search preview over rustok-search owned search documents.
     async fn search_preview(
         &self,
@@ -170,6 +202,18 @@ impl SearchQueryRoot {
             SearchDictionaryService::transform_query(&app_ctx.db, tenant_id, &input.query)
                 .await
                 .map_err(map_search_module_error)?;
+        let settings = SearchSettingsService::load_effective(&app_ctx.db, Some(tenant_id))
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let resolved = resolve_preset_and_ranking(
+            &settings.config,
+            "search_preview",
+            input.preset_key.as_deref(),
+            input.ranking_profile.as_deref(),
+            input.entity_types.unwrap_or_default(),
+            input.source_modules.unwrap_or_default(),
+            input.statuses.unwrap_or_default(),
+        )?;
         let engine = PgSearchEngine::new(app_ctx.db.clone());
         let started_at = Instant::now();
         let search_query = SearchQuery {
@@ -177,12 +221,14 @@ impl SearchQueryRoot {
             locale: input.locale,
             original_query: transform.original_query,
             query: transform.effective_query,
+            ranking_profile: resolved.ranking_profile,
+            preset_key: resolved.preset_key,
             limit: effective_limit,
             offset: input.offset.unwrap_or(0).max(0) as usize,
             published_only: false,
-            entity_types: input.entity_types.unwrap_or_default(),
-            source_modules: input.source_modules.unwrap_or_default(),
-            statuses: input.statuses.unwrap_or_default(),
+            entity_types: resolved.entity_types,
+            source_modules: resolved.source_modules,
+            statuses: resolved.statuses,
         };
         let result = run_search_with_dictionaries(&app_ctx.db, &engine, search_query.clone()).await;
         finalize_search_result(
@@ -216,6 +262,18 @@ impl SearchQueryRoot {
             SearchDictionaryService::transform_query(&app_ctx.db, tenant_id, &input.query)
                 .await
                 .map_err(map_search_module_error)?;
+        let settings = SearchSettingsService::load_effective(&app_ctx.db, Some(tenant_id))
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let resolved = resolve_preset_and_ranking(
+            &settings.config,
+            "admin_global_search",
+            input.preset_key.as_deref(),
+            input.ranking_profile.as_deref(),
+            input.entity_types.unwrap_or_default(),
+            input.source_modules.unwrap_or_default(),
+            input.statuses.unwrap_or_default(),
+        )?;
         let engine = PgSearchEngine::new(app_ctx.db.clone());
         let started_at = Instant::now();
         let search_query = SearchQuery {
@@ -223,12 +281,14 @@ impl SearchQueryRoot {
             locale: input.locale,
             original_query: transform.original_query,
             query: transform.effective_query,
+            ranking_profile: resolved.ranking_profile,
+            preset_key: resolved.preset_key,
             limit: effective_limit,
             offset: input.offset.unwrap_or(0).max(0) as usize,
             published_only: false,
-            entity_types: input.entity_types.unwrap_or_default(),
-            source_modules: input.source_modules.unwrap_or_default(),
-            statuses: input.statuses.unwrap_or_default(),
+            entity_types: resolved.entity_types,
+            source_modules: resolved.source_modules,
+            statuses: resolved.statuses,
         };
         let result = run_search_with_dictionaries(&app_ctx.db, &engine, search_query.clone()).await;
         finalize_search_result(
@@ -252,6 +312,7 @@ impl SearchQueryRoot {
         let app_ctx = ctx.data::<AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let input = normalize_search_preview_input(input)?;
+        enforce_storefront_rate_limit(ctx, "storefront_search").await?;
         let engine = PgSearchEngine::new(app_ctx.db.clone());
         let requested_limit = input.limit;
         let effective_limit = requested_limit.unwrap_or(12).clamp(1, 50) as usize;
@@ -260,18 +321,32 @@ impl SearchQueryRoot {
             SearchDictionaryService::transform_query(&app_ctx.db, tenant.id, &input.query)
                 .await
                 .map_err(map_search_module_error)?;
+        let settings = SearchSettingsService::load_effective(&app_ctx.db, Some(tenant.id))
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        let resolved = resolve_preset_and_ranking(
+            &settings.config,
+            "storefront_search",
+            input.preset_key.as_deref(),
+            input.ranking_profile.as_deref(),
+            input.entity_types.unwrap_or_default(),
+            input.source_modules.unwrap_or_default(),
+            input.statuses.unwrap_or_default(),
+        )?;
 
         let search_query = SearchQuery {
             tenant_id: Some(tenant.id),
             locale: input.locale,
             original_query: transform.original_query,
             query: transform.effective_query,
+            ranking_profile: resolved.ranking_profile,
+            preset_key: resolved.preset_key,
             limit: effective_limit,
             offset: input.offset.unwrap_or(0).max(0) as usize,
             published_only: true,
-            entity_types: input.entity_types.unwrap_or_default(),
-            source_modules: input.source_modules.unwrap_or_default(),
-            statuses: input.statuses.unwrap_or_default(),
+            entity_types: resolved.entity_types,
+            source_modules: resolved.source_modules,
+            statuses: resolved.statuses,
         };
 
         let result = run_search_with_dictionaries(&app_ctx.db, &engine, search_query.clone()).await;
@@ -285,6 +360,58 @@ impl SearchQueryRoot {
             result,
         )
         .await
+    }
+
+    /// Returns public storefront suggestions and autocomplete candidates.
+    async fn storefront_search_suggestions(
+        &self,
+        ctx: &Context<'_>,
+        input: SearchSuggestionsInput,
+    ) -> Result<Vec<SearchSuggestionPayload>> {
+        let app_ctx = ctx.data::<AppContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let input = normalize_search_suggestions_input(input)?;
+        enforce_storefront_rate_limit(ctx, "storefront_search_suggestions").await?;
+        let tenant_id =
+            resolve_tenant_scope(tenant, parse_optional_uuid(input.tenant_id.as_deref())?)?;
+
+        if input.query.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let suggestions = SearchSuggestionService::suggestions(
+            &app_ctx.db,
+            SearchSuggestionQuery {
+                tenant_id,
+                query: input.query,
+                locale: input.locale,
+                limit: normalize_suggestions_limit(input.limit),
+                published_only: true,
+            },
+        )
+        .await
+        .map_err(map_search_module_error)?;
+
+        Ok(suggestions.into_iter().map(Into::into).collect())
+    }
+
+    /// Returns public storefront filter presets configured for storefront search.
+    async fn storefront_search_filter_presets(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Vec<SearchFilterPresetPayload>> {
+        let app_ctx = ctx.data::<AppContext>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let settings = SearchSettingsService::load_effective(&app_ctx.db, Some(tenant.id))
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        Ok(
+            SearchFilterPresetService::list(&settings.config, "storefront_search")
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        )
     }
 }
 
@@ -344,9 +471,22 @@ fn normalize_search_preview_input(input: SearchPreviewInput) -> Result<SearchPre
         tenant_id: input.tenant_id,
         limit: input.limit,
         offset: input.offset,
+        ranking_profile: normalize_ranking_profile(input.ranking_profile)?,
+        preset_key: normalize_preset_key(input.preset_key)?,
         entity_types: Some(entity_types),
         source_modules: Some(source_modules),
         statuses: Some(statuses),
+    })
+}
+
+fn normalize_search_suggestions_input(
+    input: SearchSuggestionsInput,
+) -> Result<SearchSuggestionsInput> {
+    Ok(SearchSuggestionsInput {
+        query: normalize_query(&input.query)?,
+        locale: normalize_locale(input.locale.as_deref())?,
+        tenant_id: input.tenant_id,
+        limit: input.limit,
     })
 }
 
@@ -424,6 +564,170 @@ fn normalize_analytics_limit(value: Option<i32>) -> usize {
     value.unwrap_or(DEFAULT_ANALYTICS_LIMIT as i32).clamp(1, 25) as usize
 }
 
+fn normalize_suggestions_limit(value: Option<i32>) -> usize {
+    value
+        .unwrap_or(DEFAULT_SUGGESTIONS_LIMIT as i32)
+        .clamp(1, MAX_SUGGESTIONS_LIMIT as i32) as usize
+}
+
+fn normalize_ranking_profile(value: Option<String>) -> Result<Option<String>> {
+    let Some(value) = value
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    SearchRankingProfile::try_from_str(&value)
+        .map(|_| Some(value))
+        .ok_or_else(|| FieldError::new("Unsupported ranking profile"))
+}
+
+fn normalize_preset_key(value: Option<String>) -> Result<Option<String>> {
+    let Some(value) = value
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    if value.len() > MAX_FILTER_VALUE_LEN
+        || !value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == ':')
+    {
+        return Err(FieldError::new("Invalid preset key"));
+    }
+
+    Ok(Some(value))
+}
+
+fn resolve_preset_and_ranking(
+    config: &serde_json::Value,
+    surface: &str,
+    preset_key: Option<&str>,
+    requested_ranking_profile: Option<&str>,
+    entity_types: Vec<String>,
+    source_modules: Vec<String>,
+    statuses: Vec<String>,
+) -> Result<ResolvedSearchInput> {
+    let resolved_preset = SearchFilterPresetService::resolve(
+        config,
+        surface,
+        preset_key,
+        entity_types,
+        source_modules,
+        statuses,
+    )
+    .map_err(map_search_module_error)?;
+    let ranking_profile = SearchRankingProfile::resolve(
+        config,
+        surface,
+        requested_ranking_profile,
+        resolved_preset.ranking_profile,
+    )
+    .map_err(map_search_module_error)?;
+
+    Ok(ResolvedSearchInput {
+        preset_key: resolved_preset.preset.map(|preset| preset.key),
+        entity_types: resolved_preset.entity_types,
+        source_modules: resolved_preset.source_modules,
+        statuses: resolved_preset.statuses,
+        ranking_profile,
+    })
+}
+
+fn normalize_surface(value: &str) -> Result<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() || normalized.len() > 64 {
+        return Err(FieldError::new("Invalid search surface"));
+    }
+    if !normalized
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    {
+        return Err(FieldError::new("Invalid search surface"));
+    }
+    Ok(normalized)
+}
+
+struct ResolvedSearchInput {
+    preset_key: Option<String>,
+    entity_types: Vec<String>,
+    source_modules: Vec<String>,
+    statuses: Vec<String>,
+    ranking_profile: SearchRankingProfile,
+}
+
+async fn enforce_storefront_rate_limit(ctx: &Context<'_>, surface: &'static str) -> Result<()> {
+    let app_ctx = ctx.data::<AppContext>()?;
+    let Some(shared) = app_ctx.shared_store.get::<SharedSearchRateLimiter>() else {
+        return Ok(());
+    };
+
+    let tenant = ctx.data::<TenantContext>()?;
+    let request_context = ctx.data::<RequestContext>()?;
+    let auth = ctx.data_opt::<AuthContext>();
+    let headers = ctx.data_opt::<HeaderMap>();
+    let rate_limit_key =
+        build_storefront_rate_limit_key(tenant, request_context, auth, headers, surface);
+
+    match shared.0.check_rate_limit(&rate_limit_key).await {
+        Ok(_) => {
+            metrics::record_search_rate_limit_outcome(surface, shared.0.namespace(), "allowed");
+            Ok(())
+        }
+        Err(RateLimitCheckError::Exceeded(exceeded)) => {
+            metrics::record_rate_limit_exceeded(shared.0.namespace());
+            metrics::record_search_rate_limit_outcome(surface, shared.0.namespace(), "exceeded");
+            Err(FieldError::new(format!(
+                "Search rate limit exceeded. Retry after {} seconds",
+                exceeded.retry_after
+            )))
+        }
+        Err(RateLimitCheckError::BackendUnavailable(reason)) => {
+            metrics::record_rate_limit_backend_unavailable(shared.0.namespace());
+            metrics::record_search_rate_limit_outcome(
+                surface,
+                shared.0.namespace(),
+                "backend_unavailable",
+            );
+            tracing::error!(
+                surface,
+                tenant_id = %tenant.id,
+                %reason,
+                "Storefront search rate limit backend unavailable"
+            );
+            Err(<FieldError as GraphQLError>::internal_error(
+                "Search rate limit backend unavailable",
+            ))
+        }
+    }
+}
+
+fn build_storefront_rate_limit_key(
+    tenant: &TenantContext,
+    request_context: &RequestContext,
+    auth: Option<&AuthContext>,
+    headers: Option<&HeaderMap>,
+    surface: &str,
+) -> String {
+    let client_key = headers
+        .map(extract_client_id_pub)
+        .filter(|value| value != "ip:unknown")
+        .or_else(|| {
+            auth.map(|auth| format!("user:{}", auth.user_id))
+                .or_else(|| {
+                    request_context
+                        .user_id
+                        .map(|user_id| format!("user:{user_id}"))
+                })
+        })
+        .unwrap_or_else(|| "anonymous".to_string());
+
+    format!("tenant:{}:{surface}:{client_key}", tenant.id)
+}
+
 async fn finalize_search_result(
     db: &sea_orm::DatabaseConnection,
     surface: &str,
@@ -470,6 +774,7 @@ async fn finalize_search_result(
             .await;
             let mut payload: SearchPreviewPayload = result.into();
             payload.query_log_id = query_log_id.map(|value| value.to_string());
+            payload.preset_key = search_query.preset_key.clone();
             Ok(payload)
         }
         Err(error) => {

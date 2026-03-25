@@ -1,11 +1,30 @@
 use migration::Migrator;
 use rust_decimal::Decimal;
+use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
+use rustok_cart::services::CartService;
 use rustok_commerce::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductOptionInput, ProductTranslationInput,
 };
-use rustok_commerce::services::{CatalogService, PricingService};
+use rustok_commerce::entities;
+use rustok_commerce::services::{CatalogService, InventoryService, PricingService};
+use rustok_customer::dto::{CreateCustomerInput, UpdateCustomerInput};
+use rustok_customer::services::CustomerService;
+use rustok_fulfillment::dto::{
+    CreateFulfillmentInput, CreateShippingOptionInput, DeliverFulfillmentInput,
+    ShipFulfillmentInput,
+};
+use rustok_fulfillment::services::FulfillmentService;
+use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+use rustok_order::services::OrderService;
+use rustok_payment::dto::{
+    AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
+};
+use rustok_payment::services::PaymentService;
 use rustok_test_utils::{db::setup_test_db_with_migrations, mock_transactional_event_bus};
-use sea_orm_migration::sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm_migration::sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, Statement,
+};
 use std::collections::BTreeSet;
 use std::str::FromStr;
 use uuid::Uuid;
@@ -60,7 +79,282 @@ async fn pricing_service_supports_decimal_prices_on_migrated_schema() {
         .await
         .expect("pricing service should read decimal price on migrated schema");
 
-    assert_eq!(fetched, Some(Decimal::from_str("89.99").expect("valid decimal")));
+    assert_eq!(
+        fetched,
+        Some(Decimal::from_str("89.99").expect("valid decimal"))
+    );
+}
+
+#[tokio::test]
+async fn cart_service_supports_cart_lifecycle_on_migrated_schema() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let service = CartService::new(db);
+    let tenant_id = Uuid::new_v4();
+
+    let created = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .expect("cart service should create cart on migrated schema");
+    let with_item = service
+        .add_line_item(tenant_id, created.id, create_cart_line_item_input())
+        .await
+        .expect("cart service should add line item on migrated schema");
+    assert_eq!(with_item.status, "active");
+    assert_eq!(with_item.line_items.len(), 1);
+    assert_eq!(
+        with_item.total_amount,
+        Decimal::from_str("31.00").expect("valid decimal")
+    );
+
+    let completed = service
+        .complete_cart(tenant_id, created.id)
+        .await
+        .expect("cart service should complete cart on migrated schema");
+    assert_eq!(completed.status, "completed");
+}
+
+#[tokio::test]
+async fn customer_service_supports_storefront_customer_boundary_on_migrated_schema() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let service = CustomerService::new(db);
+    let tenant_id = Uuid::new_v4();
+
+    let created = service
+        .create_customer(tenant_id, create_customer_input())
+        .await
+        .expect("customer service should create customer on migrated schema");
+    assert_eq!(created.email, "migration-customer@example.com");
+
+    let fetched = service
+        .get_customer_by_user(tenant_id, created.user_id.expect("user id"))
+        .await
+        .expect("customer service should resolve customer by user");
+    assert_eq!(fetched.id, created.id);
+
+    let updated = service
+        .update_customer(
+            tenant_id,
+            created.id,
+            UpdateCustomerInput {
+                email: Some("migration-updated@example.com".to_string()),
+                first_name: Some("Updated".to_string()),
+                last_name: Some("Customer".to_string()),
+                phone: Some("+9988776655".to_string()),
+                locale: Some("ru".to_string()),
+                metadata: Some(serde_json::json!({ "source": "migration-smoke-updated" })),
+            },
+        )
+        .await
+        .expect("customer service should update customer on migrated schema");
+    assert_eq!(updated.email, "migration-updated@example.com");
+    assert_eq!(updated.locale.as_deref(), Some("ru"));
+}
+
+#[tokio::test]
+async fn payment_service_supports_payment_collection_lifecycle_on_migrated_schema() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let service = PaymentService::new(db);
+    let tenant_id = Uuid::new_v4();
+
+    let created = service
+        .create_collection(tenant_id, create_payment_collection_input())
+        .await
+        .expect("payment service should create collection on migrated schema");
+    assert_eq!(created.status, "pending");
+
+    let authorized = service
+        .authorize_collection(
+            tenant_id,
+            created.id,
+            AuthorizePaymentInput {
+                provider_id: "manual".to_string(),
+                provider_payment_id: "pay_migration_1".to_string(),
+                amount: None,
+                metadata: serde_json::json!({ "step": "authorized" }),
+            },
+        )
+        .await
+        .expect("payment service should authorize collection on migrated schema");
+    assert_eq!(authorized.status, "authorized");
+
+    let captured = service
+        .capture_collection(
+            tenant_id,
+            created.id,
+            CapturePaymentInput {
+                amount: Some(Decimal::from_str("59.99").expect("valid decimal")),
+                metadata: serde_json::json!({ "step": "captured" }),
+            },
+        )
+        .await
+        .expect("payment service should capture collection on migrated schema");
+    assert_eq!(captured.status, "captured");
+}
+
+#[tokio::test]
+async fn fulfillment_service_supports_shipping_and_delivery_on_migrated_schema() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let service = FulfillmentService::new(db);
+    let tenant_id = Uuid::new_v4();
+
+    let shipping_option = service
+        .create_shipping_option(tenant_id, create_shipping_option_input())
+        .await
+        .expect("fulfillment service should create shipping option on migrated schema");
+
+    let created = service
+        .create_fulfillment(
+            tenant_id,
+            CreateFulfillmentInput {
+                order_id: Uuid::new_v4(),
+                shipping_option_id: Some(shipping_option.id),
+                customer_id: Some(Uuid::new_v4()),
+                carrier: None,
+                tracking_number: None,
+                metadata: serde_json::json!({ "source": "migration-smoke" }),
+            },
+        )
+        .await
+        .expect("fulfillment service should create fulfillment on migrated schema");
+    assert_eq!(created.status, "pending");
+
+    let shipped = service
+        .ship_fulfillment(
+            tenant_id,
+            created.id,
+            ShipFulfillmentInput {
+                carrier: "dhl".to_string(),
+                tracking_number: "trk_987".to_string(),
+                metadata: serde_json::json!({ "step": "shipped" }),
+            },
+        )
+        .await
+        .expect("fulfillment service should ship on migrated schema");
+    assert_eq!(shipped.status, "shipped");
+
+    let delivered = service
+        .deliver_fulfillment(
+            tenant_id,
+            created.id,
+            DeliverFulfillmentInput {
+                delivered_note: Some("front-desk".to_string()),
+                metadata: serde_json::json!({ "step": "delivered" }),
+            },
+        )
+        .await
+        .expect("fulfillment service should deliver on migrated schema");
+    assert_eq!(delivered.status, "delivered");
+}
+
+#[tokio::test]
+async fn inventory_service_supports_normalized_inventory_on_migrated_schema() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let event_bus = mock_transactional_event_bus();
+    let catalog = CatalogService::new(db.clone(), event_bus.clone());
+    let inventory = InventoryService::new(db.clone(), event_bus);
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("catalog create_product should work before inventory smoke");
+
+    let variant_id = created.variants[0].id;
+    inventory
+        .set_inventory(tenant_id, actor_id, variant_id, 20)
+        .await
+        .expect("inventory service should initialize normalized inventory rows");
+    inventory
+        .reserve(tenant_id, variant_id, 6)
+        .await
+        .expect("inventory service should write reservation rows");
+
+    let inventory_item = entities::inventory_item::Entity::find()
+        .filter(entities::inventory_item::Column::VariantId.eq(variant_id))
+        .one(&db)
+        .await
+        .expect("inventory item query should succeed")
+        .expect("inventory item should exist");
+    let level = entities::inventory_level::Entity::find()
+        .filter(entities::inventory_level::Column::InventoryItemId.eq(inventory_item.id))
+        .one(&db)
+        .await
+        .expect("inventory level query should succeed")
+        .expect("inventory level should exist");
+    let reservation_count = entities::reservation_item::Entity::find()
+        .filter(entities::reservation_item::Column::InventoryItemId.eq(inventory_item.id))
+        .count(&db)
+        .await
+        .expect("reservation query should succeed");
+    assert_eq!(level.stocked_quantity, 20);
+    assert_eq!(level.reserved_quantity, 6);
+    assert_eq!(reservation_count, 1);
+    assert!(inventory
+        .check_availability(tenant_id, variant_id, 14)
+        .await
+        .expect("availability check should succeed"));
+    assert!(!inventory
+        .check_availability(tenant_id, variant_id, 15)
+        .await
+        .expect("availability check should succeed"));
+}
+
+#[tokio::test]
+async fn order_service_supports_order_lifecycle_on_migrated_schema() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let service = OrderService::new(db.clone(), mock_transactional_event_bus());
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id).await;
+
+    let created = service
+        .create_order(tenant_id, actor_id, create_order_input())
+        .await
+        .expect("order service should create order on migrated schema");
+    assert_eq!(created.status, "pending");
+    assert_eq!(created.line_items.len(), 2);
+
+    let confirmed = service
+        .confirm_order(tenant_id, actor_id, created.id)
+        .await
+        .expect("order should confirm on migrated schema");
+    assert_eq!(confirmed.status, "confirmed");
+
+    let paid = service
+        .mark_paid(
+            tenant_id,
+            actor_id,
+            created.id,
+            "pay_123".to_string(),
+            "manual".to_string(),
+        )
+        .await
+        .expect("order should be payable on migrated schema");
+    assert_eq!(paid.status, "paid");
+
+    let delivered = service
+        .ship_order(
+            tenant_id,
+            actor_id,
+            created.id,
+            "trk_123".to_string(),
+            "dhl".to_string(),
+        )
+        .await
+        .expect("order should be shippable on migrated schema");
+    let delivered = service
+        .deliver_order(
+            tenant_id,
+            actor_id,
+            delivered.id,
+            Some("front-desk".to_string()),
+        )
+        .await
+        .expect("order should be deliverable on migrated schema");
+    assert_eq!(delivered.status, "delivered");
+    assert_eq!(delivered.delivered_signature.as_deref(), Some("front-desk"));
 }
 
 async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
@@ -149,15 +443,106 @@ async fn ecommerce_migrations_create_expected_tables() {
         "price_lists",
         "prices",
         "regions",
+        "carts",
+        "cart_line_items",
+        "customers",
+        "payment_collections",
+        "payments",
+        "shipping_options",
+        "fulfillments",
         "stock_locations",
         "inventory_items",
         "inventory_levels",
         "reservation_items",
+        "orders",
+        "order_line_items",
     ] {
         assert!(
             tables.contains(table),
             "expected migrated schema to include table `{table}`, found: {tables:?}"
         );
+    }
+}
+
+fn create_order_input() -> CreateOrderInput {
+    CreateOrderInput {
+        customer_id: Some(Uuid::new_v4()),
+        currency_code: "usd".to_string(),
+        line_items: vec![
+            CreateOrderLineItemInput {
+                product_id: Some(Uuid::new_v4()),
+                variant_id: Some(Uuid::new_v4()),
+                sku: Some(format!("ORD-SKU-{}", Uuid::new_v4())),
+                title: "Migration order product".to_string(),
+                quantity: 2,
+                unit_price: Decimal::from_str("29.99").expect("valid decimal"),
+                metadata: serde_json::json!({ "source": "migration-smoke", "slot": 1 }),
+            },
+            CreateOrderLineItemInput {
+                product_id: None,
+                variant_id: None,
+                sku: Some(format!("ORD-ADDON-{}", Uuid::new_v4())),
+                title: "Migration add-on".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("5.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "source": "migration-smoke", "slot": 2 }),
+            },
+        ],
+        metadata: serde_json::json!({ "source": "migration-smoke" }),
+    }
+}
+
+fn create_cart_input() -> CreateCartInput {
+    CreateCartInput {
+        customer_id: Some(Uuid::new_v4()),
+        email: Some("migration-buyer@example.com".to_string()),
+        currency_code: "usd".to_string(),
+        metadata: serde_json::json!({ "source": "migration-smoke" }),
+    }
+}
+
+fn create_cart_line_item_input() -> AddCartLineItemInput {
+    AddCartLineItemInput {
+        product_id: Some(Uuid::new_v4()),
+        variant_id: Some(Uuid::new_v4()),
+        sku: Some(format!("CART-SKU-{}", Uuid::new_v4())),
+        title: "Migration cart product".to_string(),
+        quantity: 2,
+        unit_price: Decimal::from_str("15.50").expect("valid decimal"),
+        metadata: serde_json::json!({ "source": "migration-smoke" }),
+    }
+}
+
+fn create_customer_input() -> CreateCustomerInput {
+    CreateCustomerInput {
+        user_id: Some(Uuid::new_v4()),
+        email: "migration-customer@example.com".to_string(),
+        first_name: Some("Migration".to_string()),
+        last_name: Some("Customer".to_string()),
+        phone: Some("+123456789".to_string()),
+        locale: Some("en".to_string()),
+        metadata: serde_json::json!({ "source": "migration-smoke" }),
+    }
+}
+
+fn create_payment_collection_input() -> CreatePaymentCollectionInput {
+    CreatePaymentCollectionInput {
+        cart_id: Some(Uuid::new_v4()),
+        order_id: Some(Uuid::new_v4()),
+        customer_id: Some(Uuid::new_v4()),
+        currency_code: "usd".to_string(),
+        amount: Decimal::from_str("59.99").expect("valid decimal"),
+        metadata: serde_json::json!({ "source": "migration-smoke" }),
+    }
+}
+
+fn create_shipping_option_input() -> CreateShippingOptionInput {
+    CreateShippingOptionInput {
+        name: "Migration Shipping".to_string(),
+        currency_code: "usd".to_string(),
+        amount: Decimal::from_str("12.50").expect("valid decimal"),
+        provider_id: "manual".to_string(),
+        metadata: serde_json::json!({ "source": "migration-smoke" }),
     }
 }
 

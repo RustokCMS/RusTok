@@ -1,0 +1,40 @@
+use rust_decimal::Decimal;
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "cart_line_items")]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
+    pub cart_id: Uuid,
+    pub product_id: Option<Uuid>,
+    pub variant_id: Option<Uuid>,
+    pub sku: Option<String>,
+    pub title: String,
+    pub quantity: i32,
+    pub unit_price: Decimal,
+    pub total_price: Decimal,
+    pub currency_code: String,
+    pub metadata: Json,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::cart::Entity",
+        from = "Column::CartId",
+        to = "super::cart::Column::Id"
+    )]
+    Cart,
+}
+
+impl Related<super::cart::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Cart.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}

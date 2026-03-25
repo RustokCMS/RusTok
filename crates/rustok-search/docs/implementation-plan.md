@@ -131,7 +131,8 @@ Already implemented:
 - queued rebuild flow for `search`, `content`, `product`, and optional target IDs
 - transactional rebuild execution and dispatcher retries for ingestion safety
 - Prometheus metrics for query volume, latency, zero-result rate, indexing
-  outcomes, and fleet-level lag/bootstrap visibility
+  outcomes, fleet-level lag/bootstrap visibility, storefront rate-limit
+  outcomes, and audit-event publication status
 - admin diagnostics via `searchDiagnostics`
 - admin analytics via `searchAnalytics`
 - admin dictionary snapshot via `searchDictionarySnapshot`
@@ -142,7 +143,11 @@ Already implemented:
 - admin FTS preview via `searchPreview`
 - dedicated host-level admin quick search via `adminGlobalSearch`
 - public storefront search via `storefrontSearch`
+- PostgreSQL typo-tolerant fallback over `pg_trgm` for zero-result searches
+- built-in ranking profiles with per-surface defaults and admin preview override
 - read-only search query path without bootstrap rebuild side effects
+- dedicated storefront rate limiting and outbox-backed audit events for
+  settings/rebuild actions
 - healthier diagnostics state model for truly empty tenants
 - query-log-backed CTR, abandonment, low-CTR, and intelligence analytics
 - tenant-owned query normalization with stop-word removal and synonym expansion
@@ -211,7 +216,7 @@ Not implemented yet:
 - [x] Ship Leptos storefront package
 - [x] Ship Next storefront package scaffold
 - [x] Keep storefront search on shared backend contract
-- [ ] Add suggestions/autocomplete
+- [x] Add suggestions/autocomplete
 - [ ] Add richer URL/state model and SSR polish
 
 ### Phase S6 - Admin UI
@@ -229,14 +234,14 @@ Not implemented yet:
 - [x] Stop words
 - [x] Synonyms
 - [x] Query normalization policy
-- [ ] Typo tolerance
-- [ ] Suggestions/autocomplete
+- [x] Typo tolerance
+- [x] Suggestions/autocomplete
 - [ ] Filter presets
-- [ ] Ranking profiles
+- [x] Ranking profiles
 - [ ] Boost/bury rules
 - [x] Query rules (exact pinned-result rules)
 - [ ] Redirects
-- [ ] Audit trail for search settings changes
+- [x] Audit trail for search settings changes
 
 ### Phase S8 - Analytics and observability
 
@@ -246,6 +251,8 @@ Not implemented yet:
 - [ ] Slow-query rate
 - [x] Indexing lag metrics
 - [x] Failed indexing rate
+- [x] Storefront rate-limit outcome metrics
+- [x] Audit-event publication metrics
 - [x] Top queries and zero-result query analysis
 - [x] CTR and abandonment analysis
 - [x] Query-intelligence candidates for tuning and merchandising work

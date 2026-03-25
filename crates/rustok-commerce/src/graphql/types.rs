@@ -101,7 +101,9 @@ pub struct GqlProductListItem {
     pub title: String,
     pub handle: String,
     pub vendor: Option<String>,
+    pub product_type: Option<String>,
     pub created_at: String,
+    pub published_at: Option<String>,
 }
 
 #[derive(InputObject)]
@@ -161,6 +163,15 @@ pub struct UpdateProductInput {
 pub struct ProductsFilter {
     pub status: Option<GqlProductStatus>,
     pub vendor: Option<String>,
+    pub search: Option<String>,
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+}
+
+#[derive(InputObject)]
+pub struct StorefrontProductsFilter {
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
     pub search: Option<String>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,

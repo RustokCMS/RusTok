@@ -448,6 +448,9 @@ pub struct SharedAuthRateLimiter(pub Arc<RateLimiter>);
 pub struct SharedOAuthRateLimiter(pub Arc<RateLimiter>);
 
 #[derive(Clone)]
+pub struct SharedSearchRateLimiter(pub Arc<RateLimiter>);
+
+#[derive(Clone)]
 pub struct RateLimitMiddlewareState {
     pub limiter: Arc<RateLimiter>,
     pub auth_config: Option<AuthConfig>,

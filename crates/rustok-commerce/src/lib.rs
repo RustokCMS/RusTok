@@ -19,7 +19,11 @@ mod state_machine_proptest;
 pub use dto::*;
 pub use error::{CommerceError, CommerceResult};
 pub use graphql::{CommerceMutation, CommerceQuery};
-pub use services::{CatalogService, InventoryService, PricingService};
+pub use services::{
+    CartService, CatalogService, CheckoutError, CheckoutResult, CheckoutService,
+    CustomerService, FulfillmentService, InventoryService, OrderService, PaymentService,
+    PricingService,
+};
 pub use state_machine::{
     Cancelled, Confirmed, Delivered, Order, OrderError, Paid, Pending, Shipped,
 };
@@ -45,7 +49,16 @@ impl RusToKModule for CommerceModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["product", "pricing", "inventory"]
+        &[
+            "cart",
+            "customer",
+            "product",
+            "pricing",
+            "inventory",
+            "order",
+            "payment",
+            "fulfillment",
+        ]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -71,6 +84,20 @@ impl RusToKModule for CommerceModule {
             Permission::new(Resource::Customers, Action::Delete),
             Permission::new(Resource::Customers, Action::List),
             Permission::new(Resource::Customers, Action::Manage),
+            // Payments
+            Permission::new(Resource::Payments, Action::Create),
+            Permission::new(Resource::Payments, Action::Read),
+            Permission::new(Resource::Payments, Action::Update),
+            Permission::new(Resource::Payments, Action::Delete),
+            Permission::new(Resource::Payments, Action::List),
+            Permission::new(Resource::Payments, Action::Manage),
+            // Fulfillments
+            Permission::new(Resource::Fulfillments, Action::Create),
+            Permission::new(Resource::Fulfillments, Action::Read),
+            Permission::new(Resource::Fulfillments, Action::Update),
+            Permission::new(Resource::Fulfillments, Action::Delete),
+            Permission::new(Resource::Fulfillments, Action::List),
+            Permission::new(Resource::Fulfillments, Action::Manage),
             // Inventory
             Permission::new(Resource::Inventory, Action::Create),
             Permission::new(Resource::Inventory, Action::Read),

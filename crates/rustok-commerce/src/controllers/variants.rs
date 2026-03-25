@@ -9,12 +9,13 @@ use rustok_core::{generate_id, Permission};
 use rustok_events::DomainEvent;
 use rustok_telemetry::metrics;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use std::collections::HashMap;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
     dto::{CreateVariantInput, PriceInput, PriceResponse, UpdateVariantInput, VariantResponse},
-    entities, PricingService,
+    entities, InventoryService, PricingService,
 };
 
 use super::common::{ensure_permissions, PaginationParams};
@@ -86,7 +87,7 @@ pub async fn list_variants(
         Vec::new()
     } else {
         price::Entity::find()
-            .filter(price::Column::VariantId.is_in(variant_ids))
+            .filter(price::Column::VariantId.is_in(variant_ids.clone()))
             .all(&ctx.db)
             .await
             .map_err(|err| Error::BadRequest(err.to_string()))?
@@ -97,12 +98,14 @@ pub async fn list_variants(
     for price in prices {
         prices_map.entry(price.variant_id).or_default().push(price);
     }
+    let available_quantities = load_available_quantities(&ctx.db, &variant_ids).await?;
 
     let response = variants
         .into_iter()
         .map(|variant| {
             let variant_prices = prices_map.remove(&variant.id).unwrap_or_default();
-            build_variant_response(variant, variant_prices)
+            let available_quantity = available_quantities.get(&variant.id).copied().unwrap_or(0);
+            build_variant_response(variant, variant_prices, available_quantity)
         })
         .collect::<Vec<_>>();
 
@@ -172,8 +175,9 @@ pub async fn create_variant(
 
     let variant_id = generate_id();
     let now = Utc::now();
+    let initial_inventory_quantity = input.inventory_quantity;
 
-    let variant = product_variant::ActiveModel {
+    product_variant::ActiveModel {
         id: Set(variant_id),
         product_id: Set(product.id),
         tenant_id: Set(tenant.id),
@@ -183,7 +187,7 @@ pub async fn create_variant(
         upc: Set(None),
         inventory_policy: Set(input.inventory_policy.clone()),
         inventory_management: Set("manual".into()),
-        inventory_quantity: Set(input.inventory_quantity),
+        inventory_quantity: Set(0),
         weight: Set(input.weight),
         weight_unit: Set(input.weight_unit.clone()),
         option1: Set(input.option1.clone()),
@@ -197,9 +201,8 @@ pub async fn create_variant(
     .await
     .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let mut created_prices = Vec::new();
     for price_input in &input.prices {
-        let price = price::ActiveModel {
+        price::ActiveModel {
             id: Set(generate_id()),
             variant_id: Set(variant_id),
             price_list_id: Set(None),
@@ -208,16 +211,13 @@ pub async fn create_variant(
             amount: Set(price_input.amount),
             compare_at_amount: Set(price_input.compare_at_amount),
             legacy_amount: Set(decimal_to_cents(price_input.amount)),
-            legacy_compare_at_amount: Set(
-                price_input.compare_at_amount.and_then(decimal_to_cents),
-            ),
+            legacy_compare_at_amount: Set(price_input.compare_at_amount.and_then(decimal_to_cents)),
             min_quantity: Set(None),
             max_quantity: Set(None),
         }
         .insert(&txn)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
-        created_prices.push(price);
     }
 
     transactional_event_bus_from_context(&ctx)
@@ -237,9 +237,19 @@ pub async fn create_variant(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
+    InventoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+        .set_inventory(
+            tenant.id,
+            auth.user_id,
+            variant_id,
+            initial_inventory_quantity,
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
     Ok((
         StatusCode::CREATED,
-        Json(build_variant_response(variant, created_prices)),
+        Json(load_variant_response(&ctx.db, tenant.id, variant_id).await?),
     ))
 }
 
@@ -293,7 +303,7 @@ pub async fn update_variant(
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateVariantInput>,
 ) -> Result<Json<VariantResponse>> {
-    use crate::entities::{price, product_variant};
+    use crate::entities::product_variant;
     use chrono::Utc;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 
@@ -311,6 +321,7 @@ pub async fn update_variant(
         .ok_or(Error::NotFound)?;
 
     let product_id = variant.product_id;
+    let requested_inventory_quantity = input.inventory_quantity;
 
     let txn = ctx
         .db
@@ -327,9 +338,6 @@ pub async fn update_variant(
     if let Some(barcode) = input.barcode {
         variant_active.barcode = Set(Some(barcode));
     }
-    if let Some(inventory_quantity) = input.inventory_quantity {
-        variant_active.inventory_quantity = Set(inventory_quantity);
-    }
     if let Some(inventory_policy) = input.inventory_policy {
         variant_active.inventory_policy = Set(inventory_policy);
     }
@@ -340,7 +348,7 @@ pub async fn update_variant(
         variant_active.weight_unit = Set(Some(weight_unit));
     }
 
-    let variant = variant_active
+    variant_active
         .update(&txn)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
@@ -362,13 +370,14 @@ pub async fn update_variant(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let prices = price::Entity::find()
-        .filter(price::Column::VariantId.eq(id))
-        .all(&ctx.db)
-        .await
-        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    if let Some(inventory_quantity) = requested_inventory_quantity {
+        InventoryService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
+            .set_inventory(tenant.id, auth.user_id, id, inventory_quantity)
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?;
+    }
 
-    Ok(Json(build_variant_response(variant, prices)))
+    Ok(Json(load_variant_response(&ctx.db, tenant.id, id).await?))
 }
 
 /// Delete a variant
@@ -390,7 +399,7 @@ pub async fn delete_variant(
     auth: AuthContext,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode> {
-    use crate::entities::product_variant;
+    use crate::entities::{inventory_item, inventory_level, product_variant, reservation_item};
     use sea_orm::{ColumnTrait, EntityTrait, ModelTrait, QueryFilter, TransactionTrait};
 
     ensure_permissions(
@@ -413,6 +422,35 @@ pub async fn delete_variant(
         .begin()
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let inventory_item_ids = inventory_item::Entity::find()
+        .filter(inventory_item::Column::VariantId.eq(id))
+        .all(&txn)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+        .into_iter()
+        .map(|item| item.id)
+        .collect::<Vec<_>>();
+
+    if !inventory_item_ids.is_empty() {
+        reservation_item::Entity::delete_many()
+            .filter(reservation_item::Column::InventoryItemId.is_in(inventory_item_ids.clone()))
+            .exec(&txn)
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+        inventory_level::Entity::delete_many()
+            .filter(inventory_level::Column::InventoryItemId.is_in(inventory_item_ids.clone()))
+            .exec(&txn)
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+        inventory_item::Entity::delete_many()
+            .filter(inventory_item::Column::Id.is_in(inventory_item_ids))
+            .exec(&txn)
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?;
+    }
 
     variant
         .delete(&txn)
@@ -495,13 +533,19 @@ async fn load_variant_response(
         .all(db)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
+    let available_quantity = load_available_quantities(db, &[variant_id])
+        .await?
+        .get(&variant_id)
+        .copied()
+        .unwrap_or(0);
 
-    Ok(build_variant_response(variant, prices))
+    Ok(build_variant_response(variant, prices, available_quantity))
 }
 
 fn build_variant_response(
     variant: crate::entities::product_variant::Model,
     prices: Vec<crate::entities::price::Model>,
+    inventory_quantity: i32,
 ) -> VariantResponse {
     let title = generate_variant_title(&variant);
     let price_responses = prices
@@ -528,9 +572,9 @@ fn build_variant_response(
         option2: variant.option2,
         option3: variant.option3,
         prices: price_responses,
-        inventory_quantity: variant.inventory_quantity,
+        inventory_quantity,
         inventory_policy: variant.inventory_policy.clone(),
-        in_stock: variant.inventory_quantity > 0 || variant.inventory_policy == "continue",
+        in_stock: inventory_quantity > 0 || variant.inventory_policy == "continue",
         weight: variant.weight,
         weight_unit: variant.weight_unit,
         position: variant.position,
@@ -560,4 +604,45 @@ fn generate_variant_title(variant: &crate::entities::product_variant::Model) -> 
     } else {
         options.join(" / ")
     }
+}
+
+async fn load_available_quantities(
+    db: &DatabaseConnection,
+    variant_ids: &[Uuid],
+) -> Result<HashMap<Uuid, i32>> {
+    use crate::entities::{inventory_item, inventory_level};
+
+    if variant_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let inventory_items = inventory_item::Entity::find()
+        .filter(inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
+        .all(db)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    if inventory_items.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
+        .iter()
+        .map(|item| (item.id, item.variant_id))
+        .collect();
+    let levels = inventory_level::Entity::find()
+        .filter(inventory_level::Column::InventoryItemId.is_in(item_to_variant.keys().copied()))
+        .all(db)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let mut quantities = HashMap::new();
+    for level in levels {
+        if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
+            *quantities.entry(*variant_id).or_insert(0) +=
+                level.stocked_quantity - level.reserved_quantity;
+        }
+    }
+
+    Ok(quantities)
 }

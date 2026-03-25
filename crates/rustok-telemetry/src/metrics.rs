@@ -541,6 +541,26 @@ lazy_static! {
     )
     .expect("Failed to create search_indexing_duration_seconds");
 
+    /// Search-specific rate-limit outcomes by surface/namespace.
+    pub static ref SEARCH_RATE_LIMIT_OUTCOMES_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_search_rate_limit_outcomes_total",
+            "Search rate-limit outcomes"
+        ),
+        &["surface", "namespace", "outcome"]
+    )
+    .expect("Failed to create search_rate_limit_outcomes_total");
+
+    /// Search admin audit-event publication attempts by action/status.
+    pub static ref SEARCH_AUDIT_EVENTS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_search_audit_events_total",
+            "Search admin audit-event publication attempts"
+        ),
+        &["action", "status"]
+    )
+    .expect("Failed to create search_audit_events_total");
+
     /// Current rate-limit backend health by namespace/backend
     pub static ref RATE_LIMIT_BACKEND_STATUS: IntGaugeVec = IntGaugeVec::new(
         Opts::new(
@@ -668,6 +688,8 @@ pub fn register_all(registry: &Registry) -> Result<(), prometheus::Error> {
     registry.register(Box::new(SEARCH_ZERO_RESULTS_TOTAL.clone()))?;
     registry.register(Box::new(SEARCH_INDEXING_OPERATIONS_TOTAL.clone()))?;
     registry.register(Box::new(SEARCH_INDEXING_DURATION_SECONDS.clone()))?;
+    registry.register(Box::new(SEARCH_RATE_LIMIT_OUTCOMES_TOTAL.clone()))?;
+    registry.register(Box::new(SEARCH_AUDIT_EVENTS_TOTAL.clone()))?;
     registry.register(Box::new(RATE_LIMIT_BACKEND_STATUS.clone()))?;
     registry.register(Box::new(RATE_LIMIT_ACTIVE_CLIENTS.clone()))?;
     registry.register(Box::new(RATE_LIMIT_TOTAL_ENTRIES.clone()))?;
@@ -976,6 +998,20 @@ pub fn record_search_indexing_operation(
     SEARCH_INDEXING_DURATION_SECONDS
         .with_label_values(&[operation, entity])
         .observe(duration_secs);
+}
+
+/// Record a search-specific rate-limit outcome for a public surface.
+pub fn record_search_rate_limit_outcome(surface: &str, namespace: &str, outcome: &str) {
+    SEARCH_RATE_LIMIT_OUTCOMES_TOTAL
+        .with_label_values(&[surface, namespace, outcome])
+        .inc();
+}
+
+/// Record publication status for a search admin audit event.
+pub fn record_search_audit_event(action: &str, status: &str) {
+    SEARCH_AUDIT_EVENTS_TOTAL
+        .with_label_values(&[action, status])
+        .inc();
 }
 
 /// Update observable runtime stats for a rate limiter.

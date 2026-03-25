@@ -6,7 +6,9 @@
 
 ## Responsibilities
 
-- Inventory service, stock-level migrations, and inventory runtime metadata.
+- Inventory service, stock-level migrations, and normalized stock/reservation persistence.
+- Keeps `stock_locations`, `inventory_items`, `inventory_levels`, and `reservation_items`
+  as the source of truth for ecommerce inventory runtime.
 
 ## Interactions
 

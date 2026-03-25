@@ -1,0 +1,222 @@
+use chrono::Utc;
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use tracing::instrument;
+use uuid::Uuid;
+use validator::Validate;
+
+use rustok_core::generate_id;
+
+use crate::dto::{CreateCustomerInput, CustomerResponse, UpdateCustomerInput};
+use crate::entities;
+use crate::error::{CustomerError, CustomerResult};
+
+pub struct CustomerService {
+    db: DatabaseConnection,
+}
+
+impl CustomerService {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
+    pub async fn create_customer(
+        &self,
+        tenant_id: Uuid,
+        input: CreateCustomerInput,
+    ) -> CustomerResult<CustomerResponse> {
+        input
+            .validate()
+            .map_err(|error| CustomerError::Validation(error.to_string()))?;
+
+        self.ensure_email_available(tenant_id, &input.email, None)
+            .await?;
+        if let Some(user_id) = input.user_id {
+            self.ensure_user_available(tenant_id, user_id, None).await?;
+        }
+
+        let customer_id = generate_id();
+        let now = Utc::now();
+
+        entities::customer::ActiveModel {
+            id: Set(customer_id),
+            tenant_id: Set(tenant_id),
+            user_id: Set(input.user_id),
+            email: Set(input.email),
+            first_name: Set(input.first_name),
+            last_name: Set(input.last_name),
+            phone: Set(input.phone),
+            locale: Set(input.locale),
+            metadata: Set(input.metadata),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&self.db)
+        .await?;
+
+        self.get_customer(tenant_id, customer_id).await
+    }
+
+    pub async fn get_customer(
+        &self,
+        tenant_id: Uuid,
+        customer_id: Uuid,
+    ) -> CustomerResult<CustomerResponse> {
+        let customer = entities::customer::Entity::find_by_id(customer_id)
+            .filter(entities::customer::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(CustomerError::CustomerNotFound(customer_id))?;
+        Ok(map_customer(customer))
+    }
+
+    pub async fn get_customer_by_user(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> CustomerResult<CustomerResponse> {
+        let customer = entities::customer::Entity::find()
+            .filter(entities::customer::Column::TenantId.eq(tenant_id))
+            .filter(entities::customer::Column::UserId.eq(user_id))
+            .one(&self.db)
+            .await?
+            .ok_or(CustomerError::CustomerByUserNotFound(user_id))?;
+        Ok(map_customer(customer))
+    }
+
+    pub async fn update_customer(
+        &self,
+        tenant_id: Uuid,
+        customer_id: Uuid,
+        input: UpdateCustomerInput,
+    ) -> CustomerResult<CustomerResponse> {
+        input
+            .validate()
+            .map_err(|error| CustomerError::Validation(error.to_string()))?;
+
+        let customer = entities::customer::Entity::find_by_id(customer_id)
+            .filter(entities::customer::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(CustomerError::CustomerNotFound(customer_id))?;
+
+        if let Some(email) = input.email.as_deref() {
+            self.ensure_email_available(tenant_id, email, Some(customer_id))
+                .await?;
+        }
+
+        let mut active: entities::customer::ActiveModel = customer.into();
+        if let Some(email) = input.email {
+            active.email = Set(email);
+        }
+        if let Some(first_name) = input.first_name {
+            active.first_name = Set(Some(first_name));
+        }
+        if let Some(last_name) = input.last_name {
+            active.last_name = Set(Some(last_name));
+        }
+        if let Some(phone) = input.phone {
+            active.phone = Set(Some(phone));
+        }
+        if let Some(locale) = input.locale {
+            active.locale = Set(Some(locale));
+        }
+        if let Some(metadata) = input.metadata {
+            active.metadata = Set(metadata);
+        }
+        active.updated_at = Set(Utc::now().into());
+        active.update(&self.db).await?;
+
+        self.get_customer(tenant_id, customer_id).await
+    }
+
+    pub async fn upsert_customer_for_user(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        input: CreateCustomerInput,
+    ) -> CustomerResult<CustomerResponse> {
+        match self.get_customer_by_user(tenant_id, user_id).await {
+            Ok(existing) => {
+                self.update_customer(
+                    tenant_id,
+                    existing.id,
+                    UpdateCustomerInput {
+                        email: Some(input.email),
+                        first_name: input.first_name,
+                        last_name: input.last_name,
+                        phone: input.phone,
+                        locale: input.locale,
+                        metadata: Some(input.metadata),
+                    },
+                )
+                .await
+            }
+            Err(CustomerError::CustomerByUserNotFound(_)) => {
+                self.create_customer(
+                    tenant_id,
+                    CreateCustomerInput {
+                        user_id: Some(user_id),
+                        ..input
+                    },
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn ensure_email_available(
+        &self,
+        tenant_id: Uuid,
+        email: &str,
+        except_customer_id: Option<Uuid>,
+    ) -> CustomerResult<()> {
+        let existing = entities::customer::Entity::find()
+            .filter(entities::customer::Column::TenantId.eq(tenant_id))
+            .filter(entities::customer::Column::Email.eq(email))
+            .one(&self.db)
+            .await?;
+        if let Some(existing) = existing {
+            if Some(existing.id) != except_customer_id {
+                return Err(CustomerError::DuplicateEmail(email.to_string()));
+            }
+        }
+        Ok(())
+    }
+
+    async fn ensure_user_available(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        except_customer_id: Option<Uuid>,
+    ) -> CustomerResult<()> {
+        let existing = entities::customer::Entity::find()
+            .filter(entities::customer::Column::TenantId.eq(tenant_id))
+            .filter(entities::customer::Column::UserId.eq(user_id))
+            .one(&self.db)
+            .await?;
+        if let Some(existing) = existing {
+            if Some(existing.id) != except_customer_id {
+                return Err(CustomerError::DuplicateUserLink(user_id));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn map_customer(customer: entities::customer::Model) -> CustomerResponse {
+    CustomerResponse {
+        id: customer.id,
+        tenant_id: customer.tenant_id,
+        user_id: customer.user_id,
+        email: customer.email,
+        first_name: customer.first_name,
+        last_name: customer.last_name,
+        phone: customer.phone,
+        locale: customer.locale,
+        metadata: customer.metadata,
+        created_at: customer.created_at.with_timezone(&Utc),
+        updated_at: customer.updated_at.with_timezone(&Utc),
+    }
+}

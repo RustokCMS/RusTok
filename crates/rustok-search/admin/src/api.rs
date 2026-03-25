@@ -3,15 +3,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAdminBootstrap, SearchAnalyticsPayload,
-    SearchDictionaryMutationPayload, SearchDictionarySnapshotPayload, SearchPreviewFilters,
-    SearchPreviewPayload, SearchSettingsPayload, TrackSearchClickPayload,
+    SearchDictionaryMutationPayload, SearchDictionarySnapshotPayload, SearchFilterPresetPayload,
+    SearchPreviewFilters, SearchPreviewPayload, SearchSettingsPayload, TrackSearchClickPayload,
     TriggerSearchRebuildPayload,
 };
 
 pub type ApiError = GraphqlHttpError;
 
 const SEARCH_ADMIN_BOOTSTRAP_QUERY: &str = "query SearchAdminBootstrap { availableSearchEngines { kind label providedBy enabled defaultEngine } searchSettingsPreview { tenantId activeEngine fallbackEngine config updatedAt } searchDiagnostics { tenantId totalDocuments publicDocuments contentDocuments productDocuments staleDocuments newestIndexedAt oldestIndexedAt maxLagSeconds state } }";
-const SEARCH_PREVIEW_QUERY: &str = "query SearchPreview($input: SearchPreviewInput!) { searchPreview(input: $input) { queryLogId total tookMs engine items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value count } } } }";
+const SEARCH_PREVIEW_QUERY: &str = "query SearchPreview($input: SearchPreviewInput!) { searchPreview(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value count } } } }";
+const SEARCH_FILTER_PRESETS_QUERY: &str = "query SearchFilterPresets($input: SearchFilterPresetsInput!) { searchFilterPresets(input: $input) { key label entityTypes sourceModules statuses rankingProfile } }";
 const SEARCH_LAGGING_DOCUMENTS_QUERY: &str = "query SearchLaggingDocuments($limit: Int) { searchLaggingDocuments(limit: $limit) { documentKey documentId sourceModule entityType locale status isPublic title updatedAt indexedAt lagSeconds } }";
 const SEARCH_ANALYTICS_QUERY: &str = "query SearchAnalytics($days: Int, $limit: Int) { searchAnalytics(days: $days, limit: $limit) { summary { windowDays totalQueries successfulQueries zeroResultQueries zeroResultRate avgTookMs avgResultsPerQuery uniqueQueries clickedQueries totalClicks clickThroughRate abandonmentQueries abandonmentRate lastQueryAt } topQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } zeroResultQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } lowCtrQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } abandonmentQueries { query hits zeroResultHits clicks avgTookMs avgResults clickThroughRate abandonmentRate lastSeenAt } intelligenceCandidates { query hits zeroResultHits clicks clickThroughRate abandonmentRate recommendation } } }";
 const SEARCH_DICTIONARY_SNAPSHOT_QUERY: &str = "query SearchDictionarySnapshot { searchDictionarySnapshot { synonyms { id term synonyms updatedAt } stopWords { id value updatedAt } queryRules { id queryText queryNormalized ruleKind documentId entityType sourceModule title pinnedPosition updatedAt } } }";
@@ -47,6 +48,12 @@ struct SearchLaggingDocumentsResponse {
 struct SearchAnalyticsResponse {
     #[serde(rename = "searchAnalytics")]
     search_analytics: SearchAnalyticsPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchFilterPresetsResponse {
+    #[serde(rename = "searchFilterPresets")]
+    search_filter_presets: Vec<SearchFilterPresetPayload>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -131,6 +138,11 @@ struct SearchAnalyticsVariables {
 }
 
 #[derive(Debug, Serialize)]
+struct SearchFilterPresetsVariables {
+    input: SearchFilterPresetsInput,
+}
+
+#[derive(Debug, Serialize)]
 struct TrackSearchClickVariables {
     input: TrackSearchClickInput,
 }
@@ -158,6 +170,10 @@ struct SearchPreviewInput {
     tenant_id: Option<String>,
     limit: Option<i32>,
     offset: Option<i32>,
+    #[serde(rename = "rankingProfile")]
+    ranking_profile: Option<String>,
+    #[serde(rename = "presetKey")]
+    preset_key: Option<String>,
     #[serde(rename = "entityTypes")]
     entity_types: Option<Vec<String>>,
     #[serde(rename = "sourceModules")]
@@ -173,6 +189,13 @@ struct TriggerSearchRebuildInput {
     target_type: Option<String>,
     #[serde(rename = "targetId")]
     target_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SearchFilterPresetsInput {
+    #[serde(rename = "tenantId")]
+    tenant_id: Option<String>,
+    surface: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -335,6 +358,8 @@ pub async fn fetch_search_preview(
     tenant_slug: Option<String>,
     query: String,
     locale: Option<String>,
+    ranking_profile: Option<String>,
+    preset_key: Option<String>,
     filters: SearchPreviewFilters,
 ) -> Result<SearchPreviewPayload, ApiError> {
     let response: SearchPreviewResponse = request(
@@ -346,6 +371,8 @@ pub async fn fetch_search_preview(
                 tenant_id: None,
                 limit: Some(12),
                 offset: Some(0),
+                ranking_profile,
+                preset_key,
                 entity_types: (!filters.entity_types.is_empty()).then_some(filters.entity_types),
                 source_modules: (!filters.source_modules.is_empty())
                     .then_some(filters.source_modules),
@@ -358,6 +385,27 @@ pub async fn fetch_search_preview(
     .await?;
 
     Ok(response.search_preview)
+}
+
+pub async fn fetch_filter_presets(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    surface: &str,
+) -> Result<Vec<SearchFilterPresetPayload>, ApiError> {
+    let response: SearchFilterPresetsResponse = request(
+        SEARCH_FILTER_PRESETS_QUERY,
+        Some(SearchFilterPresetsVariables {
+            input: SearchFilterPresetsInput {
+                tenant_id: None,
+                surface: surface.to_string(),
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+
+    Ok(response.search_filter_presets)
 }
 
 pub async fn trigger_search_rebuild(

@@ -10,8 +10,11 @@ pub mod ingestion;
 pub mod migrations;
 pub mod models;
 pub mod pg_engine;
+pub mod presets;
 pub mod projector;
+pub mod ranking;
 pub mod search_settings;
+pub mod suggestions;
 
 pub use analytics::{
     SearchAnalyticsInsightRow, SearchAnalyticsQueryRow, SearchAnalyticsService,
@@ -27,8 +30,13 @@ pub use engine::{SearchResult, SearchResultItem};
 pub use ingestion::SearchIngestionHandler;
 pub use models::SearchSettingsRecord;
 pub use pg_engine::PgSearchEngine;
+pub use presets::{ResolvedSearchFilterPreset, SearchFilterPreset, SearchFilterPresetService};
 pub use projector::SearchProjector;
+pub use ranking::SearchRankingProfile;
 pub use search_settings::SearchSettingsService;
+pub use suggestions::{
+    SearchSuggestion, SearchSuggestionKind, SearchSuggestionQuery, SearchSuggestionService,
+};
 
 /// Core search module that owns engine selection and connector-facing contracts.
 pub struct SearchModule;

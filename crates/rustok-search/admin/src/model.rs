@@ -55,11 +55,15 @@ pub struct SearchPreviewResultItem {
 pub struct SearchPreviewPayload {
     #[serde(rename = "queryLogId")]
     pub query_log_id: Option<String>,
+    #[serde(rename = "presetKey")]
+    pub preset_key: Option<String>,
     pub items: Vec<SearchPreviewResultItem>,
     pub total: u64,
     #[serde(rename = "tookMs")]
     pub took_ms: u64,
     pub engine: String,
+    #[serde(rename = "rankingProfile")]
+    pub ranking_profile: String,
     pub facets: Vec<SearchFacetGroup>,
 }
 
@@ -68,6 +72,19 @@ pub struct SearchPreviewFilters {
     pub entity_types: Vec<String>,
     pub source_modules: Vec<String>,
     pub statuses: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SearchFilterPresetPayload {
+    pub key: String,
+    pub label: String,
+    #[serde(rename = "entityTypes")]
+    pub entity_types: Vec<String>,
+    #[serde(rename = "sourceModules")]
+    pub source_modules: Vec<String>,
+    pub statuses: Vec<String>,
+    #[serde(rename = "rankingProfile")]
+    pub ranking_profile: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

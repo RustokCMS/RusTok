@@ -174,7 +174,7 @@ async fn load_inventory_response(
     tenant_id: Uuid,
     variant_id: Uuid,
 ) -> Result<InventoryResponse> {
-    use crate::entities::product_variant;
+    use crate::entities::{inventory_item, inventory_level, product_variant};
 
     let variant = product_variant::Entity::find_by_id(variant_id)
         .filter(product_variant::Column::TenantId.eq(tenant_id))
@@ -183,11 +183,31 @@ async fn load_inventory_response(
         .map_err(|err| Error::BadRequest(err.to_string()))?
         .ok_or(Error::NotFound)?;
 
+    let available_quantity = if let Some(item) = inventory_item::Entity::find()
+        .filter(inventory_item::Column::VariantId.eq(variant_id))
+        .one(db)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?
+    {
+        let levels = inventory_level::Entity::find()
+            .filter(inventory_level::Column::InventoryItemId.eq(item.id))
+            .all(db)
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+        levels
+            .into_iter()
+            .map(|level| level.stocked_quantity - level.reserved_quantity)
+            .sum()
+    } else {
+        0
+    };
+
     Ok(InventoryResponse {
         variant_id,
-        quantity: variant.inventory_quantity,
+        quantity: available_quantity,
         policy: variant.inventory_policy.clone(),
-        in_stock: variant.inventory_quantity > 0 || variant.inventory_policy == "continue",
+        in_stock: available_quantity > 0 || variant.inventory_policy == "continue",
     })
 }
 

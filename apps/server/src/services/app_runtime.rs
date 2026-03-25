@@ -14,7 +14,7 @@ use crate::graphql::AppSchema;
 use crate::middleware;
 use crate::middleware::rate_limit::{
     cleanup_task, PathRateLimitMiddlewareState, RateLimitConfig, RateLimiter, SharedApiRateLimiter,
-    SharedAuthRateLimiter, SharedOAuthRateLimiter,
+    SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
@@ -247,6 +247,15 @@ fn init_rate_limit_layers(
         settings.rate_limit.oauth_burst,
         SharedLimiterNamespace::Oauth,
     )?;
+    let _search_limiter = build_namespaced_rate_limiter(
+        ctx,
+        settings,
+        cache_service,
+        "search",
+        settings.rate_limit.requests_per_minute,
+        settings.rate_limit.burst,
+        SharedLimiterNamespace::Search,
+    )?;
 
     Ok(RateLimitLayers {
         api_state: PathRateLimitMiddlewareState {
@@ -282,6 +291,7 @@ enum SharedLimiterNamespace {
     Api,
     Auth,
     Oauth,
+    Search,
 }
 
 fn build_namespaced_rate_limiter(
@@ -320,6 +330,9 @@ fn build_namespaced_rate_limiter(
         SharedLimiterNamespace::Oauth => ctx
             .shared_store
             .insert(SharedOAuthRateLimiter(limiter.clone())),
+        SharedLimiterNamespace::Search => ctx
+            .shared_store
+            .insert(SharedSearchRateLimiter(limiter.clone())),
     }
 
     if settings.rate_limit.enabled {

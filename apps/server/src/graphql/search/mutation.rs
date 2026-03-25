@@ -11,6 +11,7 @@ use rustok_search::{
     SearchAnalyticsService, SearchClickRecord, SearchDictionaryService, SearchEngineKind,
     SearchModule, SearchSettingsService,
 };
+use rustok_telemetry::metrics;
 
 use super::types::{
     AddSearchStopWordInput, AddSearchStopWordPayload, DeleteSearchDictionaryEntryPayload,
@@ -207,6 +208,9 @@ impl SearchMutationRoot {
         ensure_settings_manage_permission(ctx).await?;
 
         let app_ctx = ctx.data::<AppContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
         let tenant = ctx.data::<TenantContext>()?;
         let target_tenant_id = Some(resolve_tenant_scope(
             tenant,
@@ -233,6 +237,30 @@ impl SearchMutationRoot {
         )
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        let event_bus = transactional_event_bus_from_context(app_ctx);
+        if let Err(error) = event_bus
+            .publish(
+                target_tenant_id.unwrap_or(tenant.id),
+                Some(auth.user_id),
+                DomainEvent::SearchSettingsChanged {
+                    active_engine: active_engine.as_str().to_string(),
+                    fallback_engine: fallback_engine.as_str().to_string(),
+                    changed_by: auth.user_id,
+                },
+            )
+            .await
+        {
+            metrics::record_search_audit_event("update_settings", "publish_failed");
+            tracing::warn!(
+                tenant_id = %target_tenant_id.unwrap_or(tenant.id),
+                actor = %auth.user_id,
+                %error,
+                "Failed to publish SearchSettingsChanged event; settings were saved"
+            );
+        } else {
+            metrics::record_search_audit_event("update_settings", "published");
+        }
 
         Ok(UpdateSearchSettingsPayload {
             success: true,
@@ -279,6 +307,31 @@ impl SearchMutationRoot {
             )
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        if let Err(error) = event_bus
+            .publish(
+                target_tenant_id,
+                Some(auth.user_id),
+                DomainEvent::SearchRebuildQueued {
+                    target_type: target_type.clone(),
+                    target_id,
+                    queued_by: auth.user_id,
+                },
+            )
+            .await
+        {
+            metrics::record_search_audit_event("trigger_rebuild", "publish_failed");
+            tracing::warn!(
+                tenant_id = %target_tenant_id,
+                actor = %auth.user_id,
+                target_type = %target_type,
+                ?target_id,
+                %error,
+                "Failed to publish SearchRebuildQueued audit event; rebuild was queued"
+            );
+        } else {
+            metrics::record_search_audit_event("trigger_rebuild", "published");
+        }
 
         Ok(TriggerSearchRebuildPayload {
             success: true,

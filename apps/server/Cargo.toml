@@ -14,6 +14,11 @@ default = [
     "mod-product",
     "mod-pricing",
     "mod-inventory",
+    "mod-cart",
+    "mod-customer",
+    "mod-order",
+    "mod-payment",
+    "mod-fulfillment",
     "mod-commerce",
     "mod-content",
     "mod-blog",
@@ -29,10 +34,15 @@ embed-admin-assets = ["dep:rust-embed"]
 embed-storefront = ["dep:rustok-storefront"]
 # Domain module feature flags — compile the module into the binary;
 # resolvers additionally check is_enabled(tenant_id) at runtime.
+mod-cart      = ["dep:rustok-cart"]
+mod-customer  = ["dep:rustok-customer"]
 mod-product   = ["dep:rustok-product"]
 mod-pricing   = ["dep:rustok-pricing"]
 mod-inventory = ["dep:rustok-inventory"]
-mod-commerce  = ["dep:rustok-commerce"]
+mod-order     = ["dep:rustok-order"]
+mod-payment   = ["dep:rustok-payment"]
+mod-fulfillment = ["dep:rustok-fulfillment"]
+mod-commerce  = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment"]
 mod-content   = ["dep:rustok-content"]
 mod-blog      = ["dep:rustok-blog", "dep:rustok-content"]
 mod-forum     = ["dep:rustok-forum"]
@@ -50,9 +60,14 @@ rustok-email.workspace = true
 rustok-events.workspace = true
 flex.workspace = true
 rustok-storefront = { path = "../storefront", optional = true }
+rustok-cart      = { workspace = true, optional = true }
+rustok-customer  = { workspace = true, optional = true }
 rustok-product   = { workspace = true, optional = true }
 rustok-pricing   = { workspace = true, optional = true }
 rustok-inventory = { workspace = true, optional = true }
+rustok-order     = { workspace = true, optional = true }
+rustok-payment   = { workspace = true, optional = true }
+rustok-fulfillment = { workspace = true, optional = true }
 rustok-commerce  = { workspace = true, optional = true }
 rustok-blog      = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }

@@ -56,13 +56,30 @@
 - Search GraphQL now exposes `trackSearchClick`, and result payloads include
   `queryLogId` plus a best-effort target URL so CTR and abandonment can be
   measured from real result clicks.
+- Search GraphQL now also exposes `storefrontSearchSuggestions`, backed by
+  successful storefront query history and matching `search_documents` titles so
+  autocomplete can stay on the same module-owned contract as full search.
+- PostgreSQL search now applies typo-tolerant fallback over `pg_trgm` when the
+  primary FTS pass returns zero hits, so minor misspellings can still surface
+  relevant products and content without making fuzzy matching the default path.
+- PostgreSQL search now also supports built-in ranking profiles (`balanced`,
+  `exact`, `fresh`, `catalog`, `content`) with per-surface defaults from
+  `search_settings.config.ranking_profiles`, and admin preview can override the
+  profile explicitly for tuning work.
 - Search GraphQL now enforces tenant-local scope and validates engine/filter input before execution.
+- Public storefront search and suggestions now run behind a dedicated
+  server-side rate limiter, and admin settings/rebuild actions emit best-effort
+  audit events through the outbox.
 - Search ingestion now runs with dispatcher retries, and diagnostics treat truly empty tenants as healthy instead of degraded.
 - Prometheus telemetry now exposes query volume, latency, zero-result, indexing,
-  and fleet-level lag metrics for `rustok-search`.
+  fleet-level lag metrics, dedicated storefront rate-limit outcomes, and audit
+  publication counters for `rustok-search`.
 - The module now ships a local observability runbook for rebuilds, lag triage,
   and `/metrics` interpretation.
 - Leptos admin and storefront packages are wired to the live GraphQL search contract.
+- The Leptos storefront package now ships a real query form and autocomplete
+  dropdown that navigate through the same `?q=` route contract and public
+  search/suggestions endpoints.
 - The Leptos admin package now ships separate overview, playground, diagnostics,
   analytics, and dictionaries surfaces under the module route, including live
   settings, synonym/stop-word/pin-rule editors, CTR, abandonment, low-CTR,
@@ -77,3 +94,5 @@
 - The Next admin host now wires `rustok-search` into KBar so global admin
   search and command-palette quick-open use the same search contract and
   analytics surface.
+- The Next storefront package now mirrors the same live search and
+  suggestions/autocomplete contract for parallel UI development.
