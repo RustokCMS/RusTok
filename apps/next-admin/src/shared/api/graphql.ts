@@ -33,11 +33,16 @@ function getClientLocale(): string | undefined {
   return match?.[1];
 }
 
+function resolveGraphqlUrl(explicit?: string): string {
+  return explicit ?? GRAPHQL_URL;
+}
+
 export async function graphqlRequest<V, T>(
   query: string,
   variables?: V,
   token?: string | null,
-  tenantSlug?: string | null
+  tenantSlug?: string | null,
+  options?: { graphqlUrl?: string }
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
@@ -62,7 +67,7 @@ export async function graphqlRequest<V, T>(
     body.variables = variables;
   }
 
-  const response = await fetch(GRAPHQL_URL, {
+  const response = await fetch(resolveGraphqlUrl(options?.graphqlUrl), {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
@@ -81,7 +86,10 @@ export async function graphqlRequest<V, T>(
   if (json.errors && json.errors.length > 0) {
     const err = json.errors[0];
     const code = err.extensions?.code;
-    if (code === 'UNAUTHORIZED' || err.message.toLowerCase().includes('unauthorized')) {
+    if (
+      code === 'UNAUTHORIZED' ||
+      err.message.toLowerCase().includes('unauthorized')
+    ) {
       throw new GraphqlError(err.message, 'UNAUTHORIZED');
     }
     throw new GraphqlError(err.message, code);

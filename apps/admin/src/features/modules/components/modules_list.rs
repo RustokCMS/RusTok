@@ -3,7 +3,8 @@ use super::module_detail_panel::ModuleDetailPanel;
 use super::module_update_card::ModuleUpdateCard;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
 use crate::entities::module::{
-    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
+    BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleSettingField, ReleaseInfo,
+    TenantModule,
 };
 use crate::features::modules::api;
 #[cfg(target_arch = "wasm32")]
@@ -16,7 +17,7 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_hook_form::FormState;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use leptos_use::use_interval_fn;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{closure::Closure, JsCast};
 #[cfg(target_arch = "wasm32")]
@@ -72,6 +73,158 @@ fn pretty_json(value: &str) -> String {
         .ok()
         .and_then(|json| serde_json::to_string_pretty(&json).ok())
         .unwrap_or_else(|| value.to_string())
+}
+
+fn parse_settings_object(value: &str) -> serde_json::Map<String, serde_json::Value> {
+    serde_json::from_str::<serde_json::Value>(value)
+        .ok()
+        .and_then(|json| json.as_object().cloned())
+        .unwrap_or_default()
+}
+
+fn schema_supports_generated_form(schema: &[ModuleSettingField]) -> bool {
+    !schema.is_empty()
+}
+
+fn setting_field_draft_value(
+    field: &ModuleSettingField,
+    value: Option<&serde_json::Value>,
+) -> String {
+    let value = value.or(field.default_value.as_ref());
+    match field.value_type.as_str() {
+        "string" => value
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        "integer" => value
+            .and_then(|value| {
+                value
+                    .as_i64()
+                    .map(|number| number.to_string())
+                    .or_else(|| value.as_u64().map(|number| number.to_string()))
+            })
+            .unwrap_or_default(),
+        "number" => value
+            .and_then(serde_json::Value::as_f64)
+            .map(|number| {
+                let mut rendered = number.to_string();
+                if rendered.ends_with(".0") {
+                    rendered.truncate(rendered.len() - 2);
+                }
+                rendered
+            })
+            .unwrap_or_default(),
+        "boolean" => value
+            .and_then(serde_json::Value::as_bool)
+            .map(|flag| flag.to_string())
+            .unwrap_or_else(|| "false".to_string()),
+        "object" | "array" | "json" | "any" => value
+            .and_then(|value| serde_json::to_string_pretty(value).ok())
+            .unwrap_or_default(),
+        _ => value.map(ToString::to_string).unwrap_or_default(),
+    }
+}
+
+fn build_settings_form_draft(
+    schema: &[ModuleSettingField],
+    tenant_module: Option<&TenantModule>,
+) -> HashMap<String, String> {
+    let existing = tenant_module
+        .map(|module| parse_settings_object(&module.settings))
+        .unwrap_or_default();
+
+    schema
+        .iter()
+        .map(|field| {
+            (
+                field.key.clone(),
+                setting_field_draft_value(field, existing.get(&field.key)),
+            )
+        })
+        .collect()
+}
+
+fn schema_settings_payload(
+    schema: &[ModuleSettingField],
+    draft: &HashMap<String, String>,
+) -> Result<String, String> {
+    let mut payload = serde_json::Map::new();
+
+    for field in schema {
+        let raw = draft.get(&field.key).cloned().unwrap_or_default();
+        let trimmed = raw.trim();
+
+        let value = match field.value_type.as_str() {
+            "string" => serde_json::Value::String(raw),
+            "integer" => {
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let parsed = trimmed
+                    .parse::<i64>()
+                    .map_err(|_| format!("{} must be an integer", humanize_label(&field.key)))?;
+                serde_json::json!(parsed)
+            }
+            "number" => {
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let parsed = trimmed
+                    .parse::<f64>()
+                    .map_err(|_| format!("{} must be a number", humanize_label(&field.key)))?;
+                serde_json::Number::from_f64(parsed)
+                    .map(serde_json::Value::Number)
+                    .ok_or_else(|| {
+                        format!("{} must be a finite number", humanize_label(&field.key))
+                    })?
+            }
+            "boolean" => serde_json::Value::Bool(trimmed.eq_ignore_ascii_case("true")),
+            "object" => {
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let parsed = serde_json::from_str::<serde_json::Value>(trimmed).map_err(|err| {
+                    format!("{} must be valid JSON: {}", humanize_label(&field.key), err)
+                })?;
+                if !parsed.is_object() {
+                    return Err(format!(
+                        "{} must be a JSON object",
+                        humanize_label(&field.key)
+                    ));
+                }
+                parsed
+            }
+            "array" => {
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let parsed = serde_json::from_str::<serde_json::Value>(trimmed).map_err(|err| {
+                    format!("{} must be valid JSON: {}", humanize_label(&field.key), err)
+                })?;
+                if !parsed.is_array() {
+                    return Err(format!(
+                        "{} must be a JSON array",
+                        humanize_label(&field.key)
+                    ));
+                }
+                parsed
+            }
+            "json" | "any" => {
+                if trimmed.is_empty() {
+                    continue;
+                }
+                serde_json::from_str::<serde_json::Value>(trimmed).map_err(|err| {
+                    format!("{} must be valid JSON: {}", humanize_label(&field.key), err)
+                })?
+            }
+            _ => continue,
+        };
+
+        payload.insert(field.key.clone(), value);
+    }
+
+    serde_json::to_string(&serde_json::Value::Object(payload))
+        .map_err(|err| format!("Failed to serialize module settings: {err}"))
 }
 
 fn tab_button_class(active: bool) -> &'static str {
@@ -217,6 +370,8 @@ pub fn ModulesList(
     let (settings_loading_slug, set_settings_loading_slug) = signal::<Option<String>>(None);
     let (rollback_loading_build_id, set_rollback_loading_build_id) = signal::<Option<String>>(None);
     let (module_settings_draft, set_module_settings_draft) = signal("{}".to_string());
+    let (module_settings_form_draft, set_module_settings_form_draft) =
+        signal(HashMap::<String, String>::new());
     let (form_state, set_form_state) = signal(FormState::idle());
     let (success_message, set_success_message) = signal::<Option<String>>(None);
     let (live_subscription_connected, set_live_subscription_connected) = signal(false);
@@ -802,28 +957,68 @@ pub fn ModulesList(
             .find(|module| module.module_slug == slug)
             .is_some_and(|module| module.enabled || module.is_core())
     });
+    let selected_settings_schema = Signal::derive(move || {
+        selected_module_detail
+            .get()
+            .map(|module| module.settings_schema)
+            .unwrap_or_default()
+    });
+    let settings_form_supported =
+        Signal::derive(move || schema_supports_generated_form(&selected_settings_schema.get()));
     let settings_saving = Signal::derive(move || settings_loading_slug.get().is_some());
     Effect::new(move |_| {
-        let draft = selected_tenant_module
-            .get()
+        let tenant_module = selected_tenant_module.get();
+        let schema = selected_settings_schema.get();
+        set_module_settings_form_draft
+            .set(build_settings_form_draft(&schema, tenant_module.as_ref()));
+        let draft = tenant_module
+            .as_ref()
             .map(|module| pretty_json(&module.settings))
+            .or_else(|| {
+                if schema.is_empty() {
+                    None
+                } else {
+                    schema_settings_payload(
+                        &schema,
+                        &build_settings_form_draft(&schema, tenant_module.as_ref()),
+                    )
+                    .ok()
+                    .map(|payload| pretty_json(&payload))
+                }
+            })
             .unwrap_or_else(|| "{}".to_string());
         set_module_settings_draft.set(draft);
     });
     let on_settings_input = Callback::new(move |value: String| {
         set_module_settings_draft.set(value);
     });
+    let on_settings_field_input = Callback::new(move |(key, value): (String, String)| {
+        set_module_settings_form_draft.update(|draft: &mut HashMap<String, String>| {
+            draft.insert(key, value);
+        });
+    });
     let on_save_settings = Callback::new(move |_| {
         let Some(slug) = selected_module_slug.get() else {
             return;
         };
 
-        set_settings_loading_slug.set(Some(slug.clone()));
         set_form_state.set(FormState::idle());
         set_success_message.set(None);
         let token_val = token.get();
         let tenant_val = tenant.get();
-        let settings_payload = module_settings_draft.get_untracked();
+        let schema = selected_settings_schema.get_untracked();
+        let settings_payload = if schema_supports_generated_form(&schema) {
+            match schema_settings_payload(&schema, &module_settings_form_draft.get_untracked()) {
+                Ok(payload) => payload,
+                Err(err) => {
+                    set_form_state.set(FormState::with_form_error(err));
+                    return;
+                }
+            }
+        } else {
+            module_settings_draft.get_untracked()
+        };
+        set_settings_loading_slug.set(Some(slug.clone()));
         spawn_local(async move {
             set_form_state.set(FormState::submitting());
             match api::update_module_settings(slug.clone(), settings_payload, token_val, tenant_val)
@@ -1227,10 +1422,14 @@ pub fn ModulesList(
                                 selected_slug=slug
                                 module=selected_module_detail.get()
                                 tenant_module=selected_tenant_module.get()
+                                settings_schema=selected_settings_schema.get()
+                                settings_form_supported=settings_form_supported
+                                settings_form_draft=Signal::derive(move || module_settings_form_draft.get())
                                 settings_draft=Signal::derive(move || module_settings_draft.get())
                                 settings_editable=settings_editable
                                 settings_saving=settings_saving
                                 loading=Signal::derive(move || module_detail_loading.get())
+                                on_settings_field_input=on_settings_field_input
                                 on_settings_input=on_settings_input
                                 on_save_settings=on_save_settings
                                 on_close=on_close_detail

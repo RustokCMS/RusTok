@@ -1,6 +1,6 @@
 # RusTok — Verification Scripts
 
-Автоматизированные проверки платформы по [PLATFORM_VERIFICATION_PLAN.md](../../docs/PLATFORM_VERIFICATION_PLAN.md).
+Автоматизированные проверки платформы, встроенные в общий verification workflow. Точка входа для ручного orchestration-прогона: [PLATFORM_VERIFICATION_PLAN.md](../../docs/verification/PLATFORM_VERIFICATION_PLAN.md).
 
 ## Быстрый старт
 
@@ -289,7 +289,8 @@ fi
 
 ## Связанные документы
 
-- [Platform Verification Plan](../../docs/PLATFORM_VERIFICATION_PLAN.md) — полный чеклист (300+ пунктов)
+- [Platform Verification Plan](../../docs/verification/PLATFORM_VERIFICATION_PLAN.md) — master-plan для периодических прогонов
+- [План верификации качества и эксплуатационной готовности](../../docs/verification/platform-quality-operations-verification-plan.md) — детальный блок тестов, observability, CI/CD, security и quality checks
 - [Forbidden Actions](../../docs/standards/forbidden-actions.md) — запреты с примерами
 - [Patterns vs Antipatterns](../../docs/standards/patterns-vs-antipatterns.md) — ✅/❌ сравнения
 - [Known Pitfalls](../../docs/ai/KNOWN_PITFALLS.md) — частые ошибки AI-агентов

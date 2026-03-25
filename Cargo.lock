@@ -9608,7 +9608,10 @@ dependencies = [
  "reqwest 0.13.2",
  "rustok-api",
  "rustok-blog-admin",
+ "rustok-content-admin",
+ "rustok-forum-admin",
  "rustok-pages-admin",
+ "rustok-search-admin",
  "rustok-workflow-admin",
  "serde",
  "serde_json",
@@ -9806,6 +9809,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-content-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-graphql",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rustok-content-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-graphql",
+ "rustok-api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rustok-core"
 version = "0.1.0"
 dependencies = [
@@ -9897,6 +9922,28 @@ dependencies = [
  "tracing",
  "utoipa",
  "uuid",
+]
+
+[[package]]
+name = "rustok-forum-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "reqwest 0.13.2",
+ "rustok-api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rustok-forum-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-graphql",
+ "rustok-api",
+ "serde",
 ]
 
 [[package]]
@@ -10074,6 +10121,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-search"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-core",
+ "rustok-events",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-search-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-auth",
+ "leptos-graphql",
+ "leptos_router",
+ "rustok-api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rustok-search-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-graphql",
+ "rustok-api",
+ "serde",
+]
+
+[[package]]
 name = "rustok-server"
 version = "0.1.0"
 dependencies = [
@@ -10122,6 +10209,7 @@ dependencies = [
  "rustok-outbox",
  "rustok-pages",
  "rustok-rbac",
+ "rustok-search",
  "rustok-storage",
  "rustok-storefront",
  "rustok-telemetry",
@@ -10189,7 +10277,10 @@ dependencies = [
  "leptos_router",
  "rustok-api",
  "rustok-blog-storefront",
+ "rustok-content-storefront",
+ "rustok-forum-storefront",
  "rustok-pages-storefront",
+ "rustok-search-storefront",
  "serde",
  "tokio",
  "toml 1.0.7+spec-1.1.0",

@@ -1,0 +1,16 @@
+[package]
+name = "rustok-content-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin UI package for the rustok-content module"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+leptos = { workspace = true, features = ["csr"] }
+leptos-auth.workspace = true
+leptos-graphql.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

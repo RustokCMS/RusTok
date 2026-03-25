@@ -116,7 +116,10 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
         | ManifestError::InvalidModuleOwnership { .. }
         | ManifestError::InvalidModuleTrustLevel { .. }
         | ManifestError::InvalidModuleAdminSurface { .. }
-        | ManifestError::ConflictingModuleAdminSurface { .. } => FieldError::new(err.to_string()),
+        | ManifestError::ConflictingModuleAdminSurface { .. }
+        | ManifestError::InvalidModuleSettingKey { .. }
+        | ManifestError::InvalidModuleSettingSchema { .. }
+        | ManifestError::InvalidModuleSettingValue { .. } => FieldError::new(err.to_string()),
         ManifestError::Read { .. }
         | ManifestError::Parse { .. }
         | ManifestError::Write { .. }
@@ -725,6 +728,8 @@ impl RootMutation {
             UpdateModuleSettingsError::InvalidSettings => {
                 FieldError::new("Module settings must be a JSON object")
             }
+            UpdateModuleSettingsError::Validation(message) => FieldError::new(message),
+            UpdateModuleSettingsError::Manifest(err) => map_manifest_error(err),
             UpdateModuleSettingsError::Database(err) => {
                 <FieldError as GraphQLError>::internal_error(&err.to_string())
             }

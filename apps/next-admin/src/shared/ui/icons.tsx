@@ -39,7 +39,8 @@ import {
   IconPalette,
   IconArticle,
   IconPackages,
-  IconArrowsSplit2
+  IconArrowsSplit2,
+  IconSearch
 } from '@tabler/icons-react';
 
 export type Icon = React.ComponentType<IconProps>;
@@ -86,5 +87,6 @@ export const Icons = {
   users: IconUsers,
   blog: IconArticle,
   modules: IconPackages,
-  workflow: IconArrowsSplit2
+  workflow: IconArrowsSplit2,
+  search: IconSearch
 };

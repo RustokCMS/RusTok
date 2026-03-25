@@ -1,0 +1,11 @@
+[package]
+name = "rustok-forum-storefront"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+leptos.workspace = true
+leptos-graphql.workspace = true
+serde = { workspace = true, features = ["derive"] }
+rustok-api.workspace = true

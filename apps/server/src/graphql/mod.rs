@@ -25,6 +25,7 @@ pub mod pages;
 pub mod persisted;
 pub mod queries;
 pub mod schema;
+pub mod search;
 pub mod settings;
 pub mod subscriptions;
 pub mod system;

@@ -78,6 +78,7 @@ fn resolve_label(i18n: leptos_i18n::I18nContext<crate::i18n::Locale>, key: &str)
         "app.nav.profile" => t_string!(i18n, app.nav.profile),
         "app.nav.security" => t_string!(i18n, app.nav.security),
         "app.nav.modules" => t_string!(i18n, app.nav.modules),
+        "app.nav.search" => t_string!(i18n, app.nav.search),
         "users.detail.title" => t_string!(i18n, users.detail.title),
         _ => key,
     };
@@ -106,6 +107,10 @@ fn resolve_breadcrumbs(pathname: &str) -> Vec<Breadcrumb> {
             label_key: "app.nav.modules",
             href: Some("/modules"),
         }],
+        _ if pathname.starts_with("/modules/search") => vec![Breadcrumb {
+            label_key: "app.nav.search",
+            href: Some("/modules/search"),
+        }],
         _ if pathname.starts_with("/users/") => vec![
             Breadcrumb {
                 label_key: "app.nav.users",
@@ -130,6 +135,7 @@ fn resolve_title_key(pathname: &str) -> &'static str {
         "/profile" => "app.nav.profile",
         "/security" => "app.nav.security",
         "/modules" => "app.nav.modules",
+        _ if pathname.starts_with("/modules/search") => "app.nav.search",
         _ if pathname.starts_with("/users/") => "users.detail.title",
         _ => "app.nav.dashboard",
     }

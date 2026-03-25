@@ -96,6 +96,44 @@ default_enabled = ["content", "commerce", "pages"]
 | `http_webhook_routes_fn` | string | нет | Нормализованный Rust path к optional webhook route factory функции модуля. |
 | `features` | array | нет | Фичи для конкретного модуля. |
 
+### `[settings]` в `rustok-module.toml`
+
+Tenant-specific settings schema живёт в `rustok-module.toml` самого модуля и
+сейчас валидируется на сервере в `ManifestManager::validate_module_settings()`.
+`updateModuleSettings(moduleSlug, settings)` принимает JSON object, отбрасывает
+неизвестные ключи как ошибку, проверяет типы/диапазоны и автоматически
+дополняет отсутствующие поля значениями `default`.
+
+Минимальный формат секции:
+
+```toml
+[settings]
+postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
+showAuthor = { type = "boolean", default = true }
+heroTitle = { type = "string", min = 3, max = 80 }
+```
+
+Поддерживаемые `type`:
+
+- `string`
+- `integer`
+- `number`
+- `boolean`
+- `object`
+- `array`
+- `json` / `any`
+
+`min` / `max` применяются к числам, а для `string` и `array` трактуются как
+ограничения длины. `/modules` в Leptos Admin уже умеет рендерить generated
+form для всей текущей schema: scalar-поля (`string` / `integer` / `number` /
+`boolean`) идут typed controls, `object` / `array` получают top-level
+structured editor и deep nested editor с create-actions, key rename и array
+reorder на каждом object/array уровне, а `json` / `any` редактируются как
+per-field JSON editors с inline summary и helper-actions (`Format JSON`,
+`Reset`, `Add property/item`). Raw JSON editor остаётся только
+fallback-режимом для модулей без `[settings]`, а сервер в любом случае
+сохраняет единую валидацию и normalizing defaults.
+
 > Нормативный путь для optional-модулей: identity, semver-зависимости и конфликты
 > живут в `rustok-module.toml` самого модуля. `apps/server` не должен содержать
 > модульно-специфичные правила — он только читает и валидирует этот generic-контракт.
@@ -116,8 +154,8 @@ default_enabled = ["content", "commerce", "pages"]
 > и manifest-driven secondary nav из optional `[[provides.admin_ui.pages]]`. `apps/storefront/build.rs` генерирует slot/page wiring
 > из `[provides.storefront_ui].leptos_crate`, optional `slot`, `route_segment`, `page_title`
 > и соглашения `<PascalSlug>View`. `apps/storefront` рендерит эти async surface-ы через streaming SSR
-> и прокидывает module-agnostic `UiRouteContext` (locale, route segment, subpath, query params), а модули `pages`
-> и `blog`, плюс `workflow/templates`, теперь служат рабочими exemplar-ами для module-owned Leptos UI.
+> и прокидывает module-agnostic `UiRouteContext` (locale, route segment, subpath, query params), а модули `pages`,
+> `blog`, `content`, `forum` и `workflow/templates` теперь служат рабочими exemplar-ами для module-owned Leptos UI.
 
 
 ## UI-контракты модулей в манифесте и сборке
@@ -134,7 +172,7 @@ default_enabled = ["content", "commerce", "pages"]
 - `provides.admin_ui.pages[].subpath` — относительный subpath внутри `/modules/:module_slug/*module_path`, который пакет сам обрабатывает через `UiRouteContext`.
 - `provides.admin_ui.pages[].title` / `nav_label` — optional metadata для secondary nav и заголовков host-обвязки.
 - `slot` (optional, только для `[provides.storefront_ui]`) — host storefront slot (`home_after_hero`, `home_after_catalog`, `home_before_footer`); по умолчанию `home_after_hero`.
-- `route_segment` (optional, для `[provides.storefront_ui]`) — segment для generic storefront route `/modules/:route_segment`; по умолчанию равен `module.slug`.
+- `route_segment` (optional, для `[provides.storefront_ui]`) — segment для generic storefront route `/modules/{route_segment}`; по умолчанию равен `module.slug`.
 - `page_title` (optional, только для `[provides.storefront_ui]`) — заголовок generic storefront module page; по умолчанию равен `module.name`.
 - `next_package` (в `rustok-module.toml`) — указывает имя npm-пакета.
 
@@ -165,14 +203,12 @@ page_title = "Blog"
 
 Leptos-host приложения (`apps/admin`, `apps/storefront`) подключают модульные пакеты через свои `build.rs`, а `BuildExecutor` затем собирает реальные host-артефакты по manifest-derived plan. Приложения Next.js требуют ручного добавления зависимостей в `package.json` и ручной пересборки.
 
-Референсные образцы для Leptos: модуль `workflow` (`crates/rustok-workflow/admin/` как root-page package поверх legacy detail flow), модуль `pages` (`crates/rustok-pages/admin/` и `crates/rustok-pages/storefront/`) как рабочий end-to-end exemplar для page-driven surfaces и модуль `blog` (`crates/rustok-blog/admin/` и `crates/rustok-blog/storefront/`) как второй рабочий exemplar для обычного content CRUD/read-path через тот же host-contract и `UiRouteContext`.
+Референсные образцы для Leptos: модуль `workflow` (`crates/rustok-workflow/admin/` как root-page package поверх legacy detail flow), модуль `pages` (`crates/rustok-pages/admin/` и `crates/rustok-pages/storefront/`) как рабочий end-to-end exemplar для page-driven surfaces, модуль `blog` (`crates/rustok-blog/admin/` и `crates/rustok-blog/storefront/`) как рабочий exemplar для обычного content CRUD/read-path, модуль `content` (`crates/rustok-content/admin/` и `crates/rustok-content/storefront/`) как exemplar для core node CRUD/read-path с tenant bootstrap через `currentTenant`, и модуль `forum` (`crates/rustok-forum/admin/` и `crates/rustok-forum/storefront/`) как exemplar для NodeBB-inspired admin/storefront surfaces поверх собственного GraphQL/REST contract.
 
 Исключение:
 
-- Core-модули `index`, `tenant`, `rbac`.
-- Платформенные core crate'ы (`rustok-core`, `rustok-outbox`, `rustok-telemetry`) и инфраструктурные слои.
-
-Эти компоненты могут оставаться на отдельном UI-подходе и не обязаны реализовывать `ui/admin`/`ui/frontend` пакеты.
+- Core-модули платформы (`auth`, `cache`, `email`, `index`, `outbox`, `tenant`, `rbac`) могут не поставлять собственные UI-пакеты, если их роль ограничена server/runtime infrastructure.
+- Shared library и support crates (`rustok-core`, `rustok-events`, `rustok-telemetry` и другие инфраструктурные слои) не входят в taxonomy `Core` / `Optional` platform modules и не обязаны реализовывать `ui/admin` / `ui/frontend` пакеты.
 
 Операционное требование для корректной сборки пакетов:
 

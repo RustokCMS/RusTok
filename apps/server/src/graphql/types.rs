@@ -10,7 +10,7 @@ use crate::graphql::loaders::TenantNameLoader;
 use crate::models::build::{BuildStage, BuildStatus, DeploymentProfile, Model as BuildModel};
 use crate::models::release::{Model as ReleaseModel, ReleaseStatus};
 use crate::models::users;
-use crate::modules::{BuildExecutionPlan, InstalledManifestModule};
+use crate::modules::{BuildExecutionPlan, InstalledManifestModule, ModuleSettingSpec};
 use crate::services::build_service::BuildEvent;
 use crate::services::rbac_service::RbacService;
 
@@ -197,6 +197,32 @@ pub struct MarketplaceModuleVersion {
 }
 
 #[derive(SimpleObject, Clone)]
+pub struct ModuleSettingField {
+    pub key: String,
+    #[graphql(name = "type")]
+    pub value_type: String,
+    pub required: bool,
+    pub default_value: Option<serde_json::Value>,
+    pub description: Option<String>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+}
+
+impl ModuleSettingField {
+    pub fn from_spec(key: String, spec: &ModuleSettingSpec) -> Self {
+        Self {
+            key,
+            value_type: spec.value_type.clone(),
+            required: spec.required,
+            default_value: spec.default.clone(),
+            description: spec.description.clone(),
+            min: spec.min,
+            max: spec.max,
+        }
+    }
+}
+
+#[derive(SimpleObject, Clone)]
 pub struct MarketplaceModule {
     pub slug: String,
     pub name: String,
@@ -218,6 +244,7 @@ pub struct MarketplaceModule {
     pub compatible: bool,
     pub recommended_admin_surfaces: Vec<String>,
     pub showcase_admin_surfaces: Vec<String>,
+    pub settings_schema: Vec<ModuleSettingField>,
     pub installed: bool,
     pub installed_version: Option<String>,
     pub update_available: bool,
@@ -547,6 +574,7 @@ pub struct ModuleRegistryItem {
     pub trust_level: String,
     pub recommended_admin_surfaces: Vec<String>,
     pub showcase_admin_surfaces: Vec<String>,
+    pub settings_schema: Vec<ModuleSettingField>,
 }
 
 #[derive(SimpleObject, Debug, Clone)]

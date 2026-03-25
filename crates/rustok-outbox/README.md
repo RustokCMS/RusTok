@@ -7,6 +7,7 @@
 - ретранслирует pending-события через `OutboxRelay`;
 - поддерживает claim/dispatch/retry/DLQ-поток обработки;
 - предоставляет миграцию схемы `sys_events` и базовые метрики relay.
+- регистрируется в сервере как `Core` module со slug `outbox`.
 
 ## Основные компоненты
 - `src/transport.rs` — запись событий в outbox и acknowledge.
@@ -17,10 +18,15 @@
 ## Документация
 Дополнительная документация модуля хранится в `docs/`.
 
-## Взаимодействие
+## Interactions
 - crates/rustok-core (EventTransport/EventEnvelope)
 - apps/server (миграции/рантайм relay)
 - target transport (например rustok-iggy)
+
+## Runtime wiring
+- В `modules.toml` модуль помечен как обязательный (`required = true`).
+- В `apps/server/src/modules/mod.rs` модуль регистрируется в `ModuleRegistry` как `ModuleKind::Core`.
+- В `apps/server/src/services/app_runtime.rs` и `event_transport_factory.rs` сервер дополнительно использует outbox-настройки для event runtime bootstrap.
 
 ## Паспорт компонента
 - **Роль в системе:** Outbox-транспорт и relay: надёжная доставка событий с retry/backoff/DLQ.

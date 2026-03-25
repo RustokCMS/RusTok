@@ -10,6 +10,7 @@ use rustok_core::{ModuleContext, ModuleRegistry};
 
 use crate::models::_entities::tenant_modules;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
+use crate::modules::{ManifestError, ManifestManager};
 
 pub struct ModuleLifecycleService;
 
@@ -39,6 +40,10 @@ pub enum UpdateModuleSettingsError {
     ModuleNotEnabled(String),
     #[error("Module settings must be a JSON object")]
     InvalidSettings,
+    #[error("{0}")]
+    Validation(String),
+    #[error("{0}")]
+    Manifest(#[from] ManifestError),
     #[error("Database error: {0}")]
     Database(#[from] DbErr),
 }
@@ -139,6 +144,16 @@ impl ModuleLifecycleService {
         if !settings.is_object() {
             return Err(UpdateModuleSettingsError::InvalidSettings);
         }
+
+        let settings =
+            ManifestManager::validate_module_settings(module_slug, settings).map_err(|err| {
+                match err {
+                    ManifestError::InvalidModuleSettingValue { .. } => {
+                        UpdateModuleSettingsError::Validation(err.to_string())
+                    }
+                    other => UpdateModuleSettingsError::Manifest(other),
+                }
+            })?;
 
         let existing = TenantModulesEntity::find()
             .filter(tenant_modules::Column::TenantId.eq(tenant_id))
@@ -243,7 +258,7 @@ mod tests {
     use super::{ModuleLifecycleService, UpdateModuleSettingsError};
     use crate::models::_entities::tenant_modules;
     use crate::models::tenants;
-    use crate::modules::build_registry;
+    use crate::modules::{build_registry, ManifestManager, ManifestModuleSpec, ModulesManifest};
     use migration::Migrator;
     use rustok_core::ModuleRegistry;
     use rustok_index::IndexModule;
@@ -252,6 +267,43 @@ mod tests {
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter};
     use serial_test::serial;
+    use std::collections::HashMap;
+    use tempfile::tempdir;
+
+    fn path_module(crate_name: &str, path: &str, required: bool) -> ManifestModuleSpec {
+        ManifestModuleSpec {
+            source: "path".to_string(),
+            crate_name: crate_name.to_string(),
+            path: Some(path.to_string()),
+            required,
+            ..Default::default()
+        }
+    }
+
+    fn set_manifest_env(path: &std::path::Path) -> Option<String> {
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", path);
+        }
+        previous
+    }
+
+    fn restore_manifest_env(previous: Option<String>) {
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+    }
+
+    fn write_module_manifest(crate_dir: &std::path::Path, contents: &str) {
+        std::fs::create_dir_all(crate_dir).expect("create module dir");
+        std::fs::write(crate_dir.join("rustok-module.toml"), contents)
+            .expect("write module manifest");
+    }
 
     fn build_test_registry() -> ModuleRegistry {
         ModuleRegistry::new()
@@ -286,6 +338,21 @@ mod tests {
                 .insert(&db)
                 .await
                 .expect("insert tenant");
+        let temp = tempdir().expect("tempdir");
+        let manifest_path = temp.path().join("modules.toml");
+        let mut modules = HashMap::new();
+        modules.insert(
+            "content".to_string(),
+            path_module("rustok-content", "crates/rustok-content", false),
+        );
+        let manifest = ModulesManifest {
+            schema: 2,
+            app: "rustok-server".to_string(),
+            modules,
+            ..Default::default()
+        };
+        ManifestManager::save_to_path(&manifest_path, &manifest).expect("save manifest");
+        let previous = set_manifest_env(&manifest_path);
 
         let result = ModuleLifecycleService::update_module_settings(
             &db,
@@ -295,6 +362,7 @@ mod tests {
             serde_json::json!({ "postsPerPage": 20 }),
         )
         .await;
+        restore_manifest_env(previous);
 
         assert!(matches!(
             result,
@@ -311,6 +379,21 @@ mod tests {
             .insert(&db)
             .await
             .expect("insert tenant");
+        let temp = tempdir().expect("tempdir");
+        let manifest_path = temp.path().join("modules.toml");
+        let mut modules = HashMap::new();
+        modules.insert(
+            "content".to_string(),
+            path_module("rustok-content", "crates/rustok-content", false),
+        );
+        let manifest = ModulesManifest {
+            schema: 2,
+            app: "rustok-server".to_string(),
+            modules,
+            ..Default::default()
+        };
+        ManifestManager::save_to_path(&manifest_path, &manifest).expect("save manifest");
+        let previous = set_manifest_env(&manifest_path);
 
         ModuleLifecycleService::toggle_module(&db, &registry, tenant.id, "content", true)
             .await
@@ -325,6 +408,7 @@ mod tests {
         )
         .await
         .expect("update module settings");
+        restore_manifest_env(previous);
 
         assert!(updated.enabled);
         assert_eq!(updated.settings["postsPerPage"], serde_json::json!(20));
@@ -339,6 +423,21 @@ mod tests {
             .insert(&db)
             .await
             .expect("insert tenant");
+        let temp = tempdir().expect("tempdir");
+        let manifest_path = temp.path().join("modules.toml");
+        let mut modules = HashMap::new();
+        modules.insert(
+            "tenant".to_string(),
+            path_module("rustok-tenant", "crates/rustok-tenant", true),
+        );
+        let manifest = ModulesManifest {
+            schema: 2,
+            app: "rustok-server".to_string(),
+            modules,
+            ..Default::default()
+        };
+        ManifestManager::save_to_path(&manifest_path, &manifest).expect("save manifest");
+        let previous = set_manifest_env(&manifest_path);
 
         let updated = ModuleLifecycleService::update_module_settings(
             &db,
@@ -349,6 +448,7 @@ mod tests {
         )
         .await
         .expect("update core module settings");
+        restore_manifest_env(previous);
 
         assert!(updated.enabled);
         assert_eq!(updated.module_slug, "tenant");
@@ -362,5 +462,66 @@ mod tests {
             .expect("tenant_modules row");
         assert_eq!(stored.settings["workspaceName"], serde_json::json!("Acme"));
         assert!(stored.enabled);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn update_module_settings_applies_schema_defaults() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let registry = build_registry();
+        let tenant = tenants::ActiveModel::new("Module settings tenant", "module-settings-schema")
+            .insert(&db)
+            .await
+            .expect("insert tenant");
+
+        let temp = tempdir().expect("tempdir");
+        let content_dir = temp.path().join("crates").join("rustok-content");
+        write_module_manifest(
+            &content_dir,
+            r#"[module]
+slug = "content"
+name = "Content"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
+showSummaries = { type = "boolean", default = true }
+"#,
+        );
+
+        let manifest_path = temp.path().join("modules.toml");
+        let mut modules = HashMap::new();
+        modules.insert(
+            "content".to_string(),
+            path_module("rustok-content", "crates/rustok-content", false),
+        );
+        let manifest = ModulesManifest {
+            schema: 2,
+            app: "rustok-server".to_string(),
+            modules,
+            ..Default::default()
+        };
+        ManifestManager::save_to_path(&manifest_path, &manifest).expect("save manifest");
+        let previous = set_manifest_env(&manifest_path);
+
+        ModuleLifecycleService::toggle_module(&db, &registry, tenant.id, "content", true)
+            .await
+            .expect("enable content module");
+
+        let updated = ModuleLifecycleService::update_module_settings(
+            &db,
+            &registry,
+            tenant.id,
+            "content",
+            serde_json::json!({}),
+        )
+        .await
+        .expect("update module settings");
+        restore_manifest_env(previous);
+
+        assert_eq!(updated.settings["postsPerPage"], serde_json::json!(20));
+        assert_eq!(updated.settings["showSummaries"], serde_json::json!(true));
     }
 }

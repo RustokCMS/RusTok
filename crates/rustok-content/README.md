@@ -10,6 +10,7 @@ categories, and tags.
 - Provide `ContentModule` metadata for the runtime registry.
 - Own content entities, services, orchestration, and migrations.
 - Own content GraphQL and REST transport adapters for module-facing APIs.
+- Publish module-owned Leptos UI packages in `admin/` and `storefront/` for host composition.
 - Publish the typed RBAC surface for content resources such as `nodes:*`, `posts:*`,
   `media:*`, `comments:*`, `categories:*`, and `tags:*`.
 
@@ -23,6 +24,8 @@ categories, and tags.
 - Declares permissions via `rustok-core::Permission`.
 - REST and GraphQL mutations enforce permissions from `AuthContext.permissions`, then pass a
   permission-aware `SecurityContext` into content services.
+- `apps/admin` consumes `rustok-content-admin` and `apps/storefront` consumes
+  `rustok-content-storefront` through manifest-driven `build.rs` code generation.
 
 ## Entry points
 
@@ -34,4 +37,6 @@ categories, and tags.
 - `graphql::ContentQuery`
 - `graphql::ContentMutation`
 - `controllers::routes`
+- `admin::ContentAdmin` (publishable Leptos package)
+- `storefront::ContentView` (publishable Leptos package)
 - content DTO and entity re-exports

@@ -5,11 +5,15 @@
 ## Documents
 
 - [Implementation plan](./implementation-plan.md)
+- [Admin UI package](../admin/README.md)
+- [Storefront UI package](../storefront/README.md)
 
 ## Status
 
 - ✅ GraphQL и REST адаптеры модуля перенесены в `crates/rustok-forum`; `apps/server` держит только тонкий shim/composition-root слой.
 - ✅ Общие transport-контракты (`AuthContext`, `TenantContext`, `RequestContext`, GraphQL helpers) модуль получает из `rustok-api`.
+- ✅ Publishable Leptos admin UI для forum теперь живёт в `crates/rustok-forum/admin/`; host admin подключает пакет через manifest-driven `build.rs`.
+- ✅ Publishable Leptos storefront UI для forum теперь живёт в `crates/rustok-forum/storefront/`; host storefront подключает пакет через manifest-driven `build.rs`, а public GraphQL read-path отдаёт categories, topic feed, thread detail и replies для `/modules/forum`.
 
 ## Event contracts
 

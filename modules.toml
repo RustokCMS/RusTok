@@ -31,12 +31,15 @@ redirect_uris = ["http://localhost:3000/auth/callback"]
 # Modules: состав модулей платформы
 # ───────────────────────────────────────────────
 [modules]
-# Core modules (required)
+# Core modules (required and always active)
 auth = { crate = "rustok-auth", source = "path", path = "crates/rustok-auth", required = true }
 cache = { crate = "rustok-cache", source = "path", path = "crates/rustok-cache", required = true }
 email = { crate = "rustok-email", source = "path", path = "crates/rustok-email", required = true }
 index = { crate = "rustok-index", source = "path", path = "crates/rustok-index", required = true }
+search = { crate = "rustok-search", source = "path", path = "crates/rustok-search", required = true }
 outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbox", required = true }
+tenant = { crate = "rustok-tenant", source = "path", path = "crates/rustok-tenant", required = true }
+rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true }
 
 # Domain modules (optional)
 content = { crate = "rustok-content", source = "path", path = "crates/rustok-content" }
@@ -46,10 +49,6 @@ forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum",
 pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages" }
 media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" }
 workflow = { crate = "rustok-workflow", source = "path", path = "crates/rustok-workflow" }
-
-# Platform lifecycle modules (Core in ModuleRegistry)
-tenant = { crate = "rustok-tenant", source = "path", path = "crates/rustok-tenant", required = true }
-rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true }
 
 [settings]
 default_enabled = ["content", "commerce", "pages"]

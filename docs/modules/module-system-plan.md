@@ -1,7 +1,7 @@
 ﻿# RusTok вЂ” РЎРёСЃС‚РµРјР° РјРѕРґСѓР»РµР№: РїРѕР»РЅР°СЏ РєР°СЂС‚Р° Рё РїР»Р°РЅ
 
 > **Р”Р°С‚Р°**: 2026-03-19
-> **Актуализировано**: 2026-03-23
+> **Актуализировано**: 2026-03-25
 > **РќР°Р·РЅР°С‡РµРЅРёРµ**: РїРѕР»РЅР°СЏ РєР°СЂС‚Р° СЂРµР°Р»РёР·Р°С†РёРё вЂ” С‡С‚Рѕ СЃРґРµР»Р°РЅРѕ, РіРґРµ РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅРѕ,
 > С‡С‚Рѕ РѕСЃС‚Р°Р»РѕСЃСЊ. РЎР»СѓР¶РёС‚ РѕСЃРЅРѕРІРѕР№ РґР»СЏ РїРµСЂРёРѕРґРёС‡РµСЃРєРѕР№ РІРµСЂРёС„РёРєР°С†РёРё РєРѕСЂСЂРµРєС‚РЅРѕСЃС‚Рё.
 >
@@ -23,18 +23,18 @@
 
 ---
 
-## Статус на 2026-03-23
+## Статус на 2026-03-25
 
 - ✅ `rustok-api` уже существует как foundation-слой и подключён к модульным crate-ам; это больше не «будущий план».
 - ✅ Основные GraphQL/REST адаптеры уже вынесены из `apps/server` в crate-ы модулей, а `apps/server` удерживает роль composition root.
 - ✅ Build/release pipeline теперь исполняет полный manifest-derived план: `cargo build` для `apps/server`, `trunk build` для `apps/admin` и `cargo build -p rustok-storefront` для Leptos storefront; filesystem/container backend публикуют реальные `server`/`admin`/`storefront` артефакты и заполняют отдельные artifact URLs, а `container` дополнительно поддерживает generic rollout hook без знания о конкретном orchestrator.
-- ⚠️ `ManifestManager` уже валидирует metadata path-модулей и конфликты admin surface-ов, но semver-диапазоны зависимостей и продуктовые runtime-конфликты модулей ещё не покрыты.
-- ⚠️ `updateModuleSettings` уже появился в базовом виде: есть GraphQL mutation и JSON editor в `/modules`, но schema-driven форма и валидация из `rustok-module.toml` ещё не доведены до конца.
+- ✅ `ManifestManager` теперь валидирует не только metadata path-модулей и admin-surface конфликты, но и semver-диапазоны зависимостей, product/runtime-конфликты модулей и ошибки schema-driven module settings contract.
+- ✅ `updateModuleSettings` теперь закрыт end-to-end: GraphQL mutation и `/modules` в Leptos Admin валидируют payload по `[settings]` из `rustok-module.toml`, применяют `default`, рендерят typed controls для scalar-полей, top-level structured editor и deep nested editor с create-actions / key rename / array reorder для `object` / `array`, и per-field JSON editors с helper-actions (`Format JSON`, `Reset`, `Add property/item`) для complex values.
 - ✅ `buildProgress` теперь работает end-to-end: `apps/server` поднимает GraphQL WS transport на `/api/graphql/ws`, а `/modules` в `apps/admin` подписывается на live progress и держит polling только как fallback.
-- ⚠️ `apps/server/build.rs` уже генерирует optional module registry, GraphQL schema fragments и HTTP routes из `modules.toml`; explicit server entry-point contract через `[crate]` / `[provides.graphql]` / `[provides.http]` уже поднят, `apps/admin/build.rs` уже доведён до generic module root pages/nav/dashboard wiring и nested route metadata из `[[provides.admin_ui.pages]]`, `apps/storefront/build.rs` уже поддерживает multi-slot storefront sections, generic module route `/modules/:route_segment`, streaming SSR и module-agnostic `UiRouteContext`, а `pages`, `blog` и `workflow/templates` теперь служат рабочими Leptos exemplar-ами с реальным admin/storefront data flow. Перенос остальных модулей и внешний registry всё ещё открыты.
+- ⚠️ `apps/server/build.rs` уже генерирует optional module registry, GraphQL schema fragments и HTTP routes из `modules.toml`; explicit server entry-point contract через `[crate]` / `[provides.graphql]` / `[provides.http]` уже поднят, `apps/admin/build.rs` уже доведён до generic module root pages/nav/dashboard wiring и nested route metadata из `[[provides.admin_ui.pages]]`, `apps/storefront/build.rs` уже поддерживает multi-slot storefront sections, generic module route `/modules/{route_segment}`, streaming SSR и module-agnostic `UiRouteContext`, а `pages`, `blog`, `content`, `forum` и `workflow/templates` теперь служат рабочими Leptos exemplar-ами с реальным admin/storefront data flow. Перенос остальных модулей и внешний registry всё ещё открыты.
 
 > [!NOTE]
-> Раздел 9 ниже и этот статус-блок являются канонической точкой отсчёта на 2026-03-23.
+> Раздел 9 ниже и этот статус-блок являются канонической точкой отсчёта на 2026-03-25.
 
 ## 1. РЎС‚Р°РЅРґР°СЂС‚ РјРѕРґСѓР»СЏ
 
@@ -48,11 +48,11 @@
 | `[module]` | slug, name, version, description, authors, license | вњ… РїР°СЂСЃРёС‚СЃСЏ |
 | `[marketplace]` | icon, banner, screenshots, category, tags | вњ… РїР°СЂСЃРёС‚СЃСЏ |
 | `[compatibility]` | rustok_min, rustok_max | вњ… РїР°СЂСЃРёС‚СЃСЏ |
-| `[dependencies]` | depends_on СЃ version_req | вљ пёЏ slug РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ, version_req РёРіРЅРѕСЂРёСЂСѓРµС‚СЃСЏ |
-| `[conflicts]` | РЅРµСЃРѕРІРјРµСЃС‚РёРјС‹Рµ РјРѕРґСѓР»Рё | вљ пёЏ РїР°СЂСЃРёС‚СЃСЏ, РЅРѕ РЅРµ РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ |
+| `[dependencies]` | depends_on с version_req | ✅ парсится и валидируется по semver-диапазонам |
+| `[conflicts]` | несовместимые модули | ✅ парсится и валидируется как product/runtime conflict |
 | `[crate]` | name, entry_type | вњ… РїР°СЂСЃРёС‚СЃСЏ |
 | `[provides]` | migrations, permissions, events, admin_nav, storefront_slots, graphql | вњ… РїР°СЂСЃРёС‚СЃСЏ |
-| `[settings]` | СЃС…РµРјР° РЅР°СЃС‚СЂРѕРµРє РјРѕРґСѓР»СЏ (type, default, min, max) | вљ пёЏ РїР°СЂСЃРёС‚СЃСЏ, РЅРѕ РЅРµС‚ API РґР»СЏ Р·Р°РїРёСЃРё |
+| `[settings]` | схема настроек модуля (`type`, `default`, `min`, `max`) | ✅ парсится, валидируется и рендерится в `/modules` как schema-driven form; raw JSON остаётся только для модулей без schema |
 | `[locales]` | supported, default | вњ… РїР°СЂСЃРёС‚СЃСЏ |
 
 **Р¤Р°Р№Р»С‹**:
@@ -196,32 +196,40 @@ mutation {
 
 ---
 
-### вљ пёЏ РќР°СЃС‚СЂРѕР№РєРё РјРѕРґСѓР»СЏ вЂ” РЅРµС‚ API Р·Р°РїРёСЃРё
+### ✅ Настройки модуля — schema-driven UI работает end-to-end
 
-РљРѕР»РѕРЅРєР° `settings JSON` РІ `tenant_modules` РµСЃС‚СЊ. `on_enable()` РјРѕР¶РµС‚ Р·Р°РїРёСЃР°С‚СЊ
-РґРµС„РѕР»С‚С‹. РќРѕ РЅРµС‚ GraphQL РјСѓС‚Р°С†РёРё РґР»СЏ РѕР±РЅРѕРІР»РµРЅРёСЏ РЅР°СЃС‚СЂРѕРµРє С‡РµСЂРµР· UI.
+Колонка `settings JSON` в `tenant_modules` есть, и операторский путь обновления
+через UI работает end-to-end. `updateModuleSettings` сохраняет tenant-specific
+payload, сервер валидирует его по `[settings]` из `rustok-module.toml`, а
+`/modules` в Leptos Admin рендерит schema-driven controls для всех текущих
+поддерживаемых типов.
 
-**Р§С‚Рѕ РЅСѓР¶РЅРѕ**:
+**Что уже есть**:
 ```graphql
 mutation {
   updateModuleSettings(moduleSlug: "blog", settings: { postsPerPage: 20 }): TenantModule!
 }
 ```
 
-РЎРµСЂРІРµСЂРЅР°СЏ СЃС‚РѕСЂРѕРЅР° (`apps/server/src/graphql/mutations.rs`):
+Серверная сторона (`apps/server/src/graphql/mutations.rs` + `apps/server/src/services/module_lifecycle.rs`) уже:
 ```rust
 async fn update_module_settings(
     &self, ctx: &Context<'_>,
     module_slug: String,
     settings: serde_json::Value,
 ) -> Result<TenantModule> {
-    // 1. РџСЂРѕРІРµСЂРёС‚СЊ С‡С‚Рѕ РјРѕРґСѓР»СЊ РІРєР»СЋС‡С‘РЅ РґР»СЏ С‚РµРЅР°РЅС‚Р°
-    // 2. Р’Р°Р»РёРґРёСЂРѕРІР°С‚СЊ РїРѕ JSON Schema РёР· [settings] rustok-module.toml
-    // 3. UPDATE tenant_modules SET settings = ?
+    // 1. Проверяет, что модуль включён для tenant (или core/upsert case)
+    // 2. Валидирует settings по `[settings]` из rustok-module.toml
+    // 3. Применяет `default` и отклоняет unknown keys / type/range mismatch
+    // 4. UPDATE tenant_modules SET settings = ?
 }
 ```
 
-UI: С„РѕСЂРјР° РёР· `[settings]` СЃРµРєС†РёРё `rustok-module.toml`, РІ РґРµС‚Р°Р»СЊРЅРѕР№ РїР°РЅРµР»Рё `/modules`.
+**Что остаётся**:
+
+- richer field metadata для nested object contracts, если понадобится не просто JSON editor, а полноценно вложенная форма;
+- richer nested schema metadata для object/array children, если понадобится уйти от generic JSON-tree UX к полностью type-directed subforms;
+- при желании отдельный read/query contract, чтобы другие admin surfaces рендерили форму из того же server-side schema source of truth.
 
 ---
 
@@ -265,31 +273,19 @@ rollbackBuild(buildId: ID!): BuildJob!
 
 ---
 
-### ⚠️ Semver-валидация зависимостей и конфликтов
+### ✅ Semver-валидация зависимостей и конфликтов
 
-Секция уже не в нулевом состоянии, а **частично закрыта**.
+Секция закрыта в `apps/server/src/modules/manifest.rs`.
 
-Что уже есть в `apps/server/src/modules/manifest.rs`:
+Что теперь реально проверяется:
 
-- path-модули обязаны иметь `rustok-module.toml`;
-- валидируются `ownership`, `trust_level` и admin surface metadata;
-- ловятся metadata-конфликты вида `ConflictingModuleAdminSurface`;
-- базовая проверка `depends_on` по slug уже выполняется.
+- наличие `rustok-module.toml` для path-модулей;
+- `ownership`, `trust_level` и admin-surface metadata;
+- semver-диапазоны из `[dependencies]` с отдельной ошибкой `IncompatibleDependencyVersion`;
+- продуктовые/runtime-конфликты из `[conflicts]` с отдельной ошибкой `ConflictingModule`;
+- совместимость с текущей версией платформы через `rustok_min_version` / `rustok_max_version`.
 
-Что ещё остаётся:
-
-- проверка semver-диапазонов из `[dependencies]`;
-- проверка продуктовых/runtime-конфликтов модулей, а не только admin-surface metadata;
-- отдельные manifest-ошибки для несовместимой версии зависимости и конфликтующего модуля.
-
-Минимальный следующий шаг:
-```rust
-let req = semver::VersionReq::parse(&dep.version_req)?;
-let installed = semver::Version::parse(&installed_spec.version)?;
-if !req.matches(&installed) {
-    return Err(IncompatibleDependencyVersion { ... });
-}
-```
+Остаток этой темы больше не в backend-валидации, а в operator UX и внешнем registry/governance слое.
 
 ---
 
@@ -502,10 +498,10 @@ modules.rustok.dev
 | Install / Uninstall РєРЅРѕРїРєРё в†’ `installModule` / `uninstallModule` | вњ… |
 | Toggle switch в†’ `toggleModule` | вњ… |
 | РЎРµРєС†РёРё: Installed / Marketplace / Updates | вњ… |
-| РџСЂРѕРіСЂРµСЃСЃ-Р±Р°СЂ build (polling 5 СЃРµРє) | вњ… (РЅРѕ РЅРµ real-time) |
-| РџСЂРѕРіСЂРµСЃСЃ-Р±Р°СЂ build (WebSocket subscription) | вљ пёЏ РЅРµ РїРѕРґРєР»СЋС‡С‘РЅ |
+| Прогресс-бар build (polling 5 сек) | ✅ fallback/resync path |
+| Прогресс-бар build (WebSocket subscription) | ✅ подключён end-to-end |
 | "Update available" badge + `upgradeModule` РєРЅРѕРїРєР° | в¬њ РЅРµС‚ |
-| Р¤РѕСЂРјР° РЅР°СЃС‚СЂРѕРµРє РјРѕРґСѓР»СЏ (`updateModuleSettings`) | в¬њ РЅРµС‚ |
+| Форма настроек модуля (`updateModuleSettings`) | ✅ schema-driven UI работает для scalar и complex settings; raw fallback нужен только без schema |
 
 ---
 
@@ -730,7 +726,7 @@ register_component(AdminComponentRegistration {
 });
 ```
 
-Состояние на 2026-03-23:
+Состояние на 2026-03-25:
 - generated host wiring для admin уже монтирует module-owned `<PascalSlug>Admin`
   как `DashboardSection`, `NavItem` и `AdminPageRegistration`;
 - host routes `/modules/:module_slug` и `/modules/:module_slug/*module_path` резолвят модульную страницу через generated registry и прокидывают `UiRouteContext`;
@@ -785,11 +781,10 @@ leptos_crate  = "rustok-workflow-storefront"
 
 | # | Р—Р°РґР°С‡Р° | РЎР»РѕР¶РЅРѕСЃС‚СЊ | Р¦РµРЅРЅРѕСЃС‚СЊ |
 |---|---|---|---|
-| **1** | **Semver-диапазоны и продуктовые конфликты модулей в `ManifestManager`** | Малая | Высокая — защита от broken installs и нечестных marketplace-совместимостей |
-| 2 | `updateModuleSettings` mutation + UI-форма из `[settings]` | Малая | Высокая — persisted settings уже есть, но не доведены до оператора |
-| 3 | Перенос Leptos UI в publishable module packages beyond `rustok-pages` и `rustok-blog` | Большая | Критическая — `workflow` уже дал root-page template, `pages` и `blog` стали рабочими exemplar-ами, но остальные модули ещё не переведены и новые scaffold-only пакеты больше не должны считаться достаточным результатом |
-| 4 | Внешний реестр V1 (read-only catalog) | Большая | Высокая — фундамент marketplace |
-| 5 | Внешний реестр V2 + publish/governance | Очень большая | Средняя — следующий шаг после read-only каталога |
+| **1** | **Перенос Leptos UI в publishable module packages beyond `rustok-pages` и `rustok-blog`** | Большая | Критическая — `workflow` уже дал root-page template, `pages`, `blog`, `content` и теперь `forum` стали рабочими exemplar-ами, но `commerce` и остальные модули ещё не переведены, а scaffold-only пакеты больше не должны считаться достаточным результатом |
+| 2 | Внешний реестр V1 (read-only catalog) | Большая | Высокая — фундамент marketplace |
+| 3 | Внешний реестр V2 + publish/governance | Очень большая | Средняя — следующий шаг после read-only каталога |
+| 4 | richer nested schema metadata для type-directed subforms beyond generic JSON tree | Средняя | Средняя — текущий editor уже рабочий, но nested contracts пока не описывают shape/items декларативно |
 
 > П. 3 остаётся текущим UI/extensibility блоком: после закрытия nested admin contract главный остаток — перевести больше модулей в publishable пакеты без scaffold-only результата.
 

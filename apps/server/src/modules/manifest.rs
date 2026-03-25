@@ -163,6 +163,24 @@ pub struct ManifestModuleSpec {
     pub recommended_admin_surfaces: Vec<String>,
     #[serde(default)]
     pub showcase_admin_surfaces: Vec<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub settings_schema: HashMap<String, ModuleSettingSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ModuleSettingSpec {
+    #[serde(rename = "type", default)]
+    pub value_type: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub default: Option<serde_json::Value>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub min: Option<f64>,
+    #[serde(default)]
+    pub max: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +217,7 @@ pub struct CatalogManifestModule {
     pub versions: Vec<CatalogModuleVersion>,
     pub recommended_admin_surfaces: Vec<String>,
     pub showcase_admin_surfaces: Vec<String>,
+    pub settings_schema: HashMap<String, ModuleSettingSpec>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -333,6 +352,8 @@ struct ModulePackageManifest {
     conflicts: ModulePackageConflicts,
     #[serde(default)]
     provides: ModulePackageProvides,
+    #[serde(default)]
+    settings: HashMap<String, ModuleSettingSpec>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -526,10 +547,20 @@ pub enum ManifestError {
     },
     #[error("Module '{slug}' lists admin surface '{surface}' as both recommended and showcase")]
     ConflictingModuleAdminSurface { slug: String, surface: String },
-}
-
-fn is_registry_managed_module(spec: &ManifestModuleSpec) -> bool {
-    spec.crate_name != "rustok-outbox"
+    #[error("Module '{slug}' has invalid setting key '{key}'")]
+    InvalidModuleSettingKey { slug: String, key: String },
+    #[error("Module '{slug}' setting '{key}' has invalid schema: {reason}")]
+    InvalidModuleSettingSchema {
+        slug: String,
+        key: String,
+        reason: String,
+    },
+    #[error("Module '{slug}' setting '{key}' is invalid: {reason}")]
+    InvalidModuleSettingValue {
+        slug: String,
+        key: String,
+        reason: String,
+    },
 }
 
 fn normalize_deps(deps: &[String]) -> HashSet<String> {
@@ -633,6 +664,9 @@ fn merge_module_package_manifest(
     if !metadata.showcase_admin_surfaces.is_empty() {
         spec.showcase_admin_surfaces = metadata.showcase_admin_surfaces;
     }
+    if !package_manifest.settings.is_empty() {
+        spec.settings_schema = package_manifest.settings;
+    }
 
     for (dependency, dependency_spec) in package_manifest.dependencies {
         let dependency = dependency.trim().to_string();
@@ -680,6 +714,252 @@ fn qualify_module_type_path(crate_name: &str, value: Option<&str>) -> Option<Str
 
 fn qualify_module_member_path(crate_name: &str, value: Option<&str>) -> Option<String> {
     qualify_module_type_path(crate_name, value)
+}
+
+fn is_valid_module_setting_key(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+}
+
+fn setting_value_matches_type(value_type: &str, value: &serde_json::Value) -> bool {
+    match value_type {
+        "string" => value.is_string(),
+        "integer" => {
+            value.as_i64().is_some()
+                || value.as_u64().is_some()
+                || value
+                    .as_f64()
+                    .is_some_and(|number| number.fract().abs() < f64::EPSILON)
+        }
+        "number" => value.is_number(),
+        "boolean" => value.is_boolean(),
+        "object" => value.is_object(),
+        "array" => value.is_array(),
+        "json" | "any" => true,
+        _ => false,
+    }
+}
+
+fn validate_setting_spec(
+    slug: &str,
+    key: &str,
+    spec: &ModuleSettingSpec,
+) -> Result<(), ManifestError> {
+    if !is_valid_module_setting_key(key) {
+        return Err(ManifestError::InvalidModuleSettingKey {
+            slug: slug.to_string(),
+            key: key.to_string(),
+        });
+    }
+
+    let value_type = spec.value_type.trim();
+    if !matches!(
+        value_type,
+        "string" | "integer" | "number" | "boolean" | "object" | "array" | "json" | "any"
+    ) {
+        return Err(ManifestError::InvalidModuleSettingSchema {
+            slug: slug.to_string(),
+            key: key.to_string(),
+            reason: format!("unsupported type '{value_type}'"),
+        });
+    }
+
+    if let Some(default) = &spec.default {
+        if !setting_value_matches_type(value_type, default) {
+            return Err(ManifestError::InvalidModuleSettingSchema {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason: "default does not match declared type".to_string(),
+            });
+        }
+    }
+
+    if let (Some(min), Some(max)) = (spec.min, spec.max) {
+        if min > max {
+            return Err(ManifestError::InvalidModuleSettingSchema {
+                slug: slug.to_string(),
+                key: key.to_string(),
+                reason: format!("min ({min}) must not exceed max ({max})"),
+            });
+        }
+    }
+
+    if (spec.min.is_some() || spec.max.is_some())
+        && !matches!(value_type, "integer" | "number" | "string" | "array")
+    {
+        return Err(ManifestError::InvalidModuleSettingSchema {
+            slug: slug.to_string(),
+            key: key.to_string(),
+            reason: "min/max are only supported for string, array, integer, and number".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn validate_setting_value(
+    slug: &str,
+    key: &str,
+    spec: &ModuleSettingSpec,
+    value: &serde_json::Value,
+) -> Result<(), ManifestError> {
+    let value_type = spec.value_type.trim();
+    if !setting_value_matches_type(value_type, value) {
+        return Err(ManifestError::InvalidModuleSettingValue {
+            slug: slug.to_string(),
+            key: key.to_string(),
+            reason: format!("expected {value_type}"),
+        });
+    }
+
+    match value_type {
+        "integer" | "number" => {
+            let numeric_value =
+                value
+                    .as_f64()
+                    .ok_or_else(|| ManifestError::InvalidModuleSettingValue {
+                        slug: slug.to_string(),
+                        key: key.to_string(),
+                        reason: format!("expected {value_type}"),
+                    })?;
+            if let Some(min) = spec.min {
+                if numeric_value < min {
+                    return Err(ManifestError::InvalidModuleSettingValue {
+                        slug: slug.to_string(),
+                        key: key.to_string(),
+                        reason: format!("must be >= {min}"),
+                    });
+                }
+            }
+            if let Some(max) = spec.max {
+                if numeric_value > max {
+                    return Err(ManifestError::InvalidModuleSettingValue {
+                        slug: slug.to_string(),
+                        key: key.to_string(),
+                        reason: format!("must be <= {max}"),
+                    });
+                }
+            }
+        }
+        "string" => {
+            let length = value
+                .as_str()
+                .map(|item| item.chars().count())
+                .unwrap_or_default() as f64;
+            if let Some(min) = spec.min {
+                if length < min {
+                    return Err(ManifestError::InvalidModuleSettingValue {
+                        slug: slug.to_string(),
+                        key: key.to_string(),
+                        reason: format!("length must be >= {min}"),
+                    });
+                }
+            }
+            if let Some(max) = spec.max {
+                if length > max {
+                    return Err(ManifestError::InvalidModuleSettingValue {
+                        slug: slug.to_string(),
+                        key: key.to_string(),
+                        reason: format!("length must be <= {max}"),
+                    });
+                }
+            }
+        }
+        "array" => {
+            let length = value
+                .as_array()
+                .map(|items| items.len())
+                .unwrap_or_default() as f64;
+            if let Some(min) = spec.min {
+                if length < min {
+                    return Err(ManifestError::InvalidModuleSettingValue {
+                        slug: slug.to_string(),
+                        key: key.to_string(),
+                        reason: format!("length must be >= {min}"),
+                    });
+                }
+            }
+            if let Some(max) = spec.max {
+                if length > max {
+                    return Err(ManifestError::InvalidModuleSettingValue {
+                        slug: slug.to_string(),
+                        key: key.to_string(),
+                        reason: format!("length must be <= {max}"),
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn normalize_module_settings(
+    slug: &str,
+    schema: &HashMap<String, ModuleSettingSpec>,
+    settings: serde_json::Value,
+) -> Result<serde_json::Value, ManifestError> {
+    let mut settings_object =
+        settings
+            .as_object()
+            .cloned()
+            .ok_or_else(|| ManifestError::InvalidModuleSettingValue {
+                slug: slug.to_string(),
+                key: "$root".to_string(),
+                reason: "module settings must be a JSON object".to_string(),
+            })?;
+
+    if schema.is_empty() {
+        return Ok(serde_json::Value::Object(settings_object));
+    }
+
+    let mut allowed_keys = schema.keys().cloned().collect::<Vec<_>>();
+    allowed_keys.sort();
+
+    let mut unknown_keys = settings_object
+        .keys()
+        .filter(|key| !schema.contains_key(*key))
+        .cloned()
+        .collect::<Vec<_>>();
+    unknown_keys.sort();
+    if let Some(key) = unknown_keys.first() {
+        return Err(ManifestError::InvalidModuleSettingValue {
+            slug: slug.to_string(),
+            key: key.clone(),
+            reason: format!("unknown setting; allowed keys: {}", allowed_keys.join(", ")),
+        });
+    }
+
+    let mut normalized = serde_json::Map::new();
+    for key in allowed_keys {
+        let spec = schema
+            .get(&key)
+            .expect("allowed settings key must exist in schema");
+
+        match settings_object.remove(&key) {
+            Some(value) => {
+                validate_setting_value(slug, &key, spec, &value)?;
+                normalized.insert(key, value);
+            }
+            None if spec.required && spec.default.is_none() => {
+                return Err(ManifestError::InvalidModuleSettingValue {
+                    slug: slug.to_string(),
+                    key,
+                    reason: "required setting is missing".to_string(),
+                });
+            }
+            None => {
+                if let Some(default) = spec.default.clone() {
+                    normalized.insert(key, default);
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::Value::Object(normalized))
 }
 
 fn validate_module_package_metadata(
@@ -777,6 +1057,10 @@ fn validate_module_package_metadata(
                 conflict: conflict.to_string(),
             });
         }
+    }
+
+    for (key, spec) in &package_manifest.settings {
+        validate_setting_spec(slug, key, spec)?;
     }
 
     Ok(())
@@ -1192,6 +1476,7 @@ impl ManifestManager {
                     versions: Vec::new(),
                     recommended_admin_surfaces: spec.recommended_admin_surfaces,
                     showcase_admin_surfaces: spec.showcase_admin_surfaces,
+                    settings_schema: spec.settings_schema,
                 })
             })
             .collect::<Result<Vec<_>, ManifestError>>()?;
@@ -1409,6 +1694,24 @@ impl ManifestManager {
         Ok(ManifestDiff::upgraded(slug, version))
     }
 
+    pub fn validate_module_settings(
+        module_slug: &str,
+        settings: serde_json::Value,
+    ) -> Result<serde_json::Value, ManifestError> {
+        let manifest = Self::load()?;
+        let resolved_specs = resolve_module_specs(&manifest)?;
+
+        let schema = if let Some(spec) = resolved_specs.get(module_slug) {
+            spec.settings_schema.clone()
+        } else if let Some(spec) = builtin_module_catalog().remove(module_slug) {
+            apply_module_package_manifest(module_slug, &spec)?.settings_schema
+        } else {
+            HashMap::new()
+        };
+
+        normalize_module_settings(module_slug, &schema, settings)
+    }
+
     pub fn validate(manifest: &ModulesManifest) -> Result<(), ManifestError> {
         let resolved_specs = resolve_module_specs(manifest)?;
 
@@ -1545,7 +1848,6 @@ impl ManifestManager {
         let missing_in_registry: Vec<String> = manifest
             .modules
             .iter()
-            .filter(|(_, spec)| is_registry_managed_module(spec))
             .map(|(slug, _)| slug)
             .filter(|slug| !registry.contains(slug))
             .cloned()
@@ -1562,15 +1864,11 @@ impl ManifestManager {
             .into_iter()
             .filter_map(|module| {
                 manifest.modules.get(module.slug()).and_then(|spec| {
-                    if !is_registry_managed_module(spec) {
-                        None
-                    } else {
-                        Some((
-                            module.slug(),
-                            spec.required,
-                            registry.is_core(module.slug()),
-                        ))
-                    }
+                    Some((
+                        module.slug(),
+                        spec.required,
+                        registry.is_core(module.slug()),
+                    ))
                 })
             })
             .filter_map(|(slug, required, is_core)| {
@@ -1593,26 +1891,22 @@ impl ManifestManager {
             .into_iter()
             .filter_map(|module| {
                 resolved_specs.get(module.slug()).and_then(|spec| {
-                    if !is_registry_managed_module(spec) {
+                    let manifest_deps = normalize_deps(&spec.depends_on);
+                    let registry_deps: HashSet<String> = module
+                        .dependencies()
+                        .iter()
+                        .map(|dep| dep.to_string())
+                        .collect();
+
+                    if manifest_deps == registry_deps {
                         None
                     } else {
-                        let manifest_deps = normalize_deps(&spec.depends_on);
-                        let registry_deps: HashSet<String> = module
-                            .dependencies()
-                            .iter()
-                            .map(|dep| dep.to_string())
-                            .collect();
-
-                        if manifest_deps == registry_deps {
-                            None
-                        } else {
-                            Some(format!(
-                                "{} (manifest={:?}, registry={:?})",
-                                module.slug(),
-                                manifest_deps,
-                                registry_deps
-                            ))
-                        }
+                        Some(format!(
+                            "{} (manifest={:?}, registry={:?})",
+                            module.slug(),
+                            manifest_deps,
+                            registry_deps
+                        ))
                     }
                 })
             })
@@ -2163,6 +2457,152 @@ showcase_admin_surfaces = ["next-admin"]
             result,
             Err(ManifestError::ConflictingModuleAdminSurface { slug, surface })
                 if slug == "blog" && surface == "next-admin"
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_module_settings_applies_defaults_from_module_manifest() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let manifest_path = temp.path().join("modules.toml");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
+showAuthor = { type = "boolean", default = true }
+"#,
+        );
+
+        let mut manifest = manifest_with_modules(&["index", "outbox", "blog", "tenant", "rbac"]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::validate_module_settings("blog", serde_json::json!({}));
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        let settings = result.expect("settings should be normalized from defaults");
+        assert_eq!(settings["postsPerPage"], serde_json::json!(20));
+        assert_eq!(settings["showAuthor"], serde_json::json!(true));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_module_settings_rejects_unknown_keys() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let manifest_path = temp.path().join("modules.toml");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
+"#,
+        );
+
+        let mut manifest = manifest_with_modules(&["index", "outbox", "blog", "tenant", "rbac"]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::validate_module_settings(
+            "blog",
+            serde_json::json!({ "unknown": true }),
+        );
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleSettingValue { slug, key, .. })
+                if slug == "blog" && key == "unknown"
+        ));
+    }
+
+    #[test]
+    #[serial]
+    fn validate_module_settings_rejects_out_of_range_values() {
+        let temp = tempdir().unwrap();
+        let blog_dir = temp.path().join("crates").join("rustok-blog");
+        let manifest_path = temp.path().join("modules.toml");
+        write_module_manifest(
+            &blog_dir,
+            r#"[module]
+slug = "blog"
+name = "Blog"
+version = "0.1.0"
+ownership = "first_party"
+trust_level = "verified"
+
+[settings]
+postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
+"#,
+        );
+
+        let mut manifest = manifest_with_modules(&["index", "outbox", "blog", "tenant", "rbac"]);
+        manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
+        ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
+
+        let previous = std::env::var("RUSTOK_MODULES_MANIFEST").ok();
+        unsafe {
+            std::env::set_var("RUSTOK_MODULES_MANIFEST", &manifest_path);
+        }
+
+        let result = ManifestManager::validate_module_settings(
+            "blog",
+            serde_json::json!({ "postsPerPage": 1000 }),
+        );
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("RUSTOK_MODULES_MANIFEST", value);
+            },
+            None => unsafe {
+                std::env::remove_var("RUSTOK_MODULES_MANIFEST");
+            },
+        }
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::InvalidModuleSettingValue { slug, key, .. })
+                if slug == "blog" && key == "postsPerPage"
         ));
     }
 

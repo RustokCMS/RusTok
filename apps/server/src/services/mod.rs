@@ -26,6 +26,7 @@ pub mod rbac_service;
 pub mod redis_runtime;
 pub mod release_backend;
 pub mod runtime_guardrails;
+pub mod search_dispatcher;
 pub mod settings_service;
 pub mod topic_field_service;
 pub mod user_field_service;

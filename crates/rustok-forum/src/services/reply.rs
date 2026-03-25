@@ -312,6 +312,57 @@ impl ReplyService {
         Ok((replies, total))
     }
 
+    #[instrument(skip(self, security))]
+    pub async fn list_response_for_topic_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        filter: ListRepliesFilter,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+        let locale = filter
+            .locale
+            .clone()
+            .or_else(|| fallback_locale.map(str::to_string))
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let (items, total) = self
+            .nodes
+            .list_nodes_with_locale_fallback(
+                tenant_id,
+                security,
+                ListNodesFilter {
+                    kind: Some(KIND_REPLY.to_string()),
+                    status: None,
+                    parent_id: Some(topic_id),
+                    author_id: None,
+                    locale: Some(locale.clone()),
+                    page: filter.page,
+                    per_page: filter.per_page,
+                    include_deleted: false,
+                    category_id: None,
+                },
+                fallback_locale,
+            )
+            .await?;
+
+        let mut replies = Vec::with_capacity(items.len());
+        for item in items {
+            let node = match self.nodes.get_node(tenant_id, item.id).await {
+                Ok(node) => node,
+                Err(_) => continue,
+            };
+            replies.push(Self::node_to_reply_with_fallback(
+                node,
+                topic_id,
+                &locale,
+                fallback_locale,
+            ));
+        }
+
+        Ok((replies, total))
+    }
+
     fn node_to_reply(
         node: rustok_content::NodeResponse,
         topic_id: Uuid,

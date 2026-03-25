@@ -6,8 +6,14 @@ members = [
     "apps/storefront",
     "crates/rustok-blog/admin",
     "crates/rustok-blog/storefront",
+    "crates/rustok-content/admin",
+    "crates/rustok-content/storefront",
+    "crates/rustok-forum/admin",
+    "crates/rustok-forum/storefront",
     "crates/rustok-pages/admin",
     "crates/rustok-pages/storefront",
+    "crates/rustok-search/admin",
+    "crates/rustok-search/storefront",
     "crates/rustok-workflow/admin",
     "crates/*",
     "UI/leptos",
@@ -149,6 +155,7 @@ rustok-blog = { path = "crates/rustok-blog" }
 rustok-content = { path = "crates/rustok-content" }
 rustok-pages = { path = "crates/rustok-pages" }
 rustok-index = { path = "crates/rustok-index" }
+rustok-search = { path = "crates/rustok-search" }
 rustok-auth = { path = "crates/rustok-auth" }
 rustok-api = { path = "crates/rustok-api" }
 rustok-cache = { path = "crates/rustok-cache" }

@@ -1,0 +1,422 @@
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use uuid::Uuid;
+
+use rustok_core::{Error, Result};
+
+#[derive(Clone)]
+pub struct SearchProjector {
+    db: DatabaseConnection,
+}
+
+impl SearchProjector {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+
+    pub async fn ensure_bootstrap(&self, tenant_id: Uuid) -> Result<()> {
+        self.ensure_postgres()?;
+
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT COUNT(*) AS total FROM search_documents WHERE tenant_id = $1",
+            vec![tenant_id.into()],
+        );
+
+        let total = self
+            .db
+            .query_one(stmt)
+            .await
+            .map_err(Error::Database)?
+            .and_then(|row| row.try_get::<i64>("", "total").ok())
+            .unwrap_or(0);
+
+        if total == 0 {
+            self.rebuild_tenant(tenant_id).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
+        self.ensure_postgres()?;
+        self.delete_tenant_documents(tenant_id).await?;
+        self.upsert_content_documents(tenant_id, None, None, None)
+            .await?;
+        self.upsert_product_documents(tenant_id, None).await?;
+        Ok(())
+    }
+
+    pub async fn rebuild_content_scope(&self, tenant_id: Uuid) -> Result<()> {
+        self.ensure_postgres()?;
+        self.delete_documents(
+            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'node'",
+            vec![tenant_id.into()],
+        )
+        .await?;
+        self.upsert_content_documents(tenant_id, None, None, None)
+            .await
+    }
+
+    pub async fn rebuild_product_scope(&self, tenant_id: Uuid) -> Result<()> {
+        self.ensure_postgres()?;
+        self.delete_documents(
+            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'product'",
+            vec![tenant_id.into()],
+        )
+        .await?;
+        self.upsert_product_documents(tenant_id, None).await
+    }
+
+    pub async fn upsert_node(&self, tenant_id: Uuid, node_id: Uuid) -> Result<()> {
+        self.ensure_postgres()?;
+        self.delete_node(tenant_id, node_id).await?;
+        self.upsert_content_documents(tenant_id, Some(node_id), None, None)
+            .await
+    }
+
+    pub async fn upsert_node_locale(
+        &self,
+        tenant_id: Uuid,
+        node_id: Uuid,
+        locale: &str,
+    ) -> Result<()> {
+        self.ensure_postgres()?;
+        self.delete_node_locale(tenant_id, node_id, locale).await?;
+        self.upsert_content_documents(tenant_id, Some(node_id), Some(locale), None)
+            .await
+    }
+
+    pub async fn delete_node(&self, tenant_id: Uuid, node_id: Uuid) -> Result<()> {
+        self.delete_documents(
+            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'node' AND document_id = $2",
+            vec![tenant_id.into(), node_id.into()],
+        )
+        .await
+    }
+
+    pub async fn delete_node_locale(
+        &self,
+        tenant_id: Uuid,
+        node_id: Uuid,
+        locale: &str,
+    ) -> Result<()> {
+        self.delete_documents(
+            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'node' AND document_id = $2 AND locale = $3",
+            vec![tenant_id.into(), node_id.into(), locale.to_string().into()],
+        )
+        .await
+    }
+
+    pub async fn reindex_category(&self, tenant_id: Uuid, category_id: Uuid) -> Result<()> {
+        self.ensure_postgres()?;
+        self.delete_documents(
+            r#"
+            DELETE FROM search_documents
+            WHERE tenant_id = $1
+              AND entity_type = 'node'
+              AND document_id IN (
+                  SELECT id FROM nodes
+                  WHERE tenant_id = $1
+                    AND category_id = $2
+                    AND deleted_at IS NULL
+              )
+            "#,
+            vec![tenant_id.into(), category_id.into()],
+        )
+        .await?;
+        self.upsert_content_documents(tenant_id, None, None, Some(category_id))
+            .await
+    }
+
+    pub async fn upsert_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
+        self.ensure_postgres()?;
+        self.delete_product(tenant_id, product_id).await?;
+        self.upsert_product_documents(tenant_id, Some(product_id))
+            .await
+    }
+
+    pub async fn delete_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
+        self.delete_documents(
+            "DELETE FROM search_documents WHERE tenant_id = $1 AND entity_type = 'product' AND document_id = $2",
+            vec![tenant_id.into(), product_id.into()],
+        )
+        .await
+    }
+
+    fn ensure_postgres(&self) -> Result<()> {
+        if self.db.get_database_backend() != DbBackend::Postgres {
+            return Err(Error::External(
+                "SearchProjector requires PostgreSQL backend".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    async fn delete_tenant_documents(&self, tenant_id: Uuid) -> Result<()> {
+        self.delete_documents(
+            "DELETE FROM search_documents WHERE tenant_id = $1",
+            vec![tenant_id.into()],
+        )
+        .await
+    }
+
+    async fn delete_documents(&self, sql: &str, values: Vec<sea_orm::Value>) -> Result<()> {
+        let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
+        self.db.execute(stmt).await.map_err(Error::Database)?;
+        Ok(())
+    }
+
+    async fn upsert_content_documents(
+        &self,
+        tenant_id: Uuid,
+        node_id: Option<Uuid>,
+        locale: Option<&str>,
+        category_id: Option<Uuid>,
+    ) -> Result<()> {
+        let mut values = vec![tenant_id.into()];
+        let mut param = 2;
+        let mut where_clause = String::from("WHERE n.tenant_id = $1 AND n.deleted_at IS NULL");
+
+        if let Some(node_id) = node_id {
+            where_clause.push_str(&format!(" AND n.id = ${param}"));
+            values.push(node_id.into());
+            param += 1;
+        }
+
+        if let Some(locale) = locale {
+            where_clause.push_str(&format!(" AND nt.locale = ${param}"));
+            values.push(locale.to_string().into());
+            param += 1;
+        }
+
+        if let Some(category_id) = category_id {
+            where_clause.push_str(&format!(" AND n.category_id = ${param}"));
+            values.push(category_id.into());
+        }
+
+        let sql = format!(
+            r#"
+            INSERT INTO search_documents (
+                document_key,
+                tenant_id,
+                document_id,
+                source_module,
+                entity_type,
+                locale,
+                status,
+                is_public,
+                title,
+                subtitle,
+                slug,
+                handle,
+                body,
+                keywords_text,
+                facets,
+                payload,
+                published_at,
+                created_at,
+                updated_at,
+                indexed_at
+            )
+            SELECT
+                CONCAT('node:', n.id::text, ':', nt.locale) AS document_key,
+                n.tenant_id,
+                n.id AS document_id,
+                COALESCE(NULLIF(n.kind::text, ''), 'content') AS source_module,
+                'node'::text AS entity_type,
+                nt.locale,
+                n.status::text AS status,
+                (LOWER(n.status::text) = 'published') AS is_public,
+                COALESCE(nt.title, '') AS title,
+                ct.name AS subtitle,
+                nt.slug,
+                NULL::text AS handle,
+                CONCAT_WS(E'\n\n', COALESCE(nt.excerpt, ''), COALESCE(b.body, '')) AS body,
+                CONCAT_WS(
+                    ' ',
+                    COALESCE(ct.name, ''),
+                    COALESCE(u.name, ''),
+                    COALESCE(tags.tag_names, '')
+                ) AS keywords_text,
+                jsonb_build_object(
+                    'has_category', (ct.slug IS NOT NULL),
+                    'has_tags', (COALESCE(tags.tag_count, 0) > 0)
+                ) AS facets,
+                jsonb_build_object(
+                    'slug', nt.slug,
+                    'excerpt', nt.excerpt,
+                    'category_id', n.category_id,
+                    'category_name', ct.name,
+                    'category_slug', ct.slug,
+                    'author_name', u.name,
+                    'tags', COALESCE(tags.tag_list, '[]'::jsonb),
+                    'published_at', n.published_at
+                ) AS payload,
+                n.published_at,
+                n.created_at,
+                n.updated_at,
+                NOW()
+            FROM nodes n
+            JOIN node_translations nt
+                ON nt.node_id = n.id
+            LEFT JOIN bodies b
+                ON b.node_id = n.id AND b.locale = nt.locale
+            LEFT JOIN category_translations ct
+                ON ct.category_id = n.category_id AND ct.locale = nt.locale
+            LEFT JOIN users u
+                ON u.id = n.author_id
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(t.id)::bigint AS tag_count,
+                    string_agg(t.name, ' ') AS tag_names,
+                    COALESCE(
+                        jsonb_agg(
+                            jsonb_build_object(
+                                'id', t.id,
+                                'name', t.name,
+                                'slug', t.slug
+                            )
+                        ) FILTER (WHERE t.id IS NOT NULL),
+                        '[]'::jsonb
+                    ) AS tag_list
+                FROM taggables tg
+                JOIN tags t ON t.id = tg.tag_id
+                WHERE tg.taggable_type = 'node'
+                  AND tg.taggable_id = n.id
+            ) tags ON TRUE
+            {where_clause}
+            ON CONFLICT (document_key) DO UPDATE SET
+                status = EXCLUDED.status,
+                is_public = EXCLUDED.is_public,
+                title = EXCLUDED.title,
+                subtitle = EXCLUDED.subtitle,
+                slug = EXCLUDED.slug,
+                handle = EXCLUDED.handle,
+                body = EXCLUDED.body,
+                keywords_text = EXCLUDED.keywords_text,
+                facets = EXCLUDED.facets,
+                payload = EXCLUDED.payload,
+                published_at = EXCLUDED.published_at,
+                updated_at = EXCLUDED.updated_at,
+                indexed_at = NOW()
+            "#
+        );
+
+        let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
+        self.db.execute(stmt).await.map_err(Error::Database)?;
+        Ok(())
+    }
+
+    async fn upsert_product_documents(
+        &self,
+        tenant_id: Uuid,
+        product_id: Option<Uuid>,
+    ) -> Result<()> {
+        let mut values = vec![tenant_id.into()];
+        let mut where_clause = String::from("WHERE p.tenant_id = $1");
+
+        if let Some(product_id) = product_id {
+            where_clause.push_str(" AND p.id = $2");
+            values.push(product_id.into());
+        }
+
+        let sql = format!(
+            r#"
+            INSERT INTO search_documents (
+                document_key,
+                tenant_id,
+                document_id,
+                source_module,
+                entity_type,
+                locale,
+                status,
+                is_public,
+                title,
+                subtitle,
+                slug,
+                handle,
+                body,
+                keywords_text,
+                facets,
+                payload,
+                published_at,
+                created_at,
+                updated_at,
+                indexed_at
+            )
+            SELECT
+                CONCAT('product:', p.id::text, ':', pt.locale) AS document_key,
+                p.tenant_id,
+                p.id AS document_id,
+                'commerce'::text AS source_module,
+                'product'::text AS entity_type,
+                pt.locale,
+                p.status::text AS status,
+                (LOWER(p.status::text) = 'active') AS is_public,
+                COALESCE(pt.title, '') AS title,
+                p.vendor AS subtitle,
+                NULL::text AS slug,
+                pt.handle,
+                COALESCE(pt.description, '') AS body,
+                CONCAT_WS(
+                    ' ',
+                    COALESCE(p.vendor, ''),
+                    COALESCE(pt.meta_title, ''),
+                    COALESCE(pt.meta_description, '')
+                ) AS keywords_text,
+                jsonb_build_object(
+                    'in_stock', COALESCE(agg.in_stock, false),
+                    'has_price', (agg.price_min IS NOT NULL OR agg.price_max IS NOT NULL)
+                ) AS facets,
+                jsonb_build_object(
+                    'handle', pt.handle,
+                    'description', pt.description,
+                    'vendor', p.vendor,
+                    'price_min', agg.price_min,
+                    'price_max', agg.price_max,
+                    'in_stock', COALESCE(agg.in_stock, false),
+                    'variant_count', COALESCE(agg.variant_count, 0),
+                    'published_at', p.published_at
+                ) AS payload,
+                p.published_at,
+                p.created_at,
+                p.updated_at,
+                NOW()
+            FROM products p
+            JOIN product_translations pt
+                ON pt.product_id = p.id
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(pv.id)::bigint AS variant_count,
+                    COALESCE(SUM(pv.inventory_quantity), 0) > 0 AS in_stock,
+                    MIN(pr.amount)::bigint AS price_min,
+                    MAX(pr.amount)::bigint AS price_max
+                FROM product_variants pv
+                LEFT JOIN prices pr ON pr.variant_id = pv.id
+                WHERE pv.product_id = p.id
+                  AND pv.tenant_id = p.tenant_id
+            ) agg ON TRUE
+            {where_clause}
+            ON CONFLICT (document_key) DO UPDATE SET
+                status = EXCLUDED.status,
+                is_public = EXCLUDED.is_public,
+                title = EXCLUDED.title,
+                subtitle = EXCLUDED.subtitle,
+                slug = EXCLUDED.slug,
+                handle = EXCLUDED.handle,
+                body = EXCLUDED.body,
+                keywords_text = EXCLUDED.keywords_text,
+                facets = EXCLUDED.facets,
+                payload = EXCLUDED.payload,
+                published_at = EXCLUDED.published_at,
+                updated_at = EXCLUDED.updated_at,
+                indexed_at = NOW()
+            "#
+        );
+
+        let stmt = Statement::from_sql_and_values(DbBackend::Postgres, sql, values);
+        self.db.execute(stmt).await.map_err(Error::Database)?;
+        Ok(())
+    }
+}

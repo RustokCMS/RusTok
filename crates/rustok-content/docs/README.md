@@ -5,6 +5,8 @@
 ## Documents
 
 - [Implementation plan](./implementation-plan.md)
+- [Admin UI package](../admin/README.md)
+- [Storefront UI package](../storefront/README.md)
 
 ## Event contracts
 
@@ -15,6 +17,7 @@
 - GraphQL адаптеры модуля теперь живут в `crates/rustok-content/src/graphql/`.
 - REST-контроллеры модуля теперь живут в `crates/rustok-content/src/controllers/`.
 - `apps/server` для content больше не хранит бизнес-логику адаптеров и используется только как composition root / shim-слой для маршрутов и схемы.
+- Publishable Leptos UI для content теперь живёт в `crates/rustok-content/admin/` и `crates/rustok-content/storefront/`; host-приложения подключают эти пакеты через manifest-driven `build.rs`.
 
 
 ## Orchestration

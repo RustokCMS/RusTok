@@ -54,6 +54,15 @@ const coreNavItems: NavItem[] = [
     access: { role: 'admin' }
   },
   {
+    title: 'Search',
+    url: '/dashboard/search',
+    icon: 'search',
+    shortcut: ['s', 's'],
+    isActive: false,
+    items: [],
+    access: { role: 'admin' }
+  },
+  {
     title: 'Account',
     url: '#',
     icon: 'account',
@@ -69,7 +78,4 @@ const coreNavItems: NavItem[] = [
   }
 ];
 
-export const navItems: NavItem[] = [
-  ...coreNavItems,
-  ...getAdminNavItems()
-];
+export const navItems: NavItem[] = [...coreNavItems, ...getAdminNavItems()];

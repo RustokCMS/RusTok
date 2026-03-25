@@ -28,6 +28,7 @@ use super::mutations::RootMutation;
 use super::oauth::{OAuthMutation, OAuthQuery};
 use super::observability::GraphqlObservability;
 use super::queries::RootQuery;
+use super::search::{SearchMutationRoot, SearchQueryRoot};
 use super::settings::{SettingsMutation, SettingsQuery};
 use super::subscriptions::BuildSubscription;
 use super::system::SystemQuery;
@@ -49,6 +50,7 @@ pub mod module_slug {
 #[derive(MergedObject, Default)]
 pub struct Query(
     RootQuery,
+    SearchQueryRoot,
     AuthQuery,
     OAuthQuery,
     McpQuery,
@@ -62,6 +64,7 @@ pub struct Query(
 #[derive(MergedObject, Default)]
 pub struct Mutation(
     RootMutation,
+    SearchMutationRoot,
     AuthMutation,
     OAuthMutation,
     McpMutation,

@@ -1028,14 +1028,17 @@ fn build_manifest_managed_metadata(public_url: &str) -> serde_json::Value {
 mod tests {
     use super::*;
     use crate::models::_entities::tenants::Model as TenantModel;
+    use crate::models::oauth_apps;
     use crate::models::oauth_apps::Entity as OAuthAppsEntity;
+    use crate::models::oauth_authorization_codes;
+    use crate::models::oauth_consents;
     use crate::models::oauth_tokens;
     use crate::models::tenants;
     use migration::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-        QueryFilter, Set, Statement,
+        QueryFilter, Schema, Set,
     };
     use sea_orm_migration::SchemaManager;
     use serial_test::serial;
@@ -1053,27 +1056,120 @@ mod tests {
     }
 
     async fn ensure_oauth_schema(db: &DatabaseConnection) {
-        let has_oauth_apps = db
-            .query_one(Statement::from_string(
-                DbBackend::Sqlite,
-                "SELECT 1 FROM oauth_apps LIMIT 1".to_string(),
-            ))
-            .await
-            .is_ok();
-
-        if has_oauth_apps {
+        if db.get_database_backend() != DbBackend::Sqlite {
             return;
         }
 
         let manager = SchemaManager::new(db);
-        for migration in rustok_auth::migrations::migrations() {
-            if let Err(error) = migration.up(&manager).await {
-                let message = error.to_string();
-                if message.contains("already exists") {
-                    continue;
-                }
-                panic!("apply auth migrations for oauth tests: {error}");
-            }
+
+        if manager
+            .has_table("oauth_apps")
+            .await
+            .expect("check oauth_apps table")
+            && manager
+                .has_table("oauth_tokens")
+                .await
+                .expect("check oauth_tokens table")
+            && manager
+                .has_table("oauth_authorization_codes")
+                .await
+                .expect("check oauth_authorization_codes table")
+            && manager
+                .has_table("oauth_consents")
+                .await
+                .expect("check oauth_consents table")
+        {
+            return;
+        }
+
+        let builder = db.get_database_backend();
+        let schema = Schema::new(builder);
+
+        ensure_entity_table(
+            db,
+            &manager,
+            &builder,
+            "oauth_apps",
+            schema.create_table_from_entity(oauth_apps::Entity),
+        )
+        .await;
+        ensure_entity_table(
+            db,
+            &manager,
+            &builder,
+            "oauth_tokens",
+            schema.create_table_from_entity(oauth_tokens::Entity),
+        )
+        .await;
+        ensure_entity_table(
+            db,
+            &manager,
+            &builder,
+            "oauth_authorization_codes",
+            schema.create_table_from_entity(oauth_authorization_codes::Entity),
+        )
+        .await;
+        ensure_entity_table(
+            db,
+            &manager,
+            &builder,
+            "oauth_consents",
+            schema.create_table_from_entity(oauth_consents::Entity),
+        )
+        .await;
+    }
+
+    async fn ensure_entity_table(
+        db: &DatabaseConnection,
+        manager: &SchemaManager<'_>,
+        builder: &DbBackend,
+        table_name: &str,
+        mut statement: sea_orm::sea_query::TableCreateStatement,
+    ) {
+        if manager
+            .has_table(table_name)
+            .await
+            .unwrap_or_else(|error| panic!("check {table_name} presence: {error}"))
+        {
+            return;
+        }
+
+        statement.if_not_exists();
+        db.execute(builder.build(&statement))
+            .await
+            .unwrap_or_else(|error| panic!("create {table_name} for oauth tests: {error}"));
+
+        assert!(
+            manager
+                .has_table(table_name)
+                .await
+                .unwrap_or_else(|error| panic!("re-check {table_name} presence: {error}")),
+            "expected {table_name} to exist after sqlite test bootstrap"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn sqlite_oauth_test_bootstrap_guarantees_oauth_tables() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        ensure_oauth_schema(&db).await;
+
+        let manager = SchemaManager::new(&db);
+        for table_name in [
+            "oauth_apps",
+            "oauth_tokens",
+            "oauth_authorization_codes",
+            "oauth_consents",
+        ] {
+            assert!(
+                manager
+                    .has_table(table_name)
+                    .await
+                    .unwrap_or_else(|error| panic!(
+                        "check {table_name} in regression test: {error}"
+                    )),
+                "expected {table_name} to exist in sqlite oauth test bootstrap"
+            );
         }
     }
 

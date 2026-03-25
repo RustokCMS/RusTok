@@ -52,8 +52,8 @@ graph TD
 
 ## Верификация платформы
 
-- [План верификации платформы](./PLATFORM_VERIFICATION_PLAN.md) — глобальный чеклист верификации всей платформы (21 фаза, 400+ проверок). Включает реестр найденных проблем (Фаза 21).
-- [Планы верификации](./verification/README.md) — каталог специализированных планов верификации (включая rolling-верификацию Leptos-библиотек).
+- [План верификации платформы](./verification/PLATFORM_VERIFICATION_PLAN.md) — главный orchestration-план для периодических прогонов с очищаемым master-checklist.
+- [Планы верификации](./verification/README.md) — каталог детальных и rolling-планов верификации, включая foundation/API/frontend/quality блоки, реестр проблем и специализированные weekly-проходы.
 
 ## Корневые документы
 
@@ -110,6 +110,7 @@ graph TD
 - [Реестр crate-ов RusToK](./modules/crates-registry.md)
 - [Манифест](./modules/manifest.md)
 - [План развития модульной платформы](./modules/module-system-plan.md) — актуальный roadmap по marketplace, install/uninstall, build/release, real frontend artifacts и UI codegen.
+- [План реализации модуля Search](../crates/rustok-search/docs/implementation-plan.md) — канонический roadmap для `rustok-search`, включая архитектурную границу с `rustok-index`, Postgres-first runtime, admin/storefront UI и optional-коннекторы.
 - [Plan внедрения rich-text (Tiptap) и GrapesJS Page Builder](./modules/tiptap-page-builder-implementation-plan.md)
 - [Индекс модульной документации](./modules/_index.md)
 
@@ -164,7 +165,7 @@ graph TD
   - `docs/README.md`
   - `docs/implementation-plan.md`
 
-- [Документация Server](../apps/server/docs/README.md) (включает обязательный/критичный базовый набор core-модулей для агентов (6 модулей), матрицу возможностей Loco, доставку писем для сброса пароля в auth, заметки по поведению dev seed, схему публикации событий build-request, текущий server-side `build.rs` composition-root contract для optional-модулей, explicit server entry points и manifest-derived build/release pipeline для `server`/`admin`/`storefront`).
+- [Документация Server](../apps/server/docs/README.md) (включает обязательный baseline `Core` modules и shared foundation crates для агентов, матрицу возможностей Loco, доставку писем для сброса пароля в auth, заметки по поведению dev seed, схему публикации событий build-request, текущий server-side `build.rs` composition-root contract для optional-модулей, explicit server entry points и manifest-derived build/release pipeline для `server`/`admin`/`storefront`).
 - [План реализации Server](../apps/server/docs/implementation-plan.md)
 - [Migration guide Flex Phase 4.5 (Server)](../apps/server/docs/flex-phase45-migration-guide.md)
 - [Реестр Loco governance](../apps/server/docs/LOCO_FEATURE_SUPPORT.md#governance-register) — входная точка для архитектурных решений по возможностям Loco в server runtime.
@@ -177,7 +178,7 @@ graph TD
 - [Настройка Clerk для Next.js Admin](../apps/next-admin/docs/clerk_setup.md)
 - [Темы Next.js Admin](../apps/next-admin/docs/themes.md)
 - [README Leptos Storefront](../apps/storefront/README.md)
-- [Документация Leptos Storefront](../apps/storefront/docs/README.md) — текущий Leptos-host contract, включая manifest-driven multi-slot wiring, generic route `/modules/:route_segment`, streaming SSR и `UiRouteContext` для async module-owned storefront UI; `pages` и `blog` служат рабочими data-driven exemplar-ами.
+- [Документация Leptos Storefront](../apps/storefront/docs/README.md) — текущий Leptos-host contract, включая manifest-driven multi-slot wiring, generic route `/modules/{route_segment}`, streaming SSR и `UiRouteContext` для async module-owned storefront UI; `pages` и `blog` служат рабочими data-driven exemplar-ами.
 - [План реализации Leptos Storefront](../apps/storefront/docs/implementation-plan.md)
 - [Документация Next.js Storefront](../apps/next-frontend/docs/README.md) — экспериментальный headless, ручная сборка
 - [План реализации Next.js Storefront](../apps/next-frontend/docs/implementation-plan.md)
@@ -200,6 +201,8 @@ graph TD
 - [Документация crate-контрактов событий](../crates/rustok-events/docs/README.md)
 - [План реализации контрактов событий](../crates/rustok-events/docs/implementation-plan.md)
 - [Документация модуля Content](../crates/rustok-content/docs/README.md) — включая модульные GraphQL/REST адаптеры content
+- [Пакет админского UI для Content](../crates/rustok-content/admin/README.md)
+- [Пакет storefront UI для Content](../crates/rustok-content/storefront/README.md)
 - [План реализации модуля Content](../crates/rustok-content/docs/implementation-plan.md)
 - [Документация модуля Commerce](../crates/rustok-commerce/docs/README.md)
 - [План реализации модуля Commerce](../crates/rustok-commerce/docs/implementation-plan.md)
@@ -208,11 +211,15 @@ graph TD
 - [Пакет storefront UI для Blog](../crates/rustok-blog/storefront/README.md)
 - [План реализации модуля Blog](../crates/rustok-blog/docs/implementation-plan.md)
 - [Документация модуля Forum](../crates/rustok-forum/docs/README.md)
+- [Пакет админского UI для Forum](../crates/rustok-forum/admin/README.md)
+- [Пакет storefront UI для Forum](../crates/rustok-forum/storefront/README.md)
 - [План реализации модуля Forum](../crates/rustok-forum/docs/implementation-plan.md)
 - [Документация модуля Pages](../crates/rustok-pages/docs/README.md)
 - [План реализации модуля Pages](../crates/rustok-pages/docs/implementation-plan.md)
 - [Документация модуля Index](../crates/rustok-index/docs/README.md)
 - [План реализации модуля Index](../crates/rustok-index/docs/implementation-plan.md)
+- [Документация модуля Search](../crates/rustok-search/docs/README.md)
+- [План реализации модуля Search](../crates/rustok-search/docs/implementation-plan.md)
 - [Документация интеграционного crate MCP](../crates/rustok-mcp/docs/README.md) — локальный RusToK-контекст, identity/policy/runtime-binding foundation и ссылки на официальный spec/SDK.
 - [План реализации MCP](../crates/rustok-mcp/docs/implementation-plan.md) — только RusToK integration plan; foundation `persisted clients/tokens/policies/audit + management API`, session-start runtime binding, live binding Alloy scaffold tools к persisted draft store и persisted Alloy scaffold draft control plane уже подняты в `apps/server`, а первый реальный Alloy product-slice — `alloy_scaffold_module` с review/apply boundary; следующие слои: remote transport bootstrap и admin UI.
 - [Документация модуля Tenant](../crates/rustok-tenant/docs/README.md)
@@ -327,6 +334,7 @@ UI-пакеты Next.js публикуются локально и живут в
 - `rustok-mcp`: [README](../crates/rustok-mcp/README.md), [docs/README](../crates/rustok-mcp/docs/README.md) — MCP adapter crate поверх официального `rmcp` с identity/policy/runtime foundation; локальные docs ссылаются на upstream как на источник истины
 - `rustok-outbox`: [README](../crates/rustok-outbox/README.md), [docs/README](../crates/rustok-outbox/docs/README.md), [docs/implementation-plan](../crates/rustok-outbox/docs/implementation-plan.md)
 - `rustok-pages`: [README](../crates/rustok-pages/README.md), [docs/README](../crates/rustok-pages/docs/README.md), [docs/implementation-plan](../crates/rustok-pages/docs/implementation-plan.md)
+- `rustok-search`: [README](../crates/rustok-search/README.md), [docs/README](../crates/rustok-search/docs/README.md), [docs/implementation-plan](../crates/rustok-search/docs/implementation-plan.md)
 - `rustok-workflow`: [README](../crates/rustok-workflow/README.md), [docs/README](../crates/rustok-workflow/docs/README.md), [docs/implementation-plan](../crates/rustok-workflow/docs/implementation-plan.md) — workflow domain + module-owned GraphQL/REST adapters
 - `rustok-rbac`: [README](../crates/rustok-rbac/README.md), [docs/README](../crates/rustok-rbac/docs/README.md), [docs/implementation-plan](../crates/rustok-rbac/docs/implementation-plan.md)
 - `rustok-telemetry`: [README](../crates/rustok-telemetry/README.md), [docs/README](../crates/rustok-telemetry/docs/README.md), [docs/implementation-plan](../crates/rustok-telemetry/docs/implementation-plan.md)

@@ -1,0 +1,116 @@
+use sea_orm::entity::prelude::*;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+};
+use uuid::Uuid;
+
+use crate::engine::SearchEngineKind;
+use crate::models::SearchSettingsRecord;
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[sea_orm(table_name = "search_settings")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: Uuid,
+    pub tenant_id: Option<Uuid>,
+    pub active_engine: String,
+    pub fallback_engine: String,
+    pub config: Json,
+    pub updated_at: DateTimeWithTimeZone,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+pub struct SearchSettingsService;
+
+impl SearchSettingsService {
+    pub async fn load_effective(
+        db: &DatabaseConnection,
+        tenant_id: Option<Uuid>,
+    ) -> Result<SearchSettingsRecord, DbErr> {
+        if let Some(tenant_id) = tenant_id {
+            if let Some(model) = Entity::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .order_by_desc(Column::UpdatedAt)
+                .one(db)
+                .await?
+            {
+                return Ok(map_model(model));
+            }
+        }
+
+        if let Some(model) = Entity::find()
+            .filter(Column::TenantId.is_null())
+            .order_by_desc(Column::UpdatedAt)
+            .one(db)
+            .await?
+        {
+            return Ok(map_model(model));
+        }
+
+        Ok(SearchSettingsRecord::default_for_tenant(tenant_id))
+    }
+
+    pub async fn save(
+        db: &DatabaseConnection,
+        tenant_id: Option<Uuid>,
+        active_engine: SearchEngineKind,
+        fallback_engine: SearchEngineKind,
+        config: serde_json::Value,
+    ) -> Result<SearchSettingsRecord, DbErr> {
+        let existing = if let Some(tenant_id) = tenant_id {
+            Entity::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .order_by_desc(Column::UpdatedAt)
+                .one(db)
+                .await?
+        } else {
+            Entity::find()
+                .filter(Column::TenantId.is_null())
+                .order_by_desc(Column::UpdatedAt)
+                .one(db)
+                .await?
+        };
+
+        let now: DateTimeWithTimeZone = chrono::Utc::now().into();
+
+        let model = match existing {
+            Some(existing) => {
+                let mut active: ActiveModel = existing.into();
+                active.active_engine = Set(active_engine.as_str().to_string());
+                active.fallback_engine = Set(fallback_engine.as_str().to_string());
+                active.config = Set(config.into());
+                active.updated_at = Set(now);
+                active.update(db).await?
+            }
+            None => {
+                ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    tenant_id: Set(tenant_id),
+                    active_engine: Set(active_engine.as_str().to_string()),
+                    fallback_engine: Set(fallback_engine.as_str().to_string()),
+                    config: Set(config.into()),
+                    updated_at: Set(now),
+                }
+                .insert(db)
+                .await?
+            }
+        };
+
+        Ok(map_model(model))
+    }
+}
+
+fn map_model(model: Model) -> SearchSettingsRecord {
+    SearchSettingsRecord {
+        id: model.id,
+        tenant_id: model.tenant_id,
+        active_engine: SearchEngineKind::from_db_value(&model.active_engine),
+        fallback_engine: SearchEngineKind::from_db_value(&model.fallback_engine),
+        config: model.config,
+        updated_at: model.updated_at.into(),
+    }
+}

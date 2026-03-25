@@ -32,7 +32,7 @@
 ### A. Контракт и зона ответственности
 
 - [ ] Подтверждён актуальный контракт библиотеки (public API, обязательные сценарии).
-- [ ] Подтверждён список потребителей (`apps/admin`, `apps/storefront`, при необходимости `apps/next-*`).
+- [ ] Подтверждён список потребителей (`apps/admin`, `apps/storefront`, `UI/leptos`; при необходимости дополнительные host-приложения).
 - [ ] Проверено, что обязательные сценарии проходят через библиотеку.
 
 ### B. Поиск bypass-реализаций
@@ -101,25 +101,27 @@
 ### Центральные документы
 
 - [Карта документации](../index.md)
-- [Глобальный план верификации платформы](../PLATFORM_VERIFICATION_PLAN.md)
-- [UI Overview / Internal UI workspace](../UI/README.md)
-- [Rust UI Component Catalog](../UI/rust-ui-component-catalog.md)
-- [Leptos Storefront Notes](../UI/storefront.md)
-- [GraphQL Architecture](../UI/graphql-architecture.md)
+- [Главный план верификации платформы](./PLATFORM_VERIFICATION_PLAN.md)
+- [План foundation-верификации](./platform-foundation-verification-plan.md)
+- [План верификации frontend-поверхностей](./platform-frontend-surfaces-verification-plan.md)
+- [Обзор UI / Internal UI workspace](../UI/README.md)
+- [Каталог Rust UI-компонентов](../UI/rust-ui-component-catalog.md)
+- [Заметки по Leptos Storefront](../UI/storefront.md)
+- [Архитектура GraphQL](../UI/graphql-architecture.md)
 
 ### Приложения-потребители
 
-- [Leptos Admin docs](../../apps/admin/docs/README.md)
-- [Leptos Storefront docs](../../apps/storefront/docs/README.md)
+- [Документация Leptos Admin](../../apps/admin/docs/README.md)
+- [Документация Leptos Storefront](../../apps/storefront/docs/README.md)
 
 ### Библиотеки (пример точек входа)
 
-- [leptos-auth README](../../crates/leptos-auth/README.md)
-- [leptos-forms README](../../crates/leptos-forms/README.md)
-- [leptos-zustand README](../../crates/leptos-zustand/README.md)
-- [leptos-graphql README](../../crates/leptos-graphql/README.md)
-- [leptos-shadcn-pagination README](../../crates/leptos-shadcn-pagination/README.md)
-- [leptos-ui README](../../crates/leptos-ui/README.md)
-- [leptos-zod README](../../crates/leptos-zod/README.md)
-- [leptos-table README](../../crates/leptos-table/README.md)
-- [leptos-hook-form README](../../crates/leptos-hook-form/README.md)
+- [README `leptos-auth`](../../crates/leptos-auth/README.md)
+- [README `leptos-forms`](../../crates/leptos-forms/README.md)
+- [README `leptos-zustand`](../../crates/leptos-zustand/README.md)
+- [README `leptos-graphql`](../../crates/leptos-graphql/README.md)
+- [README `leptos-shadcn-pagination`](../../crates/leptos-shadcn-pagination/README.md)
+- [README `leptos-ui`](../../crates/leptos-ui/README.md)
+- [README `leptos-zod`](../../crates/leptos-zod/README.md)
+- [README `leptos-table`](../../crates/leptos-table/README.md)
+- [README `leptos-hook-form`](../../crates/leptos-hook-form/README.md)

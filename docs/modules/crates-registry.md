@@ -5,15 +5,17 @@
 - зону ответственности crate'ов;
 - их публичные entry points;
 - недопустимые обходы модульного слоя;
-- разделение между runtime-модулями и platform capabilities.
+- различие между platform modules, shared libraries и support/capability crates.
 
 ## Важная граница
 
-RusToK использует смешанную архитектуру:
+Этот документ описывает **все crate'ы**, а не только platform modules.
 
-- runtime-модули живут в `crates/rustok-*` и регистрируются через `ModuleRegistry`;
-- platform/core функциональность остаётся в `apps/server` и shared crate'ах;
-- capability-слои вроде Alloy не обязаны быть runtime-модулями.
+Правило терминов:
+
+- platform modules получают статус только `Core` или `Optional` и определяются через `modules.toml`;
+- crate — это техническая форма упаковки;
+- рядом с module-crates живут shared libraries и support/capability crates.
 
 ## Единый реестр
 
@@ -32,7 +34,7 @@ RusToK использует смешанную архитектуру:
 | `rustok-index` | Индексация и search contracts. | `IndexModule`, `Indexer`, `LocaleIndexer`. | Строить ad-hoc индексацию мимо index contracts. |
 | `rustok-rbac` | Authorization contracts и Casbin-backed runtime. | `RbacModule`, `PermissionResolver`, `PermissionAuthorizer`, `AuthzEngine`. | Возвращаться к hardcoded role checks в server-коде. |
 | `rustok-tenant` | Tenant lifecycle и module enablement. | `TenantModule`, `TenantService`, tenant DTOs. | Менять tenant/module configuration напрямую в приложениях или SQL. |
-| `rustok-outbox` | Transactional outbox и relay contracts. | `TransactionalEventBus`, `OutboxRelay`, `OutboxTransport`. | Публиковать критичные межмодульные события мимо outbox. |
+| `rustok-outbox` | Core-модуль transactional outbox и relay contracts. | `OutboxModule`, `TransactionalEventBus`, `OutboxRelay`, `OutboxTransport`. | Публиковать критичные межмодульные события мимо outbox. |
 | `rustok-iggy` | Event streaming transport runtime. | `IggyTransport`, topology/DLQ/replay managers. | Писать parallel transport-runtime для тех же потоков в сервисах. |
 | `rustok-iggy-connector` | Подключение к Iggy и message I/O abstractions. | `IggyConnector`, `MessageSubscriber`, connector configs. | Обходить connector-абстракцию прямыми ad-hoc подключениями. |
 | `rustok-telemetry` | Observability bootstrap. | `init`, `TelemetryConfig`, `render_metrics`, `current_trace_id`. | Настраивать разрозненные telemetry pipelines в разных модулях. |
@@ -41,7 +43,7 @@ RusToK использует смешанную архитектуру:
 
 ## Runtime registry RBAC contract
 
-Для runtime-модулей, которые реально регистрируются в `apps/server/src/modules/mod.rs`, канонический
+Для модулей, которые реально регистрируются в `apps/server/src/modules/mod.rs`, канонический
 RBAC-контракт задаётся тремя источниками:
 
 - `RusToKModule::permissions()`;

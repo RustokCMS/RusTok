@@ -112,7 +112,7 @@ pub fn router() -> Router {
             ),
         )
         .route(
-            "/modules/:route_segment",
+            "/modules/{route_segment}",
             get(
                 |Path(route_segment): Path<String>,
                  axum::extract::Query(params): axum::extract::Query<

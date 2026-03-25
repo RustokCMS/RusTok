@@ -1,6 +1,6 @@
-//! RusToK Index - CQRS Read Model
+//! RusToK Index - Cross-module read model
 //!
-//! Denormalized indexes for fast reads and full-text search.
+//! Denormalized indexes for fast reads, linking, and cross-module filtering.
 
 use async_trait::async_trait;
 use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
@@ -29,7 +29,7 @@ impl RusToKModule for IndexModule {
     }
 
     fn description(&self) -> &'static str {
-        "CQRS Read Model (Fast Search)"
+        "Cross-module index and read-model substrate."
     }
 
     fn version(&self) -> &'static str {

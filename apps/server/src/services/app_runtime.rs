@@ -25,6 +25,7 @@ use crate::services::marketplace_catalog::{
     MarketplaceCatalogService, SharedMarketplaceCatalogService,
 };
 use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
+use crate::services::search_dispatcher::spawn_search_dispatcher;
 use rustok_cache::CacheService;
 
 pub struct AppRuntimeBootstrap {
@@ -70,6 +71,7 @@ pub async fn bootstrap_app_runtime(
     let event_runtime = build_event_runtime(ctx).await?;
     ctx.shared_store.insert(event_runtime.transport.clone());
     spawn_index_dispatcher(ctx, settings);
+    spawn_search_dispatcher(ctx);
     ctx.shared_store.insert(Arc::new(event_runtime));
     ctx.shared_store
         .insert(crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));

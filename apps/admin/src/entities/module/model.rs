@@ -75,11 +75,26 @@ pub struct MarketplaceModule {
     pub recommended_admin_surfaces: Vec<String>,
     #[serde(rename = "showcaseAdminSurfaces")]
     pub showcase_admin_surfaces: Vec<String>,
+    #[serde(default, rename = "settingsSchema")]
+    pub settings_schema: Vec<ModuleSettingField>,
     pub installed: bool,
     #[serde(rename = "installedVersion")]
     pub installed_version: Option<String>,
     #[serde(rename = "updateAvailable")]
     pub update_available: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ModuleSettingField {
+    pub key: String,
+    #[serde(rename = "type")]
+    pub value_type: String,
+    pub required: bool,
+    #[serde(rename = "defaultValue")]
+    pub default_value: Option<serde_json::Value>,
+    pub description: Option<String>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

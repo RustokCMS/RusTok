@@ -9,3 +9,29 @@ recommended_admin_surfaces = ["leptos-admin"]
 
 [dependencies]
 content = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "ForumModule"
+
+[provides.graphql]
+query = "graphql::ForumQuery"
+mutation = "graphql::ForumMutation"
+
+[provides.http]
+routes = "controllers::routes"
+
+[provides.admin_ui]
+leptos_crate = "rustok-forum-admin"
+route_segment = "forum"
+nav_label = "Forum"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-forum-storefront"
+slot = "home_after_catalog"
+route_segment = "forum"
+page_title = "Forum"
+
+[[provides.admin_ui.pages]]
+subpath = "categories"
+title = "Forum Categories"
+nav_label = "Categories"

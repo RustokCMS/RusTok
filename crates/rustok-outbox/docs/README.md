@@ -20,6 +20,17 @@ Module-specific outbox and transactional-publishing documentation must stay in t
 - relay/retry/DLQ semantics used by the server event runtime;
 - the write-side guarantee that domain changes and event persistence succeed or fail together.
 
+## Module status
+
+`rustok-outbox` is a **Core platform module** (`slug = "outbox"`).
+
+That status is independent from the technical wiring:
+
+- the module is registered in `ModuleRegistry`;
+- the server also wires outbox-specific event runtime pieces directly during bootstrap.
+
+Direct bootstrap does not make `rustok-outbox` a separate module category.
+
 ## Transactional publishing contract
 
 `TransactionalEventBus` guarantees that an event is persisted if and only if the surrounding transaction commits successfully.

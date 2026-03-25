@@ -597,4 +597,4 @@ cargo clippy --workspace -- -D warnings
 - [Стандарты кода](./coding.md) — детальный гайд
 - [Known Pitfalls](../ai/KNOWN_PITFALLS.md) — ловушки для AI-агентов
 - [Security Standards](./security.md) — OWASP coverage
-- [Plan верификации](../PLATFORM_VERIFICATION_PLAN.md) — глобальный чеклист проверки платформы
+- [Plan верификации](../verification/PLATFORM_VERIFICATION_PLAN.md) — главный orchestration-план периодической проверки платформы

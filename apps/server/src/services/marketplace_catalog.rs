@@ -10,7 +10,8 @@ use rustok_core::ModuleRegistry;
 use serde::Deserialize;
 
 use crate::modules::{
-    CatalogManifestModule, CatalogModuleVersion, ManifestManager, ModulesManifest,
+    CatalogManifestModule, CatalogModuleVersion, ManifestManager, ModuleSettingSpec,
+    ModulesManifest,
 };
 
 const REGISTRY_CATALOG_SCHEMA_VERSION: u32 = 1;
@@ -146,6 +147,8 @@ struct RegistryCatalogModule {
     recommended_admin_surfaces: Vec<String>,
     #[serde(default)]
     showcase_admin_surfaces: Vec<String>,
+    #[serde(default)]
+    settings_schema: HashMap<String, ModuleSettingSpec>,
 }
 
 impl RegistryCatalogModule {
@@ -176,6 +179,7 @@ impl RegistryCatalogModule {
             versions,
             recommended_admin_surfaces: self.recommended_admin_surfaces,
             showcase_admin_surfaces: self.showcase_admin_surfaces,
+            settings_schema: self.settings_schema,
         }
     }
 }
@@ -354,6 +358,7 @@ mod tests {
             versions: Vec::new(),
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
+            settings_schema: HashMap::new(),
         }
     }
 
@@ -428,6 +433,7 @@ mod tests {
             }],
             recommended_admin_surfaces: vec!["leptos-admin".to_string()],
             showcase_admin_surfaces: vec!["next-admin".to_string()],
+            settings_schema: HashMap::new(),
         }
         .into_catalog_module();
 

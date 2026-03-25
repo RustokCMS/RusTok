@@ -143,7 +143,7 @@ fn build_optional_module_entry(
     slug: String,
     spec: ModuleSpec,
 ) -> Result<Option<OptionalModuleEntry>, Box<dyn std::error::Error>> {
-    if spec.required || spec.crate_name == "rustok-outbox" {
+    if spec.required {
         return Ok(None);
     }
 

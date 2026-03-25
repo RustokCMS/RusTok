@@ -26,7 +26,10 @@ serde = { workspace = true, features = ["derive"] }
 futures = "0.3"
 rustok-api.workspace = true
 rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront" }
+rustok-content-storefront = { path = "../../crates/rustok-content/storefront" }
+rustok-forum-storefront = { path = "../../crates/rustok-forum/storefront" }
 rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront" }
+rustok-search-storefront = { path = "../../crates/rustok-search/storefront" }
 
 [build-dependencies]
 leptos_i18n_build = { workspace = true }
@@ -48,5 +51,8 @@ normal = [
   "leptos_query",
   "leptos_router",
   "rustok-blog-storefront",
+  "rustok-content-storefront",
+  "rustok-forum-storefront",
   "rustok-pages-storefront",
+  "rustok-search-storefront",
 ]

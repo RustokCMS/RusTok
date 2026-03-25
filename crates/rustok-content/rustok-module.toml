@@ -6,3 +6,24 @@ description = "Core content and node module"
 ownership = "first_party"
 trust_level = "verified"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[crate]
+entry_type = "ContentModule"
+
+[provides.graphql]
+query = "graphql::ContentQuery"
+mutation = "graphql::ContentMutation"
+
+[provides.http]
+routes = "controllers::routes"
+
+[provides.admin_ui]
+leptos_crate = "rustok-content-admin"
+route_segment = "content"
+nav_label = "Content"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-content-storefront"
+slot = "home_after_hero"
+route_segment = "content"
+page_title = "Content"

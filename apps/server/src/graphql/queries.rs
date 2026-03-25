@@ -16,8 +16,8 @@ use crate::graphql::common::{encode_cursor, PageInfo, PaginationInput};
 use crate::graphql::errors::GraphQLError;
 use crate::graphql::types::{
     ActivityItem, ActivityUser, BuildJob, DashboardStats, InstalledModule, MarketplaceModule,
-    MarketplaceModuleVersion, ModuleRegistryItem, ReleaseInfo, Tenant, TenantModule, User,
-    UserConnection, UserEdge, UsersFilter,
+    MarketplaceModuleVersion, ModuleRegistryItem, ModuleSettingField, ReleaseInfo, Tenant,
+    TenantModule, User, UserConnection, UserEdge, UsersFilter,
 };
 use crate::models::_entities::tenant_modules::Column as TenantModulesColumn;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
@@ -374,12 +374,27 @@ fn marketplace_module_from_catalog_entry(
         compatible,
         recommended_admin_surfaces: entry.recommended_admin_surfaces,
         showcase_admin_surfaces: entry.showcase_admin_surfaces,
+        settings_schema: settings_schema_fields(&entry.settings_schema),
         installed: installed_module.is_some(),
         installed_version: installed_version.clone(),
         update_available: installed_version
             .as_ref()
             .is_some_and(|version| version != &latest_version),
     }
+}
+
+fn settings_schema_fields(
+    schema: &HashMap<String, crate::modules::ModuleSettingSpec>,
+) -> Vec<ModuleSettingField> {
+    let mut keys = schema.keys().cloned().collect::<Vec<_>>();
+    keys.sort();
+    keys.into_iter()
+        .filter_map(|key| {
+            schema
+                .get(&key)
+                .map(|spec| ModuleSettingField::from_spec(key, spec))
+        })
+        .collect()
 }
 
 fn marketplace_modules_from_catalog(
@@ -550,6 +565,9 @@ impl RootQuery {
                         .unwrap_or_default(),
                     showcase_admin_surfaces: catalog_entry
                         .map(|entry| entry.showcase_admin_surfaces.clone())
+                        .unwrap_or_default(),
+                    settings_schema: catalog_entry
+                        .map(|entry| settings_schema_fields(&entry.settings_schema))
                         .unwrap_or_default(),
                 }
             })
@@ -1143,6 +1161,7 @@ mod tests {
     };
     use crate::graphql::types::MarketplaceModule;
     use crate::modules::CatalogManifestModule;
+    use std::collections::HashMap;
 
     fn catalog_module(min: Option<&str>, max: Option<&str>) -> CatalogManifestModule {
         CatalogManifestModule {
@@ -1165,6 +1184,7 @@ mod tests {
             versions: Vec::new(),
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
+            settings_schema: HashMap::new(),
         }
     }
 
@@ -1211,6 +1231,7 @@ mod tests {
             compatible: true,
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
+            settings_schema: Vec::new(),
             installed: false,
             installed_version: None,
             update_available: false,
@@ -1243,6 +1264,7 @@ mod tests {
             compatible: true,
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
+            settings_schema: Vec::new(),
             installed: false,
             installed_version: None,
             update_available: false,

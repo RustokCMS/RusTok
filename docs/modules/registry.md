@@ -1,10 +1,17 @@
-﻿# Реестр модулей и приложений
+# Реестр модулей и приложений
 
-Документ фиксирует актуальную карту компонентов RusToK и границы между:
+Документ фиксирует актуальную карту компонентов RusToK и разделяет три разные вещи:
 
-- runtime-модулями, которые регистрируются в `ModuleRegistry`;
-- platform/core crate'ами;
-- module-agnostic capability-слоями, которые не являются tenant-toggle модулями.
+- **platform modules** — архитектурные модули платформы из `modules.toml`;
+- **crate** — техническую форму упаковки в Cargo;
+- **library/support crates** — вспомогательные crate'ы, которые лежат рядом с модулями, но не получают статус `Core` или `Optional`.
+
+## Главные правила
+
+1. Для platform modules существует только два статуса: `Core` и `Optional`.
+2. Источник истины по составу platform modules — `modules.toml`.
+3. `ModuleRegistry`, bootstrap в `apps/server` и codegen в `build.rs` — это способы wiring, а не отдельные типы модулей.
+4. `rustok-outbox` — **Core module**. То, что event runtime использует его ещё и напрямую, не меняет его архитектурный статус.
 
 ## Верхнеуровневая схема
 
@@ -18,39 +25,45 @@ graph TD
         NEXT_FRONT["apps/next-frontend"]
     end
 
-    subgraph Runtime Modules
+    subgraph CoreModules["Core modules"]
+        AUTH["rustok-auth"]
+        CACHE["rustok-cache"]
+        EMAIL["rustok-email"]
         INDEX["rustok-index"]
+        SEARCH["rustok-search"]
+        OUTBOX["rustok-outbox"]
         TENANT["rustok-tenant"]
         RBAC["rustok-rbac"]
+    end
+
+    subgraph OptionalModules["Optional modules"]
         CONTENT["rustok-content"]
         COMMERCE["rustok-commerce"]
         BLOG["rustok-blog"]
         FORUM["rustok-forum"]
         PAGES["rustok-pages"]
-        WORKFLOW["rustok-workflow"]
         MEDIA["rustok-media"]
+        WORKFLOW["rustok-workflow"]
     end
 
-    subgraph Platform Core
+    subgraph SupportCrates["Libraries / support crates"]
         CORE["rustok-core"]
         API["rustok-api"]
         EVENTS["rustok-events"]
-        OUTBOX["rustok-outbox"]
-        CACHE["rustok-cache"]
         STORAGE["rustok-storage"]
-        IGGY["rustok-iggy"]
-        IGGY_CONN["rustok-iggy-connector"]
+        IGGY["rustok-iggy + connector"]
         TELEMETRY["rustok-telemetry"]
         MCP["rustok-mcp"]
+        ALLOY["alloy + alloy-scripting"]
         FLEX["flex"]
     end
 
-    subgraph Platform Capabilities
-        ALLOY["alloy + alloy-scripting"]
-    end
-
-    SERVER --> API
+    SERVER --> AUTH
+    SERVER --> CACHE
+    SERVER --> EMAIL
     SERVER --> INDEX
+    SERVER --> SEARCH
+    SERVER --> OUTBOX
     SERVER --> TENANT
     SERVER --> RBAC
     SERVER --> CONTENT
@@ -58,87 +71,91 @@ graph TD
     SERVER --> BLOG
     SERVER --> FORUM
     SERVER --> PAGES
-    SERVER --> WORKFLOW
     SERVER --> MEDIA
-    SERVER --> ALLOY
+    SERVER --> WORKFLOW
 
     BLOG --> CONTENT
     FORUM --> CONTENT
-    CONTENT --> MEDIA
-    COMMERCE --> MEDIA
-    WORKFLOW --> CORE
-
-    API --> CORE
+    PAGES --> CONTENT
+    OUTBOX --> EVENTS
     OUTBOX --> IGGY
-    IGGY --> IGGY_CONN
     MEDIA --> STORAGE
-    ALLOY --> MCP
+    SERVER --> API
+    SERVER --> CORE
+    SERVER --> TELEMETRY
+    SERVER --> MCP
+    SERVER --> ALLOY
+    SERVER --> FLEX
 ```
 
-## Что считается runtime-модулем
+## Platform modules
 
-Runtime-модуль в RusToK:
+### Core modules
 
-- реализует `RusToKModule`;
-- регистрируется через `apps/server/src/modules/mod.rs`;
-- может иметь `permissions()` и `dependencies()`;
-- участвует в tenant module lifecycle, если это `ModuleKind::Optional`.
+Core modules всегда включены в платформу, отражены в `modules.toml` как `required = true` и регистрируются в runtime как `ModuleKind::Core`.
 
-## Актуальный runtime registry
+| Slug | Crate | Роль |
+|---|---|---|
+| `auth` | `rustok-auth` | JWT lifecycle, credentials, token flows |
+| `cache` | `rustok-cache` | Cache backend factory, Redis/in-memory fallback |
+| `email` | `rustok-email` | SMTP transport, templates, delivery lifecycle |
+| `index` | `rustok-index` | Cross-module indexing, links, denormalized read-model substrate |
+| `search` | `rustok-search` | Product-facing search, engine selection, connector-ready contracts |
+| `outbox` | `rustok-outbox` | Transactional event persistence, relay, retry, DLQ |
+| `tenant` | `rustok-tenant` | Tenant lifecycle и module enablement |
+| `rbac` | `rustok-rbac` | Permissions, authorization, role/policy runtime |
 
-### Core-модули
+### Optional modules
 
-| Slug | Crate | Статус | Назначение |
-|---|---|---|---|
-| `index` | `rustok-index` | `Core` | Индексация и поисковые контракты |
-| `tenant` | `rustok-tenant` | `Core` | Tenant lifecycle и tenant metadata |
-| `rbac` | `rustok-rbac` | `Core` | RBAC lifecycle и authorization contracts |
+Optional modules компонуются в сборку и затем могут включаться или отключаться для tenant'а через `tenant_modules`.
 
-### Optional-модули
-
-| Slug | Crate | Зависимости | Назначение |
+| Slug | Crate | Зависимости | Роль |
 |---|---|---|---|
 | `content` | `rustok-content` | — | Базовый контентный домен |
 | `commerce` | `rustok-commerce` | — | Commerce/catalog/inventory |
 | `blog` | `rustok-blog` | `content` | Блог поверх content |
 | `forum` | `rustok-forum` | `content` | Форум поверх content |
-| `pages` | `rustok-pages` | — | Страницы, блоки и меню |
-| `workflow` | `rustok-workflow` | — | Workflow automation, cron/webhook/manual triggers |
+| `pages` | `rustok-pages` | `content` | Страницы, блоки и меню |
+| `media` | `rustok-media` | — | Media lifecycle, upload, storage-facing API |
+| `workflow` | `rustok-workflow` | — | Workflow execution, templates, webhook ingress |
 
-### Всегда-компонуемые core/platform crate'ы
+## Runtime wiring
 
-| Crate | Роль |
+Текущая реализация использует несколько механизмов подключения, и это нормально:
+
+- `apps/server/src/modules/mod.rs` собирает `ModuleRegistry`;
+- `apps/server/build.rs` генерирует wiring для optional-модулей;
+- `apps/server/src/services/app_runtime.rs` и `event_transport_factory.rs` поднимают event runtime;
+- `modules.toml` и `apps/server/src/modules/manifest.rs` сверяют manifest и runtime.
+
+Важно: эти механизмы не создают отдельные типы модулей. Они лишь описывают, как модуль подключается к runtime.
+
+## Crate-слой вне taxonomy Core/Optional
+
+Не каждый crate в `crates/` является platform module. Рядом с модульными crate'ами живут библиотеки и support-компоненты.
+
+### Shared library crates
+
+| Crate | Назначение |
 |---|---|
-| `rustok-core` | Базовые платформенные контракты и типы |
-| `rustok-api` | Общий web/API слой для transport-адаптеров |
-| `rustok-events` | Канонический import point для событийных контрактов |
-| `rustok-outbox` | Transactional event delivery |
-| `rustok-cache` | Cache/runtime infra |
+| `rustok-core` | Базовые платформенные контракты и общие типы |
+| `rustok-api` | Общий host/API слой для transport-адаптеров |
+| `rustok-events` | Канонический import point для event contracts |
 | `rustok-storage` | Storage backend contracts |
-| `rustok-iggy` + `rustok-iggy-connector` | Streaming transport |
+| `rustok-test-utils` | Тестовые хелперы |
+
+### Infrastructure / capability crates
+
+| Crate | Назначение |
+|---|---|
+| `rustok-iggy` + `rustok-iggy-connector` | Streaming transport runtime |
 | `rustok-telemetry` | Observability bootstrap |
-| `rustok-mcp` | MCP adapter/server tool surface поверх официального MCP spec и Rust SDK `rmcp`, включая identity/policy foundation, session-start runtime binding hooks, pluggable scaffold draft store и первый Alloy product-slice `alloy_scaffold_module` с review/apply boundary; persisted clients/tokens/policies/audit, scaffold drafts + management API и DB-backed runtime bridge живут в `apps/server` |
+| `rustok-mcp` | MCP adapter/server surface |
+| `alloy` | Alloy transport/API shell |
+| `alloy-scripting` | Alloy runtime/engine capability |
 | `flex` | Extracted attached-mode contracts |
-| `rustok-media` | Core media runtime module, но по архитектурной роли также platform-level dependency для content/commerce |
 
-## Alloy: правильная позиция в архитектуре
-
-Alloy больше не трактуется как optional runtime-module.
-
-Актуальная модель:
-
-- `alloy-scripting` — runtime/engine capability crate;
-- `alloy` — transport-shell для GraphQL/REST Alloy;
-- Alloy не регистрируется в `ModuleRegistry`;
-- Alloy не участвует в `tenant_modules.is_enabled("alloy")`;
-- `workflow` может использовать Alloy только как capability для шага `alloy_script`, но не как runtime dependency;
-- каноническая внешняя integration-surface для Alloy находится рядом с `rustok-mcp`;
-- первый реальный созидательный Alloy-срез сейчас проходит через `rustok-mcp::alloy_scaffold_module` + `alloy_review_module_scaffold` + `alloy_apply_module_scaffold`, которые дают draft scaffold и явную review/apply boundary; при server-backed MCP runtime этот flow уже может работать поверх persisted draft store в `apps/server`, но всё ещё не подменяет полный codegen/publish pipeline;
-- для protocol/security/authorization поведения `rustok-mcp` локальные документы должны ссылаться на официальный MCP/rmcp upstream, а не дублировать спецификацию.
-
-## Компонентный каталог
-
-### Приложения
+## Приложения
 
 | Путь | Назначение |
 |---|---|
@@ -148,27 +165,20 @@ Alloy больше не трактуется как optional runtime-module.
 | `apps/next-admin` | Экспериментальный headless admin |
 | `apps/next-frontend` | Экспериментальный headless storefront |
 
-### Module-owned transport crates
+## Alloy
 
-| Crate | Что внутри |
-|---|---|
-| `rustok-content` | Content services + GraphQL/REST adapters |
-| `rustok-commerce` | Commerce services + GraphQL/REST adapters |
-| `rustok-blog` | Blog services + GraphQL/REST adapters |
-| `rustok-forum` | Forum services + GraphQL/REST adapters |
-| `rustok-pages` | Pages services + GraphQL/REST adapters |
-| `rustok-workflow` | Workflow services + GraphQL/REST adapters + webhook ingress |
-| `rustok-media` | Media services + GraphQL/REST adapters |
-| `alloy` | Alloy management/API transport shell поверх `alloy-scripting` |
+Alloy остаётся capability-слоем и не входит в taxonomy `Core/Optional` platform modules:
+
+- `alloy-scripting` — runtime/engine crate;
+- `alloy` — transport/API shell;
+- tenant lifecycle не управляет Alloy как обычным модулем;
+- workflow и MCP могут использовать Alloy как capability, но не как optional module dependency.
 
 ## Правило сопровождения
 
-При любом изменении состава runtime-модулей, capability-слоёв или крупных crate-зависимостей:
+При любом изменении состава модулей, их статуса или wiring:
 
 1. Обновить этот реестр.
 2. Обновить [docs/index.md](../index.md).
-3. Обновить локальные README/docs в затронутых crate'ах.
-
-
-
-
+3. Обновить [docs/modules/overview.md](./overview.md).
+4. Если поменялся runtime contract, обновить [docs/architecture/modules.md](../architecture/modules.md).

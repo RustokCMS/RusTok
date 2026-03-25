@@ -1,286 +1,123 @@
-# RusToK — Architecture Guide
+# Архитектурные принципы
 
-> **Дата:** 2026-02-06  
-> **Статус:** Актуальный. Дополняется при изменениях архитектурных принципов платформы.
+> Статус: current-state guidance
 
----
+Документ фиксирует принципы, по которым сейчас держится архитектура RusToK.
 
-## 1. Core Tenets
+## 1. Modular monolith
 
-### 1.1 CQRS-lite: Write vs Read
+RusToK — это modular monolith, а не набор независимых сервисов.
 
-```text
-WRITE: API → Service → SeaORM → PostgreSQL → EventBus
-READ:  User → Index Tables (denormalized) → Search Results
-```
+Следствия:
 
-| Write Model | Read Model |
-|-------------|------------|
-| Строгие 3NF таблицы | Денормализованные index-таблицы |
-| Транзакции, валидация | GIN-индексы, быстрый поиск |
-| Источник истины | Проекции для storefront |
+- общий composition root находится в `apps/server`;
+- platform modules компонуются в один runtime;
+- границы между модулями проходят по контрактам, а не по процессам.
 
-**Ключ:** "No Heavy JOINs on Storefront" — данные склеиваются в indexer при записи.
+## 2. Только две категории platform modules
 
-### 1.2 Evolvable Event Transport (L0 → L1 → L2)
+Для platform modules допустимы только:
 
-| Уровень | Транспорт | Когда |
-|---------|-----------|-------|
-| L0 | In-memory broadcast (mpsc) | Dev/MVP |
-| L1 | Outbox Pattern | Надёжность доставки |
-| L2 | Iggy Streaming | Highload, replay |
+- `Core`
+- `Optional`
 
-**Принцип:** Единый trait `EventTransport` — меняем уровень без переписывания логики.
+`Core` modules всегда активны.
+`Optional` modules участвуют в build/runtime flow и затем могут переключаться на tenant level.
 
-### 1.3 Modular Monolith
+Не допускается скрытая третья категория “почти модуль”, “обязательная capability, но не модуль” и т.п.
 
-- Модули изолированы и общаются через события
-- Нет прямых импортов доменных зависимостей между модулями
-- Интеграция только через `EventBus` и `Service Layer`
+## 3. Не смешивать роль, wiring и упаковку
 
----
+Нужно всегда различать три оси:
 
-## 2. Module Taxonomy
+- архитектурная роль: module / shared library / capability crate
+- модульный статус: `Core` / `Optional`
+- техническая упаковка: `crate`
 
-| Тип | Описание | Примеры |
-|-----|----------|---------|
-| **Core Components** | Инфраструктура, базовые кирпичики | `rustok-core`, `rustok-tenant` |
-| **Domain Modules** | Полноценные бизнес-вертикали | `rustok-commerce`, `rustok-content` |
-| **Wrapper Modules** | Надстройки без своих таблиц | `rustok-blog`, `rustok-forum` |
-| **Infrastructure** | Технические модули | `rustok-index`, `rustok-outbox` |
+Именно это убирает путаницу вида:
 
-### Wrapper Module Pattern
+- `crate != автоматически module`
+- `ModuleRegistry != классификатор архитектурных ролей`
+- `bootstrap wiring != отдельный тип модуля`
 
-```text
-rustok-blog  →  использует nodes с kind='post'  →  rustok-content
-rustok-forum →  использует nodes с kind='topic' →  rustok-content
-```
+## 4. Source of truth по модулям
 
-**Специализация без дублирования таблиц.**
+Состав platform modules задаётся через `modules.toml`.
 
----
+Дальше он обязан быть согласован с:
 
-## 3. Flex Module (Generic Content Builder)
+- `build_registry()`
+- manifest validation
+- build/codegen wiring
+- verification docs
 
-> ⚠️ **Новый концепт из архитектурного обсуждения**
+## 5. Server как host, а не второй доменный слой
 
-### 3.1 Определение
+`apps/server` владеет:
 
-**Flex** — опциональный вспомогательный модуль-конструктор данных для ситуаций, когда стандартных модулей недостаточно.
+- transport
+- runtime wiring
+- auth/session integration
+- RBAC enforcement path
+- operational endpoints
 
-Позволяет:
+`apps/server` не должен становиться местом для накапливания domain logic, если для неё уже есть модульный crate.
 
-- Определять динамические схемы (runtime) с типами и валидацией
-- Хранить записи в JSONB
-- Прикреплять данные к сущностям других модулей (attached behavior)
-- Интегрироваться через события и индексатор
+## 6. Write-side correctness важнее convenience
 
-### 3.2 Правила (HARD LAWS)
+Write-side операции должны оставаться:
 
-| # | Правило |
-|---|---------|
-| 1 | **Standard modules NEVER depend on Flex** |
-| 2 | Flex depends only on `rustok-core` (events/tenant/rbac) |
-| 3 | **Removal-safe:** отключение Flex не ломает платформу |
-| 4 | Read model через индексатор, не через runtime JOIN |
+- транзакционными
+- tenant-safe
+- RBAC-aware
+- совместимыми с event contract
 
-### 3.3 Guardrails (обязательны)
+События публикуются через transactional path там, где нужна атомарность write + event persistence.
 
-- ⬜ TODO: Строгая валидация JSONB по schema на запись
-- ⬜ TODO: Лимит на число полей (например 50)
-- ⬜ TODO: Лимит глубины вложенности/связей
-- ⬜ TODO: Обязательная пагинация
-- ⬜ TODO: Запрет в критических доменах (orders/payments/inventory)
+## 7. Read-side отделён от write-side
 
-### 3.4 Когда использовать
+RusToK держит:
 
-✅ **Используем:**
+- write-side в нормализованных доменных данных;
+- read-side в индексах, проекциях и fast-query surfaces.
 
-- Кастомные поля/структуры для edge-cases
-- Маркетинговые лендинги, формы, баннеры
-- Справочники с произвольными полями
+Это позволяет:
 
-❌ **НЕ используем:**
+- не тащить тяжёлые JOIN в storefront/read paths;
+- держать доменные инварианты в сервисах;
+- эволюционировать consumers и projections независимо.
 
-- Если кейс закрывается стандартными модулями
-- Как основу для товаров/заказов/оплат
-- Для критических финансовых данных
+## 8. Capability crates не подменяют module taxonomy
 
-### 3.5 Data Model (предварительная)
+Capability/support crates вроде:
 
-```sql
--- Определения схем
-CREATE TABLE flex_schemas (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL REFERENCES tenants(id),
-    slug            VARCHAR(64) NOT NULL,
-    name            VARCHAR(255) NOT NULL,
-    fields_config   JSONB NOT NULL,  -- описание полей
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (tenant_id, slug)
-);
+- `alloy`
+- `alloy-scripting`
+- `rustok-mcp`
+- `rustok-telemetry`
 
--- Записи данных (attached behavior)
-CREATE TABLE flex_entries (
-    id              UUID PRIMARY KEY,
-    tenant_id       UUID NOT NULL,
-    schema_id       UUID NOT NULL REFERENCES flex_schemas(id),
-    entity_type     VARCHAR(64),  -- 'product', 'user', etc.
-    entity_id       UUID,         -- ID сущности в другом модуле
-    data            JSONB NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+не должны описываться как обычные tenant-toggle modules, если они такими не являются.
 
-CREATE INDEX idx_flex_entries_data ON flex_entries USING GIN (data);
-```
+Но и обратное тоже верно: если компонент объявлен как platform module, он обязан жить в taxonomy `Core/Optional`.
 
----
+## 9. Документация должна отражать код
 
-## 4. Content ↔ Commerce Strategy
+Если код и docs расходятся, приоритет у текущего кода, а docs должны быть обновлены.
 
-**Решение:** Commerce владеет своими данными (SEO, rich description), Index собирает композитную картину.
+Особенно это касается:
 
-| Подход | Описание | Статус |
-|--------|----------|--------|
-| ~~Product → content.node_id~~ | Явная связь контекстов | ❌ Отклонён |
-| **Commerce owns data** | Автономность bounded contexts | ✅ Выбран |
+- module taxonomy
+- event flow
+- API surface
+- host wiring
+- tenant/RBAC boundaries
 
-```text
-Commerce: SEO fields + rich description (JSONB)
-    ↓ events
-Index: Композитный read model для storefront
-```
+## 10. Любое boundary-change требует синхронного обновления
 
-- ⬜ TODO: Зафиксировать как canonical approach в манифесте
+При изменении архитектурных границ нужно обновлять одновременно:
 
----
-
-## 5. RBAC Strategy
-
-### 5.1 Source Of Truth And Runtime Boundary
-
-- Канонические RBAC-связи хранятся в relation-таблицах `roles`, `permissions`, `user_roles`, `role_permissions`.
-- `rustok-core` остаётся владельцем базовых RBAC primitives: `Permission`, `Resource`, `Action`, `UserRole`, `SecurityContext`.
-- `crates/rustok-rbac` владеет policy/evaluator-логикой, Casbin model builder, resolver contracts (`PermissionResolver`, `RuntimePermissionResolver`) и публичным authorization API.
-- `apps/server` больше не реализует отдельный RBAC engine: в сервере живут только adapter/wiring-слой (SeaORM store, Moka cache, `RbacService`, metrics, transport integration).
-- Живой decision path один: `casbin_only`. Relation graph остаётся источником permission data, но не отдельным runtime engine.
-
-### 5.2 Permission Model
-
-Канонический формат permission:
-
-```text
-<resource>:<action>
-```
-
-Примеры: `products:create`, `orders:manage`, `blog_posts:publish`, `workflow_executions:list`
-
-- Wildcard-семантика задаётся через `manage` и централизованно применяется общими policy helpers из `rustok-rbac`.
-- Tenant-изоляция обеспечивается не именованием permission, а tenant-filtered relation store и server-side resolver adapters.
-- Новые ресурсы и действия должны добавляться в типизированные enum/const contracts, а не через строковые adhoc-соглашения в handlers.
-
-### 5.3 Operating Rules
-
-- Для live runtime не допускается второй authorization engine или shadow/parity branch.
-- HTTP/GraphQL transport-слои и admin/server adapters должны использовать единый enforcement path через `RbacService` и модульные `rustok-rbac` helpers.
-- RBAC runtime не должен возвращаться к mode-switch конфигурации; live contract фиксирован на одном Casbin engine.
-- История migration/cutover фиксируется в ADR и специальных architecture docs, но не определяет текущий runtime contract.
-
----
-
-## 6. Migrations Convention
-
-### 6.1 Naming Format
-
-```
-mYYYYMMDD_<module>_<nnn>_<description>.rs
-```
-
-Примеры:
-
-- `m20250201_content_001_create_nodes.rs`
-- `m20250201_commerce_001_create_products.rs`
-- `m20250201_commerce_002_create_variants.rs`
-
-### 6.2 Правила
-
-- ⬜ TODO: Префикс модуля исключает коллизии
-- ⬜ TODO: Одна миграция — одна цель
-- ⬜ TODO: При параллельной работе — координация через module prefix
-
----
-
-## 7. Observability & Health
-
-### 7.1 Endpoints
-
-| Endpoint | Назначение |
-|----------|------------|
-| `/health/live` | Liveness probe (K8s) |
-| `/health/ready` | Readiness probe |
-| `/health/modules` | Агрегированный health по модулям |
-
-### 7.2 Status / TODO
-
-- ✅ Реализованы `/health/live`, `/health/ready`, `/health/modules`.
-- ✅ Реализована агрегация readiness по критичным/некритичным зависимостям и модулям.
-- ✅ Readiness-ответ унифицирован: `status`, `checks`, `modules`, `degraded_reasons`, latency и reason per-check.
-- ⬜ TODO: Structured logging + correlation IDs
-- ⬜ TODO: Prometheus metrics endpoint
-
----
-
-## 8. API Versioning
-
-| API | Стратегия |
-|-----|-----------|
-| REST | URL-based: `/api/v1/products` |
-| GraphQL | Schema evolution: deprecated fields + новые поля |
-
-- ⬜ TODO: Зафиксировать до первого production deployment
-
----
-
-## 9. Alloy Scripting (скрытая сложность)
-
-> ⚠️ **Требует особого внимания**
-
-### 9.1 Ограничения
-
-| Аспект | Правило |
-|--------|---------|
-| Где выполняется | **Только async:** background workers, event handlers |
-| Request path | ❌ Запрещено (узкое место) |
-| Лимиты | Timeout, memory, CPU |
-| Sandbox | Ограниченный доступ к системе |
-
-- ⬜ TODO: Формализовать sandboxing и limits
-- ⬜ TODO: Документировать "Alloy is async-only by default"
-
----
-
-## 10. Testing Strategy
-
-### 10.1 Уровни тестирования
-
-| Уровень | Назначение |
-|---------|------------|
-| Unit | Изолированная логика модулей |
-| Integration | Cross-module flows через events |
-| E2E | Полный путь tenant → module → entity → index |
-
-### 10.2 Test Utilities (TODO)
-
-- ⬜ TODO: Mock `EventTransport` в `rustok-core`
-- ⬜ TODO: In-memory database setup
-- ⬜ TODO: Test tenant factory
-
----
-
-## См. также
-
-- [docs/index.md](../index.md) — карта актуальной документации
-- [architecture/flex.md](./flex.md) — спецификация и план реализации Flex
-- [MANIFEST_ADDENDUM.md](../MANIFEST_ADDENDUM.md) — дополнения к манифесту
-
+1. локальные docs компонента
+2. central docs в `docs/`
+3. `docs/index.md`
+4. verification plans
+5. ADR, если изменение нетривиально

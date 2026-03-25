@@ -4,17 +4,26 @@
 
 ## Документы
 
-## Mandatory core modules baseline
+## Mandatory platform baseline
 
-Для `apps/server` обязательные core-модули платформы:
-- `rustok-index` — **Core, critical**
-- `rustok-tenant` — **Core, critical**
-- `rustok-rbac` — **Core, critical**
-- `rustok-core` — **Core, critical**
-- `rustok-outbox` — **Core, critical**
-- `rustok-telemetry` — **Core, critical**
+Для `apps/server` обязательный baseline нужно читать в двух слоях.
 
-Агентам: считать этот список обязательным baseline платформы. Логика tenant-toggle/disable для core-модулей централизованно контролируется в `ModuleLifecycleService`.
+Platform `Core` modules:
+- `rustok-auth`
+- `rustok-cache`
+- `rustok-email`
+- `rustok-index`
+- `rustok-outbox`
+- `rustok-tenant`
+- `rustok-rbac`
+
+Shared foundation / support crates:
+- `rustok-core`
+- `rustok-events`
+- `rustok-telemetry`
+- `rustok-api`
+
+Агентам: считать этот baseline обязательным. Логика tenant-toggle/disable относится только к `Optional` modules; `Core` modules не должны трактоваться как отключаемые.
 
 - [`library-stack.md`](./library-stack.md) — основные backend-библиотеки сервера и их роль (framework, HTTP, ORM, GraphQL, runtime, observability).
 - [`health.md`](./health.md) — health/readiness probes и текущие dependency checks сервера.

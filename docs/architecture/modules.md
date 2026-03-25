@@ -1,189 +1,102 @@
 # Module Architecture
 
-RusToK реализован как **Modular Monolith**: все модули компилируются в единый бинарник и поднимаются через `ModuleRegistry`.
+RusToK реализован как modular monolith: platform modules компилируются в общий runtime и обслуживаются единым composition root в `apps/server`.
 
-## Ключевой принцип
+## Архитектурная классификация
 
-Не каждый критичный компонент платформы реализует `RusToKModule`.
-Есть три категории компонентов — подробно описаны ниже. Core-модули трактуются как обязательный слой платформы.
+У platform modules есть только две категории:
 
-Отдельное правило platform boundaries: инфраструктурные возможности framework/runtime-уровня (например, mailer integration, storage backend wiring, app hooks) не выносятся в отдельные `rustok-*` модули; они остаются server-infra слоем и потребляются доменными модулями через адаптеры и shared library crates.
+- `ModuleKind::Core`
+- `ModuleKind::Optional`
 
-## Категория A — Mandatory Core Crates (не `RusToKModule`)
+`Core` modules всегда активны и не могут отключаться для tenant'а.
+`Optional` modules могут входить в сборку и затем включаться или отключаться на уровне tenant lifecycle.
 
-Всегда линкуются в бинарник, не участвуют в lifecycle модулей:
+## Source of truth
 
-| Crate | Роль |
-|-------|------|
-| `rustok-core` | Контракты, EventBus, кэш, Circuit Breaker — само ядро платформы |
-| `rustok-outbox` | `TransactionalEventBus` для надёжной доставки событий |
-| `rustok-iggy` + `rustok-iggy-connector` | L2 streaming transport (опционально) |
-| `rustok-telemetry` | OpenTelemetry, tracing, Prometheus — сквозная зависимость |
-| `rustok-storage` | Leaf crate: `StorageBackend` async trait + `LocalStorage`, `StorageService` ([docs](../../crates/rustok-storage/docs/README.md)) |
-| `alloy-scripting` | Скриптовый движок, инициализируется напрямую в `app.rs` |
-| `rustok-mcp` | MCP адаптер, отдельный сервер |
-| `tailwind-rs/css/ast` | Build-time CSS инструментарий |
-| `rustok-test-utils` | **Только `[dev-dependencies]`**, никогда не попадает в production |
+- декларация состава модулей: `modules.toml`
+- runtime registration: `apps/server/src/modules/mod.rs`
+- manifest/runtime validation: `apps/server/src/modules/manifest.rs`
+- базовые контракты: `crates/rustok-core/src/module.rs`
 
-## Категория B — Core Platform Modules (`ModuleKind::Core`)
+## Текущий platform baseline
 
-Реализуют `RusToKModule`, обязательны для работы платформы, нельзя отключить.
-В документации и в server-контексте они считаются критичным core-модульным baseline:
+### Core modules
 
-| Crate | Slug | Назначение |
-|-------|------|-----------|
-| `rustok-index` | `index` | **Core (critical)**: CQRS read-model, индексатор для storefront |
-| `rustok-tenant` | `tenant` | **Core (critical)**: Tenant metadata, lifecycle hooks |
-| `rustok-rbac` | `rbac` | **Core (critical)**: RBAC helpers, lifecycle hooks |
-| `rustok-media` | `media` | **Core (feature `mod-media`)**: Upload, storage, translations. `MediaService` + SeaORM entities. ([docs](../../crates/rustok-media/docs/README.md)) |
+- `auth`
+- `cache`
+- `email`
+- `index`
+- `search`
+- `outbox`
+- `tenant`
+- `rbac`
 
-Итоговые обязательные core-модули платформы (`ModuleKind::Core`): `rustok-index`, `rustok-tenant`, `rustok-rbac`.
+### Optional modules
 
-`rustok-core`, `rustok-outbox`, `rustok-telemetry` — обязательные **core (critical)** модули платформы (инициализируются напрямую в runtime).
+- `content`
+- `commerce`
+- `blog`
+- `forum`
+- `pages`
+- `media`
+- `workflow`
 
-## Категория C — Optional Domain Modules (`ModuleKind::Optional`)
+## Wiring — это не taxonomy
 
-Реализуют `RusToKModule`, управляются per-tenant через `tenant_modules`:
+Разные модульные поверхности могут подключаться по-разному:
 
-| Crate | Slug | Тип | Depends on |
-|-------|------|-----|-----------|
-| `rustok-content` | `content` | Domain (фактически required) | `rustok-core` |
-| `rustok-commerce` | `commerce` | Domain | `rustok-core` |
-| `rustok-blog` | `blog` | Wrapper | `rustok-content` |
-| `rustok-forum` | `forum` | Wrapper | `rustok-content` |
-| `rustok-pages` | `pages` | Domain | `rustok-core` |
+- через `ModuleRegistry`
+- через manifest/codegen wiring
+- через host wiring для UI
+- через bootstrap/runtime services
 
-**Wrapper-паттерн:** `rustok-blog` и `rustok-forum` не имеют собственных таблиц контента — они используют nodes из `rustok-content` с разными значениями поля `kind`.
+Эти способы подключения не вводят новые архитектурные типы.
 
-## Где смотреть в коде
+`rustok-outbox` — `Core` module даже в тех местах, где сервер использует его напрямую для event runtime bootstrap.
 
-| Что | Где |
-|-----|-----|
-| Runtime-регистрация модулей | `apps/server/src/modules/mod.rs` |
-| Синхронизация манифеста и registry | `apps/server/src/modules/manifest.rs` |
-| Контракт модуля `RusToKModule` | `crates/rustok-core/src/module.rs` |
-| Реестр Core/Optional | `crates/rustok-core/src/registry.rs` |
-| Конфигурация состава модулей | `modules.toml` |
+## Crate role vs module status
 
-## Структура UI-пакетов
+`crate` — техническая единица Cargo.
 
-UI-код вынесен из основного модульного крейта (см. [ADR 2026-03-17](../../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md)).
-Оба стека (Leptos и Next.js) используют публикуемые пакеты.
+Поэтому в `crates/` одновременно живут:
 
-**Leptos UI** оформляется как publishable sub-crates внутри папки модуля:
+- module-crates
+- shared libraries
+- infrastructure/support crates
 
-```text
-crates/rustok-{slug}/
-├── rustok-module.toml
-├── Cargo.toml               # backend (rustok-{slug})
-├── src/
-├── admin/
-│   ├── Cargo.toml           # rustok-{slug}-admin
-│   └── src/
-└── storefront/
-    ├── Cargo.toml           # rustok-{slug}-storefront
-    └── src/
-```
+Например:
 
-**Next.js UI** оформляется как npm-пакеты внутри приложений:
-`apps/next-admin/packages/{slug}/` и `apps/next-frontend/packages/{slug}/`.
+- `rustok-outbox` — platform module (`Core`)
+- `rustok-core` — shared library/platform contract crate
+- `rustok-events` — shared event contract crate
+- `alloy` и `alloy-scripting` — capability crates
 
----
+## Platform-level install/uninstall
 
+Изменение `modules.toml` меняет состав platform modules в сборке:
 
-## Два уровня операций
+1. manifest обновляется;
+2. build pipeline пересобирает runtime;
+3. новый артефакт поднимается уже с новым составом модулей.
 
-| Уровень | Действие | Время | Механизм |
-|---|---|---|---|
-| **Platform-level** | Установить / удалить модуль | 2–5 мин (сборка) | `ManifestManager` → `BuildService` → `BuildExecutor` |
-| **Tenant-level** | Включить / отключить для тенанта | Мгновенно | `ModuleLifecycleService` → `tenant_modules` |
+Это platform-level операция.
 
-**Инвариант**: tenant-level toggle работает только над модулями, уже скомпилированными
-в бинарник (присутствующими в `ModuleRegistry`).
+## Tenant-level enable/disable
 
-### Platform-level: install/uninstall
+Tenant lifecycle работает только для `Optional` modules, уже присутствующих в сборке:
 
-```
-GraphQL installModule(slug, version)
-  └─ ManifestManager::install_builtin_module()  → apps/server/src/modules/manifest.rs
-       ├─ Добавить в modules.toml
-       ├─ validate(manifest)
-       ├─ save(manifest)
-       └─ BuildService::request_build()          → apps/server/src/services/build_service.rs
-            ├─ Хешировать modules_delta (SHA-256, дедупликация)
-            ├─ INSERT INTO builds (status=queued)
-            └─ Publish BuildRequested event
+1. проверяются dependency edges;
+2. обновляется `tenant_modules`;
+3. вызываются lifecycle hooks модуля.
 
-BuildExecutor::execute_next_queued_build()       → apps/server/src/services/build_executor.rs
-  ├─ cargo build -p rustok-server --features=[modules]
-  ├─ UPDATE builds SET stage=..., progress=...
-  └─ INSERT INTO releases (status=active)
-       ← Миграции новых модулей прогоняются при старте бинарника
-         через registry.migrations() → MigrationSource каждого модуля
-```
+`Core` modules не проходят через этот toggle flow.
 
-Каждый модуль несёт миграции внутри своего crate (`src/migrations/`), реализуя
-`MigrationSource`. Добавлять миграции в `apps/server/migration/` вручную не нужно.
+## Alloy
 
-### Tenant-level: toggle
+Alloy не входит в taxonomy `Core/Optional` platform modules:
 
-```
-GraphQL toggleModule(moduleSlug, enabled)
-  └─ ModuleLifecycleService::toggle_module()     → apps/server/src/services/module_lifecycle.rs
-       ├─ slug ∈ ModuleRegistry?                 (UnknownModule)
-       ├─ не Core?                               (CoreModuleCannotBeDisabled)
-       ├─ enabled=true:  все depends_on включены  (MissingDependencies)
-       ├─ enabled=false: нет зависящих от него    (HasDependents)
-       ├─ BEGIN TRANSACTION
-       │    UPDATE tenant_modules SET enabled=?
-       │    module.on_enable() / on_disable()
-       └─ COMMIT  ─── или ─── ROLLBACK при HookFailed → откат состояния
-```
+- `alloy-scripting` — runtime capability
+- `alloy` — API/transport shell
 
----
-
-## Marketplace каталог
-
-`MarketplaceCatalogService` агрегирует модули из нескольких провайдеров:
-
-```
-MarketplaceCatalogService                        → apps/server/src/services/marketplace_catalog.rs
-  ├─ LocalManifestMarketplaceProvider            — встроенные path-модули из modules.toml
-  └─ RegistryMarketplaceProvider                 — внешний реестр (env: RUSTOK_MARKETPLACE_REGISTRY_URL)
-       └─ moka cache (TTL: RUSTOK_MARKETPLACE_REGISTRY_CACHE_TTL_SECS, default 60s)
-```
-
-Дедупликация: если модуль есть у нескольких провайдеров — побеждает первый.
-Fallback: при недоступности реестра — возвращает только local-manifest.
-
-GraphQL:
-- `marketplace(search, category, source, installed, trust_level, compatible_only)` — каталог
-- `marketplaceModule(slug)` — детальная карточка с историей версий
-
----
-
-## Runtime-гарантии для UI
-
-**`EnabledModulesProvider`** (`apps/admin/src/shared/context/enabled_modules.rs`)
-Загружает `enabledModules` при старте, предоставляет контекст всему приложению.
-
-**`<ModuleGuard slug="blog">`**
-Рендерит children только если модуль включён для текущего тенанта. Иначе —
-placeholder "Module unavailable".
-
-**`components_for_slot(slot_id, enabled_modules)`** (`apps/storefront/src/modules/registry.rs`)
-Фильтрует slot-компоненты витрины по включённым модулям тенанта.
-
----
-
-## Связанные документы
-
-- [Module overview](../modules/overview.md) — что зарегистрировано в сервере
-- [Module & application registry](../modules/registry.md) — полный реестр компонентов
-- [Module manifest](../modules/manifest.md) — формат `modules.toml` и rebuild lifecycle
-- [Module system plan](../modules/module-system-plan.md) — что ещё не реализовано
-- [Architecture overview](./overview.md)
-- [Events and outbox](./events.md)
-- [WebSocket-каналы](./channels.md)
-- [ADR: Loco Mailer/Storage as server infra](../../DECISIONS/2026-03-11-loco-mailer-storage-as-server-infra.md)
-- [ADR: Dual UI Strategy — Leptos primary, Next.js modular packages](../../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md)
+Alloy может использоваться workflow/MCP как capability, но не становится tenant-toggle module.

@@ -8,14 +8,16 @@ use rustok_cache::CacheModule;
 use rustok_core::ModuleRegistry;
 use rustok_email::EmailModule;
 use rustok_index::IndexModule;
+use rustok_outbox::OutboxModule;
 use rustok_rbac::RbacModule;
+use rustok_search::SearchModule;
 use rustok_tenant::TenantModule;
 
 pub use manifest::{
     validate_registry_vs_manifest, BuildExecutionPlan, CatalogManifestModule, CatalogModuleVersion,
     DeploymentSurfaceContract, FrontendArtifactKind, FrontendBuildPlan, FrontendBuildTool,
     InstalledManifestModule, ManifestDiff, ManifestError, ManifestManager, ManifestModuleSpec,
-    ModulesManifest,
+    ModuleSettingSpec, ModulesManifest,
 };
 
 pub fn build_registry() -> ModuleRegistry {
@@ -25,6 +27,8 @@ pub fn build_registry() -> ModuleRegistry {
         .register(cache_module)
         .register(EmailModule)
         .register(IndexModule)
+        .register(SearchModule)
+        .register(OutboxModule)
         .register(TenantModule)
         .register(RbacModule);
 
@@ -41,6 +45,8 @@ mod contract_tests {
     const CACHE_README: &str = include_str!("../../../../crates/rustok-cache/README.md");
     const EMAIL_README: &str = include_str!("../../../../crates/rustok-email/README.md");
     const INDEX_README: &str = include_str!("../../../../crates/rustok-index/README.md");
+    const SEARCH_README: &str = include_str!("../../../../crates/rustok-search/README.md");
+    const OUTBOX_README: &str = include_str!("../../../../crates/rustok-outbox/README.md");
     const TENANT_README: &str = include_str!("../../../../crates/rustok-tenant/README.md");
     const RBAC_README: &str = include_str!("../../../../crates/rustok-rbac/README.md");
     const CONTENT_README: &str = include_str!("../../../../crates/rustok-content/README.md");
@@ -59,6 +65,8 @@ mod contract_tests {
             ("cache", CACHE_README),
             ("email", EMAIL_README),
             ("index", INDEX_README),
+            ("search", SEARCH_README),
+            ("outbox", OUTBOX_README),
             ("tenant", TENANT_README),
             ("rbac", RBAC_README),
             ("content", CONTENT_README),
@@ -109,9 +117,12 @@ mod contract_tests {
     #[test]
     fn registry_dependencies_match_runtime_contract() {
         let registry = build_registry();
+        let outbox = registry.get("outbox").expect("outbox module");
         let pages = registry.get("pages").expect("pages module");
         let workflow = registry.get("workflow").expect("workflow module");
 
+        assert!(registry.is_core("outbox"));
+        assert!(outbox.dependencies().is_empty());
         assert_eq!(pages.dependencies(), &["content"]);
         assert!(workflow.dependencies().is_empty());
     }

@@ -14,10 +14,12 @@
 
 - `apps/storefront/build.rs` теперь читает `modules.toml` и модульные `rustok-module.toml`, а затем генерирует manifest-driven storefront registry wiring в `OUT_DIR`.
 - Текущий contract для publishable Leptos storefront UI: `[provides.storefront_ui].leptos_crate` плюс экспорт корневого компонента `<PascalSlug>View`, optional `slot`, `route_segment` и `page_title`.
-- Live generated wiring регистрирует module-owned storefront sections в выбранный host slot и публикует generic storefront route `/modules/:route_segment`.
-- Референсные publishable storefront packages в workspace сейчас: `rustok-blog-storefront` и `rustok-pages-storefront`.
+- Live generated wiring регистрирует module-owned storefront sections в выбранный host slot и публикует generic storefront route `/modules/{route_segment}`.
+- Референсные publishable storefront packages в workspace сейчас: `rustok-blog-storefront`, `rustok-content-storefront`, `rustok-forum-storefront` и `rustok-pages-storefront`.
 - `rustok-pages-storefront` остаётся первым data-driven exemplar для page-driven storefront surface.
 - `rustok-blog-storefront` теперь служит вторым рабочим эталоном для контентного storefront read-path: пакет сам читает published post по `?slug=` и список публикаций через модульный GraphQL и `UiRouteContext`.
+- `rustok-content-storefront` теперь служит третьим рабочим эталоном для generic content storefront read-path: пакет сам резолвит `currentTenant`, читает published nodes и рендерит выбранную публикацию по `?id=` через тот же host-contract.
+- `rustok-forum-storefront` теперь служит рабочим эталоном для forum storefront read-path: пакет сам читает categories, topic feed, выбранный thread и replies через public GraphQL surface модуля и рендерит NodeBB-inspired layout на generic route `/modules/forum`.
 
 ## Ограничения
 
