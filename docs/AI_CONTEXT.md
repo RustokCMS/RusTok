@@ -87,8 +87,15 @@
 - `AppContext` — runtime context, передаётся повсюду
 - `Config` + YAML конфиги (`development.yaml`, `test.yaml`)
 - SeaORM stack — ORM, migrations, entities
-- Tasks (`cargo loco task`) — фоновые/CLI задачи
+- Tasks (`cargo loco task`) — CLI/maintenance задачи (`cleanup`, `rebuild`, `db_baseline`, `media_cleanup`, `create_oauth_app`)
 - Initializers — startup hooks (telemetry)
+
+**Loco Queue (Sidekiq/Redis) не подключён и не нужен.** Причины:
+- Фоновые воркеры запускаются как tokio-таски напрямую: outbox relay (`OutboxRelayWorkerHandle`), build worker (`BuildWorkerHandle`), index/search dispatchers, workflow cron.
+- Outbox паттерн архитектурно лучше Sidekiq для доменных событий — гарантирует атомарность.
+- Loco Tasks покрывают maintenance/CLI нужды.
+- Для отвязки медленных операций от HTTP-запросов используется `tokio::spawn` (например, отправка email в `forgot_password`).
+- Если понадобится push-based очередь с retry — рассматривать расширение outbox relay, а не подключение Sidekiq.
 
 Полная матрица: [`apps/server/docs/LOCO_FEATURE_SUPPORT.md`](../apps/server/docs/LOCO_FEATURE_SUPPORT.md)
 
