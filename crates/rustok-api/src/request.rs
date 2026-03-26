@@ -4,7 +4,7 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::context::{ChannelContextExtension, TenantContextExtension};
+use crate::context::{ChannelContextExtension, ChannelResolutionSource, TenantContextExtension};
 
 const ADMIN_LOCALE_COOKIE: &str = "rustok-admin-locale";
 const MEDUSA_LOCALE_HEADER: &str = "x-medusa-locale";
@@ -16,6 +16,7 @@ pub struct RequestContext {
     pub user_id: Option<Uuid>,
     pub channel_id: Option<Uuid>,
     pub channel_slug: Option<String>,
+    pub channel_resolution_source: Option<ChannelResolutionSource>,
     pub locale: String,
 }
 
@@ -70,6 +71,8 @@ where
             user_id,
             channel_id: channel_context.map(|channel| channel.id),
             channel_slug: channel_context.map(|channel| channel.slug.clone()),
+            channel_resolution_source: channel_context
+                .map(|channel| channel.resolution_source.clone()),
             locale,
         })
     }
@@ -174,7 +177,7 @@ mod tests {
     use tokio::runtime::Runtime;
     use uuid::Uuid;
 
-    use crate::context::{ChannelContext, ChannelContextExtension};
+    use crate::context::{ChannelContext, ChannelContextExtension, ChannelResolutionSource};
     use crate::context::{TenantContext, TenantContextExtension};
 
     use super::*;
@@ -220,6 +223,7 @@ mod tests {
         assert_eq!(context.locale, "ru");
         assert_eq!(context.tenant_id, Uuid::nil());
         assert_eq!(context.channel_id, None);
+        assert_eq!(context.channel_resolution_source, None);
     }
 
     #[test]
@@ -250,6 +254,7 @@ mod tests {
                 target_type: Some("web_domain".to_string()),
                 target_value: Some("example.test".to_string()),
                 settings: serde_json::json!({}),
+                resolution_source: ChannelResolutionSource::Host,
             }));
 
         let runtime = Runtime::new().expect("tokio runtime");
@@ -259,6 +264,10 @@ mod tests {
 
         assert_eq!(context.channel_id, Some(channel_id));
         assert_eq!(context.channel_slug.as_deref(), Some("web"));
+        assert_eq!(
+            context.channel_resolution_source,
+            Some(ChannelResolutionSource::Host)
+        );
     }
 
     #[test]

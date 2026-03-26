@@ -211,6 +211,18 @@ fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
         .filter(|slug| !slug.is_empty())
 }
 
+fn request_channel_label(request_context: &RequestContext) -> &str {
+    request_context.channel_slug.as_deref().unwrap_or("current")
+}
+
+fn request_channel_resolution_source(request_context: &RequestContext) -> &str {
+    request_context
+        .channel_resolution_source
+        .as_ref()
+        .map(|source| source.as_str())
+        .unwrap_or("unknown")
+}
+
 fn is_page_visible_for_request(
     metadata: &serde_json::Value,
     public_channel_slug: Option<&str>,
@@ -270,7 +282,9 @@ async fn list_public_visible_pages(
     }
 
     let visible_total = visible_items.len() as u64;
-    let offset = requested_page.saturating_sub(1).saturating_mul(requested_per_page) as usize;
+    let offset = requested_page
+        .saturating_sub(1)
+        .saturating_mul(requested_per_page) as usize;
     let items = visible_items
         .into_iter()
         .skip(offset)
@@ -330,9 +344,10 @@ async fn ensure_public_pages_channel_enabled(
         return Ok(());
     }
 
-    let channel_label = request_context.channel_slug.as_deref().unwrap_or("current");
+    let channel_label = request_channel_label(request_context);
+    let resolution_source = request_channel_resolution_source(request_context);
     Err(async_graphql::Error::new(format!(
-        "Module '{MODULE_SLUG}' is not enabled for channel '{channel_label}'"
+        "Module '{MODULE_SLUG}' is not enabled for channel '{channel_label}' (resolved via {resolution_source})"
     ))
     .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")))
 }
@@ -341,7 +356,7 @@ async fn ensure_public_pages_channel_enabled(
 mod tests {
     use super::{ensure_public_pages_channel_enabled, is_page_visible_for_request};
     use crate::services::page::{extract_channel_slugs, is_page_visible_for_channel};
-    use rustok_api::RequestContext;
+    use rustok_api::{context::ChannelResolutionSource, RequestContext};
     use rustok_channel::{migrations, BindChannelModuleInput, ChannelService, CreateChannelInput};
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
@@ -401,6 +416,7 @@ mod tests {
             user_id: None,
             channel_id: Some(channel_id),
             channel_slug: Some(channel_slug.to_string()),
+            channel_resolution_source: Some(ChannelResolutionSource::Host),
             locale: "en".to_string(),
         }
     }
@@ -521,6 +537,7 @@ mod tests {
             user_id: None,
             channel_id: Some(Uuid::new_v4()),
             channel_slug: Some(" Web ".to_string()),
+            channel_resolution_source: Some(ChannelResolutionSource::Query),
             locale: "en".to_string(),
         };
 
@@ -553,5 +570,51 @@ mod tests {
 
         assert!(is_page_visible_for_request(&metadata, None, true));
         assert!(!is_page_visible_for_request(&metadata, None, false));
+    }
+
+    #[tokio::test]
+    async fn disabled_binding_error_reports_resolution_source() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant-web").await;
+        let service = ChannelService::new(db.clone());
+        let channel = service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "web".to_string(),
+                name: "Web".to_string(),
+                settings: None,
+            })
+            .await
+            .expect("channel should be created");
+        service
+            .bind_module(
+                channel.id,
+                BindChannelModuleInput {
+                    module_slug: "pages".to_string(),
+                    is_enabled: false,
+                    settings: None,
+                },
+            )
+            .await
+            .expect("binding should be saved");
+
+        let request_context = RequestContext {
+            tenant_id,
+            user_id: None,
+            channel_id: Some(channel.id),
+            channel_slug: Some("web".to_string()),
+            channel_resolution_source: Some(ChannelResolutionSource::Host),
+            locale: "en".to_string(),
+        };
+
+        let error = ensure_public_pages_channel_enabled(&db, Some(&request_context), false)
+            .await
+            .expect_err("disabled binding should be reported");
+
+        assert!(
+            error.message.contains("resolved via host"),
+            "error must expose resolution source for diagnostics"
+        );
     }
 }

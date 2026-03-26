@@ -4,6 +4,7 @@ mod model;
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use rustok_api::context::ChannelResolutionSource;
 use rustok_api::UiRouteContext;
 
 use crate::model::{
@@ -190,11 +191,15 @@ fn RuntimeContext(bootstrap: ChannelAdminBootstrap) -> impl IntoView {
             </div>
             {match bootstrap.current_channel {
                 Some(current) => view! {
-                    <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                         <InfoPill label="Slug" value=current.slug />
                         <InfoPill label="Name" value=current.name />
+                        <InfoPill label="Source" value=resolution_source_label(&current.resolution_source) />
                         <InfoPill label="Target" value=current.target_value.unwrap_or_else(|| "n/a".to_string()) />
                         <InfoPill label="Type" value=current.target_type.unwrap_or_else(|| "n/a".to_string()) />
+                    </div>
+                    <div class="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                        {resolution_source_description(&current.resolution_source)}
                     </div>
                 }.into_any(),
                 None => view! {
@@ -218,22 +223,29 @@ fn ChannelCard(
     set_error: WriteSignal<Option<String>>,
     set_refresh_nonce: WriteSignal<u64>,
 ) -> impl IntoView {
-    let target_type = RwSignal::new("web_domain".to_string());
-    let target_value = RwSignal::new(String::new());
-    let target_primary = RwSignal::new(true);
-    let bind_module_slug = RwSignal::new(
+    let has_available_modules = !available_modules.is_empty();
+    let has_available_oauth_apps = !oauth_apps.is_empty();
+    let editing_target_id = RwSignal::new(Option::<String>::None);
+    let editing_module_slug = RwSignal::new(Option::<String>::None);
+    let editing_oauth_app_id = RwSignal::new(Option::<String>::None);
+    let initial_module_slug = RwSignal::new(
         available_modules
             .first()
             .map(|item| item.slug.clone())
             .unwrap_or_default(),
     );
-    let bind_module_enabled = RwSignal::new(true);
-    let bind_oauth_app_id = RwSignal::new(
+    let initial_oauth_app_id = RwSignal::new(
         oauth_apps
             .first()
             .map(|item| item.id.clone())
             .unwrap_or_default(),
     );
+    let target_type = RwSignal::new("web_domain".to_string());
+    let target_value = RwSignal::new(String::new());
+    let target_primary = RwSignal::new(true);
+    let bind_module_slug = RwSignal::new(initial_module_slug.get_untracked());
+    let bind_module_enabled = RwSignal::new(true);
+    let bind_oauth_app_id = RwSignal::new(initial_oauth_app_id.get_untracked());
     let bind_oauth_role = RwSignal::new(String::new());
     let busy = RwSignal::new(false);
     let channel_id = channel.channel.id.clone();
@@ -242,14 +254,42 @@ fn ChannelCard(
     let tenant_for_target = tenant.clone();
     let channel_id_for_target = channel_id.clone();
     let channel_slug_for_target = channel_slug.clone();
+    let token_for_target_delete = token.clone();
+    let tenant_for_target_delete = tenant.clone();
+    let channel_id_for_target_delete = channel_id.clone();
+    let channel_slug_for_target_delete = channel_slug.clone();
     let token_for_module = token.clone();
     let tenant_for_module = tenant.clone();
     let channel_id_for_module = channel_id.clone();
     let channel_slug_for_module = channel_slug.clone();
+    let token_for_module_delete = token.clone();
+    let tenant_for_module_delete = tenant.clone();
+    let channel_id_for_module_delete = channel_id.clone();
+    let channel_slug_for_module_delete = channel_slug.clone();
     let token_for_app = token;
     let tenant_for_app = tenant;
     let channel_id_for_app = channel_id;
     let channel_slug_for_app = channel_slug;
+    let token_for_app_delete = token_for_app.clone();
+    let tenant_for_app_delete = tenant_for_app.clone();
+    let channel_id_for_app_delete = channel_id_for_app.clone();
+    let channel_slug_for_app_delete = channel_slug_for_app.clone();
+    let cancel_target_edit = move |_| {
+        editing_target_id.set(None);
+        target_type.set("web_domain".to_string());
+        target_value.set(String::new());
+        target_primary.set(true);
+    };
+    let cancel_module_edit = move |_| {
+        editing_module_slug.set(None);
+        bind_module_slug.set(initial_module_slug.get_untracked());
+        bind_module_enabled.set(true);
+    };
+    let cancel_oauth_edit = move |_| {
+        editing_oauth_app_id.set(None);
+        bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+        bind_oauth_role.set(String::new());
+    };
 
     let create_target = move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -261,26 +301,35 @@ fn ChannelCard(
             let tenant = tenant_for_target.clone();
             let channel_id = channel_id_for_target.clone();
             let channel_slug = channel_slug_for_target.clone();
+            let editing_target_id_value = editing_target_id.get_untracked();
             async move {
-                let result = api::create_target(
-                    token,
-                    tenant,
-                    &channel_id,
-                    &CreateChannelTargetPayload {
-                        target_type: target_type.get_untracked(),
-                        value: target_value.get_untracked().trim().to_ascii_lowercase(),
-                        is_primary: target_primary.get_untracked(),
-                        settings: Some(serde_json::json!({})),
-                    },
-                )
-                .await;
+                let payload = CreateChannelTargetPayload {
+                    target_type: target_type.get_untracked(),
+                    value: target_value.get_untracked(),
+                    is_primary: target_primary.get_untracked(),
+                    settings: Some(serde_json::json!({})),
+                };
+                let result = match editing_target_id_value.as_deref() {
+                    Some(target_id) => {
+                        api::update_target(token, tenant, &channel_id, target_id, &payload).await
+                    }
+                    None => api::create_target(token, tenant, &channel_id, &payload).await,
+                };
                 match result {
                     Ok(target) => {
+                        let action = if editing_target_id_value.is_some() {
+                            "updated for"
+                        } else {
+                            "added to"
+                        };
                         set_feedback.set(Some(format!(
-                            "Target `{}` added to channel `{}`.",
+                            "Target `{}` {action} channel `{}`.",
                             target.value, channel_slug
                         )));
+                        editing_target_id.set(None);
+                        target_type.set("web_domain".to_string());
                         target_value.set(String::new());
+                        target_primary.set(true);
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => set_error.set(Some(err)),
@@ -315,9 +364,15 @@ fn ChannelCard(
                 match result {
                     Ok(_) => {
                         set_feedback.set(Some(format!(
-                            "Module binding updated for channel `{}`.",
-                            channel_slug
+                            "Module binding {} channel `{}`.",
+                            if editing_module_slug.get_untracked().is_some() {
+                                "updated for"
+                            } else {
+                                "saved for"
+                            },
+                            channel_slug,
                         )));
+                        editing_module_slug.set(None);
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => set_error.set(Some(err)),
@@ -351,9 +406,16 @@ fn ChannelCard(
                 match result {
                     Ok(_) => {
                         set_feedback.set(Some(format!(
-                            "OAuth app binding updated for channel `{}`.",
-                            channel_slug
+                            "OAuth app binding {} channel `{}`.",
+                            if editing_oauth_app_id.get_untracked().is_some() {
+                                "updated for"
+                            } else {
+                                "saved for"
+                            },
+                            channel_slug,
                         )));
+                        editing_oauth_app_id.set(None);
+                        bind_oauth_role.set(String::new());
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => set_error.set(Some(err)),
@@ -388,17 +450,117 @@ fn ChannelCard(
 
             <div class="mt-6 grid gap-6 xl:grid-cols-3">
                 <section class="space-y-4 rounded-xl border border-border bg-background p-4">
-                    <h3 class="text-base font-semibold text-card-foreground">"Targets"</h3>
-                    <div class="space-y-2">
-                        {channel.targets.iter().map(|target| view! {
-                            <div class="rounded-lg border border-border px-3 py-2 text-sm">
-                                <div class="font-medium text-card-foreground">{target.value.clone()}</div>
-                                <div class="mt-1 text-xs text-muted-foreground">
-                                    {format!("{}{}", target.target_type, if target.is_primary { " · primary" } else { "" })}
-                                </div>
-                            </div>
-                        }).collect_view()}
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-base font-semibold text-card-foreground">
+                            {move || if editing_target_id.get().is_some() { "Edit Target" } else { "Targets" }}
+                        </h3>
+                        <Show when=move || editing_target_id.get().is_some()>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                on:click=cancel_target_edit
+                            >
+                                "Cancel"
+                            </button>
+                        </Show>
                     </div>
+                    {if channel.targets.is_empty() {
+                        view! {
+                            <EmptyState
+                                title="No targets yet."
+                                body="Add the first target to make this channel discoverable through a concrete delivery surface."
+                            />
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div class="space-y-2">
+                                {channel.targets.iter().map(|target| view! {
+                                    <div class="rounded-lg border border-border px-3 py-2 text-sm">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div class="font-medium text-card-foreground">{target.value.clone()}</div>
+                                                <div class="mt-1 text-xs text-muted-foreground">
+                                                    {format!("{}{}", target.target_type, if target.is_primary { " · primary" } else { "" })}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let target = target.clone();
+                                                    move |_| {
+                                                        editing_target_id.set(Some(target.id.clone()));
+                                                        target_type.set(target.target_type.clone());
+                                                        target_value.set(target.value.clone());
+                                                        target_primary.set(target.is_primary);
+                                                    }
+                                                }
+                                            >
+                                                "Edit"
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let target = target.clone();
+                                                    let token = token_for_target_delete.clone();
+                                                    let tenant = tenant_for_target_delete.clone();
+                                                    let channel_id = channel_id_for_target_delete.clone();
+                                                    let channel_slug = channel_slug_for_target_delete.clone();
+                                                    move |_| {
+                                                        busy.set(true);
+                                                        set_feedback.set(None);
+                                                        set_error.set(None);
+                                                        spawn_local({
+                                                            let target = target.clone();
+                                                            let token = token.clone();
+                                                            let tenant = tenant.clone();
+                                                            let channel_id = channel_id.clone();
+                                                            let channel_slug = channel_slug.clone();
+                                                            async move {
+                                                                let result = api::delete_target(
+                                                                    token,
+                                                                    tenant,
+                                                                    &channel_id,
+                                                                    &target.id,
+                                                                )
+                                                                .await;
+                                                                match result {
+                                                                    Ok(deleted) => {
+                                                                        if editing_target_id
+                                                                            .get_untracked()
+                                                                            .as_deref()
+                                                                            == Some(target.id.as_str())
+                                                                        {
+                                                                            editing_target_id.set(None);
+                                                                            target_type.set("web_domain".to_string());
+                                                                            target_value.set(String::new());
+                                                                            target_primary.set(true);
+                                                                        }
+                                                                        set_feedback.set(Some(format!(
+                                                                            "Target `{}` removed from channel `{}`.",
+                                                                            deleted.value, channel_slug
+                                                                        )));
+                                                                        set_refresh_nonce.update(|value| *value += 1);
+                                                                    }
+                                                                    Err(err) => set_error.set(Some(err)),
+                                                                }
+                                                                busy.set(false);
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                            >
+                                                "Delete"
+                                            </button>
+                                        </div>
+                                    </div>
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    }}
                     <form class="space-y-3" on:submit=create_target>
                         <select class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" on:change=move |ev| target_type.set(event_target_value(&ev))>
                             <option value="web_domain">"web_domain"</option>
@@ -412,60 +574,282 @@ fn ChannelCard(
                             <input type="checkbox" prop:checked=target_primary on:change=move |ev| target_primary.set(event_target_checked(&ev)) />
                             "Primary target"
                         </label>
-                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>"Add Target"</button>
+                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
+                            {move || if editing_target_id.get().is_some() { "Save Target" } else { "Add Target" }}
+                        </button>
                     </form>
                 </section>
 
                 <section class="space-y-4 rounded-xl border border-border bg-background p-4">
-                    <h3 class="text-base font-semibold text-card-foreground">"Module Bindings"</h3>
-                    <div class="space-y-2">
-                        {channel.module_bindings.iter().map(|binding| view! {
-                            <div class="rounded-lg border border-border px-3 py-2 text-sm">
-                                <div class="font-medium text-card-foreground">{binding.module_slug.clone()}</div>
-                                <div class="mt-1 text-xs text-muted-foreground">{if binding.is_enabled { "enabled" } else { "disabled" }}</div>
-                            </div>
-                        }).collect_view()}
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-base font-semibold text-card-foreground">
+                            {move || if editing_module_slug.get().is_some() { "Edit Module Binding" } else { "Module Bindings" }}
+                        </h3>
+                        <Show when=move || editing_module_slug.get().is_some()>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                on:click=cancel_module_edit
+                            >
+                                "Cancel"
+                            </button>
+                        </Show>
                     </div>
+                    {if channel.module_bindings.is_empty() {
+                        view! {
+                            <EmptyState
+                                title="No module bindings yet."
+                                body="Bindings are optional in v0. Add one when this channel should explicitly enable or disable a module surface."
+                            />
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div class="space-y-2">
+                                {channel.module_bindings.iter().map(|binding| view! {
+                                    <div class="rounded-lg border border-border px-3 py-2 text-sm">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div class="font-medium text-card-foreground">{binding.module_slug.clone()}</div>
+                                                <div class="mt-1 text-xs text-muted-foreground">{if binding.is_enabled { "enabled" } else { "disabled" }}</div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let binding = binding.clone();
+                                                    move |_| {
+                                                        editing_module_slug.set(Some(binding.module_slug.clone()));
+                                                        bind_module_slug.set(binding.module_slug.clone());
+                                                        bind_module_enabled.set(binding.is_enabled);
+                                                    }
+                                                }
+                                            >
+                                                "Edit"
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let binding = binding.clone();
+                                                    let token = token_for_module_delete.clone();
+                                                    let tenant = tenant_for_module_delete.clone();
+                                                    let channel_id = channel_id_for_module_delete.clone();
+                                                    let channel_slug = channel_slug_for_module_delete.clone();
+                                                    move |_| {
+                                                        busy.set(true);
+                                                        set_feedback.set(None);
+                                                        set_error.set(None);
+                                                        spawn_local({
+                                                            let binding = binding.clone();
+                                                            let token = token.clone();
+                                                            let tenant = tenant.clone();
+                                                            let channel_id = channel_id.clone();
+                                                            let channel_slug = channel_slug.clone();
+                                                            async move {
+                                                                let result = api::delete_module_binding(
+                                                                    token,
+                                                                    tenant,
+                                                                    &channel_id,
+                                                                    &binding.id,
+                                                                )
+                                                                .await;
+                                                                match result {
+                                                                    Ok(deleted) => {
+                                                                        if editing_module_slug
+                                                                            .get_untracked()
+                                                                            .as_deref()
+                                                                            == Some(binding.module_slug.as_str())
+                                                                        {
+                                                                            editing_module_slug.set(None);
+                                                                            bind_module_slug.set(initial_module_slug.get_untracked());
+                                                                            bind_module_enabled.set(true);
+                                                                        }
+                                                                        set_feedback.set(Some(format!(
+                                                                            "Module binding `{}` removed from channel `{}`.",
+                                                                            deleted.module_slug, channel_slug
+                                                                        )));
+                                                                        set_refresh_nonce.update(|value| *value += 1);
+                                                                    }
+                                                                    Err(err) => set_error.set(Some(err)),
+                                                                }
+                                                                busy.set(false);
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                            >
+                                                "Delete"
+                                            </button>
+                                        </div>
+                                    </div>
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    }}
                     <form class="space-y-3" on:submit=bind_module_submit>
-                        <select class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" prop:value=bind_module_slug on:change=move |ev| bind_module_slug.set(event_target_value(&ev))>
-                            {available_modules.clone().into_iter().map(|item| {
-                                let label = format!("{} ({})", item.name, item.kind);
-                                let slug = item.slug;
-                                view! {
-                                    <option value=slug.clone()>{label}</option>
-                                }
-                            }).collect_view()}
-                        </select>
+                        {if has_available_modules {
+                            view! {
+                                <select class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" prop:value=bind_module_slug on:change=move |ev| bind_module_slug.set(event_target_value(&ev))>
+                                    {available_modules.clone().into_iter().map(|item| {
+                                        let label = format!("{} ({})", item.name, item.kind);
+                                        let slug = item.slug;
+                                        view! {
+                                            <option value=slug.clone()>{label}</option>
+                                        }
+                                    }).collect_view()}
+                                </select>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <div class="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+                                    "No module descriptors are currently available for binding."
+                                </div>
+                            }.into_any()
+                        }}
                         <label class="flex items-center gap-2 text-sm text-muted-foreground">
                             <input type="checkbox" prop:checked=bind_module_enabled on:change=move |ev| bind_module_enabled.set(event_target_checked(&ev)) />
                             "Enabled for this channel"
                         </label>
-                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>"Save Module Binding"</button>
+                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get() || !has_available_modules>
+                            {move || if editing_module_slug.get().is_some() { "Update Module Binding" } else { "Save Module Binding" }}
+                        </button>
                     </form>
                 </section>
 
                 <section class="space-y-4 rounded-xl border border-border bg-background p-4">
-                    <h3 class="text-base font-semibold text-card-foreground">"OAuth Apps"</h3>
-                    <div class="space-y-2">
-                        {channel.oauth_apps.iter().map(|binding| view! {
-                            <div class="rounded-lg border border-border px-3 py-2 text-sm">
-                                <div class="font-medium text-card-foreground">{binding.oauth_app_id.clone()}</div>
-                                <div class="mt-1 text-xs text-muted-foreground">{binding.role.clone().unwrap_or_else(|| "no role".to_string())}</div>
-                            </div>
-                        }).collect_view()}
+                    <div class="flex items-center justify-between gap-3">
+                        <h3 class="text-base font-semibold text-card-foreground">
+                            {move || if editing_oauth_app_id.get().is_some() { "Edit OAuth App Binding" } else { "OAuth Apps" }}
+                        </h3>
+                        <Show when=move || editing_oauth_app_id.get().is_some()>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                on:click=cancel_oauth_edit
+                            >
+                                "Cancel"
+                            </button>
+                        </Show>
                     </div>
+                    {if channel.oauth_apps.is_empty() {
+                        view! {
+                            <EmptyState
+                                title="No OAuth app bindings yet."
+                                body="Bind an existing OAuth app when this channel needs an integration-level relationship without introducing a second credential subsystem."
+                            />
+                        }.into_any()
+                    } else {
+                        view! {
+                            <div class="space-y-2">
+                                {channel.oauth_apps.iter().map(|binding| view! {
+                                    <div class="rounded-lg border border-border px-3 py-2 text-sm">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div class="font-medium text-card-foreground">{binding.oauth_app_id.clone()}</div>
+                                                <div class="mt-1 text-xs text-muted-foreground">{binding.role.clone().unwrap_or_else(|| "no role".to_string())}</div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let binding = binding.clone();
+                                                    move |_| {
+                                                        editing_oauth_app_id.set(Some(binding.oauth_app_id.clone()));
+                                                        bind_oauth_app_id.set(binding.oauth_app_id.clone());
+                                                        bind_oauth_role.set(binding.role.clone().unwrap_or_default());
+                                                    }
+                                                }
+                                            >
+                                                "Edit"
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded-lg border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
+                                                disabled=move || busy.get()
+                                                on:click={
+                                                    let binding = binding.clone();
+                                                    let token = token_for_app_delete.clone();
+                                                    let tenant = tenant_for_app_delete.clone();
+                                                    let channel_id = channel_id_for_app_delete.clone();
+                                                    let channel_slug = channel_slug_for_app_delete.clone();
+                                                    move |_| {
+                                                        busy.set(true);
+                                                        set_feedback.set(None);
+                                                        set_error.set(None);
+                                                        spawn_local({
+                                                            let binding = binding.clone();
+                                                            let token = token.clone();
+                                                            let tenant = tenant.clone();
+                                                            let channel_id = channel_id.clone();
+                                                            let channel_slug = channel_slug.clone();
+                                                            async move {
+                                                                let result = api::delete_oauth_app_binding(
+                                                                    token,
+                                                                    tenant,
+                                                                    &channel_id,
+                                                                    &binding.id,
+                                                                )
+                                                                .await;
+                                                                match result {
+                                                                    Ok(deleted) => {
+                                                                        if editing_oauth_app_id
+                                                                            .get_untracked()
+                                                                            .as_deref()
+                                                                            == Some(binding.oauth_app_id.as_str())
+                                                                        {
+                                                                            editing_oauth_app_id.set(None);
+                                                                            bind_oauth_app_id.set(initial_oauth_app_id.get_untracked());
+                                                                            bind_oauth_role.set(String::new());
+                                                                        }
+                                                                        set_feedback.set(Some(format!(
+                                                                            "OAuth app binding `{}` revoked for channel `{}`.",
+                                                                            deleted.oauth_app_id, channel_slug
+                                                                        )));
+                                                                        set_refresh_nonce.update(|value| *value += 1);
+                                                                    }
+                                                                    Err(err) => set_error.set(Some(err)),
+                                                                }
+                                                                busy.set(false);
+                                                            }
+                                                        });
+                                                    }
+                                                }
+                                            >
+                                                "Revoke"
+                                            </button>
+                                        </div>
+                                    </div>
+                                }).collect_view()}
+                            </div>
+                        }.into_any()
+                    }}
                     <form class="space-y-3" on:submit=bind_oauth_submit>
-                        <select class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" prop:value=bind_oauth_app_id on:change=move |ev| bind_oauth_app_id.set(event_target_value(&ev))>
-                            {oauth_apps.clone().into_iter().map(|item| {
-                                let label = format!("{} ({})", item.name, item.app_type);
-                                let id = item.id;
-                                view! {
-                                    <option value=id.clone()>{label}</option>
-                                }
-                            }).collect_view()}
-                        </select>
+                        {if has_available_oauth_apps {
+                            view! {
+                                <select class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" prop:value=bind_oauth_app_id on:change=move |ev| bind_oauth_app_id.set(event_target_value(&ev))>
+                                    {oauth_apps.clone().into_iter().map(|item| {
+                                        let label = format!("{} ({})", item.name, item.app_type);
+                                        let id = item.id;
+                                        view! {
+                                            <option value=id.clone()>{label}</option>
+                                        }
+                                    }).collect_view()}
+                                </select>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <div class="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+                                    "No active OAuth apps are available for this tenant yet."
+                                </div>
+                            }.into_any()
+                        }}
                         <input type="text" class="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm" placeholder="role (optional)" prop:value=bind_oauth_role on:input=move |ev| bind_oauth_role.set(event_target_value(&ev)) />
-                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>"Bind OAuth App"</button>
+                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get() || !has_available_oauth_apps>
+                            {move || if editing_oauth_app_id.get().is_some() { "Update OAuth App Binding" } else { "Bind OAuth App" }}
+                        </button>
                     </form>
                 </section>
             </div>
@@ -483,6 +867,16 @@ fn InfoPill(label: &'static str, value: String) -> impl IntoView {
     }
 }
 
+#[component]
+fn EmptyState(title: &'static str, body: &'static str) -> impl IntoView {
+    view! {
+        <div class="rounded-lg border border-dashed border-border px-3 py-4 text-sm">
+            <div class="font-medium text-card-foreground">{title}</div>
+            <div class="mt-1 text-muted-foreground">{body}</div>
+        </div>
+    }
+}
+
 fn short_id(value: &str) -> String {
     value.chars().take(8).collect()
 }
@@ -493,5 +887,35 @@ fn optional_text(value: String) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+fn resolution_source_label(source: &ChannelResolutionSource) -> String {
+    match source {
+        ChannelResolutionSource::HeaderId => "Header ID".to_string(),
+        ChannelResolutionSource::HeaderSlug => "Header Slug".to_string(),
+        ChannelResolutionSource::Query => "Query".to_string(),
+        ChannelResolutionSource::Host => "Host".to_string(),
+        ChannelResolutionSource::Default => "Default".to_string(),
+    }
+}
+
+fn resolution_source_description(source: &ChannelResolutionSource) -> &'static str {
+    match source {
+        ChannelResolutionSource::HeaderId => {
+            "The current request explicitly selected this channel through the X-Channel-ID header."
+        }
+        ChannelResolutionSource::HeaderSlug => {
+            "The current request explicitly selected this channel through the X-Channel-Slug header."
+        }
+        ChannelResolutionSource::Query => {
+            "The current request selected this channel through the query parameter fallback."
+        }
+        ChannelResolutionSource::Host => {
+            "The current request matched this channel through host-based target resolution."
+        }
+        ChannelResolutionSource::Default => {
+            "No explicit channel selector matched, so the tenant-level default fallback channel was used."
+        }
     }
 }

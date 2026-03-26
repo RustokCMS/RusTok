@@ -1,4 +1,5 @@
 use async_graphql::{Enum, InputObject, SimpleObject};
+use rustok_profiles::graphql::GqlProfileSummary;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -48,6 +49,7 @@ pub struct GqlPost {
     pub content_json: Option<Value>,
     pub status: GqlContentStatus,
     pub author_id: Option<Uuid>,
+    pub author_profile: Option<GqlProfileSummary>,
     pub created_at: String,
     pub updated_at: String,
     pub published_at: Option<String>,
@@ -67,6 +69,7 @@ pub struct GqlPostListItem {
     pub excerpt: Option<String>,
     pub status: GqlContentStatus,
     pub author_id: Option<Uuid>,
+    pub author_profile: Option<GqlProfileSummary>,
     pub created_at: String,
     pub published_at: Option<String>,
     pub channel_slugs: Vec<String>,
@@ -142,6 +145,7 @@ impl From<PostResponse> for GqlPost {
                 BlogPostStatus::Archived => GqlContentStatus::Archived,
             },
             author_id: Some(post.author_id),
+            author_profile: None,
             created_at: post.created_at.to_rfc3339(),
             updated_at: post.updated_at.to_rfc3339(),
             published_at: post.published_at.map(|value| value.to_rfc3339()),
@@ -164,6 +168,7 @@ impl From<NodeListItem> for GqlPostListItem {
             excerpt: item.excerpt,
             status: item.status.into(),
             author_id: item.author_id,
+            author_profile: None,
             created_at: item.created_at,
             published_at: item.published_at,
             channel_slugs: extract_channel_slugs(&item.metadata),

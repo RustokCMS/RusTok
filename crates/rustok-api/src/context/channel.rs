@@ -5,6 +5,28 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelResolutionSource {
+    HeaderId,
+    HeaderSlug,
+    Query,
+    Host,
+    Default,
+}
+
+impl ChannelResolutionSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::HeaderId => "header_id",
+            Self::HeaderSlug => "header_slug",
+            Self::Query => "query",
+            Self::Host => "host",
+            Self::Default => "default",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChannelContext {
     pub id: Uuid,
@@ -16,6 +38,7 @@ pub struct ChannelContext {
     pub target_type: Option<String>,
     pub target_value: Option<String>,
     pub settings: serde_json::Value,
+    pub resolution_source: ChannelResolutionSource,
 }
 
 #[derive(Clone)]

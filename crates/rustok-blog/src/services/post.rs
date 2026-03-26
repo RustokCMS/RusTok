@@ -990,11 +990,7 @@ mod tests {
         let mut metadata = serde_json::json!({});
         apply_channel_visibility_metadata(
             &mut metadata,
-            Some(&[
-                " Web ".to_string(),
-                "mobile".to_string(),
-                "web".to_string(),
-            ]),
+            Some(&[" Web ".to_string(), "mobile".to_string(), "web".to_string()]),
         );
 
         assert_eq!(
@@ -1254,6 +1250,11 @@ mod tests {
             .unpublish_post(tenant_id, post_id, security.clone())
             .await
             .expect("post unpublish should succeed");
+
+        post_service
+            .publish_post(tenant_id, post_id, security.clone())
+            .await
+            .expect("post republish should succeed");
 
         post_service
             .archive_post(tenant_id, post_id, security.clone(), None)

@@ -78,14 +78,17 @@ impl CheckoutService {
         if cart.line_items.is_empty() {
             return Err(CheckoutError::EmptyCart(cart.id));
         }
+        let shipping_option_id = cart
+            .selected_shipping_option_id
+            .or(input.shipping_option_id);
         let context = self
             .context_service
             .resolve_context(
                 tenant_id,
                 ResolveStoreContextInput {
-                    region_id: input.region_id,
-                    country_code: input.country_code.clone(),
-                    locale: input.locale.clone(),
+                    region_id: cart.region_id.or(input.region_id),
+                    country_code: cart.country_code.clone().or(input.country_code.clone()),
+                    locale: cart.locale_code.clone().or(input.locale.clone()),
                     currency_code: Some(cart.currency_code.clone()),
                 },
             )
@@ -193,7 +196,7 @@ impl CheckoutService {
                     tenant_id,
                     CreateFulfillmentInput {
                         order_id: order.id,
-                        shipping_option_id: input.shipping_option_id,
+                        shipping_option_id,
                         customer_id: cart.customer_id,
                         carrier: None,
                         tracking_number: None,

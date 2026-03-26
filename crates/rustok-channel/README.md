@@ -23,7 +23,7 @@ This crate intentionally ships a minimal v0 model:
 
 Current v0 wiring also includes:
 
-- server-side channel resolution middleware,
+- server-side channel resolution middleware with explicit `header -> query -> host -> default` policy order and typed `resolution_source` diagnostics,
 - a thin REST bootstrap/write surface in `apps/server`,
 - `rustok-channel-admin` for Leptos admin composition,
 - live proof points in `rustok-pages` and `rustok-blog`, where public read-path gating already uses `channel_module_bindings`, and both modules now exercise metadata-based publication-level `channelSlugs` allowlists.

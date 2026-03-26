@@ -17,6 +17,7 @@
 - поднят DB-backed `ProfileService` с `upsert/get-by-user/get-by-handle/get-summary` path и locale fallback helper;
 - добавлен явный `ProfilesReader` contract для downstream Rust-модулей;
 - поднят GraphQL transport boundary: `ProfilesQuery` и `ProfilesMutation` для `profile_by_handle`, `me_profile`, `profile_summary` и `upsert_my_profile`;
+- `rustok-blog` и `rustok-forum` уже используют `ProfilesReader` для author presentation в GraphQL read-path;
 - module-owned UI пока ещё не реализован.
 
 ## Архитектурная граница

@@ -22,6 +22,9 @@
 - GraphQL и REST адаптеры commerce теперь живут внутри `crates/rustok-commerce` (`src/graphql/*`, `src/controllers/*`).
 - `apps/server` больше не содержит бизнес-логики commerce-адаптеров и использует только thin shim/re-export слой для маршрутов, OpenAPI и GraphQL schema composition.
 - Общие transport-контракты (`AuthContext`, `TenantContext`, `RequestContext`, `require_module_enabled`, locale/pagination helpers) модуль получает из `rustok-api`.
+- Store cart теперь является persisted storefront-context aggregate: корзина хранит `region_id`, `country_code`, `locale_code`, `selected_shipping_option_id`, `customer_id`, `email` и `currency_code`.
+- Для Medusa-style storefront flow появился явный update-path `POST /store/carts/{id}`, который обновляет cart context и делает cart source of truth для последующих shipping/payment/checkout сценариев.
+- `GET /store/shipping-options?cart_id=...`, `POST /store/payment-collections` и `POST /store/carts/{id}/complete` теперь читают storefront context из cart snapshot; legacy overrides в checkout сначала persist'ятся обратно в cart ради совместимости.
 - Publishable Leptos admin UI для commerce теперь живёт в `crates/rustok-commerce/admin/`; host admin подключает пакет через manifest-driven `build.rs` и рендерит module-owned catalog control room на `/modules/commerce`.
 - Publishable Leptos storefront UI для commerce теперь живёт в `crates/rustok-commerce/storefront/`; host storefront подключает пакет через manifest-driven `build.rs`, а public GraphQL read-path отдаёт published product catalog и selected product detail для `/modules/commerce`.
 

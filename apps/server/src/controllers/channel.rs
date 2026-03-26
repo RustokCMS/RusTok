@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, State},
     response::Response,
-    routing::{get, post},
+    routing::{delete, get, patch, post},
     Extension, Json,
 };
 use loco_rs::app::AppContext;
@@ -9,6 +9,7 @@ use loco_rs::controller::{format, Routes};
 use rustok_channel::{
     BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse, ChannelResponse,
     ChannelService, ChannelTargetResponse, CreateChannelInput, CreateChannelTargetInput,
+    UpdateChannelTargetInput,
 };
 use rustok_core::{ModuleRegistry, Permission};
 use serde::Serialize;
@@ -137,6 +138,43 @@ async fn create_target(
     format::json(target)
 }
 
+async fn update_target(
+    State(ctx): State<AppContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    current: CurrentUser,
+    Path((channel_id, target_id)): Path<(Uuid, Uuid)>,
+    Json(input): Json<UpdateChannelTargetInput>,
+) -> Result<Response> {
+    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    let service = ChannelService::new(ctx.db.clone());
+    let target: ChannelTargetResponse = service
+        .update_target(channel_id, target_id, input)
+        .await
+        .map_err(internal_error)?;
+
+    format::json(target)
+}
+
+async fn delete_target(
+    State(ctx): State<AppContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    current: CurrentUser,
+    Path((channel_id, target_id)): Path<(Uuid, Uuid)>,
+) -> Result<Response> {
+    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    let service = ChannelService::new(ctx.db.clone());
+    let target: ChannelTargetResponse = service
+        .delete_target(channel_id, target_id)
+        .await
+        .map_err(internal_error)?;
+
+    format::json(target)
+}
+
 async fn bind_module(
     State(ctx): State<AppContext>,
     CurrentTenant(tenant): CurrentTenant,
@@ -178,6 +216,42 @@ async fn bind_oauth_app(
     let service = ChannelService::new(ctx.db.clone());
     let binding = service
         .bind_oauth_app(channel_id, input)
+        .await
+        .map_err(internal_error)?;
+
+    format::json(binding)
+}
+
+async fn delete_module_binding(
+    State(ctx): State<AppContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    current: CurrentUser,
+    Path((channel_id, binding_id)): Path<(Uuid, Uuid)>,
+) -> Result<Response> {
+    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    let service = ChannelService::new(ctx.db.clone());
+    let binding = service
+        .remove_module_binding(channel_id, binding_id)
+        .await
+        .map_err(internal_error)?;
+
+    format::json(binding)
+}
+
+async fn delete_oauth_app_binding(
+    State(ctx): State<AppContext>,
+    CurrentTenant(tenant): CurrentTenant,
+    current: CurrentUser,
+    Path((channel_id, binding_id)): Path<(Uuid, Uuid)>,
+) -> Result<Response> {
+    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
+
+    let service = ChannelService::new(ctx.db.clone());
+    let binding = service
+        .revoke_oauth_app_binding(channel_id, binding_id)
         .await
         .map_err(internal_error)?;
 
@@ -233,6 +307,16 @@ pub fn routes() -> Routes {
         .add("/bootstrap", get(bootstrap))
         .add("/", post(create_channel))
         .add("/{channel_id}/targets", post(create_target))
+        .add("/{channel_id}/targets/{target_id}", patch(update_target))
+        .add("/{channel_id}/targets/{target_id}", delete(delete_target))
         .add("/{channel_id}/modules", post(bind_module))
+        .add(
+            "/{channel_id}/modules/{binding_id}",
+            delete(delete_module_binding),
+        )
         .add("/{channel_id}/oauth-apps", post(bind_oauth_app))
+        .add(
+            "/{channel_id}/oauth-apps/{binding_id}",
+            delete(delete_oauth_app_binding),
+        )
 }

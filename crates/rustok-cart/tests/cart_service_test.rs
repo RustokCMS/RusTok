@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
+use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput, UpdateCartContextInput};
 use rustok_cart::error::CartError;
 use rustok_cart::services::CartService;
 use rustok_test_utils::db::setup_test_db;
@@ -88,6 +88,57 @@ async fn create_cart_persists_multilingual_context_snapshot() {
     assert_eq!(cart.locale_code.as_deref(), Some("pt-br"));
     assert_eq!(cart.selected_shipping_option_id, Some(shipping_option_id));
     assert_eq!(cart.currency_code, "EUR");
+}
+
+#[tokio::test]
+async fn update_cart_context_rewrites_snapshot_fields() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let initial_region_id = Uuid::new_v4();
+    let updated_region_id = Uuid::new_v4();
+    let initial_shipping_option_id = Uuid::new_v4();
+    let updated_shipping_option_id = Uuid::new_v4();
+
+    let cart = service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: Some(Uuid::new_v4()),
+                email: Some("buyer@example.com".to_string()),
+                region_id: Some(initial_region_id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(initial_shipping_option_id),
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "update-context-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let updated = service
+        .update_context(
+            tenant_id,
+            cart.id,
+            UpdateCartContextInput {
+                email: Some("checkout@example.com".to_string()),
+                region_id: Some(updated_region_id),
+                country_code: Some("pl".to_string()),
+                locale_code: Some("pl_PL".to_string()),
+                selected_shipping_option_id: Some(updated_shipping_option_id),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.email.as_deref(), Some("checkout@example.com"));
+    assert_eq!(updated.region_id, Some(updated_region_id));
+    assert_eq!(updated.country_code.as_deref(), Some("PL"));
+    assert_eq!(updated.locale_code.as_deref(), Some("pl-pl"));
+    assert_eq!(
+        updated.selected_shipping_option_id,
+        Some(updated_shipping_option_id)
+    );
 }
 
 #[tokio::test]

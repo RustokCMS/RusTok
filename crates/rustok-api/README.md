@@ -9,6 +9,7 @@
 - Provide thin UI host route context types when module-owned frontend packages need generic host data such as route segment, nested subpath, locale, and query params.
 - Provide GraphQL helper types and error helpers shared across modules.
 - Provide request-level locale and tenant resolution primitives that do not belong in domain crates.
+- Carry typed channel-resolution diagnostics (`channel_id`, `channel_slug`, `channel_resolution_source`) from host middleware into module adapters.
 - Keep web-framework-oriented dependencies out of `rustok-core` while still allowing modular reuse.
 - Stay a thin shared host/API layer. It must not absorb module-specific business logic, resolvers, or controllers.
 - Prevent duplicate implementations of the same web/API contract in `apps/server` or individual module crates.

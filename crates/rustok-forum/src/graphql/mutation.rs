@@ -5,6 +5,7 @@ use rustok_api::{
 };
 use rustok_core::{Permission, CONTENT_FORMAT_MARKDOWN};
 use rustok_outbox::TransactionalEventBus;
+use rustok_profiles::{graphql::GqlProfileSummary, ProfileService, ProfilesReader};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -53,6 +54,13 @@ impl ForumMutation {
                 },
             )
             .await?;
+        let author_profile = load_author_profile(
+            db,
+            tenant_id,
+            topic.author_id,
+            topic.effective_locale.as_str(),
+        )
+        .await?;
 
         Ok(GqlForumTopic {
             id: topic.id,
@@ -62,6 +70,7 @@ impl ForumMutation {
             available_locales: topic.available_locales,
             category_id: topic.category_id,
             author_id: topic.author_id,
+            author_profile,
             title: topic.title,
             slug: topic.slug,
             body: topic.body,
@@ -108,6 +117,13 @@ impl ForumMutation {
                 },
             )
             .await?;
+        let author_profile = load_author_profile(
+            db,
+            tenant_id,
+            topic.author_id,
+            topic.effective_locale.as_str(),
+        )
+        .await?;
 
         Ok(GqlForumTopic {
             id: topic.id,
@@ -117,6 +133,7 @@ impl ForumMutation {
             available_locales: topic.available_locales,
             category_id: topic.category_id,
             author_id: topic.author_id,
+            author_profile,
             title: topic.title,
             slug: topic.slug,
             body: topic.body,
@@ -187,6 +204,13 @@ impl ForumMutation {
                 },
             )
             .await?;
+        let author_profile = load_author_profile(
+            db,
+            tenant_id,
+            reply.author_id,
+            reply.effective_locale.as_str(),
+        )
+        .await?;
 
         Ok(GqlForumReply {
             id: reply.id,
@@ -195,6 +219,7 @@ impl ForumMutation {
             effective_locale: reply.effective_locale,
             topic_id: reply.topic_id,
             author_id: reply.author_id,
+            author_profile,
             content: reply.content,
             content_format: reply.content_format,
             status: reply.status,
@@ -268,4 +293,22 @@ fn require_forum_permission(
     }
 
     Ok(auth)
+}
+
+async fn load_author_profile(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    author_id: Option<Uuid>,
+    requested_locale: &str,
+) -> Result<Option<GqlProfileSummary>> {
+    let Some(author_id) = author_id else {
+        return Ok(None);
+    };
+
+    let profile = ProfileService::new(db.clone())
+        .find_profile_summary(tenant_id, author_id, Some(requested_locale), None)
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+    Ok(profile.map(Into::into))
 }

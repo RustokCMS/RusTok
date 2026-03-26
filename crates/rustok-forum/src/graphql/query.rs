@@ -5,8 +5,10 @@ use rustok_api::{
 };
 use rustok_core::{Permission, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
+use rustok_profiles::{graphql::GqlProfileSummary, ProfileService, ProfilesReader};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -112,7 +114,7 @@ impl ForumQuery {
         let filter = crate::ListTopicsFilter {
             category_id,
             status: None,
-            locale: Some(locale),
+            locale: Some(locale.clone()),
             page: (offset / limit + 1) as u64,
             per_page: limit as u64,
         };
@@ -134,9 +136,22 @@ impl ForumQuery {
             total,
         );
 
+        let author_profiles = load_author_profiles_map(
+            db,
+            tenant_id,
+            topics.iter().map(|topic| topic.author_id),
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
         let items = topics
             .into_iter()
-            .map(map_topic_list_item)
+            .map(|topic| {
+                let author_profile = topic
+                    .author_id
+                    .and_then(|author_id| author_profiles.get(&author_id).cloned());
+                map_topic_list_item(topic, author_profile)
+            })
             .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
@@ -178,7 +193,7 @@ impl ForumQuery {
         let (offset, limit) = pagination.normalize()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let filter = crate::ListRepliesFilter {
-            locale: Some(locale),
+            locale: Some(locale.clone()),
             page: (offset / limit + 1) as u64,
             per_page: limit as u64,
         };
@@ -201,9 +216,22 @@ impl ForumQuery {
             total,
         );
 
+        let author_profiles = load_author_profiles_map(
+            db,
+            tenant_id,
+            replies.iter().map(|reply| reply.author_id),
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
         let items = replies
             .into_iter()
-            .map(map_reply_response)
+            .map(|reply| {
+                let author_profile = reply
+                    .author_id
+                    .and_then(|author_id| author_profiles.get(&author_id).cloned());
+                map_reply_response(reply, author_profile)
+            })
             .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
@@ -300,7 +328,7 @@ impl ForumQuery {
         let filter = crate::ListTopicsFilter {
             category_id,
             status: None,
-            locale: Some(locale),
+            locale: Some(locale.clone()),
             page: (offset / limit + 1) as u64,
             per_page: limit as u64,
         };
@@ -322,9 +350,22 @@ impl ForumQuery {
             total,
         );
 
+        let author_profiles = load_author_profiles_map(
+            db,
+            resolved_tenant_id,
+            topics.iter().map(|topic| topic.author_id),
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
         let items = topics
             .into_iter()
-            .map(map_topic_list_item)
+            .map(|topic| {
+                let author_profile = topic
+                    .author_id
+                    .and_then(|author_id| author_profiles.get(&author_id).cloned());
+                map_topic_list_item(topic, author_profile)
+            })
             .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
@@ -372,7 +413,20 @@ impl ForumQuery {
             Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
 
-        Ok(Some(map_topic_response(topic)))
+        let author_profiles = load_author_profiles_map(
+            db,
+            resolved_tenant_id,
+            [topic.author_id],
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
+
+        let author_profile = topic
+            .author_id
+            .and_then(|author_id| author_profiles.get(&author_id).cloned());
+
+        Ok(Some(map_topic_response(topic, author_profile)))
     }
 
     async fn forum_storefront_replies(
@@ -393,7 +447,7 @@ impl ForumQuery {
         let (offset, limit) = pagination.normalize()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
         let filter = crate::ListRepliesFilter {
-            locale: Some(locale),
+            locale: Some(locale.clone()),
             page: (offset / limit + 1) as u64,
             per_page: limit as u64,
         };
@@ -416,9 +470,22 @@ impl ForumQuery {
             total,
         );
 
+        let author_profiles = load_author_profiles_map(
+            db,
+            resolved_tenant_id,
+            replies.iter().map(|reply| reply.author_id),
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
         let items = replies
             .into_iter()
-            .map(map_reply_response)
+            .map(|reply| {
+                let author_profile = reply
+                    .author_id
+                    .and_then(|author_id| author_profiles.get(&author_id).cloned());
+                map_reply_response(reply, author_profile)
+            })
             .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
@@ -477,7 +544,10 @@ fn map_category_list_item(category: CategoryListItem) -> GqlForumCategory {
     }
 }
 
-fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopic {
+fn map_topic_list_item(
+    topic: TopicListItem,
+    author_profile: Option<GqlProfileSummary>,
+) -> GqlForumTopic {
     GqlForumTopic {
         id: topic.id,
         requested_locale: topic.locale.clone(),
@@ -486,6 +556,7 @@ fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopic {
         available_locales: vec![topic.effective_locale],
         category_id: topic.category_id,
         author_id: topic.author_id,
+        author_profile,
         title: topic.title,
         slug: topic.slug,
         body: String::new(),
@@ -500,7 +571,10 @@ fn map_topic_list_item(topic: TopicListItem) -> GqlForumTopic {
     }
 }
 
-fn map_topic_response(topic: TopicResponse) -> GqlForumTopic {
+fn map_topic_response(
+    topic: TopicResponse,
+    author_profile: Option<GqlProfileSummary>,
+) -> GqlForumTopic {
     GqlForumTopic {
         id: topic.id,
         requested_locale: topic.requested_locale,
@@ -509,6 +583,7 @@ fn map_topic_response(topic: TopicResponse) -> GqlForumTopic {
         available_locales: topic.available_locales,
         category_id: topic.category_id,
         author_id: topic.author_id,
+        author_profile,
         title: topic.title,
         slug: topic.slug,
         body: topic.body,
@@ -523,7 +598,10 @@ fn map_topic_response(topic: TopicResponse) -> GqlForumTopic {
     }
 }
 
-fn map_reply_response(reply: ReplyResponse) -> GqlForumReply {
+fn map_reply_response(
+    reply: ReplyResponse,
+    author_profile: Option<GqlProfileSummary>,
+) -> GqlForumReply {
     GqlForumReply {
         id: reply.id,
         requested_locale: reply.requested_locale,
@@ -531,6 +609,7 @@ fn map_reply_response(reply: ReplyResponse) -> GqlForumReply {
         effective_locale: reply.effective_locale,
         topic_id: reply.topic_id,
         author_id: reply.author_id,
+        author_profile,
         content: reply.content,
         content_format: reply.content_format,
         status: reply.status,
@@ -538,4 +617,41 @@ fn map_reply_response(reply: ReplyResponse) -> GqlForumReply {
         created_at: reply.created_at,
         updated_at: reply.updated_at,
     }
+}
+
+async fn load_author_profiles_map<I>(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    author_ids: I,
+    requested_locale: &str,
+    tenant_default_locale: &str,
+) -> Result<HashMap<Uuid, GqlProfileSummary>>
+where
+    I: IntoIterator<Item = Option<Uuid>>,
+{
+    let user_ids = author_ids
+        .into_iter()
+        .flatten()
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    if user_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let profiles = ProfileService::new(db.clone())
+        .find_profile_summaries(
+            tenant_id,
+            &user_ids,
+            Some(requested_locale),
+            Some(tenant_default_locale),
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+    Ok(profiles
+        .into_iter()
+        .map(|(user_id, summary)| (user_id, summary.into()))
+        .collect())
 }

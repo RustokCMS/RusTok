@@ -8,7 +8,9 @@ use axum::{
 use loco_rs::app::AppContext;
 use uuid::Uuid;
 
-use crate::context::{ChannelContext, ChannelContextExtension, TenantContextExt};
+use crate::context::{
+    ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContextExt,
+};
 use rustok_channel::{ChannelDetailResponse, ChannelService};
 
 const CHANNEL_ID_HEADER: &str = "X-Channel-ID";
@@ -25,45 +27,28 @@ pub async fn resolve(
 
     let service = ChannelService::new(ctx.db.clone());
     let selected = if let Some(channel_id) = channel_id_from_header(req.headers()) {
-        match service.get_channel(channel_id).await {
-            Ok(channel) if channel.tenant_id == tenant.id => Some(ChannelDetailResponse {
-                channel,
-                targets: Vec::new(),
-                module_bindings: Vec::new(),
-                oauth_apps: Vec::new(),
-            }),
-            _ => None,
-        }
-    } else if let Some(slug) = channel_slug_from_header(req.headers())
-        .or_else(|| channel_slug_from_query(req.uri().query()))
-    {
-        match service.get_channel_by_slug(tenant.id, &slug).await {
-            Ok(Some(channel)) => Some(ChannelDetailResponse {
-                channel,
-                targets: Vec::new(),
-                module_bindings: Vec::new(),
-                oauth_apps: Vec::new(),
-            }),
-            _ => None,
-        }
+        resolve_channel_from_id(&service, tenant.id, channel_id).await
+    } else if let Some(slug) = channel_slug_from_header(req.headers()) {
+        resolve_channel_from_slug(
+            &service,
+            tenant.id,
+            &slug,
+            ChannelResolutionSource::HeaderSlug,
+        )
+        .await
+    } else if let Some(slug) = channel_slug_from_query(req.uri().query()) {
+        resolve_channel_from_slug(&service, tenant.id, &slug, ChannelResolutionSource::Query).await
     } else if let Some(host) = extract_host(req.headers()) {
-        let normalized = host
-            .split(':')
-            .next()
-            .unwrap_or(host)
-            .trim()
-            .to_ascii_lowercase();
-        service
-            .get_channel_by_target_value(tenant.id, &normalized)
-            .await
-            .ok()
-            .flatten()
+        resolve_channel_from_host(&service, tenant.id, host).await
     } else {
         None
-    }
-    .or(service.get_default_channel(tenant.id).await.ok().flatten());
+    };
+    let selected = match selected {
+        Some(selected) => Some(selected),
+        None => resolve_default_channel(&service, tenant.id).await,
+    };
 
-    if let Some(detail) = selected {
+    if let Some(ResolvedChannelDetail { detail, source }) = selected {
         let selected_target = detail
             .targets
             .iter()
@@ -80,10 +65,92 @@ pub async fn resolve(
                 target_type: selected_target.map(|target| target.target_type.clone()),
                 target_value: selected_target.map(|target| target.value.clone()),
                 settings: detail.channel.settings,
+                resolution_source: source,
             }));
     }
 
     Ok(next.run(req).await)
+}
+
+struct ResolvedChannelDetail {
+    detail: ChannelDetailResponse,
+    source: ChannelResolutionSource,
+}
+
+async fn resolve_channel_from_id(
+    service: &ChannelService,
+    tenant_id: Uuid,
+    channel_id: Uuid,
+) -> Option<ResolvedChannelDetail> {
+    match service.get_channel(channel_id).await {
+        Ok(channel) if channel.tenant_id == tenant_id => Some(ResolvedChannelDetail {
+            detail: ChannelDetailResponse {
+                channel,
+                targets: Vec::new(),
+                module_bindings: Vec::new(),
+                oauth_apps: Vec::new(),
+            },
+            source: ChannelResolutionSource::HeaderId,
+        }),
+        _ => None,
+    }
+}
+
+async fn resolve_channel_from_slug(
+    service: &ChannelService,
+    tenant_id: Uuid,
+    slug: &str,
+    source: ChannelResolutionSource,
+) -> Option<ResolvedChannelDetail> {
+    match service.get_channel_by_slug(tenant_id, slug).await {
+        Ok(Some(channel)) => Some(ResolvedChannelDetail {
+            detail: ChannelDetailResponse {
+                channel,
+                targets: Vec::new(),
+                module_bindings: Vec::new(),
+                oauth_apps: Vec::new(),
+            },
+            source,
+        }),
+        _ => None,
+    }
+}
+
+async fn resolve_channel_from_host(
+    service: &ChannelService,
+    tenant_id: Uuid,
+    host: &str,
+) -> Option<ResolvedChannelDetail> {
+    let normalized = host
+        .split(':')
+        .next()
+        .unwrap_or(host)
+        .trim()
+        .to_ascii_lowercase();
+    service
+        .get_channel_by_host_target_value(tenant_id, &normalized)
+        .await
+        .ok()
+        .flatten()
+        .map(|detail| ResolvedChannelDetail {
+            detail,
+            source: ChannelResolutionSource::Host,
+        })
+}
+
+async fn resolve_default_channel(
+    service: &ChannelService,
+    tenant_id: Uuid,
+) -> Option<ResolvedChannelDetail> {
+    service
+        .get_default_channel(tenant_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|detail| ResolvedChannelDetail {
+            detail,
+            source: ChannelResolutionSource::Default,
+        })
 }
 
 fn channel_id_from_header(headers: &axum::http::HeaderMap) -> Option<Uuid> {

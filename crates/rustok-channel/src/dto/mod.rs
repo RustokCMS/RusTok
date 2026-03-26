@@ -20,6 +20,14 @@ pub struct CreateChannelTargetInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateChannelTargetInput {
+    pub target_type: String,
+    pub value: String,
+    pub is_primary: bool,
+    pub settings: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BindChannelModuleInput {
     pub module_slug: String,
     pub is_enabled: bool,

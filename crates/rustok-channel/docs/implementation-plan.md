@@ -56,7 +56,9 @@
 
 - [x] общий `ChannelContext` в `rustok-api`;
 - [x] server middleware для channel resolution;
-- [x] прокидывание channel-aware данных в `RequestContext`.
+- [x] прокидывание channel-aware данных в `RequestContext`;
+- [x] фиксация explicit policy order `header -> query -> host -> default`;
+- [x] прокидывание `resolution_source` в `ChannelContext` и `RequestContext` для runtime diagnostics.
 
 ### Transport/admin
 
@@ -98,13 +100,13 @@
 
 - регистрация модуля в `apps/server`;
 - подключение миграций в server migrator;
-- middleware для разрешения канала по header/query/host/default fallback;
+- middleware для разрешения канала по explicit policy order `header -> query -> host -> default`, где host-based resolution сейчас сознательно использует только `web_domain` targets;
 - thin REST endpoints `/api/channels/*`.
 
 ### Shared host contracts
 
 - `ChannelContext` и optional extractor в `rustok-api`;
-- прокидывание `channel_id` и `channel_slug` в `RequestContext`;
+- прокидывание `channel_id`, `channel_slug` и `channel_resolution_source` в `RequestContext`;
 - расширение `TenantContextExt` для server middleware chain.
 
 ### Первый domain consumer
@@ -116,7 +118,7 @@
 ### Admin UI
 
 - `rustok-channel-admin` как module-owned Leptos package;
-- bootstrap page с просмотром runtime context;
+- bootstrap page с просмотром runtime context, включая explicit resolution source;
 - создание channel;
 - добавление target;
 - binding модулей;
@@ -151,28 +153,29 @@
 
 ### Приоритет 2. Усиление runtime resolution
 
-- [ ] решить, нужен ли явный policy order для `header -> query -> host -> default`;
-- [ ] определить, нужны ли tenant-level default rules для target resolution;
-- [ ] добавить более явную диагностику, почему был выбран конкретный канал.
+- [x] зафиксировать явный policy order `header -> query -> host -> default`;
+- [x] определить, что tenant-level default rules для target resolution не нужны в `v0`;
+- [ ] вернуться к tenant-level default rules только после explicit default channel и stabilizing шага по target semantics; это точка повторного пересмотра, а не заранее принятое обязательство на реализацию;
+- [x] добавить более явную диагностику, почему был выбран конкретный канал.
 
 ### Приоритет 3. Уточнение channel semantics
 
-- [ ] проверить, хватает ли текущего `target_type + value`;
-- [ ] решить, нужен ли переход к более typed target payload;
-- [ ] отделить то, что является target, от того, что является connector/integration.
+- [x] проверить, что для `v0` текущего `target_type + value` хватает, если semantics tightened до explicit target-type allowlist и `web_domain`-only host resolution;
+- [x] решить, что переход к более typed target payload для `v0` не нужен и откладывается до появления richer target-specific behavior;
+- [x] отделить то, что является target, от того, что является connector/integration: `target` остаётся inbound resolution surface, а connector/integration остаётся отдельным semantic layer через существующую связку `channel_oauth_apps`; отдельный новый connector subsystem в `v0/v1` не вводим.
 
 ### Приоритет 4. Credential story
 
-- [ ] проверить, достаточно ли связки `channel -> oauth_app`;
-- [ ] решить, нужны ли publishable keys;
-- [ ] не допустить появления второй параллельной token subsystem рядом с OAuth.
+- [x] проверить, что для `v0/v1` связки `channel -> oauth_app` достаточно как минимального integration-binding слоя поверх существующей OAuth subsystem;
+- [x] решить, что publishable keys для `v0/v1` не нужны и откладываются до появления реального public-client credential flow, который нельзя честно покрыть существующим OAuth/app story;
+- [x] зафиксировать, что рядом с OAuth не вводим вторую параллельную token subsystem; richer connector/credential model обсуждаем только при появлении реального runtime pressure.
 
 ### Приоритет 5. Admin UX polish
 
-- [ ] показать более явный resolution source в UI;
-- [ ] добавить редактирование существующих target/module/app bindings;
+- [x] показать более явный resolution source в UI;
+- [x] добавить редактирование существующих target/module/app bindings;
 - [ ] добавить удаление/revoke flows;
-- [ ] добавить пустые состояния и более понятные ошибки для операторов.
+- [x] добавить пустые состояния и более понятные ошибки для операторов.
 
 ## Эволюция после v0
 
@@ -182,3 +185,10 @@
 - нужны ли publishable keys;
 - как выглядит channel-aware request context;
 - какие модульные области получают channel-specific settings.
+
+## Промежуточные выводы для v0/v1
+
+- `target` и `connector/integration` уже считаются разными semantic слоями:
+  `channel_targets` отвечают за resolution surface, а `channel_oauth_apps` — за связь канала с существующей OAuth/app subsystem.
+- `v0/v1` намеренно не вводит новый универсальный connector subsystem и не смешивает connector semantics обратно в `target_type`.
+- publishable keys и richer connector contracts остаются отложенным вопросом до появления реального public-client/runtime pressure.

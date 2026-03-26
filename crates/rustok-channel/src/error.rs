@@ -12,6 +12,10 @@ pub enum ChannelError {
     NotFound(Uuid),
     #[error("target type `{0}` is invalid")]
     InvalidTargetType(String),
+    #[error("target value `{0}` is invalid")]
+    InvalidTargetValue(String),
+    #[error("target `{1}` already exists for target type `{0}` in this tenant")]
+    TargetAlreadyExists(String, String),
     #[error(transparent)]
     Database(#[from] DbErr),
 }

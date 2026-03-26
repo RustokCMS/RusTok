@@ -31,11 +31,11 @@
 ## Что уже есть в runtime
 
 - storage-модель `channels`, `channel_targets`, `channel_module_bindings`, `channel_oauth_apps`;
-- service layer для создания каналов, target'ов, module bindings и OAuth app bindings;
-- server middleware, который резолвит `ChannelContext` по `X-Channel-ID`, `X-Channel-Slug`, query `channel`, host target или default channel;
-- общий request contract в `rustok-api` для channel-aware transport/adapters;
+- service layer для создания каналов, target'ов, module bindings и OAuth app bindings; для `v0` target semantics остаются на уровне `target_type + value`, но с explicit allowlist типов и `web_domain`-only host resolution;
+- server middleware, который теперь явно следует policy order `header (X-Channel-ID / X-Channel-Slug) -> query channel -> host target -> default channel`, сохраняя `resolution_source` в runtime context;
+- общий request contract в `rustok-api` для channel-aware transport/adapters, включая `channel_id`, `channel_slug` и `channel_resolution_source`;
 - тонкий REST surface в `apps/server` для bootstrap, создания каналов, target'ов и bindings;
-- module-owned Leptos admin UI package `rustok-channel-admin`, подключаемый в `apps/admin` через manifest-driven wiring.
+- module-owned Leptos admin UI package `rustok-channel-admin`, подключаемый в `apps/admin` через manifest-driven wiring и уже показывающий explicit resolution source в runtime context bootstrap panel.
 - первый живой consumer в `rustok-pages`: public read-path уже использует `channel_module_bindings` для runtime gating, а поверх этого появился первый publication-level proof point через `channel_slug` allowlist в metadata страниц.
 - второй живой consumer в `rustok-blog`: тот же паттерн теперь тоже расширен до publication-level semantics через metadata-based `channelSlugs` allowlist.
 

@@ -7,8 +7,10 @@ use rustok_channel::ChannelService;
 use rustok_content::NodeService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
+use rustok_profiles::{graphql::GqlProfileSummary, ProfileService, ProfilesReader};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -68,7 +70,17 @@ impl BlogQuery {
             return Ok(None);
         }
 
-        Ok(Some(post.into()))
+        let author_profiles = load_author_profiles_map(
+            db,
+            tenant_id,
+            [Some(post.author_id)],
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
+
+        let author_profile = author_profiles.get(&post.author_id).cloned();
+        Ok(Some(map_post(post, author_profile)))
     }
 
     async fn post_by_slug(
@@ -97,15 +109,27 @@ impl BlogQuery {
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
-        Ok(post
-            .filter(|post| {
-                is_post_visible_for_request(
-                    &post.metadata,
-                    public_channel_slug(ctx).as_deref(),
-                    !is_public_request(ctx),
-                )
-            })
-            .map(Into::into))
+        if let Some(post) = post.filter(|post| {
+            is_post_visible_for_request(
+                &post.metadata,
+                public_channel_slug(ctx).as_deref(),
+                !is_public_request(ctx),
+            )
+        }) {
+            let author_profiles = load_author_profiles_map(
+                db,
+                tenant_id,
+                [Some(post.author_id)],
+                locale.as_str(),
+                tenant.default_locale.as_str(),
+            )
+            .await?;
+
+            let author_profile = author_profiles.get(&post.author_id).cloned();
+            return Ok(Some(map_post(post, author_profile)));
+        }
+
+        Ok(None)
     }
 
     async fn posts(
@@ -150,7 +174,7 @@ impl BlogQuery {
             status: filter.status.map(Into::into),
             parent_id: None,
             author_id: filter.author_id,
-            locale: Some(locale),
+            locale: Some(locale.clone()),
             category_id: None,
             page: filter.page.unwrap_or(1),
             per_page: filter.per_page.unwrap_or(20),
@@ -175,7 +199,23 @@ impl BlogQuery {
             total,
         );
 
-        let items = items.into_iter().map(Into::into).collect::<Vec<_>>();
+        let author_profiles = load_author_profiles_map(
+            db,
+            tenant_id,
+            items.iter().map(|item| item.author_id),
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
+        let items = items
+            .into_iter()
+            .map(|item| {
+                let author_profile = item
+                    .author_id
+                    .and_then(|author_id| author_profiles.get(&author_id).cloned());
+                map_post_list_item(item, author_profile)
+            })
+            .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
             "graphql",
@@ -204,6 +244,18 @@ fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
         .and_then(|request_context| request_context.channel_slug.clone())
         .map(|slug| slug.trim().to_ascii_lowercase())
         .filter(|slug| !slug.is_empty())
+}
+
+fn request_channel_label(request_context: &RequestContext) -> &str {
+    request_context.channel_slug.as_deref().unwrap_or("current")
+}
+
+fn request_channel_resolution_source(request_context: &RequestContext) -> &str {
+    request_context
+        .channel_resolution_source
+        .as_ref()
+        .map(|source| source.as_str())
+        .unwrap_or("unknown")
 }
 
 fn is_post_visible_for_request(
@@ -269,13 +321,31 @@ async fn list_public_visible_posts(
     }
 
     let visible_total = visible_items.len() as u64;
-    let offset = requested_page.saturating_sub(1).saturating_mul(requested_per_page) as usize;
-    let items = visible_items
+    let offset = requested_page
+        .saturating_sub(1)
+        .saturating_mul(requested_per_page) as usize;
+    let page_items = visible_items
         .into_iter()
         .skip(offset)
         .take(requested_per_page as usize)
-        .map(Into::into)
-        .collect();
+        .collect::<Vec<_>>();
+    let author_profiles = load_author_profiles_map(
+        db,
+        tenant_id,
+        page_items.iter().map(|item| item.author_id),
+        locale.as_str(),
+        default_locale,
+    )
+    .await?;
+    let items = page_items
+        .into_iter()
+        .map(|item| {
+            let author_profile = item
+                .author_id
+                .and_then(|author_id| author_profiles.get(&author_id).cloned());
+            map_post_list_item(item, author_profile)
+        })
+        .collect::<Vec<_>>();
 
     Ok(GqlPostList {
         items,
@@ -289,6 +359,58 @@ fn resolve_graphql_locale_fallback(requested: Option<&str>, fallback: &str) -> S
         .filter(|locale| !locale.is_empty())
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| fallback.to_string())
+}
+
+fn map_post(post: crate::PostResponse, author_profile: Option<GqlProfileSummary>) -> GqlPost {
+    let mut gql: GqlPost = post.into();
+    gql.author_profile = author_profile;
+    gql
+}
+
+fn map_post_list_item(
+    item: rustok_content::dto::NodeListItem,
+    author_profile: Option<GqlProfileSummary>,
+) -> GqlPostListItem {
+    let mut gql: GqlPostListItem = item.into();
+    gql.author_profile = author_profile;
+    gql
+}
+
+async fn load_author_profiles_map<I>(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    author_ids: I,
+    requested_locale: &str,
+    tenant_default_locale: &str,
+) -> Result<HashMap<Uuid, GqlProfileSummary>>
+where
+    I: IntoIterator<Item = Option<Uuid>>,
+{
+    let user_ids = author_ids
+        .into_iter()
+        .flatten()
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    if user_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let profiles = ProfileService::new(db.clone())
+        .find_profile_summaries(
+            tenant_id,
+            &user_ids,
+            Some(requested_locale),
+            Some(tenant_default_locale),
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+    Ok(profiles
+        .into_iter()
+        .map(|(user_id, summary)| (user_id, summary.into()))
+        .collect())
 }
 
 async fn require_public_blog_channel_enabled(ctx: &Context<'_>) -> Result<()> {
@@ -329,9 +451,10 @@ async fn ensure_public_blog_channel_enabled(
         return Ok(());
     }
 
-    let channel_label = request_context.channel_slug.as_deref().unwrap_or("current");
+    let channel_label = request_channel_label(request_context);
+    let resolution_source = request_channel_resolution_source(request_context);
     Err(async_graphql::Error::new(format!(
-        "Module '{MODULE_SLUG}' is not enabled for channel '{channel_label}'"
+        "Module '{MODULE_SLUG}' is not enabled for channel '{channel_label}' (resolved via {resolution_source})"
     ))
     .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")))
 }
@@ -339,7 +462,7 @@ async fn ensure_public_blog_channel_enabled(
 #[cfg(test)]
 mod tests {
     use super::{ensure_public_blog_channel_enabled, is_post_visible_for_request};
-    use rustok_api::RequestContext;
+    use rustok_api::{context::ChannelResolutionSource, RequestContext};
     use rustok_channel::{migrations, BindChannelModuleInput, ChannelService, CreateChannelInput};
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
@@ -399,6 +522,7 @@ mod tests {
             user_id: None,
             channel_id: Some(channel_id),
             channel_slug: Some(channel_slug.to_string()),
+            channel_resolution_source: Some(ChannelResolutionSource::Host),
             locale: "en".to_string(),
         }
     }
@@ -522,5 +646,51 @@ mod tests {
 
         assert!(is_post_visible_for_request(&metadata, None, true));
         assert!(!is_post_visible_for_request(&metadata, None, false));
+    }
+
+    #[tokio::test]
+    async fn disabled_binding_error_reports_resolution_source() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "tenant-blog").await;
+        let service = ChannelService::new(db.clone());
+        let channel = service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "blog-web".to_string(),
+                name: "Blog Web".to_string(),
+                settings: None,
+            })
+            .await
+            .expect("channel should be created");
+        service
+            .bind_module(
+                channel.id,
+                BindChannelModuleInput {
+                    module_slug: "blog".to_string(),
+                    is_enabled: false,
+                    settings: None,
+                },
+            )
+            .await
+            .expect("binding should be saved");
+
+        let request_context = RequestContext {
+            tenant_id,
+            user_id: None,
+            channel_id: Some(channel.id),
+            channel_slug: Some("blog-web".to_string()),
+            channel_resolution_source: Some(ChannelResolutionSource::Query),
+            locale: "en".to_string(),
+        };
+
+        let error = ensure_public_blog_channel_enabled(&db, Some(&request_context), false)
+            .await
+            .expect_err("disabled binding should be reported");
+
+        assert!(
+            error.message.contains("resolved via query"),
+            "error must expose resolution source for diagnostics"
+        );
     }
 }

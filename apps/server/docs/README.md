@@ -28,6 +28,7 @@ Shared foundation / support crates:
 
 Дополнительно для baseline:
 - `rustok-channel` уже участвует в request pipeline через channel resolution middleware и общий `ChannelContext` в `rustok-api`;
+- channel resolution middleware следует explicit policy order `header -> query -> host -> default` и прокидывает `resolution_source` в shared request context;
 - server держит только thin transport/wiring для channel management: middleware и REST surface `/api/channels/*`, а domain/service/storage остаются в модуле.
 
 - [`library-stack.md`](./library-stack.md) — основные backend-библиотеки сервера и их роль (framework, HTTP, ORM, GraphQL, runtime, observability).

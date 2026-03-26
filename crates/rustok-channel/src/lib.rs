@@ -3,14 +3,16 @@ pub mod entities;
 pub mod error;
 pub mod migrations;
 pub mod services;
+pub mod target_type;
 
 pub use dto::{
     BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse,
     ChannelModuleBindingResponse, ChannelOauthAppResponse, ChannelResponse, ChannelTargetResponse,
-    CreateChannelInput, CreateChannelTargetInput,
+    CreateChannelInput, CreateChannelTargetInput, UpdateChannelTargetInput,
 };
 pub use error::{ChannelError, ChannelResult};
 pub use services::ChannelService;
+pub use target_type::ChannelTargetType;
 
 use async_trait::async_trait;
 use rustok_core::module::{HealthStatus, MigrationSource, ModuleKind, RusToKModule};

@@ -1,4 +1,5 @@
 use async_graphql::{InputObject, SimpleObject};
+use rustok_profiles::graphql::GqlProfileSummary;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -28,6 +29,7 @@ pub struct GqlForumTopic {
     pub available_locales: Vec<String>,
     pub category_id: Uuid,
     pub author_id: Option<Uuid>,
+    pub author_profile: Option<GqlProfileSummary>,
     pub title: String,
     pub slug: String,
     pub body: String,
@@ -49,6 +51,7 @@ pub struct GqlForumReply {
     pub effective_locale: String,
     pub topic_id: Uuid,
     pub author_id: Option<Uuid>,
+    pub author_profile: Option<GqlProfileSummary>,
     pub content: String,
     pub content_format: String,
     pub status: String,

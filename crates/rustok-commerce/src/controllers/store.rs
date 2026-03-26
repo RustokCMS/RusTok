@@ -21,6 +21,7 @@ use crate::{
         AddCartLineItemInput, CartResponse, CompleteCheckoutInput, CompleteCheckoutResponse,
         CreateCartInput, CustomerResponse, OrderResponse, PaymentCollectionResponse,
         RegionResponse, ResolveStoreContextInput, ShippingOptionResponse, StoreContextResponse,
+        UpdateCartContextInput,
     },
     entities::{price, product, product_translation, product_variant, variant_translation},
     search::product_translation_title_search_condition,
@@ -235,19 +236,31 @@ pub async fn list_regions(
 pub async fn list_shipping_options(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
+    auth: OptionalAuthContext,
     request_context: RequestContext,
     Query(query): Query<StoreContextQuery>,
 ) -> Result<Json<Vec<ShippingOptionResponse>>> {
-    let context = resolve_context(
-        &ctx,
-        tenant.id,
-        &request_context,
-        query.region_id,
-        query.country_code.clone(),
-        query.locale.clone(),
-        query.currency_code.clone(),
-    )
-    .await?;
+    let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
+    let context = if let Some(cart_id) = query.cart_id {
+        let cart_service = CartService::new(ctx.db.clone());
+        let cart = cart_service
+            .get_cart(tenant.id, cart_id)
+            .await
+            .map_err(map_cart_error)?;
+        ensure_store_cart_access(&cart, customer_id)?;
+        resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?
+    } else {
+        resolve_context(
+            &ctx,
+            tenant.id,
+            &request_context,
+            query.region_id,
+            query.country_code.clone(),
+            query.locale.clone(),
+            query.currency_code.clone(),
+        )
+        .await?
+    };
 
     let service = FulfillmentService::new(ctx.db.clone());
     let mut options = service
@@ -354,6 +367,53 @@ pub async fn get_cart(
     Ok(Json(cart))
 }
 
+/// Update storefront cart context
+#[utoipa::path(
+    post,
+    path = "/store/carts/{id}",
+    tag = "store",
+    params(("id" = Uuid, Path, description = "Cart ID")),
+    request_body = StoreUpdateCartInput,
+    responses(
+        (status = 200, description = "Updated cart context", body = StoreCartResponse),
+        (status = 401, description = "Authentication required for customer-owned carts"),
+        (status = 404, description = "Cart not found")
+    )
+)]
+pub async fn update_cart_context(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: OptionalAuthContext,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<StoreUpdateCartInput>,
+) -> Result<Json<StoreCartResponse>> {
+    let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
+    let cart_service = CartService::new(ctx.db.clone());
+    let cart = cart_service
+        .get_cart(tenant.id, id)
+        .await
+        .map_err(map_cart_error)?;
+    ensure_store_cart_access(&cart, customer_id)?;
+
+    let updated = apply_cart_context_patch(
+        &ctx,
+        tenant.id,
+        &request_context,
+        &cart,
+        StoreCartContextPatch {
+            email: input.email,
+            region_id: input.region_id,
+            country_code: input.country_code,
+            locale: input.locale,
+            selected_shipping_option_id: input.selected_shipping_option_id,
+        },
+    )
+    .await?;
+
+    Ok(Json(updated))
+}
+
 /// Add storefront cart line item
 #[utoipa::path(
     post,
@@ -386,7 +446,10 @@ pub async fn add_cart_line_item(
         &ctx.db,
         tenant.id,
         &existing.currency_code,
-        &request_context.locale,
+        existing
+            .locale_code
+            .as_deref()
+            .unwrap_or(request_context.locale.as_str()),
         input,
     )
     .await?;
@@ -488,6 +551,7 @@ pub async fn create_payment_collection(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: OptionalAuthContext,
+    request_context: RequestContext,
     Json(input): Json<StoreCreatePaymentCollectionInput>,
 ) -> Result<(StatusCode, Json<PaymentCollectionResponse>)> {
     let customer_id = current_customer_id(&ctx, tenant.id, auth.0.as_ref()).await?;
@@ -497,6 +561,7 @@ pub async fn create_payment_collection(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     ensure_store_cart_access(&cart, customer_id)?;
+    let context = resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?;
 
     let service = PaymentService::new(ctx.db.clone());
     let collection = service
@@ -508,7 +573,7 @@ pub async fn create_payment_collection(
                 customer_id: cart.customer_id,
                 currency_code: cart.currency_code.clone(),
                 amount: cart.total_amount,
-                metadata: input.metadata,
+                metadata: merge_metadata(input.metadata, cart_context_metadata(&cart, &context)),
             },
         )
         .await
@@ -534,6 +599,7 @@ pub async fn complete_cart_checkout(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: rustok_api::AuthContext,
+    request_context: RequestContext,
     Path(cart_id): Path<Uuid>,
     Json(input): Json<StoreCompleteCartInput>,
 ) -> Result<Json<CompleteCheckoutResponse>> {
@@ -545,6 +611,27 @@ pub async fn complete_cart_checkout(
     let customer_id = current_customer_id(&ctx, tenant.id, Some(&auth)).await?;
     ensure_store_cart_access(&cart, customer_id)?;
 
+    if input.shipping_option_id.is_some()
+        || input.region_id.is_some()
+        || input.country_code.is_some()
+        || input.locale.is_some()
+    {
+        apply_cart_context_patch(
+            &ctx,
+            tenant.id,
+            &request_context,
+            &cart,
+            StoreCartContextPatch {
+                email: None,
+                region_id: input.region_id.map(Some),
+                country_code: input.country_code.clone().map(Some),
+                locale: input.locale.clone().map(Some),
+                selected_shipping_option_id: input.shipping_option_id.map(Some),
+            },
+        )
+        .await?;
+    }
+
     let service =
         crate::CheckoutService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let response = service
@@ -553,10 +640,10 @@ pub async fn complete_cart_checkout(
             auth.user_id,
             CompleteCheckoutInput {
                 cart_id,
-                shipping_option_id: input.shipping_option_id,
-                region_id: input.region_id,
-                country_code: input.country_code,
-                locale: input.locale,
+                shipping_option_id: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
                 create_fulfillment: input.create_fulfillment,
                 metadata: input.metadata,
             },
@@ -650,6 +737,24 @@ async fn resolve_context(
         .map_err(|err| Error::BadRequest(err.to_string()))
 }
 
+async fn resolve_context_from_cart(
+    ctx: &AppContext,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    cart: &CartResponse,
+) -> Result<StoreContextResponse> {
+    resolve_context(
+        ctx,
+        tenant_id,
+        request_context,
+        cart.region_id,
+        cart.country_code.clone(),
+        cart.locale_code.clone(),
+        Some(cart.currency_code.clone()),
+    )
+    .await
+}
+
 async fn current_customer_id(
     ctx: &AppContext,
     tenant_id: Uuid,
@@ -674,6 +779,95 @@ fn ensure_store_cart_access(cart: &CartResponse, customer_id: Option<Uuid>) -> R
                 "Cart belongs to another customer".to_string(),
             ));
         }
+    }
+
+    Ok(())
+}
+
+async fn apply_cart_context_patch(
+    ctx: &AppContext,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    cart: &CartResponse,
+    patch: StoreCartContextPatch,
+) -> Result<StoreCartResponse> {
+    let region_was_explicit = patch.region_id.is_some();
+    let email = patch.email.unwrap_or_else(|| cart.email.clone());
+    let requested_region_id = patch.region_id.unwrap_or(cart.region_id);
+    let requested_country_code = match patch.country_code {
+        Some(country_code) => country_code,
+        None if region_was_explicit => None,
+        None => cart.country_code.clone(),
+    };
+    let requested_locale = patch
+        .locale
+        .unwrap_or_else(|| cart.locale_code.clone())
+        .or_else(|| Some(request_context.locale.clone()));
+    let selected_shipping_option_id = patch
+        .selected_shipping_option_id
+        .unwrap_or(cart.selected_shipping_option_id);
+
+    let context = resolve_context(
+        ctx,
+        tenant_id,
+        request_context,
+        requested_region_id,
+        requested_country_code.clone(),
+        requested_locale,
+        Some(cart.currency_code.clone()),
+    )
+    .await?;
+
+    validate_selected_shipping_option(
+        ctx,
+        tenant_id,
+        selected_shipping_option_id,
+        &cart.currency_code,
+    )
+    .await?;
+
+    let cart_service = CartService::new(ctx.db.clone());
+    let updated_cart = cart_service
+        .update_context(
+            tenant_id,
+            cart.id,
+            UpdateCartContextInput {
+                email,
+                region_id: context.region.as_ref().map(|region| region.id),
+                country_code: requested_country_code,
+                locale_code: Some(context.locale.clone()),
+                selected_shipping_option_id,
+            },
+        )
+        .await
+        .map_err(map_cart_error)?;
+
+    Ok(StoreCartResponse {
+        cart: updated_cart,
+        context,
+    })
+}
+
+async fn validate_selected_shipping_option(
+    ctx: &AppContext,
+    tenant_id: Uuid,
+    selected_shipping_option_id: Option<Uuid>,
+    currency_code: &str,
+) -> Result<()> {
+    let Some(selected_shipping_option_id) = selected_shipping_option_id else {
+        return Ok(());
+    };
+
+    let service = FulfillmentService::new(ctx.db.clone());
+    let option = service
+        .get_shipping_option(tenant_id, selected_shipping_option_id)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    if !option.currency_code.eq_ignore_ascii_case(currency_code) {
+        return Err(Error::BadRequest(format!(
+            "Shipping option {} uses currency {}, expected {}",
+            option.id, option.currency_code, currency_code
+        )));
     }
 
     Ok(())
@@ -777,6 +971,32 @@ fn default_metadata() -> Value {
     json!({})
 }
 
+fn merge_metadata(current: Value, patch: Value) -> Value {
+    match (current, patch) {
+        (Value::Object(mut current), Value::Object(patch)) => {
+            for (key, value) in patch {
+                current.insert(key, value);
+            }
+            Value::Object(current)
+        }
+        (_, patch) => patch,
+    }
+}
+
+fn cart_context_metadata(cart: &CartResponse, context: &StoreContextResponse) -> Value {
+    json!({
+        "cart_context": {
+            "region_id": context.region.as_ref().map(|region| region.id),
+            "country_code": cart.country_code.clone(),
+            "locale": context.locale.clone(),
+            "currency_code": cart.currency_code.clone(),
+            "selected_shipping_option_id": cart.selected_shipping_option_id,
+            "customer_id": cart.customer_id,
+            "email": cart.email.clone(),
+        }
+    })
+}
+
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct StoreListProductsParams {
     #[serde(flatten)]
@@ -789,6 +1009,7 @@ pub struct StoreListProductsParams {
 
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema, Default)]
 pub struct StoreContextQuery {
+    pub cart_id: Option<Uuid>,
     pub region_id: Option<Uuid>,
     pub country_code: Option<String>,
     pub locale: Option<String>,
@@ -810,6 +1031,20 @@ pub struct StoreCreateCartInput {
 pub struct StoreCartResponse {
     pub cart: CartResponse,
     pub context: StoreContextResponse,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct StoreUpdateCartInput {
+    #[serde(default)]
+    pub email: Option<Option<String>>,
+    #[serde(default)]
+    pub region_id: Option<Option<Uuid>>,
+    #[serde(default)]
+    pub country_code: Option<Option<String>>,
+    #[serde(default)]
+    pub locale: Option<Option<String>>,
+    #[serde(default)]
+    pub selected_shipping_option_id: Option<Option<Uuid>>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -846,4 +1081,13 @@ pub struct StoreUpdateCartLineItemInput {
 
 const fn default_true() -> bool {
     true
+}
+
+#[derive(Debug, Clone)]
+struct StoreCartContextPatch {
+    email: Option<Option<String>>,
+    region_id: Option<Option<Uuid>>,
+    country_code: Option<Option<String>>,
+    locale: Option<Option<String>>,
+    selected_shipping_option_id: Option<Option<Uuid>>,
 }

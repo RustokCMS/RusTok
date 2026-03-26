@@ -354,17 +354,21 @@ flowchart LR
   параллельно legacy `/api/commerce/*`;
 - реализованы storefront routes `products`, `regions`, `shipping-options`, `carts`,
   `payment-collections`, `orders/{id}`, `customers/me`;
+- добавлен явный cart-context update route `POST /store/carts/{id}` с persisted snapshot semantics;
 - реализованы admin routes для `products`;
 - добавлена поддержка `x-medusa-locale`;
 - storefront cart line items переведены на Medusa-like shape `variant_id + quantity`, а title/price
   теперь резолвятся backend-ом из catalog/pricing;
+- cart теперь хранит persisted storefront context (`region_id`, `country_code`, `locale_code`,
+  `selected_shipping_option_id`, `customer_id`, `email`, `currency_code`);
+- `shipping-options`, `payment-collections` и `checkout` переведены на cart-first context resolution,
+  а legacy checkout overrides сначала persist'ятся обратно в cart ради compatibility path;
 - добавлены contract tests на наличие route-tree и OpenAPI wiring.
 
 Следующий обязательный checkpoint:
 
-- довести cart context persistence до Medusa-like модели: cart должен стать носителем store context
-  (`region`, `customer`, `email`, `locale`, далее при необходимости shipping/billing context), а не
-  опираться только на request-time resolution;
+- усилить cart-centered semantics после persistence: закрыть shipping/billing address strategy,
+  idempotency/race protection и parity tests для update-path / checkout flow;
 - именно с этого пункта должна начинаться следующая сессия по ecommerce migration.
 
 Критерий завершения:

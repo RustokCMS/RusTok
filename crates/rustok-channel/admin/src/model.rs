@@ -1,3 +1,4 @@
+use rustok_api::context::ChannelResolutionSource;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -20,6 +21,7 @@ pub struct ResolvedChannelContext {
     pub target_type: Option<String>,
     pub target_value: Option<String>,
     pub settings: Value,
+    pub resolution_source: ChannelResolutionSource,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
