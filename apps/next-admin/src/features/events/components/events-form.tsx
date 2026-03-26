@@ -56,18 +56,15 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
   const [iggyPartitions, setIggyPartitions] = useState(String(merged.iggy_partitions));
   const [iggyReplication, setIggyReplication] = useState(String(merged.iggy_replication));
 
-  // Filter available transports: always show memory + outbox; iggy options only if in availableTransports
+  // All 4 transports always shown; warn when iggy is selected but module not registered
   const iggyAvailable = status.availableTransports.some(t => t.startsWith('iggy'));
   const transportOptions = [
     { value: 'memory', label: t('transport.memory') },
     { value: 'outbox', label: t('transport.outbox') },
-    ...(iggyAvailable
-      ? [
-          { value: 'iggy_embedded', label: t('transport.iggyEmbedded') },
-          { value: 'iggy_external', label: t('transport.iggyExternal') }
-        ]
-      : [])
+    { value: 'iggy_embedded', label: t('transport.iggyEmbedded') },
+    { value: 'iggy_external', label: t('transport.iggyExternal') }
   ];
+  const showIggyWarning = transport.startsWith('iggy') && !iggyAvailable;
 
   const showOutboxSettings = transport === 'outbox' || transport.startsWith('iggy');
   const showIggyExternal = transport === 'iggy_external';
@@ -122,6 +119,24 @@ export function EventsForm({ status, initialSettings, token, tenantSlug }: Event
           </Select>
           {transportChanged && (
             <p className='text-xs text-amber-600'>{t('transport.restartRequired')}</p>
+          )}
+          {showIggyWarning && (
+            <div className='flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200'>
+              <svg
+                className='mt-0.5 h-4 w-4 shrink-0'
+                fill='none'
+                viewBox='0 0 24 24'
+                stroke='currentColor'
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  d='M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z'
+                />
+              </svg>
+              <span>{t('transport.moduleDisabledWarning')}</span>
+            </div>
           )}
         </CardContent>
       </Card>
