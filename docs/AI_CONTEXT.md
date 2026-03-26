@@ -143,6 +143,19 @@ Infrastructure crate хранилищ: `StorageBackend` trait, `LocalStorage`, `
 
 Optional domain modules и их transport/UI surfaces.
 
+## Известные ложные ошибки компиляции
+
+При выполнении `cargo check -p rustok-server` без собранного фронтенда появляются ошибки:
+
+```
+error: #[derive(RustEmbed)] folder 'apps/admin/dist' does not exist
+error[E0599]: no function or associated item named `get` found for struct `AdminAssets`
+```
+
+**Это не баги** — это ожидаемое поведение feature `embed-admin-assets`. Фича требует предварительного билда `apps/admin/dist` (`trunk build` или `npm run build`). В CI/dev-окружениях без фронтенд-артефактов фича отключена по умолчанию, и `/admin/*` возвращает `503`. Ошибки в `app_router.rs` при проверке кода без артефактов — норма, игнорировать.
+
+Проверять только ошибки в изменённых файлах; ошибки в `services/app_router.rs` / `AdminAssets` не связаны с логикой сервера.
+
 ## Do / Don't
 
 ### Do
