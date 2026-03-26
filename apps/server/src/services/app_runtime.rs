@@ -68,6 +68,7 @@ pub async fn bootstrap_app_runtime(
     settings: &RustokSettings,
 ) -> Result<AppRuntimeBootstrap> {
     let cache_service = CacheService::from_env();
+    ctx.shared_store.insert(cache_service.clone());
     let event_runtime = build_event_runtime(ctx).await?;
     ctx.shared_store.insert(event_runtime.transport.clone());
     spawn_index_dispatcher(ctx, settings);

@@ -178,7 +178,7 @@ impl AuthMutation {
         )
         .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
 
-        let email_service = email_service_from_ctx(app_ctx)
+        let email_service = email_service_from_ctx(app_ctx, locale_from_ctx(ctx).as_str())
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
         let reset_url = password_reset_url(app_ctx, &reset_token)
             .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
