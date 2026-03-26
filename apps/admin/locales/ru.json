@@ -74,6 +74,10 @@
       "minutesAgo": "мин. назад",
       "hoursAgo": "ч назад",
       "daysAgo": "д назад"
+    },
+    "notFound": {
+      "text": "Страница, которую вы ищете, не существует.",
+      "back": "На дашборд"
     }
   },
   "auth": {
@@ -332,6 +336,77 @@
     },
     "error": {
       "load": "Не удалось загрузить модули"
+    },
+    "moduleDisabled": "Этот модуль зарегистрирован в admin host, но выключен для текущего tenant.",
+    "moduleNotFound": "Для этого route segment нет зарегистрированного module-owned admin UI.",
+    "moduleNotFoundTitle": "Страница администратора не найдена"
+  },
+  "cache": {
+    "title": "Кэш",
+    "eyebrow": "Инфраструктура",
+    "subtitle": "Состояние и конфигурация кэш-бэкенда",
+    "health": {
+      "title": "Состояние кэша",
+      "backend": "Бэкенд",
+      "configured": "Redis настроен",
+      "healthy": "Redis работает",
+      "status": "Статус Redis",
+      "error": "Ошибка",
+      "healthyBadge": "Работает",
+      "unhealthyBadge": "Недоступен",
+      "connected": "Подключён",
+      "disconnected": "Отключён"
+    },
+    "yes": "Да",
+    "no": "Нет"
+  },
+  "email": {
+    "title": "Настройки Email",
+    "eyebrow": "Настройки платформы",
+    "subtitle": "Настройка доставки email и SMTP",
+    "general": {
+      "title": "Основные",
+      "description": "Включить или отключить доставку email",
+      "enabled": "Включить доставку email",
+      "from": "Адрес отправителя",
+      "resetBaseUrl": "Базовый URL для сброса пароля"
+    },
+    "smtp": {
+      "title": "Настройки SMTP",
+      "description": "Настройки SMTP-сервера",
+      "host": "SMTP-хост",
+      "port": "Порт SMTP",
+      "username": "Пользователь SMTP",
+      "password": "Пароль",
+      "fromAddress": "Адрес отправителя"
+    },
+    "save": "Сохранить настройки",
+    "saving": "Сохранение…",
+    "saved": "Настройки сохранены.",
+    "error": "Не удалось сохранить настройки."
+  },
+  "roles": {
+    "title": "Роли и разрешения",
+    "eyebrow": "Управление доступом",
+    "subtitle": "Роли платформы и наборы разрешений",
+    "list": {
+      "title": "Роли",
+      "role": "Роль",
+      "permissionsCount": "Разрешения",
+      "permissionList": "Список разрешений",
+      "showPermissions": "Показать разрешения"
+    },
+    "permissions": "разрешений"
+  },
+  "oauthApps": {
+    "title": "OAuth-приложения",
+    "description": "Управление интеграциями, просмотр манифест-контролируемых фронтендов, ротация client credentials.",
+    "create": "Создать приложение",
+    "secret": {
+      "rotated": "Секрет приложения обновлён.",
+      "generated": "Секрет приложения создан.",
+      "warning": "Сохраните секрет в надёжном месте. Он больше не будет показан.",
+      "saved": "Я сохранил"
     }
   },
   "events": {
@@ -395,6 +470,9 @@
     "error": {
       "load": "Не удалось загрузить воркфлоу"
     },
+    "fromTemplate": "Из шаблона",
+    "trigger": "Триггер",
+    "failures": "Ошибки",
     "templates": "Шаблоны",
     "versions": "Версии",
     "restore": "Восстановить"

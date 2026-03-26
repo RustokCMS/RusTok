@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::shared::api::queries::ROLES_QUERY;
 use crate::shared::api::{request, ApiError};
-use crate::shared::ui::PageHeader;
+use crate::shared::ui::{Alert, AlertVariant, PageHeader};
+use crate::{t_string, use_i18n};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct GraphqlRolesResponse {
@@ -24,6 +25,7 @@ struct EmptyVariables {}
 
 #[component]
 pub fn RolesPage() -> impl IntoView {
+    let i18n = use_i18n();
     let token = use_token();
     let tenant = use_tenant();
 
@@ -43,14 +45,16 @@ pub fn RolesPage() -> impl IntoView {
     view! {
         <section class="px-10 py-8">
             <PageHeader
-                title="Roles & Permissions"
-                subtitle="Platform roles and their permission sets".to_string()
-                eyebrow="Access Control".to_string()
+                title=t_string!(i18n, roles.title)
+                subtitle=t_string!(i18n, roles.subtitle).to_string()
+                eyebrow=t_string!(i18n, roles.eyebrow).to_string()
                 actions=view! { <div /> }.into_any()
             />
 
             <div class="rounded-2xl bg-card p-6 shadow border border-border">
-                <h4 class="mb-4 text-lg font-semibold text-card-foreground">"Roles"</h4>
+                <h4 class="mb-4 text-lg font-semibold text-card-foreground">
+                    {move || t_string!(i18n, roles.list.title)}
+                </h4>
                 <Suspense fallback=move || view! {
                     <div class="space-y-3">
                         {(0..4).map(|_| view! {
@@ -74,6 +78,7 @@ pub fn RolesPage() -> impl IntoView {
                                         let slug = role.slug.clone();
                                         let display_name = role.display_name.clone();
                                         let permissions = role.permissions.clone();
+                                        let perm_count = permissions.len();
                                         view! {
                                             <div class="rounded-xl border border-border bg-background p-4">
                                                 <div class="flex items-center gap-3 mb-2">
@@ -84,7 +89,9 @@ pub fn RolesPage() -> impl IntoView {
                                                         {display_name}
                                                     </span>
                                                     <span class="ml-auto text-xs text-muted-foreground">
-                                                        {permissions.len()} " permissions"
+                                                        {perm_count}
+                                                        " "
+                                                        {t_string!(i18n, roles.permissions)}
                                                     </span>
                                                 </div>
                                                 <div class="flex flex-wrap gap-1.5">
@@ -101,14 +108,14 @@ pub fn RolesPage() -> impl IntoView {
                             }.into_any()
                         }
                         Some(Err(err)) => view! {
-                            <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
+                            <Alert variant=AlertVariant::Destructive>
                                 {match err {
-                                    ApiError::Unauthorized => "Unauthorized".to_string(),
-                                    ApiError::Http(code) => format!("HTTP error {}", code),
-                                    ApiError::Network => "Network error".to_string(),
-                                    ApiError::Graphql(msg) => format!("GraphQL error: {}", msg),
+                                    ApiError::Unauthorized => t_string!(i18n, errors.auth.unauthorized).to_string(),
+                                    ApiError::Http(code) => format!("HTTP {}", code),
+                                    ApiError::Network => t_string!(i18n, errors.network).to_string(),
+                                    ApiError::Graphql(msg) => msg,
                                 }}
-                            </div>
+                            </Alert>
                         }.into_any(),
                     }}
                 </Suspense>

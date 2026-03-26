@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::shared::api::queries::CACHE_HEALTH_QUERY;
 use crate::shared::api::{request, ApiError};
-use crate::shared::ui::PageHeader;
+use crate::shared::ui::{Alert, AlertVariant, PageHeader};
+use crate::{t_string, use_i18n};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct GraphqlCacheHealthResponse {
@@ -28,6 +29,7 @@ struct EmptyVariables {}
 
 #[component]
 pub fn CachePage() -> impl IntoView {
+    let i18n = use_i18n();
     let token = use_token();
     let tenant = use_tenant();
 
@@ -47,14 +49,16 @@ pub fn CachePage() -> impl IntoView {
     view! {
         <section class="px-10 py-8">
             <PageHeader
-                title="Cache"
-                subtitle="Cache backend health and configuration".to_string()
-                eyebrow="Infrastructure".to_string()
+                title=t_string!(i18n, cache.title)
+                subtitle=t_string!(i18n, cache.subtitle).to_string()
+                eyebrow=t_string!(i18n, cache.eyebrow).to_string()
                 actions=view! { <div /> }.into_any()
             />
 
             <div class="rounded-2xl bg-card p-6 shadow border border-border max-w-lg">
-                <h4 class="mb-4 text-lg font-semibold text-card-foreground">"Cache Health"</h4>
+                <h4 class="mb-4 text-lg font-semibold text-card-foreground">
+                    {move || t_string!(i18n, cache.health.title)}
+                </h4>
                 <Suspense fallback=move || view! {
                     <div class="space-y-3">
                         {(0..3).map(|_| view! {
@@ -76,43 +80,67 @@ pub fn CachePage() -> impl IntoView {
                             let redis_error = h.redis_error.clone();
                             view! {
                                 <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                                    <dt class="text-muted-foreground">"Backend"</dt>
+                                    <dt class="text-muted-foreground">
+                                        {t_string!(i18n, cache.health.backend)}
+                                    </dt>
                                     <dd class="font-medium text-foreground font-mono">{backend}</dd>
 
-                                    <dt class="text-muted-foreground">"Redis configured"</dt>
+                                    <dt class="text-muted-foreground">
+                                        {t_string!(i18n, cache.health.configured)}
+                                    </dt>
                                     <dd>
                                         {if h.redis_configured {
-                                            view! { <span class="text-green-600 font-medium">"Yes"</span> }.into_any()
+                                            view! {
+                                                <span class="text-green-600 font-medium">
+                                                    {t_string!(i18n, cache.yes)}
+                                                </span>
+                                            }.into_any()
                                         } else {
-                                            view! { <span class="text-muted-foreground">"No"</span> }.into_any()
+                                            view! {
+                                                <span class="text-muted-foreground">
+                                                    {t_string!(i18n, cache.no)}
+                                                </span>
+                                            }.into_any()
                                         }}
                                     </dd>
 
-                                    <dt class="text-muted-foreground">"Redis healthy"</dt>
+                                    <dt class="text-muted-foreground">
+                                        {t_string!(i18n, cache.health.healthy)}
+                                    </dt>
                                     <dd>
                                         {if h.redis_healthy {
-                                            view! { <span class="text-green-600 font-medium">"Yes"</span> }.into_any()
+                                            view! {
+                                                <span class="text-green-600 font-medium">
+                                                    {t_string!(i18n, cache.yes)}
+                                                </span>
+                                            }.into_any()
                                         } else {
-                                            view! { <span class="text-red-600 font-medium">"No"</span> }.into_any()
+                                            view! {
+                                                <span class="text-red-600 font-medium">
+                                                    {t_string!(i18n, cache.no)}
+                                                </span>
+                                            }.into_any()
                                         }}
                                     </dd>
 
                                     {redis_error.map(|err| view! {
-                                        <dt class="text-muted-foreground">"Error"</dt>
+                                        <dt class="text-muted-foreground">
+                                            {t_string!(i18n, cache.health.error)}
+                                        </dt>
                                         <dd class="text-destructive text-xs break-all">{err}</dd>
                                     })}
                                 </dl>
                             }.into_any()
                         }
                         Some(Err(err)) => view! {
-                            <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
+                            <Alert variant=AlertVariant::Destructive>
                                 {match err {
-                                    ApiError::Unauthorized => "Unauthorized".to_string(),
-                                    ApiError::Http(code) => format!("HTTP error {}", code),
-                                    ApiError::Network => "Network error".to_string(),
-                                    ApiError::Graphql(msg) => format!("GraphQL error: {}", msg),
+                                    ApiError::Unauthorized => t_string!(i18n, errors.auth.unauthorized).to_string(),
+                                    ApiError::Http(code) => format!("HTTP {}", code),
+                                    ApiError::Network => t_string!(i18n, errors.network).to_string(),
+                                    ApiError::Graphql(msg) => msg,
                                 }}
-                            </div>
+                            </Alert>
                         }.into_any(),
                     }}
                 </Suspense>

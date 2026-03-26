@@ -6,7 +6,8 @@ use serde_json::Value;
 
 use crate::shared::api::queries::{PLATFORM_SETTINGS_QUERY, UPDATE_PLATFORM_SETTINGS_MUTATION};
 use crate::shared::api::request;
-use crate::shared::ui::{Button, Input, PageHeader};
+use crate::shared::ui::{Alert, AlertVariant, Button, Input, PageHeader};
+use crate::{t_string, use_i18n};
 
 #[derive(Clone, Debug, Serialize)]
 struct PlatformSettingsVariables {
@@ -48,6 +49,7 @@ struct UpdateSettingsPayload {
 
 #[component]
 pub fn EmailSettingsPage() -> impl IntoView {
+    let i18n = use_i18n();
     let token = use_token();
     let tenant = use_tenant();
 
@@ -142,14 +144,16 @@ pub fn EmailSettingsPage() -> impl IntoView {
     view! {
         <section class="px-10 py-8">
             <PageHeader
-                title="Email Settings"
-                subtitle="Configure email delivery and SMTP settings".to_string()
-                eyebrow="Platform Settings".to_string()
+                title=t_string!(i18n, email.title)
+                subtitle=t_string!(i18n, email.subtitle).to_string()
+                eyebrow=t_string!(i18n, email.eyebrow).to_string()
                 actions=view! { <div /> }.into_any()
             />
 
             <div class="rounded-2xl bg-card p-6 shadow border border-border max-w-xl">
-                <h4 class="mb-4 text-lg font-semibold text-card-foreground">"SMTP Configuration"</h4>
+                <h4 class="mb-4 text-lg font-semibold text-card-foreground">
+                    {move || t_string!(i18n, email.smtp.title)}
+                </h4>
 
                 <Suspense fallback=move || view! {
                     <div class="space-y-4">
@@ -166,45 +170,49 @@ pub fn EmailSettingsPage() -> impl IntoView {
                                     value=smtp_host
                                     set_value=set_smtp_host
                                     placeholder="smtp.example.com"
-                                    label=move || "SMTP Host"
+                                    label=move || t_string!(i18n, email.smtp.host)
                                 />
                                 <Input
                                     value=smtp_port
                                     set_value=set_smtp_port
                                     placeholder="587"
-                                    label=move || "SMTP Port"
+                                    label=move || t_string!(i18n, email.smtp.port)
                                 />
                                 <Input
                                     value=smtp_username
                                     set_value=set_smtp_username
                                     placeholder="noreply@example.com"
-                                    label=move || "SMTP Username"
+                                    label=move || t_string!(i18n, email.smtp.username)
                                 />
                                 <Input
                                     value=from_address
                                     set_value=set_from_address
                                     placeholder="noreply@example.com"
-                                    label=move || "From Address"
+                                    label=move || t_string!(i18n, email.smtp.fromAddress)
                                 />
 
                                 <Show when=move || save_result.get().is_some()>
                                     {move || match save_result.get() {
                                         Some(Ok(true)) => view! {
-                                            <div class="rounded-xl bg-green-500/10 border border-green-500/20 px-4 py-2 text-sm text-green-700">
-                                                "Settings saved."
-                                            </div>
+                                            <Alert variant=AlertVariant::Success>
+                                                {t_string!(i18n, email.saved)}
+                                            </Alert>
                                         }.into_any(),
                                         Some(Err(e)) => view! {
-                                            <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
+                                            <Alert variant=AlertVariant::Destructive>
                                                 {e}
-                                            </div>
+                                            </Alert>
                                         }.into_any(),
                                         _ => view! { <div /> }.into_any(),
                                     }}
                                 </Show>
 
                                 <Button on_click=save disabled=saving.into()>
-                                    {move || if saving.get() { "Saving…" } else { "Save Settings" }}
+                                    {move || if saving.get() {
+                                        t_string!(i18n, email.saving).to_string()
+                                    } else {
+                                        t_string!(i18n, email.save).to_string()
+                                    }}
                                 </Button>
                             </div>
                         }.into_any()

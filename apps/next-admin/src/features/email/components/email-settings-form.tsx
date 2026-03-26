@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Label } from '@/shared/ui/shadcn/label';
@@ -15,6 +16,7 @@ interface EmailSettingsFormProps {
 }
 
 export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormProps) {
+  const t = useTranslations('email');
   const [settings, setSettings] = useState<EmailSettings>(initialSettings);
   const [isPending, startTransition] = useTransition();
 
@@ -23,9 +25,9 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
       try {
         const updated = await updateEmailSettings(settings, opts);
         setSettings(updated);
-        toast.success('Email settings saved');
+        toast.success(t('savedToast'));
       } catch {
-        toast.error('Failed to save email settings');
+        toast.error(t('errorToast'));
       }
     });
   };
@@ -34,8 +36,8 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
     <div className='space-y-6'>
       <Card>
         <CardHeader>
-          <CardTitle>General</CardTitle>
-          <CardDescription>Enable or disable email delivery</CardDescription>
+          <CardTitle>{t('general.title')}</CardTitle>
+          <CardDescription>{t('general.description')}</CardDescription>
         </CardHeader>
         <CardContent className='space-y-4'>
           <div className='flex items-center gap-3'>
@@ -46,10 +48,10 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
                 setSettings((s) => ({ ...s, enabled: checked }))
               }
             />
-            <Label htmlFor='email-enabled'>Enable email delivery</Label>
+            <Label htmlFor='email-enabled'>{t('general.enabled')}</Label>
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='email-from'>From address</Label>
+            <Label htmlFor='email-from'>{t('general.from')}</Label>
             <Input
               id='email-from'
               type='email'
@@ -59,7 +61,7 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
             />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='reset-base-url'>Password reset base URL</Label>
+            <Label htmlFor='reset-base-url'>{t('general.resetBaseUrl')}</Label>
             <Input
               id='reset-base-url'
               value={settings.resetBaseUrl}
@@ -74,12 +76,12 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
 
       <Card>
         <CardHeader>
-          <CardTitle>SMTP</CardTitle>
-          <CardDescription>SMTP server configuration</CardDescription>
+          <CardTitle>{t('smtp.title')}</CardTitle>
+          <CardDescription>{t('smtp.description')}</CardDescription>
         </CardHeader>
         <CardContent className='grid gap-4 sm:grid-cols-2'>
           <div className='space-y-2'>
-            <Label htmlFor='smtp-host'>Host</Label>
+            <Label htmlFor='smtp-host'>{t('smtp.host')}</Label>
             <Input
               id='smtp-host'
               value={settings.smtpHost}
@@ -88,7 +90,7 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
             />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='smtp-port'>Port</Label>
+            <Label htmlFor='smtp-port'>{t('smtp.port')}</Label>
             <Input
               id='smtp-port'
               type='number'
@@ -100,7 +102,7 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
             />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='smtp-username'>Username</Label>
+            <Label htmlFor='smtp-username'>{t('smtp.username')}</Label>
             <Input
               id='smtp-username'
               value={settings.smtpUsername}
@@ -110,7 +112,7 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
             />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='smtp-password'>Password</Label>
+            <Label htmlFor='smtp-password'>{t('smtp.password')}</Label>
             <Input
               id='smtp-password'
               type='password'
@@ -125,7 +127,7 @@ export function EmailSettingsForm({ initialSettings, opts }: EmailSettingsFormPr
 
       <div className='flex justify-end'>
         <Button onClick={handleSave} disabled={isPending}>
-          {isPending ? 'Saving…' : 'Save settings'}
+          {isPending ? t('saving') : t('save')}
         </Button>
       </div>
     </div>

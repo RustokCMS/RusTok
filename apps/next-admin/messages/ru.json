@@ -303,6 +303,60 @@
       "errorRequired": "Email и пароль обязательны для заполнения."
     }
   },
+  "cache": {
+    "title": "Кэш",
+    "eyebrow": "Инфраструктура",
+    "subtitle": "Состояние и конфигурация кэш-бэкенда",
+    "health": {
+      "title": "Кэш-бэкенд",
+      "description": "Текущее состояние кэш-инфраструктуры",
+      "backend": "Бэкенд",
+      "configured": "Redis настроен",
+      "status": "Статус Redis",
+      "error": "Ошибка",
+      "healthyBadge": "Работает",
+      "unhealthyBadge": "Недоступен",
+      "connected": "Подключён",
+      "disconnected": "Отключён"
+    },
+    "yes": "Да",
+    "no": "Нет"
+  },
+  "email": {
+    "title": "Настройки Email",
+    "eyebrow": "Настройки платформы",
+    "subtitle": "Настройка доставки email и SMTP",
+    "general": {
+      "title": "Основные",
+      "description": "Включить или отключить доставку email",
+      "enabled": "Включить доставку email",
+      "from": "Адрес отправителя",
+      "resetBaseUrl": "Базовый URL для сброса пароля"
+    },
+    "smtp": {
+      "title": "SMTP",
+      "description": "Настройки SMTP-сервера",
+      "host": "Хост",
+      "port": "Порт",
+      "username": "Пользователь",
+      "password": "Пароль"
+    },
+    "save": "Сохранить настройки",
+    "saving": "Сохранение…",
+    "savedToast": "Настройки email сохранены",
+    "errorToast": "Не удалось сохранить настройки email"
+  },
+  "roles": {
+    "title": "Роли и разрешения",
+    "eyebrow": "Управление доступом",
+    "subtitle": "Роли платформы и наборы разрешений",
+    "list": {
+      "role": "Роль",
+      "permissionsCount": "Разрешения",
+      "permissionList": "Список разрешений",
+      "showPermissions": "Показать разрешения"
+    }
+  },
   "events": {
     "title": "События и Outbox",
     "eyebrow": "Инфраструктура",

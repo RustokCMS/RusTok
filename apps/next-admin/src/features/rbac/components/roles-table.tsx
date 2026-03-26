@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import {
   Table,
   TableBody,
@@ -29,14 +30,16 @@ const ROLE_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'outline' | '
 };
 
 export function RolesTable({ roles }: RolesTableProps) {
+  const t = useTranslations('roles');
+
   return (
     <div className='rounded-md border'>
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className='w-[180px]'>Role</TableHead>
-            <TableHead className='w-[100px]'>Permissions</TableHead>
-            <TableHead>Permission list</TableHead>
+            <TableHead className='w-[180px]'>{t('list.role')}</TableHead>
+            <TableHead className='w-[100px]'>{t('list.permissionsCount')}</TableHead>
+            <TableHead>{t('list.permissionList')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -53,7 +56,7 @@ export function RolesTable({ roles }: RolesTableProps) {
               <TableCell>
                 <Collapsible>
                   <CollapsibleTrigger className='flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground'>
-                    Show permissions
+                    {t('list.showPermissions')}
                     <ChevronDown className='h-3 w-3' />
                   </CollapsibleTrigger>
                   <CollapsibleContent>

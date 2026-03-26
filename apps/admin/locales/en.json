@@ -74,6 +74,10 @@
       "minutesAgo": "min ago",
       "hoursAgo": "h ago",
       "daysAgo": "d ago"
+    },
+    "notFound": {
+      "text": "The page you're looking for doesn't exist.",
+      "back": "Back to Dashboard"
     }
   },
   "auth": {
@@ -332,6 +336,77 @@
     },
     "error": {
       "load": "Failed to load modules"
+    },
+    "moduleDisabled": "This module is registered in the admin host but is disabled for the current tenant.",
+    "moduleNotFound": "No module-owned admin UI is registered for this route segment.",
+    "moduleNotFoundTitle": "Admin page not found"
+  },
+  "cache": {
+    "title": "Cache",
+    "eyebrow": "Infrastructure",
+    "subtitle": "Cache backend health and configuration",
+    "health": {
+      "title": "Cache Health",
+      "backend": "Backend",
+      "configured": "Redis configured",
+      "healthy": "Redis healthy",
+      "status": "Redis status",
+      "error": "Error",
+      "healthyBadge": "Healthy",
+      "unhealthyBadge": "Unhealthy",
+      "connected": "Connected",
+      "disconnected": "Disconnected"
+    },
+    "yes": "Yes",
+    "no": "No"
+  },
+  "email": {
+    "title": "Email Settings",
+    "eyebrow": "Platform Settings",
+    "subtitle": "Configure email delivery and SMTP settings",
+    "general": {
+      "title": "General",
+      "description": "Enable or disable email delivery",
+      "enabled": "Enable email delivery",
+      "from": "From address",
+      "resetBaseUrl": "Password reset base URL"
+    },
+    "smtp": {
+      "title": "SMTP Configuration",
+      "description": "SMTP server configuration",
+      "host": "SMTP Host",
+      "port": "SMTP Port",
+      "username": "SMTP Username",
+      "password": "Password",
+      "fromAddress": "From Address"
+    },
+    "save": "Save Settings",
+    "saving": "Saving…",
+    "saved": "Settings saved.",
+    "error": "Failed to save settings."
+  },
+  "roles": {
+    "title": "Roles & Permissions",
+    "eyebrow": "Access Control",
+    "subtitle": "Platform roles and their permission sets",
+    "list": {
+      "title": "Roles",
+      "role": "Role",
+      "permissionsCount": "Permissions",
+      "permissionList": "Permission list",
+      "showPermissions": "Show permissions"
+    },
+    "permissions": "permissions"
+  },
+  "oauthApps": {
+    "title": "OAuth App Connections",
+    "description": "Manage manual integrations, inspect manifest-managed frontends, and rotate client credentials.",
+    "create": "Create New App",
+    "secret": {
+      "rotated": "Client secret rotated.",
+      "generated": "Client secret generated.",
+      "warning": "Store this secret safely. It will not be shown again.",
+      "saved": "I have saved it"
     }
   },
   "events": {
@@ -395,6 +470,9 @@
     "error": {
       "load": "Failed to load workflows"
     },
+    "fromTemplate": "From template",
+    "trigger": "Trigger",
+    "failures": "Failures",
     "templates": "Templates",
     "versions": "Versions",
     "restore": "Restore"
