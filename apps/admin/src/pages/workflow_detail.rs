@@ -119,7 +119,7 @@ pub fn WorkflowDetailPage() -> impl IntoView {
                                         // Stats row
                                         <div class="grid grid-cols-3 gap-4">
                                             <div class="rounded-xl border border-border bg-card p-4">
-                                                <p class="text-xs text-muted-foreground">"Trigger"</p>
+                                                <p class="text-xs text-muted-foreground">{t_string!(i18n, workflows.trigger)}</p>
                                                 <p class="mt-1 font-mono text-sm">
                                                     {wf.trigger_config.get("type")
                                                         .and_then(|v: &serde_json::Value| v.as_str())
@@ -128,11 +128,11 @@ pub fn WorkflowDetailPage() -> impl IntoView {
                                                 </p>
                                             </div>
                                             <div class="rounded-xl border border-border bg-card p-4">
-                                                <p class="text-xs text-muted-foreground">"Steps"</p>
+                                                <p class="text-xs text-muted-foreground">{t_string!(i18n, workflows.steps)}</p>
                                                 <p class="mt-1 text-sm font-semibold">{steps.len()}</p>
                                             </div>
                                             <div class="rounded-xl border border-border bg-card p-4">
-                                                <p class="text-xs text-muted-foreground">"Failures"</p>
+                                                <p class="text-xs text-muted-foreground">{t_string!(i18n, workflows.failures)}</p>
                                                 <p class="mt-1 text-sm font-semibold">{wf.failure_count}</p>
                                             </div>
                                         </div>

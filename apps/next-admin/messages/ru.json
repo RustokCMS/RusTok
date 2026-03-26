@@ -303,6 +303,108 @@
       "errorRequired": "Email и пароль обязательны для заполнения."
     }
   },
+  "cache": {
+    "title": "Кэш",
+    "eyebrow": "Инфраструктура",
+    "subtitle": "Состояние и конфигурация кэш-бэкенда",
+    "health": {
+      "title": "Кэш-бэкенд",
+      "description": "Текущее состояние кэш-инфраструктуры",
+      "backend": "Бэкенд",
+      "configured": "Redis настроен",
+      "status": "Статус Redis",
+      "error": "Ошибка",
+      "healthyBadge": "Работает",
+      "unhealthyBadge": "Недоступен",
+      "connected": "Подключён",
+      "disconnected": "Отключён"
+    },
+    "yes": "Да",
+    "no": "Нет"
+  },
+  "email": {
+    "title": "Настройки Email",
+    "eyebrow": "Настройки платформы",
+    "subtitle": "Настройка доставки email и SMTP",
+    "general": {
+      "title": "Основные",
+      "description": "Включить или отключить доставку email",
+      "enabled": "Включить доставку email",
+      "from": "Адрес отправителя",
+      "resetBaseUrl": "Базовый URL для сброса пароля"
+    },
+    "smtp": {
+      "title": "SMTP",
+      "description": "Настройки SMTP-сервера",
+      "host": "Хост",
+      "port": "Порт",
+      "username": "Пользователь",
+      "password": "Пароль"
+    },
+    "save": "Сохранить настройки",
+    "saving": "Сохранение…",
+    "savedToast": "Настройки email сохранены",
+    "errorToast": "Не удалось сохранить настройки email"
+  },
+  "roles": {
+    "title": "Роли и разрешения",
+    "eyebrow": "Управление доступом",
+    "subtitle": "Роли платформы и наборы разрешений",
+    "list": {
+      "role": "Роль",
+      "permissionsCount": "Разрешения",
+      "permissionList": "Список разрешений",
+      "showPermissions": "Показать разрешения"
+    }
+  },
+  "events": {
+    "title": "События и Outbox",
+    "eyebrow": "Инфраструктура",
+    "subtitle": "Настройка транспорта событий и очереди сообщений",
+    "transport": {
+      "label": "Реализация очереди",
+      "memory": "В памяти",
+      "outbox": "Outbox (база данных)",
+      "iggyEmbedded": "Iggy — встроенный",
+      "iggyExternal": "Iggy — внешний",
+      "restartRequired": "Для применения изменений транспорта требуется перезапуск",
+      "active": "Активный транспорт",
+      "moduleDisabledWarning": "Модуль Iggy не включён. Включите его на странице Модули, прежде чем использовать этот транспорт."
+    },
+    "outbox": {
+      "title": "Настройки Outbox",
+      "relayIntervalMs": "Интервал relay (мс)",
+      "maxAttempts": "Макс. попыток",
+      "baseBackoffMs": "Базовый backoff (мс)",
+      "dlqEnabled": "DLQ включён",
+      "dlqMaxAttempts": "Макс. попыток для DLQ"
+    },
+    "iggy": {
+      "title": "Подключение внешнего Iggy",
+      "addresses": "Адреса",
+      "addAddress": "Добавить адрес",
+      "removeAddress": "Удалить",
+      "protocol": "Протокол",
+      "username": "Пользователь",
+      "password": "Пароль",
+      "tlsEnabled": "TLS",
+      "stream": "Имя потока",
+      "partitions": "Партиции домена",
+      "replication": "Фактор репликации"
+    },
+    "status": {
+      "title": "Текущее состояние",
+      "transport": "Активный транспорт",
+      "pendingEvents": "Ожидающих событий",
+      "dlqEvents": "В DLQ",
+      "relayInterval": "Интервал relay"
+    },
+    "save": "Сохранить настройки",
+    "saving": "Сохранение…",
+    "saved": "Настройки сохранены. Перезапустите сервер для применения.",
+    "error": "Не удалось сохранить настройки",
+    "restart": "Перезапустить сервер"
+  },
   "modules": {
     "title": "Модули",
     "eyebrow": "Платформа",
