@@ -35,7 +35,7 @@ pub fn Workflows() -> impl IntoView {
                         on:click=move |_| set_show_templates.update(|v| *v = !*v)
                         class="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
                     >
-                        "From template"
+                        {t_string!(i18n, workflows.fromTemplate)}
                     </button>
                     <A
                         href="/workflows/new"

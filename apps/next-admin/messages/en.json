@@ -303,6 +303,108 @@
       "errorRequired": "Email and password are required."
     }
   },
+  "cache": {
+    "title": "Cache",
+    "eyebrow": "Infrastructure",
+    "subtitle": "Cache backend health and configuration",
+    "health": {
+      "title": "Cache Backend",
+      "description": "Current cache infrastructure status",
+      "backend": "Backend",
+      "configured": "Redis configured",
+      "status": "Redis status",
+      "error": "Error",
+      "healthyBadge": "Healthy",
+      "unhealthyBadge": "Unhealthy",
+      "connected": "Connected",
+      "disconnected": "Disconnected"
+    },
+    "yes": "Yes",
+    "no": "No"
+  },
+  "email": {
+    "title": "Email Settings",
+    "eyebrow": "Platform Settings",
+    "subtitle": "Configure email delivery and SMTP settings",
+    "general": {
+      "title": "General",
+      "description": "Enable or disable email delivery",
+      "enabled": "Enable email delivery",
+      "from": "From address",
+      "resetBaseUrl": "Password reset base URL"
+    },
+    "smtp": {
+      "title": "SMTP",
+      "description": "SMTP server configuration",
+      "host": "Host",
+      "port": "Port",
+      "username": "Username",
+      "password": "Password"
+    },
+    "save": "Save settings",
+    "saving": "Saving…",
+    "savedToast": "Email settings saved",
+    "errorToast": "Failed to save email settings"
+  },
+  "roles": {
+    "title": "Roles & Permissions",
+    "eyebrow": "Access Control",
+    "subtitle": "Platform roles and their permission sets",
+    "list": {
+      "role": "Role",
+      "permissionsCount": "Permissions",
+      "permissionList": "Permission list",
+      "showPermissions": "Show permissions"
+    }
+  },
+  "events": {
+    "title": "Events & Outbox",
+    "eyebrow": "Infrastructure",
+    "subtitle": "Configure event transport and message queue settings",
+    "transport": {
+      "label": "Queue implementation",
+      "memory": "In-memory",
+      "outbox": "Outbox (database)",
+      "iggyEmbedded": "Iggy — embedded",
+      "iggyExternal": "Iggy — external",
+      "restartRequired": "Restart required to apply transport changes",
+      "active": "Active transport",
+      "moduleDisabledWarning": "The Iggy module is not enabled. Enable it on the Modules page before using this transport."
+    },
+    "outbox": {
+      "title": "Outbox settings",
+      "relayIntervalMs": "Relay interval (ms)",
+      "maxAttempts": "Max attempts",
+      "baseBackoffMs": "Base backoff (ms)",
+      "dlqEnabled": "DLQ enabled",
+      "dlqMaxAttempts": "DLQ max attempts"
+    },
+    "iggy": {
+      "title": "External Iggy connection",
+      "addresses": "Addresses",
+      "addAddress": "Add address",
+      "removeAddress": "Remove",
+      "protocol": "Protocol",
+      "username": "Username",
+      "password": "Password",
+      "tlsEnabled": "TLS",
+      "stream": "Stream name",
+      "partitions": "Domain partitions",
+      "replication": "Replication factor"
+    },
+    "status": {
+      "title": "Runtime status",
+      "transport": "Active transport",
+      "pendingEvents": "Pending events",
+      "dlqEvents": "DLQ events",
+      "relayInterval": "Relay interval"
+    },
+    "save": "Save settings",
+    "saving": "Saving…",
+    "saved": "Settings saved. Restart server to apply transport changes.",
+    "error": "Failed to save settings",
+    "restart": "Restart server"
+  },
   "modules": {
     "title": "Modules",
     "eyebrow": "Platform",

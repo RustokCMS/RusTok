@@ -6,6 +6,7 @@ use leptos_router::params::Params;
 use crate::app::modules::page_for_route_segment;
 use crate::app::providers::enabled_modules::use_enabled_modules_context;
 use crate::shared::context::module_request::ModuleRequestProvider;
+use crate::{t_string, use_i18n};
 
 #[derive(Params, PartialEq)]
 struct ModuleAdminParams {
@@ -15,6 +16,7 @@ struct ModuleAdminParams {
 
 #[component]
 pub fn ModuleAdminPage() -> impl IntoView {
+    let i18n = use_i18n();
     let params = use_params::<ModuleAdminParams>();
     let query = use_query_map();
     let enabled_modules = use_enabled_modules_context();
@@ -89,7 +91,7 @@ pub fn ModuleAdminPage() -> impl IntoView {
                                 </span>
                                 <h1 class="text-2xl font-semibold text-card-foreground">{page.title.to_string()}</h1>
                                 <p class="text-sm text-muted-foreground">
-                                    "Этот модуль зарегистрирован в admin host, но выключен для текущего tenant."
+                                    {t_string!(i18n, modules.moduleDisabled)}
                                 </p>
                             </div>
                         </div>
@@ -101,9 +103,11 @@ pub fn ModuleAdminPage() -> impl IntoView {
                                 <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
                                     "module route"
                                 </span>
-                                <h1 class="text-2xl font-semibold text-card-foreground">"Admin page not found"</h1>
+                                <h1 class="text-2xl font-semibold text-card-foreground">
+                                    {t_string!(i18n, modules.moduleNotFoundTitle)}
+                                </h1>
                                 <p class="text-sm text-muted-foreground">
-                                    "Для этого route segment нет зарегистрированного module-owned admin UI."
+                                    {t_string!(i18n, modules.moduleNotFound)}
                                 </p>
                             </div>
                         </div>

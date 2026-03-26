@@ -5,10 +5,11 @@ use leptos_router::components::{ParentRoute, Route, Router, Routes};
 use leptos_router::path;
 
 use crate::pages::{
-    dashboard::Dashboard, login::Login, module_admin::ModuleAdminPage, modules::Modules,
+    cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage,
+    events::EventsPage, login::Login, module_admin::ModuleAdminPage, modules::Modules,
     not_found::NotFound, oauth_apps::OAuthAppsPage, profile::Profile, register::Register,
-    reset::ResetPassword, security::Security, user_details::UserDetails, users::Users,
-    workflow_detail::WorkflowDetailPage, workflows::Workflows,
+    reset::ResetPassword, roles::RolesPage, security::Security, user_details::UserDetails,
+    users::Users, workflow_detail::WorkflowDetailPage, workflows::Workflows,
 };
 use crate::widgets::app_shell::AppLayout;
 use crate::I18nContextProvider;
@@ -40,6 +41,10 @@ pub fn App() -> impl IntoView {
                                 <Route path=path!("/apps") view=OAuthAppsPage />
                                 <Route path=path!("/workflows") view=Workflows />
                                 <Route path=path!("/workflows/:id") view=WorkflowDetailPage />
+                                <Route path=path!("/roles") view=RolesPage />
+                                <Route path=path!("/email") view=EmailSettingsPage />
+                                <Route path=path!("/cache") view=CachePage />
+                                <Route path=path!("/events") view=EventsPage />
                                 <Route path=path!("") view=Dashboard />
                             </ParentRoute>
                         </ParentRoute>

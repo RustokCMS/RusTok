@@ -4,8 +4,9 @@ use crate::features::oauth_apps::create_app::{CreateAppForm, CreateResult};
 use crate::features::oauth_apps::edit_app::EditAppForm;
 use crate::features::oauth_apps::revoke_app::RevokeAppDialog;
 use crate::features::oauth_apps::rotate_secret::RotateSecretDialog;
-use crate::shared::ui::Button;
+use crate::shared::ui::{Alert, AlertVariant, Button};
 use crate::widgets::oauth_apps_list::OAuthAppsList;
+use crate::{t_string, use_i18n};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
@@ -22,6 +23,7 @@ enum ModalState {
 
 #[component]
 pub fn OAuthAppsPage() -> impl IntoView {
+    let i18n = use_i18n();
     let token = use_token();
     let tenant = use_tenant();
 
@@ -63,20 +65,22 @@ pub fn OAuthAppsPage() -> impl IntoView {
         <div class="space-y-6">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h2 class="text-2xl font-bold tracking-tight">"OAuth App Connections"</h2>
+                    <h2 class="text-2xl font-bold tracking-tight">
+                        {t_string!(i18n, oauthApps.title)}
+                    </h2>
                     <p class="text-muted-foreground">
-                        "Manage manual integrations, inspect manifest-managed frontends, and rotate client credentials."
+                        {t_string!(i18n, oauthApps.description)}
                     </p>
                 </div>
                 <Button on_click=Callback::new(move |_| set_modal_state.set(ModalState::CreateApp))>
-                    "Create New App"
+                    {t_string!(i18n, oauthApps.create)}
                 </Button>
             </div>
 
             <Show when=move || error.get().is_some()>
-                <div class="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                <Alert variant=AlertVariant::Destructive>
                     {move || error.get().unwrap_or_default()}
-                </div>
+                </Alert>
             </Show>
 
             <OAuthAppsList
@@ -172,16 +176,16 @@ pub fn OAuthAppsPage() -> impl IntoView {
                             ModalState::SecretRevealed { secret, app } => {
                                 let close = close_modal;
                                 let title = if app.auto_created {
-                                    "Client secret rotated."
+                                    t_string!(i18n, oauthApps.secret.rotated).to_string()
                                 } else {
-                                    "Client secret generated."
+                                    t_string!(i18n, oauthApps.secret.generated).to_string()
                                 };
 
                                 view! {
                                     <div class="space-y-4">
                                         <h3 class="text-lg font-medium text-green-600">{title}</h3>
                                         <p class="text-sm">
-                                            "Store this secret safely. It will not be shown again."
+                                            {t_string!(i18n, oauthApps.secret.warning)}
                                         </p>
 
                                         <div class="break-all rounded border bg-slate-100 p-3 font-mono text-sm">
@@ -189,7 +193,7 @@ pub fn OAuthAppsPage() -> impl IntoView {
                                         </div>
 
                                         <Button class="w-full" on_click=Callback::new(move |_| close())>
-                                            "I have saved it"
+                                            {t_string!(i18n, oauthApps.secret.saved)}
                                         </Button>
                                     </div>
                                 }
