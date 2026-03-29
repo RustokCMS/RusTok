@@ -1,37 +1,37 @@
-use sea_orm::{DatabaseConnection, TransactionTrait};
+use std::collections::HashMap;
+
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+};
 use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_content::{
-    BodyInput, CreateNodeInput, ListNodesFilter, NodeService, NodeTranslationInput,
-    UpdateNodeInput, PLATFORM_FALLBACK_LOCALE,
+    available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
+    PLATFORM_FALLBACK_LOCALE,
 };
 use rustok_core::{prepare_content_payload, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::constants::{topic_status, KIND_TOPIC};
+use crate::constants::topic_status;
 use crate::dto::{
     CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse, UpdateTopicInput,
 };
+use crate::entities::{forum_topic, forum_topic_channel_access, forum_topic_translation};
 use crate::error::{ForumError, ForumResult};
-use crate::locale::{
-    available_locales, resolve_body_with_fallback, resolve_translation_with_fallback,
-};
+use crate::services::category::CategoryService;
 
 pub struct TopicService {
     db: DatabaseConnection,
-    nodes: NodeService,
     event_bus: TransactionalEventBus,
 }
 
 impl TopicService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self {
-            nodes: NodeService::new(db.clone(), event_bus.clone()),
-            db,
-            event_bus,
-        }
+        Self { db, event_bus }
     }
 
     #[instrument(skip(self, security, input))]
@@ -41,22 +41,8 @@ impl TopicService {
         security: SecurityContext,
         input: CreateTopicInput,
     ) -> ForumResult<TopicResponse> {
-        if input.title.trim().is_empty() {
-            return Err(ForumError::Validation(
-                "Topic title cannot be empty".to_string(),
-            ));
-        }
-        let create_format = input.body_format.as_str();
-        if create_format != "rt_json_v1" && input.body.trim().is_empty() {
-            return Err(ForumError::Validation(
-                "Topic body cannot be empty".to_string(),
-            ));
-        }
-
-        let author_id = security.user_id;
-        let category_id = input.category_id;
-        let locale = input.locale.clone();
-
+        validate_topic_title(&input.title)?;
+        let locale = normalize_locale(&input.locale)?;
         let prepared_body = prepare_content_payload(
             Some(&input.body_format),
             Some(&input.body),
@@ -66,50 +52,48 @@ impl TopicService {
         )
         .map_err(ForumError::Validation)?;
 
-        let mut metadata = serde_json::json!({
-            "tags": input.tags,
-            "is_pinned": false,
-            "is_locked": false,
-            "reply_count": 0,
-            "forum_status": topic_status::OPEN
-        });
-
-        if let Some(slugs) = input.channel_slugs {
-            metadata["channel_visibility"] = serde_json::json!({ "allowed_channel_slugs": slugs });
-        }
-
         let txn = self.db.begin().await?;
+        CategoryService::ensure_exists_in_tx(&txn, tenant_id, input.category_id).await?;
 
-        let topic_id = self
-            .nodes
-            .create_node_in_tx(
-                &txn,
-                tenant_id,
-                security.clone(),
-                CreateNodeInput {
-                    kind: KIND_TOPIC.to_string(),
-                    status: Some(rustok_content::entities::node::ContentStatus::Published),
-                    parent_id: Some(category_id),
-                    author_id,
-                    category_id: Some(category_id),
-                    position: None,
-                    depth: None,
-                    reply_count: Some(0),
-                    metadata,
-                    translations: vec![NodeTranslationInput {
-                        locale: locale.clone(),
-                        title: Some(input.title.clone()),
-                        slug: input.slug.clone(),
-                        excerpt: None,
-                    }],
-                    bodies: vec![BodyInput {
-                        locale: locale.clone(),
-                        body: Some(prepared_body.body),
-                        format: Some(prepared_body.format),
-                    }],
-                },
-            )
+        let now = Utc::now();
+        let topic_id = Uuid::new_v4();
+        forum_topic::ActiveModel {
+            id: Set(topic_id),
+            tenant_id: Set(tenant_id),
+            category_id: Set(input.category_id),
+            author_id: Set(security.user_id),
+            status: Set(topic_status::OPEN.to_string()),
+            is_pinned: Set(false),
+            is_locked: Set(false),
+            tags: Set(serde_json::json!(normalize_tags(&input.tags))),
+            reply_count: Set(0),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+            last_reply_at: Set(None),
+        }
+        .insert(&txn)
+        .await?;
+
+        forum_topic_translation::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            topic_id: Set(topic_id),
+            locale: Set(locale.clone()),
+            title: Set(input.title),
+            slug: Set(input
+                .slug
+                .map(|value| normalize_slug(&value))
+                .filter(|value| !value.is_empty())),
+            body: Set(prepared_body.body),
+            body_format: Set(prepared_body.format),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&txn)
+        .await?;
+
+        self.sync_channel_access_in_tx(&txn, topic_id, input.channel_slugs.as_deref())
             .await?;
+        CategoryService::adjust_counters_in_tx(&txn, tenant_id, input.category_id, 1, 0).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -118,17 +102,15 @@ impl TopicService {
                 security.user_id,
                 DomainEvent::ForumTopicCreated {
                     topic_id,
-                    category_id,
-                    author_id,
+                    category_id: input.category_id,
+                    author_id: security.user_id,
                     locale: locale.clone(),
                 },
             )
             .await?;
 
         txn.commit().await?;
-
-        let node = self.nodes.get_node(tenant_id, topic_id).await?;
-        Ok(Self::node_to_topic(node, &locale))
+        self.get(tenant_id, topic_id, &locale).await
     }
 
     #[instrument(skip(self))]
@@ -150,474 +132,536 @@ impl TopicService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<TopicResponse> {
-        let node = self.nodes.get_node(tenant_id, topic_id).await?;
-
-        if node.kind != KIND_TOPIC {
-            return Err(ForumError::TopicNotFound(topic_id));
-        }
-
-        Ok(Self::node_to_topic_with_fallback(
-            node,
-            locale,
-            fallback_locale,
+        let locale = normalize_locale(locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let topic = self.find_topic(tenant_id, topic_id).await?;
+        let translations = self.load_translations(topic_id).await?;
+        let channel_slugs = self.load_channel_slugs(topic_id).await?;
+        Ok(to_topic_response(
+            topic,
+            translations,
+            channel_slugs,
+            &locale,
+            fallback_locale.as_deref(),
         ))
     }
 
-    #[instrument(skip(self, security, input))]
+    #[instrument(skip(self, _security, input))]
     pub async fn update(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         input: UpdateTopicInput,
     ) -> ForumResult<TopicResponse> {
-        let existing = self.get(tenant_id, topic_id, &input.locale).await?;
-        let mut metadata = serde_json::json!({
-            "tags": input.tags.unwrap_or(existing.tags.clone()),
-            "is_pinned": existing.is_pinned,
-            "is_locked": existing.is_locked,
-            "reply_count": existing.reply_count,
-            "forum_status": existing.status
-        });
+        let locale = normalize_locale(&input.locale)?;
+        let topic = self.find_topic(tenant_id, topic_id).await?;
+        let txn = self.db.begin().await?;
 
-        if let Some(slugs) = input.channel_slugs {
-            metadata["channel_visibility"] = serde_json::json!({ "allowed_channel_slugs": slugs });
-        } else if !existing.channel_slugs.is_empty() {
-            metadata["channel_visibility"] = serde_json::json!({ "allowed_channel_slugs": existing.channel_slugs });
+        let mut active: forum_topic::ActiveModel = topic.into();
+        if let Some(tags) = input.tags {
+            active.tags = Set(serde_json::json!(normalize_tags(&tags)));
+        }
+        active.updated_at = Set(Utc::now().into());
+        active.update(&txn).await?;
+
+        self.upsert_translation_in_tx(
+            &txn,
+            topic_id,
+            &locale,
+            input.title,
+            input.body,
+            input.body_format,
+            input.content_json,
+        )
+        .await?;
+
+        if input.channel_slugs.is_some() {
+            self.sync_channel_access_in_tx(&txn, topic_id, input.channel_slugs.as_deref())
+                .await?;
         }
 
-        let translations = if input.title.is_some() {
-            Some(vec![NodeTranslationInput {
-                locale: input.locale.clone(),
-                title: Some(input.title.unwrap_or(existing.title.clone())),
-                slug: Some(existing.slug.clone()),
-                excerpt: None,
-            }])
-        } else {
-            None
-        };
-
-        let bodies = if input.body.is_some()
-            || input.content_json.is_some()
-            || input.body_format.is_some()
-        {
-            let prepared_body = prepare_content_payload(
-                input.body_format.as_deref(),
-                input.body.as_deref(),
-                input.content_json.as_ref(),
-                &input.locale,
-                "Topic body",
-            )
-            .map_err(ForumError::Validation)?;
-            Some(vec![BodyInput {
-                locale: input.locale.clone(),
-                body: Some(prepared_body.body),
-                format: Some(prepared_body.format),
-            }])
-        } else {
-            None
-        };
-
-        let node = self
-            .nodes
-            .update_node(
-                tenant_id,
-                topic_id,
-                security,
-                UpdateNodeInput {
-                    metadata: Some(metadata),
-                    status: Some(rustok_content::entities::node::ContentStatus::Published),
-                    translations,
-                    bodies,
-                    ..UpdateNodeInput::default()
-                },
-            )
-            .await?;
-
-        Ok(Self::node_to_topic(node, &input.locale))
+        txn.commit().await?;
+        self.get(tenant_id, topic_id, &locale).await
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
     ) -> ForumResult<()> {
-        self.nodes
-            .delete_node(tenant_id, topic_id, security)
+        let topic = self.find_topic(tenant_id, topic_id).await?;
+        let txn = self.db.begin().await?;
+        forum_topic::Entity::delete_by_id(topic_id)
+            .exec(&txn)
             .await?;
+        CategoryService::adjust_counters_in_tx(
+            &txn,
+            tenant_id,
+            topic.category_id,
+            -1,
+            -topic.reply_count,
+        )
+        .await?;
+        txn.commit().await?;
         Ok(())
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn list(
         &self,
         tenant_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         filter: ListTopicsFilter,
     ) -> ForumResult<(Vec<TopicListItem>, u64)> {
-        self.list_with_locale_fallback(tenant_id, security, filter, None)
+        self.list_with_locale_fallback(tenant_id, SecurityContext::system(), filter, None)
             .await
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn list_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<TopicListItem>, u64)> {
         let locale = filter
             .locale
             .clone()
-            .or_else(|| fallback_locale.map(str::to_string))
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
-        let (items, total) = self
-            .nodes
-            .list_nodes_with_locale_fallback(
-                tenant_id,
-                security,
-                ListNodesFilter {
-                    kind: Some(KIND_TOPIC.to_string()),
-                    status: None,
-                    parent_id: filter.category_id,
-                    author_id: None,
-                    locale: Some(locale.clone()),
-                    page: filter.page,
-                    per_page: filter.per_page,
-                    include_deleted: false,
-                    category_id: filter.category_id,
-                },
-                fallback_locale,
-            )
-            .await?;
+        let locale = normalize_locale(&locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
 
-        let list = items
+        let mut select =
+            forum_topic::Entity::find().filter(forum_topic::Column::TenantId.eq(tenant_id));
+        if let Some(category_id) = filter.category_id {
+            select = select.filter(forum_topic::Column::CategoryId.eq(category_id));
+        }
+        if let Some(status) = filter.status {
+            select = select.filter(forum_topic::Column::Status.eq(status));
+        }
+
+        let paginator = select
+            .order_by_desc(forum_topic::Column::IsPinned)
+            .order_by_desc(forum_topic::Column::LastReplyAt)
+            .order_by_desc(forum_topic::Column::UpdatedAt)
+            .paginate(&self.db, filter.per_page.max(1));
+        let total = paginator.num_items().await?;
+        let topics = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
+        let topic_ids: Vec<Uuid> = topics.iter().map(|topic| topic.id).collect();
+        let translations = self.load_translations_for_topics(&topic_ids).await?;
+        let channels = self.load_channel_slugs_map(&topic_ids).await?;
+
+        let items = topics
             .into_iter()
-            .map(|item| {
-                let metadata = &item.metadata;
+            .map(|topic| {
+                let localized = translations
+                    .iter()
+                    .filter(|translation| translation.topic_id == topic.id)
+                    .collect::<Vec<_>>();
+                let resolved = resolve_by_locale_with_fallback(
+                    &localized,
+                    &locale,
+                    fallback_locale.as_deref(),
+                    |translation| translation.locale.as_str(),
+                );
+
                 TopicListItem {
-                    id: item.id,
+                    id: topic.id,
                     locale: locale.clone(),
-                    effective_locale: item.effective_locale,
-                    category_id: item.category_id.unwrap_or(Uuid::nil()),
-                    author_id: item.author_id,
-                    title: item.title.unwrap_or_default(),
-                    slug: item.slug.unwrap_or_default(),
-                    status: metadata
-                        .get("forum_status")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(topic_status::OPEN)
-                        .to_string(),
-                    channel_slugs: metadata
-                        .get("channel_visibility")
-                        .and_then(|v| v.get("allowed_channel_slugs"))
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                .collect()
-                        })
+                    effective_locale: resolved.effective_locale,
+                    category_id: topic.category_id,
+                    author_id: topic.author_id,
+                    title: resolved
+                        .item
+                        .map(|translation| translation.title.clone())
                         .unwrap_or_default(),
-                    is_pinned: metadata
-                        .get("is_pinned")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
-                    is_locked: metadata
-                        .get("is_locked")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
-                    reply_count: metadata
-                        .get("reply_count")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0) as i32,
-                    created_at: item.created_at,
+                    slug: resolved
+                        .item
+                        .and_then(|translation| translation.slug.clone())
+                        .unwrap_or_default(),
+                    status: topic.status.clone(),
+                    channel_slugs: channels.get(&topic.id).cloned().unwrap_or_default(),
+                    is_pinned: topic.is_pinned,
+                    is_locked: topic.is_locked,
+                    reply_count: topic.reply_count,
+                    created_at: topic.created_at.to_rfc3339(),
                 }
             })
             .collect();
 
-        Ok((list, total))
+        Ok((items, total))
     }
 
-    fn node_to_topic(node: rustok_content::NodeResponse, locale: &str) -> TopicResponse {
-        Self::node_to_topic_with_fallback(node, locale, None)
+    pub(crate) async fn find_topic(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<forum_topic::Model> {
+        forum_topic::Entity::find_by_id(topic_id)
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(ForumError::TopicNotFound(topic_id))
     }
 
-    fn node_to_topic_with_fallback(
-        node: rustok_content::NodeResponse,
-        locale: &str,
-        fallback_locale: Option<&str>,
-    ) -> TopicResponse {
-        let resolved_tr =
-            resolve_translation_with_fallback(&node.translations, locale, fallback_locale);
-        let resolved_body = resolve_body_with_fallback(&node.bodies, locale, fallback_locale);
-        let locales = available_locales(&node.translations);
-        let metadata = node.metadata;
+    pub(crate) async fn find_topic_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<forum_topic::Model> {
+        forum_topic::Entity::find_by_id(topic_id)
+            .filter(forum_topic::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or(ForumError::TopicNotFound(topic_id))
+    }
 
-        let body = resolved_body
-            .body
-            .as_ref()
-            .and_then(|b| b.body.clone())
-            .unwrap_or_default();
-        let body_format = resolved_body
-            .body
-            .as_ref()
-            .map(|b| b.format.clone())
-            .unwrap_or_else(|| "markdown".to_string());
-        let content_json = if body_format == "rt_json_v1" {
-            serde_json::from_str(&body).ok()
-        } else {
-            None
-        };
+    pub(crate) async fn adjust_reply_count_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        delta: i32,
+    ) -> ForumResult<forum_topic::Model> {
+        let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
+        let mut active: forum_topic::ActiveModel = topic.clone().into();
+        active.reply_count = Set((topic.reply_count + delta).max(0));
+        active.last_reply_at = Set(Some(Utc::now().into()));
+        active.updated_at = Set(Utc::now().into());
+        active.update(txn).await?;
+        Ok(topic)
+    }
 
-        TopicResponse {
-            id: node.id,
-            requested_locale: locale.to_string(),
-            locale: locale.to_string(),
-            effective_locale: resolved_tr.effective_locale,
-            available_locales: locales,
-            category_id: node.category_id.unwrap_or(Uuid::nil()),
-            author_id: node.author_id,
-            title: resolved_tr
-                .translation
-                .and_then(|t| t.title.clone())
-                .unwrap_or_default(),
-            slug: resolved_tr
-                .translation
-                .and_then(|t| t.slug.clone())
-                .unwrap_or_default(),
-            body,
-            body_format,
-            content_json,
-            status: metadata
-                .get("forum_status")
-                .and_then(|v| v.as_str())
-                .unwrap_or(topic_status::OPEN)
-                .to_string(),
-            tags: metadata
-                .get("tags")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            channel_slugs: metadata
-                .get("channel_visibility")
-                .and_then(|v| v.get("allowed_channel_slugs"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            is_pinned: metadata
-                .get("is_pinned")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false),
-            is_locked: metadata
-                .get("is_locked")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false),
-            reply_count: metadata
-                .get("reply_count")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0) as i32,
-            created_at: node.created_at,
-            updated_at: node.updated_at,
+    pub(crate) async fn set_pinned_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        is_pinned: bool,
+    ) -> ForumResult<()> {
+        let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
+        let mut active: forum_topic::ActiveModel = topic.into();
+        active.is_pinned = Set(is_pinned);
+        active.updated_at = Set(Utc::now().into());
+        active.update(txn).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn set_locked_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        is_locked: bool,
+    ) -> ForumResult<()> {
+        let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
+        let mut active: forum_topic::ActiveModel = topic.into();
+        active.is_locked = Set(is_locked);
+        active.updated_at = Set(Utc::now().into());
+        active.update(txn).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn set_status_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        status: &str,
+    ) -> ForumResult<()> {
+        let topic = Self::find_topic_in_tx(txn, tenant_id, topic_id).await?;
+        let mut active: forum_topic::ActiveModel = topic.into();
+        active.status = Set(status.to_string());
+        active.updated_at = Set(Utc::now().into());
+        active.update(txn).await?;
+        Ok(())
+    }
+
+    async fn load_translations(
+        &self,
+        topic_id: Uuid,
+    ) -> ForumResult<Vec<forum_topic_translation::Model>> {
+        Ok(forum_topic_translation::Entity::find()
+            .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
+            .all(&self.db)
+            .await?)
+    }
+
+    async fn load_translations_for_topics(
+        &self,
+        topic_ids: &[Uuid],
+    ) -> ForumResult<Vec<forum_topic_translation::Model>> {
+        if topic_ids.is_empty() {
+            return Ok(Vec::new());
         }
+        Ok(forum_topic_translation::Entity::find()
+            .filter(forum_topic_translation::Column::TopicId.is_in(topic_ids.to_vec()))
+            .all(&self.db)
+            .await?)
+    }
+
+    async fn load_channel_slugs(&self, topic_id: Uuid) -> ForumResult<Vec<String>> {
+        Ok(forum_topic_channel_access::Entity::find()
+            .filter(forum_topic_channel_access::Column::TopicId.eq(topic_id))
+            .order_by_asc(forum_topic_channel_access::Column::ChannelSlug)
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|item| item.channel_slug)
+            .collect())
+    }
+
+    async fn load_channel_slugs_map(
+        &self,
+        topic_ids: &[Uuid],
+    ) -> ForumResult<HashMap<Uuid, Vec<String>>> {
+        if topic_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows = forum_topic_channel_access::Entity::find()
+            .filter(forum_topic_channel_access::Column::TopicId.is_in(topic_ids.to_vec()))
+            .all(&self.db)
+            .await?;
+        let mut map: HashMap<Uuid, Vec<String>> = HashMap::new();
+        for row in rows {
+            map.entry(row.topic_id).or_default().push(row.channel_slug);
+        }
+        for values in map.values_mut() {
+            values.sort();
+        }
+        Ok(map)
+    }
+
+    async fn sync_channel_access_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        topic_id: Uuid,
+        channel_slugs: Option<&[String]>,
+    ) -> ForumResult<()> {
+        forum_topic_channel_access::Entity::delete_many()
+            .filter(forum_topic_channel_access::Column::TopicId.eq(topic_id))
+            .exec(txn)
+            .await?;
+
+        for channel_slug in normalize_channel_slugs(channel_slugs.unwrap_or(&[])) {
+            forum_topic_channel_access::ActiveModel {
+                topic_id: Set(topic_id),
+                channel_slug: Set(channel_slug),
+            }
+            .insert(txn)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn upsert_translation_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        topic_id: Uuid,
+        locale: &str,
+        title: Option<String>,
+        body: Option<String>,
+        body_format: Option<String>,
+        content_json: Option<serde_json::Value>,
+    ) -> ForumResult<()> {
+        let existing = forum_topic_translation::Entity::find()
+            .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
+            .filter(forum_topic_translation::Column::Locale.eq(locale))
+            .one(txn)
+            .await?;
+        let now = Utc::now();
+
+        match existing {
+            Some(existing) => {
+                let mut active: forum_topic_translation::ActiveModel = existing.into();
+                if let Some(title) = title {
+                    validate_topic_title(&title)?;
+                    active.title = Set(title);
+                }
+                if body.is_some() || content_json.is_some() || body_format.is_some() {
+                    let prepared_body = prepare_content_payload(
+                        body_format.as_deref(),
+                        body.as_deref(),
+                        content_json.as_ref(),
+                        locale,
+                        "Topic body",
+                    )
+                    .map_err(ForumError::Validation)?;
+                    active.body = Set(prepared_body.body);
+                    active.body_format = Set(prepared_body.format);
+                }
+                active.updated_at = Set(now.into());
+                active.update(txn).await?;
+            }
+            None => {
+                let seed = forum_topic_translation::Entity::find()
+                    .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
+                    .order_by_asc(forum_topic_translation::Column::CreatedAt)
+                    .one(txn)
+                    .await?;
+                let title = title
+                    .or_else(|| seed.as_ref().map(|translation| translation.title.clone()))
+                    .ok_or_else(|| {
+                        ForumError::Validation("Title is required for a new locale".to_string())
+                    })?;
+                validate_topic_title(&title)?;
+                let prepared_body =
+                    if body.is_some() || content_json.is_some() || body_format.is_some() {
+                        prepare_content_payload(
+                            body_format.as_deref(),
+                            body.as_deref(),
+                            content_json.as_ref(),
+                            locale,
+                            "Topic body",
+                        )
+                        .map_err(ForumError::Validation)?
+                    } else if let Some(seed) = seed.as_ref() {
+                        rustok_core::PreparedContent {
+                            body: seed.body.clone(),
+                            format: seed.body_format.clone(),
+                        }
+                    } else {
+                        return Err(ForumError::Validation(
+                            "Body is required for a new locale".to_string(),
+                        ));
+                    };
+
+                forum_topic_translation::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    topic_id: Set(topic_id),
+                    locale: Set(locale.to_string()),
+                    title: Set(title),
+                    slug: Set(seed.and_then(|translation| translation.slug)),
+                    body: Set(prepared_body.body),
+                    body_format: Set(prepared_body.format),
+                    created_at: Set(now.into()),
+                    updated_at: Set(now.into()),
+                }
+                .insert(txn)
+                .await?;
+            }
+        }
+
+        Ok(())
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::constants::{topic_status, KIND_TOPIC};
-    use rustok_content::dto::{BodyResponse, NodeResponse, NodeTranslationResponse};
-    use rustok_content::entities::node::ContentStatus;
+fn to_topic_response(
+    topic: forum_topic::Model,
+    translations: Vec<forum_topic_translation::Model>,
+    channel_slugs: Vec<String>,
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> TopicResponse {
+    let resolved =
+        resolve_by_locale_with_fallback(&translations, locale, fallback_locale, |translation| {
+            translation.locale.as_str()
+        });
+    let body = resolved
+        .item
+        .map(|translation| translation.body.clone())
+        .unwrap_or_default();
+    let body_format = resolved
+        .item
+        .map(|translation| translation.body_format.clone())
+        .unwrap_or_else(|| "markdown".to_string());
+    let content_json = if body_format == "rt_json_v1" {
+        serde_json::from_str(&body).ok()
+    } else {
+        None
+    };
 
-    fn make_node(
-        kind: &str,
-        category_id: Option<Uuid>,
-        author_id: Option<Uuid>,
-        metadata: serde_json::Value,
-        translations: Vec<NodeTranslationResponse>,
-        bodies: Vec<BodyResponse>,
-    ) -> NodeResponse {
-        NodeResponse {
-            id: Uuid::nil(),
-            tenant_id: Uuid::nil(),
-            kind: kind.to_string(),
-            status: ContentStatus::Published,
-            parent_id: category_id,
-            author_id,
-            category_id,
-            position: 0,
-            depth: 0,
-            reply_count: 0,
-            metadata,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
-            published_at: None,
-            deleted_at: None,
-            version: 1,
-            translations,
-            bodies,
+    TopicResponse {
+        id: topic.id,
+        requested_locale: locale.to_string(),
+        locale: locale.to_string(),
+        effective_locale: resolved.effective_locale,
+        available_locales: available_locales_from(&translations, |translation| {
+            translation.locale.as_str()
+        }),
+        category_id: topic.category_id,
+        author_id: topic.author_id,
+        title: resolved
+            .item
+            .map(|translation| translation.title.clone())
+            .unwrap_or_default(),
+        slug: resolved
+            .item
+            .and_then(|translation| translation.slug.clone())
+            .unwrap_or_default(),
+        body,
+        body_format,
+        content_json,
+        status: topic.status,
+        tags: extract_tags(&topic.tags),
+        channel_slugs,
+        is_pinned: topic.is_pinned,
+        is_locked: topic.is_locked,
+        reply_count: topic.reply_count,
+        created_at: topic.created_at.to_rfc3339(),
+        updated_at: topic.updated_at.to_rfc3339(),
+    }
+}
+
+fn validate_topic_title(title: &str) -> ForumResult<()> {
+    if title.trim().is_empty() {
+        return Err(ForumError::Validation(
+            "Topic title cannot be empty".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_locale(locale: &str) -> ForumResult<String> {
+    normalize_locale_code(locale)
+        .ok_or_else(|| ForumError::Validation("Invalid locale".to_string()))
+}
+
+fn normalize_slug(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+    let mut previous_dash = false;
+    for ch in value.chars().flat_map(|ch| ch.to_lowercase()) {
+        if ch.is_ascii_alphanumeric() {
+            normalized.push(ch);
+            previous_dash = false;
+        } else if !previous_dash {
+            normalized.push('-');
+            previous_dash = true;
         }
     }
+    normalized.trim_matches('-').to_string()
+}
 
-    fn tr(locale: &str, title: &str, slug: &str) -> NodeTranslationResponse {
-        NodeTranslationResponse {
-            locale: locale.to_string(),
-            title: Some(title.to_string()),
-            slug: Some(slug.to_string()),
-            excerpt: None,
-        }
-    }
+fn normalize_tags(tags: &[String]) -> Vec<String> {
+    let mut normalized = tags
+        .iter()
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
 
-    fn body(locale: &str, content: &str) -> BodyResponse {
-        BodyResponse {
-            locale: locale.to_string(),
-            body: Some(content.to_string()),
-            format: "markdown".to_string(),
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
-        }
-    }
+fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
+    let mut normalized = channel_slugs
+        .iter()
+        .map(|item| item.trim().to_ascii_lowercase())
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
 
-    #[test]
-    fn node_to_topic_maps_fields_from_metadata() {
-        let category_id = Uuid::new_v4();
-        let author_id = Uuid::new_v4();
-        let metadata = serde_json::json!({
-            "tags": ["rust", "forum"],
-            "is_pinned": true,
-            "is_locked": false,
-            "reply_count": 5,
-            "forum_status": "open"
-        });
-        let node = make_node(
-            KIND_TOPIC,
-            Some(category_id),
-            Some(author_id),
-            metadata,
-            vec![tr("en", "Hello World", "hello-world")],
-            vec![body("en", "Body text")],
-        );
-
-        let result = TopicService::node_to_topic(node, "en");
-
-        assert_eq!(result.title, "Hello World");
-        assert_eq!(result.slug, "hello-world");
-        assert_eq!(result.body, "Body text");
-        assert_eq!(result.body_format, "markdown");
-        assert!(result.content_json.is_none());
-        assert_eq!(result.category_id, category_id);
-        assert_eq!(result.author_id, Some(author_id));
-        assert_eq!(result.tags, vec!["rust", "forum"]);
-        assert!(result.is_pinned);
-        assert!(!result.is_locked);
-        assert_eq!(result.reply_count, 5);
-        assert_eq!(result.status, "open");
-        assert_eq!(result.effective_locale, "en");
-        assert_eq!(result.available_locales, vec!["en"]);
-    }
-
-    #[test]
-    fn node_to_topic_defaults_on_empty_metadata() {
-        let node = make_node(
-            KIND_TOPIC,
-            None,
-            None,
-            serde_json::json!({}),
-            vec![tr("en", "", "")],
-            vec![],
-        );
-
-        let result = TopicService::node_to_topic(node, "en");
-
-        assert_eq!(result.title, "");
-        assert_eq!(result.body, "");
-        assert_eq!(result.category_id, Uuid::nil());
-        assert!(result.author_id.is_none());
-        assert!(result.tags.is_empty());
-        assert!(!result.is_pinned);
-        assert!(!result.is_locked);
-        assert_eq!(result.reply_count, 0);
-        assert_eq!(result.status, topic_status::OPEN);
-    }
-
-    #[test]
-    fn node_to_topic_falls_back_to_en() {
-        let metadata = serde_json::json!({
-            "tags": [],
-            "is_pinned": false,
-            "is_locked": false,
-            "reply_count": 0,
-            "forum_status": "open"
-        });
-        let node = make_node(
-            KIND_TOPIC,
-            None,
-            None,
-            metadata,
-            vec![
-                tr("en", "Fallback EN", "fallback-en"),
-                tr("de", "Rückfall", "rueckfall"),
-            ],
-            vec![body("en", "English body")],
-        );
-
-        let result = TopicService::node_to_topic(node, "ru");
-        assert_eq!(result.effective_locale, "en");
-        assert_eq!(result.title, "Fallback EN");
-    }
-
-    #[test]
-    fn node_to_topic_extracts_rt_json_content_json() {
-        let rich = serde_json::json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
-        let node = make_node(
-            KIND_TOPIC,
-            None,
-            None,
-            serde_json::json!({}),
-            vec![tr("en", "Title", "title")],
-            vec![BodyResponse {
-                locale: "en".to_string(),
-                body: Some(rich.to_string()),
-                format: "rt_json_v1".to_string(),
-                updated_at: "2024-01-01T00:00:00Z".to_string(),
-            }],
-        );
-
-        let result = TopicService::node_to_topic(node, "en");
-        assert_eq!(result.body_format, "rt_json_v1");
-        assert_eq!(result.content_json, Some(rich));
-    }
-
-    #[test]
-    fn node_to_topic_falls_back_to_first_when_no_en() {
-        let metadata = serde_json::json!({
-            "tags": [],
-            "is_pinned": false,
-            "is_locked": false,
-            "reply_count": 0,
-            "forum_status": "open"
-        });
-        let node = make_node(
-            KIND_TOPIC,
-            None,
-            None,
-            metadata,
-            vec![tr("de", "Erster", "erster")],
-            vec![],
-        );
-
-        let result = TopicService::node_to_topic(node, "en");
-        assert_eq!(result.effective_locale, "de");
-        assert_eq!(result.title, "Erster");
-    }
+fn extract_tags(tags: &sea_orm::prelude::Json) -> Vec<String> {
+    tags.as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
 }

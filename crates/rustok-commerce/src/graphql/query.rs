@@ -37,7 +37,9 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
-        let regions = RegionService::new(db.clone()).list_regions(tenant_id).await?;
+        let regions = RegionService::new(db.clone())
+            .list_regions(tenant_id)
+            .await?;
 
         Ok(regions.into_iter().map(Into::into).collect())
     }
@@ -64,7 +66,9 @@ impl CommerceQuery {
             currency_code: None,
         });
         let context = if let Some(cart_id) = filter.cart_id {
-            let cart = crate::CartService::new(db.clone()).get_cart(tenant_id, cart_id).await?;
+            let cart = crate::CartService::new(db.clone())
+                .get_cart(tenant_id, cart_id)
+                .await?;
             ensure_storefront_cart_access(&cart, customer_id)?;
             resolve_storefront_context(
                 db,

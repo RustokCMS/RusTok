@@ -12,17 +12,17 @@ use rustok_blog::dto::{
     ListTagsFilter, PostListQuery, UpdateCommentInput,
 };
 use rustok_blog::state_machine::{BlogPost, BlogPostStatus, CommentStatus, ToBlogPostStatus};
-use rustok_blog::BlogError;
+use rustok_blog::{BlogError, BlogModule};
 use rustok_blog::{CategoryService, CommentService, PostService, TagService};
-use rustok_content::ContentError;
+use rustok_comments::{CommentsError, CommentsModule};
 use rustok_core::{
-    DomainEvent, EventTransport, MemoryTransport, ReliabilityLevel, SecurityContext, UserRole,
+    DomainEvent, EventTransport, MemoryTransport, MigrationSource, ReliabilityLevel,
+    SecurityContext, UserRole,
 };
 use rustok_events::EventEnvelope;
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
-};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm_migration::SchemaManager;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -145,6 +145,74 @@ async fn test_create_and_publish_post() -> TestResult<()> {
     assert_eq!(published.status, BlogPostStatus::Published);
     assert!(published.published_at.is_some());
     assert_eq!(published.slug, "draft-post");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestResult<()> {
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let _receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let post_service = PostService::new(db.clone(), event_bus.clone());
+
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let post_id = post_service
+        .create_post(
+            tenant_id,
+            admin,
+            CreatePostInput {
+                locale: "en-us".to_string(),
+                title: "Localized Post".to_string(),
+                body: "Body".to_string(),
+                body_format: "markdown".to_string(),
+                content_json: None,
+                excerpt: None,
+                slug: Some("localized-post".to_string()),
+                publish: true,
+                tags: vec![],
+                category_id: None,
+                featured_image_url: None,
+                seo_title: None,
+                seo_description: None,
+                channel_slugs: None,
+                metadata: None,
+            },
+        )
+        .await?;
+
+    let direct = post_service.get_post(tenant_id, post_id, "EN_us").await?;
+    assert_eq!(direct.requested_locale, "en-us");
+    assert_eq!(direct.locale, "en-us");
+    assert_eq!(direct.effective_locale, "en-us");
+
+    let by_fallback = post_service
+        .get_post_with_locale_fallback(tenant_id, post_id, "FR_fr", Some("EN_us"))
+        .await?;
+    assert_eq!(by_fallback.requested_locale, "fr-fr");
+    assert_eq!(by_fallback.locale, "fr-fr");
+    assert_eq!(by_fallback.effective_locale, "en-us");
+
+    let listed = post_service
+        .list_posts(
+            tenant_id,
+            SecurityContext::system(),
+            PostListQuery {
+                locale: Some("EN_us".to_string()),
+                page: Some(1),
+                per_page: Some(10),
+                ..Default::default()
+            },
+        )
+        .await?;
+    assert_eq!(listed.items.len(), 1);
+    assert_eq!(listed.items[0].locale, "en-us");
+    assert_eq!(listed.items[0].effective_locale, "en-us");
 
     Ok(())
 }
@@ -393,7 +461,7 @@ async fn test_category_crud() -> TestResult<()> {
         .get(tenant_id, category_id, "en")
         .await
         .expect_err("deleted category should not be found");
-    assert!(matches!(not_found, ContentError::CategoryNotFound(_)));
+    assert!(matches!(not_found, BlogError::CategoryNotFound(_)));
 
     Ok(())
 }
@@ -490,146 +558,19 @@ async fn setup_blog_test_db() -> DatabaseConnection {
 }
 
 async fn ensure_blog_schema(db: &DatabaseConnection) {
-    if db.get_database_backend() != DbBackend::Sqlite {
-        return;
+    let manager = SchemaManager::new(db);
+    for migration in BlogModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("blog migration should apply");
     }
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS nodes (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT NOT NULL,
-            parent_id TEXT NULL,
-            author_id TEXT NULL,
-            kind TEXT NOT NULL,
-            category_id TEXT NULL,
-            status TEXT NOT NULL,
-            position INTEGER NOT NULL,
-            depth INTEGER NOT NULL,
-            reply_count INTEGER NOT NULL,
-            metadata TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            published_at TEXT NULL,
-            deleted_at TEXT NULL,
-            version INTEGER NOT NULL DEFAULT 1
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create nodes table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS node_translations (
-            id TEXT PRIMARY KEY,
-            node_id TEXT NOT NULL,
-            locale TEXT NOT NULL,
-            title TEXT NULL,
-            slug TEXT NULL,
-            excerpt TEXT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY(node_id) REFERENCES nodes(id)
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create node_translations table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS bodies (
-            id TEXT PRIMARY KEY,
-            node_id TEXT NOT NULL,
-            locale TEXT NOT NULL,
-            body TEXT NULL,
-            format TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY(node_id) REFERENCES nodes(id)
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create bodies table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS categories (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT NOT NULL,
-            parent_id TEXT NULL,
-            position INTEGER NOT NULL DEFAULT 0,
-            depth INTEGER NOT NULL DEFAULT 0,
-            node_count INTEGER NOT NULL DEFAULT 0,
-            settings TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create categories table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS category_translations (
-            id TEXT PRIMARY KEY,
-            category_id TEXT NOT NULL,
-            tenant_id TEXT NOT NULL,
-            locale TEXT NOT NULL,
-            name TEXT NOT NULL,
-            slug TEXT NOT NULL,
-            description TEXT NULL,
-            FOREIGN KEY(category_id) REFERENCES categories(id)
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create category_translations table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS tags (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT NOT NULL,
-            use_count INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create tags table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS tag_translations (
-            id TEXT PRIMARY KEY,
-            tag_id TEXT NOT NULL,
-            tenant_id TEXT NOT NULL,
-            locale TEXT NOT NULL,
-            name TEXT NOT NULL,
-            slug TEXT NOT NULL,
-            FOREIGN KEY(tag_id) REFERENCES tags(id)
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create tag_translations table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS taggables (
-            tag_id TEXT NOT NULL,
-            target_type TEXT NOT NULL,
-            target_id TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            PRIMARY KEY(tag_id, target_type, target_id)
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create taggables table");
+    for migration in CommentsModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("comments migration should apply");
+    }
 }
 
 fn drain_event_types(receiver: &mut broadcast::Receiver<EventEnvelope>) -> Vec<String> {
@@ -735,7 +676,6 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
 
     let post_service = PostService::new(db.clone(), event_bus.clone());
     let comment_service = CommentService::new(db.clone(), event_bus.clone());
-    let node_service = rustok_content::NodeService::new(db, event_bus);
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -802,56 +742,11 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     assert_eq!(fallback_en.content, "Réponse imbriquée");
     assert_eq!(fallback_en.effective_locale, "fr");
 
-    node_service
-        .update_node(
-            tenant_id,
-            child.id,
-            admin.clone(),
-            rustok_content::UpdateNodeInput {
-                bodies: Some(vec![]),
-                ..Default::default()
-            },
-        )
-        .await?;
-
     let fallback_first = comment_service
         .get_comment(tenant_id, child.id, "de")
         .await?;
-    assert_eq!(fallback_first.content, "");
-    assert_eq!(fallback_first.effective_locale, "de");
-
-    let moderated_id = node_service
-        .create_node(
-            tenant_id,
-            admin.clone(),
-            rustok_content::CreateNodeInput {
-                kind: "comment".to_string(),
-                translations: vec![rustok_content::NodeTranslationInput {
-                    locale: "en".to_string(),
-                    title: Some("moderated".to_string()),
-                    slug: None,
-                    excerpt: None,
-                }],
-                bodies: vec![rustok_content::BodyInput {
-                    locale: "en".to_string(),
-                    body: Some("Spam candidate".to_string()),
-                    format: Some("markdown".to_string()),
-                }],
-                status: Some(rustok_content::entities::node::ContentStatus::Published),
-                parent_id: Some(post_id),
-                author_id: admin.user_id,
-                category_id: None,
-                position: None,
-                depth: None,
-                reply_count: None,
-                metadata: serde_json::json!({
-                    "comment_status": "spam",
-                    "parent_comment_id": parent.id,
-                }),
-            },
-        )
-        .await?
-        .id;
+    assert_eq!(fallback_first.content, "Réponse imbriquée");
+    assert_eq!(fallback_first.effective_locale, "fr");
 
     let updated = comment_service
         .update_comment(
@@ -884,7 +779,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         .expect_err("customer should not update чужой комментарий");
     assert!(matches!(
         forbidden,
-        BlogError::Content(ContentError::Forbidden(_))
+        BlogError::Comments(CommentsError::Forbidden(_))
     ));
 
     let not_found_update = comment_service
@@ -903,11 +798,11 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         .expect_err("must return not found");
     assert!(matches!(
         not_found_update,
-        BlogError::Content(ContentError::NodeNotFound(_))
+        BlogError::Comments(CommentsError::CommentNotFound(_))
     ));
 
     comment_service
-        .delete_comment(tenant_id, moderated_id, admin.clone())
+        .delete_comment(tenant_id, child.id, admin.clone())
         .await?;
 
     let not_found_delete = comment_service
@@ -916,7 +811,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
         .expect_err("must return not found on delete");
     assert!(matches!(
         not_found_delete,
-        BlogError::Content(ContentError::NodeNotFound(_))
+        BlogError::Comments(CommentsError::CommentNotFound(_))
     ));
 
     let (page_one, total) = comment_service
@@ -931,7 +826,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             },
         )
         .await?;
-    assert_eq!(total, 2);
+    assert_eq!(total, 1);
     assert_eq!(page_one.len(), 1);
 
     let (page_two, _) = comment_service
@@ -946,19 +841,18 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             },
         )
         .await?;
-    assert_eq!(page_two.len(), 1);
+    assert_eq!(page_two.len(), 0);
     let statuses: Vec<String> = page_one
         .iter()
         .chain(page_two.iter())
         .map(|c| c.status.clone())
         .collect();
     assert!(statuses.iter().any(|s| s == "pending"));
-    assert!(!statuses.iter().any(|s| s == "spam"));
+    assert!(!statuses.iter().any(|s| s == "trash"));
 
     let event_types = drain_event_types(&mut receiver);
-    assert!(event_types.iter().any(|et| et == "node.created"));
-    assert!(event_types.iter().any(|et| et == "node.updated"));
-    assert!(event_types.iter().any(|et| et == "node.deleted"));
+    assert!(event_types.iter().any(|et| et == "blog.post.created"));
+    assert!(event_types.iter().any(|et| et == "blog.post.updated"));
 
     Ok(())
 }

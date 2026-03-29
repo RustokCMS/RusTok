@@ -2,177 +2,108 @@
 
 ## Scope and objective
 
-This document captures the current implementation plan for `rustok-pages` in RusToK and
-serves as the source of truth for rollout sequencing in `crates/rustok-pages`.
+This document tracks the module-local implementation plan for `rustok-pages`.
 
-Primary objective: evolve `rustok-pages` in small, testable increments while preserving
-compatibility with platform-level contracts.
+Primary objective: keep evolving `rustok-pages` on top of module-owned storage
+without regressing the existing GraphQL, REST, admin, and storefront
+contracts.
 
-## Target architecture
+## Current state
 
-- `rustok-pages` remains focused on its bounded context and public crate API.
-- Integrations with other modules go through stable interfaces in `rustok-core`
-  (or dedicated integration crates where applicable).
-- Behavior changes are introduced through additive, backward-compatible steps.
-- Observability and operability requirements are part of delivery readiness.
+- `pages`, `page_translations`, `page_bodies`, and `page_blocks` now have
+  module-owned migrations.
+- `PageService` no longer uses `rustok-content::NodeService` for page
+  read/write paths.
+- `BlockService` no longer uses shared node storage for page-block CRUD.
+- `MenuService` now uses module-owned `menus`, `menu_translations`,
+  `menu_items`, and `menu_item_translations`.
+- Channel visibility is still metadata-based for v0 and can move to typed
+  relations later if the product model stabilizes.
 
 ## Delivery phases
 
-### Phase 0 — Foundation (done)
+### Phase 0 - Foundation (done)
 
 - [x] Baseline crate/module structure is in place.
 - [x] Base docs and registry presence are established.
 - [x] Core compile-time integration with the workspace is available.
 
-### Phase 1 — Contract hardening (done)
+### Phase 1 - Contract hardening (done)
 
 - [x] Freeze public API expectations for the current module surface.
-- [x] Align error/validation conventions with platform guidance (RichError system).
+- [x] Align error and validation conventions with platform guidance.
 - [x] Expand automated tests around core invariants and boundary behavior.
 
-### Phase 2 — Domain expansion (planned)
+### Phase 2 - Storage split (in progress)
 
-- [ ] Implement prioritized domain capabilities for `rustok-pages`.
-- [x] Add the first channel-aware pilot on public read-path using `rustok-channel` module bindings.
-- [x] Extend the pilot to the first publication-level proof point through metadata-based `channelSlugs` allowlist on pages.
-- [x] Compare the richer `pages` publication-level pilot against `blog` and keep the metadata-based model for v0 instead of introducing a dedicated relation/table yet.
-- [ ] Promote `body.format=grapesjs_v1` as the canonical visual page-builder contract while keeping legacy block APIs migration-compatible.
-- [ ] Standardize cross-module integration points and events.
-- [ ] Document ownership and release gates for new capabilities.
+- [x] Implement the first module-owned persistence slice for pages and blocks.
+- [x] Keep GraphQL and REST page CRUD on top of page-owned storage.
+- [x] Keep block CRUD and reorder flows on top of page-owned storage.
+- [x] Move menu storage and menu transport off shared `NodeService`.
+- [ ] Replace metadata-based visibility with typed relations if the product
+  model still requires it after the broader split.
 
-### Phase 3 — Productionization (planned)
+### Phase 3 - Page builder hardening (planned)
 
-- [ ] Finalize rollout and migration strategy for incremental adoption.
-- [ ] Complete security/tenancy/rbac checks relevant to the module.
+- [ ] Promote `body.format = "grapesjs_v1"` as the canonical visual
+  page-builder contract while keeping legacy block APIs migration-compatible.
+- [ ] Add explicit round-trip tests for GrapesJS `projectData`.
+- [ ] Lock down compatibility rules for legacy pages that still depend on block
+  payloads.
+
+### Phase 4 - Productionization (planned)
+
+- [x] Finalize rollout and migration strategy for the menu slice.
+- [ ] Complete security, tenancy, and RBAC checks relevant to the module.
 - [ ] Validate observability, runbooks, and operational readiness.
 
-## Dedicated page-builder track
+## Notes
 
-This section isolates the visual page-builder work as a dedicated `rustok-pages`
-track. It is intentionally separate from OAuth/app-registration work and separate
-from the blog/forum rich-text rollout.
+- `rustok-pages` now owns page, block, and menu persistence.
+- The current page body contract still supports `markdown`, `rt_json_v1`, and
+  `grapesjs_v1`.
+- Block endpoints remain a supported migration surface for now; they are not the
+  long-term canonical page-builder model.
 
-### Goal
-
-Adopt a single visual page-builder model that:
-
-- uses `GrapesJS` as the primary editor runtime;
-- stores canonical page-builder state in `body.format = "grapesjs_v1"`;
-- remains frontend-agnostic enough for both `apps/next-admin` and future
-  `apps/admin`/Leptos integration;
-- preserves a safe migration path from legacy typed block editing.
-
-### Canonical direction
-
-- `grapesjs_v1` becomes the source of truth for newly edited visual pages.
-- `content_json` stores canonical GrapesJS `projectData`.
-- legacy `blocks` remain supported as a migration-compatible surface until
-  storefront rendering and editorial workflows are fully migrated.
-- `Tiptap` stays limited to blog/forum rich-text and is not reused as a pages editor.
-
-### Proposed implementation phases
-
-#### Phase PB0 — Contract freeze
-
-- [ ] Freeze `grapesjs_v1` as the canonical page-builder body format.
-- [ ] Document whether legacy `blocks` are read-only, write-compatible, or deprecated per flow.
-- [ ] Define a compatibility policy for existing pages without `body.format = "grapesjs_v1"`.
-- [ ] Document acceptable `projectData` validation boundaries in `rustok-core`.
-
-#### Phase PB1 — Backend contract hardening
-
-- [ ] Ensure create/update/read/publish paths in `rustok-pages` treat `grapesjs_v1`
-  as a first-class contract.
-- [ ] Keep GraphQL/REST surfaces aligned for page body operations.
-- [ ] Add contract tests for round-tripping GrapesJS `projectData`.
-- [ ] Explicitly document the role of legacy block endpoints during migration.
-
-#### Phase PB2 — Next Admin runtime
-
-- [ ] Run `PageBuilder` in `apps/next-admin` as the primary pages editor.
-- [ ] Support load/save flows against canonical `grapesjs_v1` payloads.
-- [ ] Expose validation/load/save failures as actionable UX states.
-- [ ] Confirm page selection, draft editing, and publish workflows work with real entities.
-
-#### Phase PB3 — Storefront rendering strategy
-
-- [ ] Decide how `grapesjs_v1` is rendered in storefront runtimes.
-- [ ] Choose between direct runtime rendering, server-side transform, or publish-time export.
-- [ ] Define preview behavior and parity expectations for `apps/storefront` and `apps/next-frontend`.
-- [ ] Document constraints around tenant assets, CSS isolation, and embeds.
-
-#### Phase PB4 — Leptos parity
-
-- [ ] Define how `apps/admin` consumes the same canonical payload without creating a divergent page model.
-- [ ] Decide whether Leptos embeds GrapesJS or uses a compatible shell/editor strategy.
-- [ ] Align permissions, navigation, and validation behavior across `apps/next-admin` and `apps/admin`.
-
-#### Phase PB5 — Migration and rollout
-
-- [ ] Define migration rules for legacy pages edited through block APIs.
-- [ ] Mark whether new pages may still be created through legacy block flows.
-- [ ] Prepare rollout sequencing for editor enablement, storefront rendering, and deprecation of legacy paths.
-- [ ] Document rollback strategy if GrapesJS-backed pages regress rendering or publishing.
-
-### Open questions
-
-- Should storefronts render GrapesJS `projectData` directly, or should the server
-  normalize/export it into a stricter runtime format?
-- Do we need a publish-time HTML/schema artifact in addition to stored `projectData`?
-- At what milestone do legacy typed block writes become deprecated for new pages?
-- Do we need mixed-mode support where a page can temporarily keep both legacy
-  `blocks` and canonical `grapesjs_v1` body data?
-
-### Risks
-
-- A frontend editor can become the accidental source of backend truth unless the
-  `grapesjs_v1` contract is clearly defined and versioned.
-- Storefront rendering may drift if `projectData` semantics are not normalized.
-- Keeping legacy `blocks` too long can create dual-write ambiguity for editors and consumers.
-- Leptos parity may lag if the canonical payload is defined around Next-only assumptions.
-
-### Test plan
+## Test plan
 
 - Unit:
-  - validate accepted/rejected `grapesjs_v1` payload shapes;
-  - verify page body round-trip for `grapesjs_v1`;
-  - verify legacy non-GrapesJS pages still read safely.
+  - validate accepted and rejected block payload shapes;
+  - validate page visibility and metadata normalization;
+  - validate page body round-trip for supported formats.
 - Integration:
-  - create/update/get/publish page with `body.format = "grapesjs_v1"`;
-  - ensure GraphQL and REST expose equivalent behavior;
-  - verify RBAC enforcement on editor and publish actions.
-- UI:
-  - load existing GrapesJS page in `apps/next-admin`;
-  - save dirty state back to canonical payload;
-  - surface validation and transport failures clearly.
-- Rollout:
-  - confirm behavior for legacy pages with blocks only;
-  - confirm no data loss when first converting a page into `grapesjs_v1`;
-  - confirm storefront fallback or explicit incompatibility is documented before broad rollout.
+  - create, update, get, publish, and delete a page through module-owned
+    storage;
+  - create, update, reorder, and delete blocks through module-owned storage;
+  - keep GraphQL and REST behavior aligned with the services.
+- Integration:
+  - create and get nested menus through module-owned storage.
 
-### Definition of done
+## Definition of done
 
-- new and edited visual pages persist through `grapesjs_v1`;
-- read/write/publish flows are covered by tests;
-- storefront rendering strategy is implemented and documented;
-- parity plan for Leptos exists and is tracked;
-- legacy block-path status is explicit: supported temporarily, restricted, or deprecated.
+- page, block, and menu storage are fully owned by `rustok-pages`;
+- no page read/write path depends on shared `NodeService`;
+- public/admin contracts stay covered by tests;
+- page-builder status is explicit and documented;
+- local docs and the central split plan reflect the final state.
 
 ## Tracking and updates
 
-When updating `rustok-pages` architecture, API contracts, tenancy behavior, routing,
-or observability expectations:
+When updating `rustok-pages` architecture, API contracts, tenancy behavior,
+routing, or observability expectations:
 
 1. Update this file first.
-2. Update `crates/rustok-pages/README.md` and `crates/rustok-pages/docs/README.md` when public behavior changes.
+2. Update `crates/rustok-pages/README.md` and `crates/rustok-pages/docs/README.md`
+   when public behavior changes.
 3. Update `docs/index.md` links if documentation structure changes.
-4. If module responsibilities change, update `docs/modules/registry.md` accordingly.
+4. If module responsibilities change, update `docs/modules/registry.md`
+   accordingly.
 
 ## Checklist
 
-- [x] контрактные тесты покрывают все публичные use-case.
-- [x] `pages` стал первым pilot consumer для `rustok-channel` через public read-path gating.
-- [x] `pages` получил первый publication-level pilot: `channelSlugs` allowlist в metadata и channel-aware public visibility.
-- [x] Сравнить metadata-based publication semantics в `pages` с более простым module-level gating в `blog`.
-- [x] Решить после сравнения, сохраняем ли metadata-based модель или выносим публикацию по каналам в отдельную relation/table.
-
+- [x] Contract tests cover the public pages use-cases that are already shipped.
+- [x] `pages` remains the first `rustok-channel` pilot on the public read path.
+- [x] `pages` keeps the first publication-level pilot through metadata-based
+  `channelSlugs` allowlists.
+- [x] Pages and blocks already run on module-owned storage.
+- [x] Menus now run on module-owned storage.

@@ -1,70 +1,71 @@
-use sea_orm::DatabaseConnection;
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+};
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_content::{CategoryService as ContentCategoryService, ListCategoriesFilter};
+use rustok_content::{
+    available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
+};
 use rustok_core::SecurityContext;
 
 use crate::dto::{CategoryListItem, CategoryResponse, CreateCategoryInput, UpdateCategoryInput};
+use crate::entities::{forum_category, forum_category_translation};
 use crate::error::{ForumError, ForumResult};
 
 pub struct CategoryService {
-    categories: ContentCategoryService,
+    db: DatabaseConnection,
 }
 
 impl CategoryService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self {
-            categories: ContentCategoryService::new(db),
-        }
+        Self { db }
     }
 
-    #[instrument(skip(self, input, security))]
+    #[instrument(skip(self, _security, input))]
     pub async fn create(
         &self,
         tenant_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         input: CreateCategoryInput,
     ) -> ForumResult<CategoryResponse> {
-        if input.name.trim().is_empty() {
-            return Err(ForumError::Validation(
-                "Category name cannot be empty".to_string(),
-            ));
+        validate_category_name(&input.name)?;
+        let locale = normalize_locale(&input.locale)?;
+        let slug = normalize_required_slug(&input.slug)?;
+        let now = Utc::now();
+        let id = Uuid::new_v4();
+
+        forum_category::ActiveModel {
+            id: Set(id),
+            tenant_id: Set(tenant_id),
+            parent_id: Set(input.parent_id),
+            position: Set(input.position.unwrap_or(0)),
+            icon: Set(input.icon),
+            color: Set(input.color),
+            moderated: Set(input.moderated),
+            topic_count: Set(0),
+            reply_count: Set(0),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
         }
-        if input.slug.trim().is_empty() {
-            return Err(ForumError::Validation(
-                "Category slug cannot be empty".to_string(),
-            ));
+        .insert(&self.db)
+        .await?;
+
+        forum_category_translation::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            category_id: Set(id),
+            tenant_id: Set(tenant_id),
+            locale: Set(locale.clone()),
+            name: Set(input.name),
+            slug: Set(slug),
+            description: Set(input.description),
         }
+        .insert(&self.db)
+        .await?;
 
-        let settings = serde_json::json!({
-            "icon": input.icon,
-            "color": input.color,
-            "moderated": input.moderated,
-            "topic_count": 0,
-            "reply_count": 0
-        });
-
-        let id = self
-            .categories
-            .create(
-                tenant_id,
-                security,
-                rustok_content::CreateCategoryInput {
-                    locale: input.locale.clone(),
-                    name: input.name,
-                    slug: Some(input.slug),
-                    description: input.description,
-                    parent_id: input.parent_id,
-                    position: input.position,
-                    settings,
-                },
-            )
-            .await?;
-
-        let cat = self.categories.get(tenant_id, id, &input.locale).await?;
-
-        Ok(content_to_forum_response(cat, &input.locale))
+        self.get(tenant_id, id, &locale).await
     }
 
     #[instrument(skip(self))]
@@ -84,92 +85,165 @@ impl CategoryService {
         tenant_id: Uuid,
         category_id: Uuid,
         locale: &str,
-        _fallback_locale: Option<&str>,
+        fallback_locale: Option<&str>,
     ) -> ForumResult<CategoryResponse> {
-        let cat = self.categories.get(tenant_id, category_id, locale).await?;
-        Ok(content_to_forum_response(cat, locale))
+        let locale = normalize_locale(locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let category = forum_category::Entity::find_by_id(category_id)
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(ForumError::CategoryNotFound(category_id))?;
+        let translations = self.load_translations(category_id).await?;
+        Ok(to_category_response(
+            category,
+            translations,
+            &locale,
+            fallback_locale.as_deref(),
+        ))
     }
 
-    #[instrument(skip(self, security, input))]
+    #[instrument(skip(self, _security, input))]
     pub async fn update(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> ForumResult<CategoryResponse> {
-        let existing = self
-            .categories
-            .get(tenant_id, category_id, &input.locale)
+        let locale = normalize_locale(&input.locale)?;
+        let category = forum_category::Entity::find_by_id(category_id)
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(ForumError::CategoryNotFound(category_id))?;
+
+        let mut active: forum_category::ActiveModel = category.into();
+        active.updated_at = Set(Utc::now().into());
+        if let Some(position) = input.position {
+            active.position = Set(position);
+        }
+        if input.icon.is_some() {
+            active.icon = Set(input.icon);
+        }
+        if input.color.is_some() {
+            active.color = Set(input.color);
+        }
+        if let Some(moderated) = input.moderated {
+            active.moderated = Set(moderated);
+        }
+        active.update(&self.db).await?;
+
+        let existing_translation = forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::CategoryId.eq(category_id))
+            .filter(forum_category_translation::Column::Locale.eq(&locale))
+            .one(&self.db)
             .await?;
 
-        let existing_settings = &existing.settings;
-        let settings = serde_json::json!({
-            "icon": input.icon.or_else(|| existing_settings.get("icon").and_then(|v| v.as_str()).map(|s| s.to_string())),
-            "color": input.color.or_else(|| existing_settings.get("color").and_then(|v| v.as_str()).map(|s| s.to_string())),
-            "moderated": input.moderated.unwrap_or_else(|| existing_settings.get("moderated").and_then(|v| v.as_bool()).unwrap_or(false)),
-            "topic_count": existing_settings.get("topic_count").and_then(|v| v.as_i64()).unwrap_or(0),
-            "reply_count": existing_settings.get("reply_count").and_then(|v| v.as_i64()).unwrap_or(0)
-        });
+        match existing_translation {
+            Some(existing_translation) => {
+                let mut active: forum_category_translation::ActiveModel =
+                    existing_translation.into();
+                if let Some(name) = input.name {
+                    validate_category_name(&name)?;
+                    active.name = Set(name.clone());
+                    if input.slug.is_none() {
+                        active.slug = Set(normalize_slug(&name));
+                    }
+                }
+                if let Some(slug) = input.slug.as_deref() {
+                    active.slug = Set(normalize_required_slug(slug)?);
+                }
+                if input.description.is_some() {
+                    active.description = Set(input.description);
+                }
+                active.update(&self.db).await?;
+            }
+            None => {
+                let name = input.name.ok_or_else(|| {
+                    ForumError::Validation("Category name is required".to_string())
+                })?;
+                validate_category_name(&name)?;
+                let slug = input
+                    .slug
+                    .as_deref()
+                    .map(normalize_required_slug)
+                    .transpose()?
+                    .unwrap_or_else(|| normalize_slug(&name));
 
-        let cat = self
-            .categories
-            .update(
-                tenant_id,
-                category_id,
-                security,
-                rustok_content::UpdateCategoryInput {
-                    locale: input.locale.clone(),
-                    name: input.name,
-                    slug: input.slug,
-                    description: input.description,
-                    position: input.position,
-                    settings: Some(settings),
-                },
-            )
-            .await?;
+                forum_category_translation::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    category_id: Set(category_id),
+                    tenant_id: Set(tenant_id),
+                    locale: Set(locale.clone()),
+                    name: Set(name),
+                    slug: Set(slug),
+                    description: Set(input.description),
+                }
+                .insert(&self.db)
+                .await?;
+            }
+        }
 
-        Ok(content_to_forum_response(cat, &input.locale))
+        self.get(tenant_id, category_id, &locale).await
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
     ) -> ForumResult<()> {
-        self.categories
-            .delete(tenant_id, category_id, security)
+        let category = forum_category::Entity::find_by_id(category_id)
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(ForumError::CategoryNotFound(category_id))?;
+
+        forum_category_translation::Entity::delete_many()
+            .filter(forum_category_translation::Column::CategoryId.eq(category_id))
+            .exec(&self.db)
+            .await?;
+
+        forum_category::Entity::delete_by_id(category.id)
+            .exec(&self.db)
             .await?;
         Ok(())
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn list(
         &self,
         tenant_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         locale: &str,
     ) -> ForumResult<Vec<CategoryListItem>> {
         let (items, _) = self
-            .list_paginated_with_locale_fallback(tenant_id, security, locale, 1, 1000, None)
+            .list_paginated_with_locale_fallback(
+                tenant_id,
+                SecurityContext::system(),
+                locale,
+                1,
+                1000,
+                None,
+            )
             .await?;
         Ok(items)
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn list_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<Vec<CategoryListItem>> {
         let (items, _) = self
             .list_paginated_with_locale_fallback(
                 tenant_id,
-                security,
+                SecurityContext::system(),
                 locale,
                 1,
                 1000,
@@ -179,87 +253,208 @@ impl CategoryService {
         Ok(items)
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn list_paginated_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         locale: &str,
         page: u64,
         per_page: u64,
-        _fallback_locale: Option<&str>,
+        fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<CategoryListItem>, u64)> {
-        let (items, total) = self
-            .categories
-            .list(
-                tenant_id,
-                security,
-                ListCategoriesFilter {
-                    locale: Some(locale.to_string()),
-                    page,
-                    per_page,
-                },
-            )
-            .await?;
+        let locale = normalize_locale(locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let paginator = forum_category::Entity::find()
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .order_by_asc(forum_category::Column::Position)
+            .paginate(&self.db, per_page.max(1));
+        let total = paginator.num_items().await?;
+        let categories = paginator.fetch_page(page.saturating_sub(1)).await?;
+        let category_ids: Vec<Uuid> = categories.iter().map(|item| item.id).collect();
+        let translations = self.load_translations_for_categories(&category_ids).await?;
 
-        let list = items
+        let items = categories
             .into_iter()
-            .map(|item| {
-                let s = &item.settings;
+            .map(|category| {
+                let localized = translations
+                    .iter()
+                    .filter(|translation| translation.category_id == category.id)
+                    .collect::<Vec<_>>();
+                let resolved = resolve_by_locale_with_fallback(
+                    &localized,
+                    &locale,
+                    fallback_locale.as_deref(),
+                    |translation| translation.locale.as_str(),
+                );
+
                 CategoryListItem {
-                    id: item.id,
-                    locale: locale.to_string(),
-                    effective_locale: item.effective_locale,
-                    name: item.name,
-                    slug: item.slug,
-                    description: None,
-                    icon: s
-                        .get("icon")
-                        .and_then(|v| v.as_str())
-                        .map(|v| v.to_string()),
-                    color: s
-                        .get("color")
-                        .and_then(|v| v.as_str())
-                        .map(|v| v.to_string()),
-                    topic_count: s.get("topic_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                    reply_count: s.get("reply_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                    id: category.id,
+                    locale: locale.clone(),
+                    effective_locale: resolved.effective_locale,
+                    name: resolved
+                        .item
+                        .map(|translation| translation.name.clone())
+                        .unwrap_or_default(),
+                    slug: resolved
+                        .item
+                        .map(|translation| translation.slug.clone())
+                        .unwrap_or_default(),
+                    description: resolved
+                        .item
+                        .and_then(|translation| translation.description.clone()),
+                    icon: category.icon.clone(),
+                    color: category.color.clone(),
+                    topic_count: category.topic_count,
+                    reply_count: category.reply_count,
                 }
             })
             .collect();
 
-        Ok((list, total))
+        Ok((items, total))
+    }
+
+    pub(crate) async fn ensure_exists_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+    ) -> ForumResult<()> {
+        Self::find_category_in_tx(txn, tenant_id, category_id).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn find_category_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+    ) -> ForumResult<forum_category::Model> {
+        let existing = forum_category::Entity::find_by_id(category_id)
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?;
+        existing.ok_or(ForumError::CategoryNotFound(category_id))
+    }
+
+    pub(crate) async fn adjust_counters_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        topic_delta: i32,
+        reply_delta: i32,
+    ) -> ForumResult<()> {
+        let category = forum_category::Entity::find_by_id(category_id)
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or(ForumError::CategoryNotFound(category_id))?;
+
+        let mut active: forum_category::ActiveModel = category.clone().into();
+        active.topic_count = Set((category.topic_count + topic_delta).max(0));
+        active.reply_count = Set((category.reply_count + reply_delta).max(0));
+        active.updated_at = Set(Utc::now().into());
+        active.update(txn).await?;
+        Ok(())
+    }
+
+    async fn load_translations(
+        &self,
+        category_id: Uuid,
+    ) -> ForumResult<Vec<forum_category_translation::Model>> {
+        Ok(forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::CategoryId.eq(category_id))
+            .all(&self.db)
+            .await?)
+    }
+
+    async fn load_translations_for_categories(
+        &self,
+        category_ids: &[Uuid],
+    ) -> ForumResult<Vec<forum_category_translation::Model>> {
+        if category_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::CategoryId.is_in(category_ids.to_vec()))
+            .all(&self.db)
+            .await?)
     }
 }
 
-fn content_to_forum_response(
-    cat: rustok_content::CategoryResponse,
+fn to_category_response(
+    category: forum_category::Model,
+    translations: Vec<forum_category_translation::Model>,
     locale: &str,
+    fallback_locale: Option<&str>,
 ) -> CategoryResponse {
-    let s = &cat.settings;
+    let resolved =
+        resolve_by_locale_with_fallback(&translations, locale, fallback_locale, |translation| {
+            translation.locale.as_str()
+        });
+
     CategoryResponse {
-        id: cat.id,
+        id: category.id,
         requested_locale: locale.to_string(),
         locale: locale.to_string(),
-        effective_locale: cat.effective_locale,
-        available_locales: cat.available_locales,
-        name: cat.name,
-        slug: cat.slug,
-        description: cat.description,
-        icon: s
-            .get("icon")
-            .and_then(|v| v.as_str())
-            .map(|v| v.to_string()),
-        color: s
-            .get("color")
-            .and_then(|v| v.as_str())
-            .map(|v| v.to_string()),
-        parent_id: cat.parent_id,
-        position: cat.position,
-        topic_count: s.get("topic_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-        reply_count: s.get("reply_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-        moderated: s
-            .get("moderated")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false),
+        effective_locale: resolved.effective_locale,
+        available_locales: available_locales_from(&translations, |translation| {
+            translation.locale.as_str()
+        }),
+        name: resolved
+            .item
+            .map(|translation| translation.name.clone())
+            .unwrap_or_default(),
+        slug: resolved
+            .item
+            .map(|translation| translation.slug.clone())
+            .unwrap_or_default(),
+        description: resolved
+            .item
+            .and_then(|translation| translation.description.clone()),
+        icon: category.icon,
+        color: category.color,
+        parent_id: category.parent_id,
+        position: category.position,
+        topic_count: category.topic_count,
+        reply_count: category.reply_count,
+        moderated: category.moderated,
     }
+}
+
+fn validate_category_name(name: &str) -> ForumResult<()> {
+    if name.trim().is_empty() {
+        return Err(ForumError::Validation(
+            "Category name cannot be empty".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_locale(locale: &str) -> ForumResult<String> {
+    normalize_locale_code(locale)
+        .ok_or_else(|| ForumError::Validation("Invalid locale".to_string()))
+}
+
+fn normalize_required_slug(value: &str) -> ForumResult<String> {
+    let slug = normalize_slug(value);
+    if slug.is_empty() {
+        return Err(ForumError::Validation(
+            "Category slug cannot be empty".to_string(),
+        ));
+    }
+    Ok(slug)
+}
+
+fn normalize_slug(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+    let mut previous_dash = false;
+    for ch in value.chars().flat_map(|ch| ch.to_lowercase()) {
+        if ch.is_ascii_alphanumeric() {
+            normalized.push(ch);
+            previous_dash = false;
+        } else if !previous_dash {
+            normalized.push('-');
+            previous_dash = true;
+        }
+    }
+    normalized.trim_matches('-').to_string()
 }

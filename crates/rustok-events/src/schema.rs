@@ -228,6 +228,19 @@ const TOPICS_MERGED_FIELDS: &[FieldSchema] = &[
     field!("moved_comments", "uint64"),
     field!("reason", "string", optional),
 ];
+const CANONICAL_URL_CHANGED_FIELDS: &[FieldSchema] = &[
+    field!("target_id", "uuid"),
+    field!("target_kind", "string"),
+    field!("locale", "string"),
+    field!("new_canonical_url", "string"),
+    field!("old_urls", "array"),
+];
+const URL_ALIAS_PURGED_FIELDS: &[FieldSchema] = &[
+    field!("target_id", "uuid"),
+    field!("target_kind", "string"),
+    field!("locale", "string"),
+    field!("urls", "array"),
+];
 
 const TENANT_ID_FIELDS: &[FieldSchema] = &[field!("tenant_id", "uuid")];
 const LOCALE_FIELDS: &[FieldSchema] = &[field!("tenant_id", "uuid"), field!("locale", "string")];
@@ -544,6 +557,18 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "Forum topics merged.",
         fields: TOPICS_MERGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "content.canonical_url.changed",
+        version: 1,
+        description: "Canonical URL mapping changed or was reasserted for a content target.",
+        fields: CANONICAL_URL_CHANGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "content.url_alias.purged",
+        version: 1,
+        description: "Legacy URL aliases must be purged from index and cache layers.",
+        fields: URL_ALIAS_PURGED_FIELDS,
     },
     EventSchema {
         event_type: "tenant.created",

@@ -1,27 +1,125 @@
-use sea_orm::DatabaseConnection;
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+};
 use serde_json::Value;
 use tracing::instrument;
 use url::Url;
 use uuid::Uuid;
 
-use rustok_content::{CreateNodeInput, ListNodesFilter, NodeService, UpdateNodeInput};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
+use crate::entities::{page, page_block};
 use crate::error::{PagesError, PagesResult};
 
-const BLOCK_KIND: &str = "block";
-
 pub struct BlockService {
-    nodes: NodeService,
+    db: DatabaseConnection,
 }
 
 impl BlockService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self {
-            nodes: NodeService::new(db, event_bus),
+        let _ = event_bus;
+        Self { db }
+    }
+
+    pub async fn create_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        _security: SecurityContext,
+        page_id: Uuid,
+        input: CreateBlockInput,
+    ) -> PagesResult<BlockResponse> {
+        ensure_page_exists_in_tx(txn, tenant_id, page_id).await?;
+        let data = validate_and_sanitize_block_data(&input.block_type, input.data)?;
+        let translations = sanitize_translations(&input.block_type, input.translations)?;
+        let now = Utc::now();
+        let block_id = Uuid::new_v4();
+
+        page_block::ActiveModel {
+            id: Set(block_id),
+            page_id: Set(page_id),
+            tenant_id: Set(tenant_id),
+            block_type: Set(block_type_str(&input.block_type).to_string()),
+            position: Set(input.position),
+            data: Set(data.clone()),
+            translations: Set(translations.clone().map(|items| serde_json::json!(items))),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
         }
+        .insert(txn)
+        .await?;
+
+        Ok(BlockResponse {
+            id: block_id,
+            block_type: input.block_type,
+            position: input.position,
+            data,
+            translations,
+        })
+    }
+
+    pub async fn delete_all_for_page_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<()> {
+        page_block::Entity::delete_many()
+            .filter(page_block::Column::TenantId.eq(tenant_id))
+            .filter(page_block::Column::PageId.eq(page_id))
+            .exec(txn)
+            .await?;
+        Ok(())
+    }
+
+    async fn list_models_for_page(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<Vec<page_block::Model>> {
+        Ok(page_block::Entity::find()
+            .filter(page_block::Column::TenantId.eq(tenant_id))
+            .filter(page_block::Column::PageId.eq(page_id))
+            .order_by_asc(page_block::Column::Position)
+            .all(&self.db)
+            .await?)
+    }
+
+    async fn find_block(&self, tenant_id: Uuid, block_id: Uuid) -> PagesResult<page_block::Model> {
+        page_block::Entity::find_by_id(block_id)
+            .filter(page_block::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| PagesError::block_not_found(block_id))
+    }
+
+    async fn find_block_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        block_id: Uuid,
+    ) -> PagesResult<page_block::Model> {
+        page_block::Entity::find_by_id(block_id)
+            .filter(page_block::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| PagesError::block_not_found(block_id))
+    }
+
+    fn model_to_block(model: page_block::Model) -> PagesResult<BlockResponse> {
+        let block_type = block_type_from_str(&model.block_type)?;
+        let translations = model
+            .translations
+            .and_then(|value| serde_json::from_value(value).ok());
+
+        Ok(BlockResponse {
+            id: model.id,
+            block_type,
+            position: model.position,
+            data: model.data,
+            translations,
+        })
     }
 
     #[instrument(skip(self, input))]
@@ -32,37 +130,10 @@ impl BlockService {
         page_id: Uuid,
         input: CreateBlockInput,
     ) -> PagesResult<BlockResponse> {
-        let data = validate_and_sanitize_block_data(&input.block_type, input.data)?;
-        let translations = sanitize_translations(&input.block_type, input.translations)?;
-
-        let metadata = serde_json::json!({
-            "block_type": input.block_type,
-            "data": data,
-            "translations": translations,
-        });
-
-        let node = self
-            .nodes
-            .create_node(
-                tenant_id,
-                security,
-                CreateNodeInput {
-                    kind: BLOCK_KIND.to_string(),
-                    status: Some(rustok_content::entities::node::ContentStatus::Published),
-                    parent_id: Some(page_id),
-                    author_id: None,
-                    category_id: None,
-                    position: Some(input.position),
-                    depth: None,
-                    reply_count: None,
-                    metadata,
-                    translations: vec![],
-                    bodies: vec![],
-                },
-            )
-            .await?;
-
-        Ok(node_to_block(node))
+        let txn = self.db.begin().await?;
+        let block = Self::create_in_tx(&txn, tenant_id, security, page_id, input).await?;
+        txn.commit().await?;
+        Ok(block)
     }
 
     #[instrument(skip(self))]
@@ -72,32 +143,13 @@ impl BlockService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<Vec<BlockResponse>> {
-        let (items, _) = self
-            .nodes
-            .list_nodes(
-                tenant_id,
-                security.clone(),
-                ListNodesFilter {
-                    kind: Some(BLOCK_KIND.to_string()),
-                    status: None,
-                    parent_id: Some(page_id),
-                    author_id: None,
-                    category_id: None,
-                    locale: None,
-                    page: 1,
-                    per_page: 100,
-                    include_deleted: false,
-                },
-            )
-            .await?;
-
-        let mut blocks = Vec::with_capacity(items.len());
-        for item in items {
-            let node = self.nodes.get_node(tenant_id, item.id).await?;
-            blocks.push(node_to_block(node));
+        let _ = security;
+        let blocks = self.list_models_for_page(tenant_id, page_id).await?;
+        let mut responses = Vec::with_capacity(blocks.len());
+        for block in blocks {
+            responses.push(Self::model_to_block(block)?);
         }
-
-        Ok(blocks)
+        Ok(responses)
     }
 
     #[instrument(skip(self, input))]
@@ -108,54 +160,38 @@ impl BlockService {
         block_id: Uuid,
         input: UpdateBlockInput,
     ) -> PagesResult<BlockResponse> {
-        let existing = self.nodes.get_node(tenant_id, block_id).await?;
-        if existing.kind != BLOCK_KIND {
-            return Err(PagesError::BlockNotFound(block_id));
+        let _ = security;
+        let existing = self.find_block(tenant_id, block_id).await?;
+        let block_type = block_type_from_str(&existing.block_type)?;
+
+        let mut data = existing.data.clone();
+        let mut translations = existing
+            .translations
+            .clone()
+            .and_then(|value| serde_json::from_value(value).ok());
+        if let Some(input_data) = input.data {
+            data = validate_and_sanitize_block_data(&block_type, input_data)?;
+        }
+        if let Some(input_translations) = input.translations {
+            translations = sanitize_translations(&block_type, Some(input_translations))?;
         }
 
-        let block_type: BlockType = existing
-            .metadata
-            .get("block_type")
-            .and_then(|value| serde_json::from_value(value.clone()).ok())
-            .unwrap_or_default();
-
-        let mut metadata = if existing.metadata.is_object() {
-            existing.metadata
-        } else {
-            serde_json::json!({})
-        };
-        if let Some(data) = input.data {
-            metadata["data"] = validate_and_sanitize_block_data(&block_type, data)?;
+        let mut active: page_block::ActiveModel = existing.into();
+        if let Some(position) = input.position {
+            active.position = Set(position);
         }
-        if let Some(translations) = input.translations {
-            metadata["translations"] =
-                serde_json::to_value(sanitize_translations(&block_type, Some(translations))?)
-                    .map_err(|err| PagesError::validation(err.to_string()))?;
-        }
+        active.data = Set(data.clone());
+        active.translations = Set(translations.clone().map(|items| serde_json::json!(items)));
+        active.updated_at = Set(Utc::now().into());
+        let block = active.update(&self.db).await?;
 
-        self.nodes
-            .update_node(
-                tenant_id,
-                block_id,
-                security.clone(),
-                UpdateNodeInput {
-                    status: None,
-                    parent_id: None,
-                    author_id: None,
-                    category_id: None,
-                    position: input.position,
-                    depth: None,
-                    reply_count: None,
-                    metadata: Some(metadata),
-                    translations: None,
-                    bodies: None,
-                    expected_version: None,
-                },
-            )
-            .await?;
-
-        let node = self.nodes.get_node(tenant_id, block_id).await?;
-        Ok(node_to_block(node))
+        Ok(BlockResponse {
+            id: block.id,
+            block_type,
+            position: block.position,
+            data,
+            translations,
+        })
     }
 
     #[instrument(skip(self))]
@@ -166,29 +202,20 @@ impl BlockService {
         page_id: Uuid,
         block_order: Vec<Uuid>,
     ) -> PagesResult<()> {
-        let _ = page_id;
+        let _ = security;
+        let txn = self.db.begin().await?;
+        ensure_page_exists_in_tx(&txn, tenant_id, page_id).await?;
         for (position, block_id) in block_order.into_iter().enumerate() {
-            self.nodes
-                .update_node(
-                    tenant_id,
-                    block_id,
-                    security.clone(),
-                    UpdateNodeInput {
-                        status: None,
-                        parent_id: None,
-                        author_id: None,
-                        category_id: None,
-                        position: Some(position as i32),
-                        depth: None,
-                        reply_count: None,
-                        metadata: None,
-                        translations: None,
-                        bodies: None,
-                        expected_version: None,
-                    },
-                )
-                .await?;
+            let block = Self::find_block_in_tx(&txn, tenant_id, block_id).await?;
+            if block.page_id != page_id {
+                return Err(PagesError::block_not_found(block_id));
+            }
+            let mut active: page_block::ActiveModel = block.into();
+            active.position = Set(position as i32);
+            active.updated_at = Set(Utc::now().into());
+            active.update(&txn).await?;
         }
+        txn.commit().await?;
         Ok(())
     }
 
@@ -198,8 +225,10 @@ impl BlockService {
         security: SecurityContext,
         block_id: Uuid,
     ) -> PagesResult<()> {
-        self.nodes
-            .delete_node(tenant_id, block_id, security)
+        let _ = security;
+        let block = self.find_block(tenant_id, block_id).await?;
+        page_block::Entity::delete_by_id(block.id)
+            .exec(&self.db)
             .await?;
         Ok(())
     }
@@ -210,43 +239,74 @@ impl BlockService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<()> {
-        let blocks = self
-            .list_for_page(tenant_id, security.clone(), page_id)
+        let _ = security;
+        page_block::Entity::delete_many()
+            .filter(page_block::Column::TenantId.eq(tenant_id))
+            .filter(page_block::Column::PageId.eq(page_id))
+            .exec(&self.db)
             .await?;
-        for block in blocks {
-            self.nodes
-                .delete_node(tenant_id, block.id, security.clone())
-                .await?;
-        }
         Ok(())
     }
 }
 
-fn node_to_block(node: rustok_content::dto::NodeResponse) -> BlockResponse {
-    let block_type: BlockType = node
-        .metadata
-        .get("block_type")
-        .and_then(|value| serde_json::from_value(value.clone()).ok())
-        .unwrap_or_default();
-
-    let data = node
-        .metadata
-        .get("data")
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!({}));
-
-    let translations = node
-        .metadata
-        .get("translations")
-        .and_then(|value| serde_json::from_value(value.clone()).ok());
-
-    BlockResponse {
-        id: node.id,
-        block_type,
-        position: node.position,
-        data,
-        translations,
+async fn ensure_page_exists_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+) -> PagesResult<()> {
+    let page = page::Entity::find_by_id(page_id)
+        .filter(page::Column::TenantId.eq(tenant_id))
+        .one(txn)
+        .await?;
+    if page.is_none() {
+        return Err(PagesError::page_not_found(page_id));
     }
+    Ok(())
+}
+
+fn block_type_str(block_type: &BlockType) -> &'static str {
+    match block_type {
+        BlockType::Hero => "hero",
+        BlockType::Text => "text",
+        BlockType::Image => "image",
+        BlockType::Gallery => "gallery",
+        BlockType::Cta => "cta",
+        BlockType::Features => "features",
+        BlockType::Testimonials => "testimonials",
+        BlockType::Pricing => "pricing",
+        BlockType::Faq => "faq",
+        BlockType::Contact => "contact",
+        BlockType::ProductGrid => "product_grid",
+        BlockType::Newsletter => "newsletter",
+        BlockType::Video => "video",
+        BlockType::Html => "html",
+        BlockType::Spacer => "spacer",
+    }
+}
+
+fn block_type_from_str(value: &str) -> PagesResult<BlockType> {
+    Ok(match value {
+        "hero" => BlockType::Hero,
+        "text" => BlockType::Text,
+        "image" => BlockType::Image,
+        "gallery" => BlockType::Gallery,
+        "cta" => BlockType::Cta,
+        "features" => BlockType::Features,
+        "testimonials" => BlockType::Testimonials,
+        "pricing" => BlockType::Pricing,
+        "faq" => BlockType::Faq,
+        "contact" => BlockType::Contact,
+        "product_grid" => BlockType::ProductGrid,
+        "newsletter" => BlockType::Newsletter,
+        "video" => BlockType::Video,
+        "html" => BlockType::Html,
+        "spacer" => BlockType::Spacer,
+        other => {
+            return Err(PagesError::validation(format!(
+                "Unknown block type in storage: {other}"
+            )))
+        }
+    })
 }
 
 fn sanitize_translations(

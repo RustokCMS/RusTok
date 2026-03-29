@@ -40,6 +40,7 @@ RusToK реализован как modular monolith: platform modules компи
 - `profiles`
 - `blog`
 - `forum`
+- `comments`
 - `pages`
 - `media`
 - `workflow`

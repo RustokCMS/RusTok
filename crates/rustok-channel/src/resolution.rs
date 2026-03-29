@@ -355,9 +355,9 @@ impl ChannelResolver {
 mod tests {
     use super::{ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionOutcome};
     use crate::{
-        ChannelResolutionRuleDefinition, CreateChannelInput, CreateChannelResolutionPolicySetInput,
-        CreateChannelResolutionRuleInput, CreateChannelTargetInput, ResolutionAction,
-        ResolutionPredicate, migrations,
+        migrations, ChannelResolutionRuleDefinition, CreateChannelInput,
+        CreateChannelResolutionPolicySetInput, CreateChannelResolutionRuleInput,
+        CreateChannelTargetInput, ResolutionAction, ResolutionPredicate,
     };
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};

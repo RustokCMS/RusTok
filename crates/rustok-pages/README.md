@@ -7,16 +7,17 @@
 ## Responsibilities
 
 - Provide `PagesModule` metadata for the runtime registry.
-- Own page, block, and menu services layered on top of content storage.
+- Own page and page-block storage plus the corresponding services.
+- Own menu storage and menu tree services inside the module.
 - Own the Pages GraphQL and REST adapters exported from the module crate.
 - Publish the module-owned Leptos admin and storefront root packages.
 - Keep one real module-owned Leptos vertical slice for pages list/create/edit/update/publish/delete
   in admin and slug-driven published-page rendering in storefront.
-- Publish the typed RBAC surface for `pages:*` and the node-based block helpers it needs.
+- Publish the typed RBAC surface for `pages:*`.
 
 ## Interactions
 
-- Depends on `rustok-content` for shared node storage and content helpers.
+- Depends on `rustok-content` for shared content helpers only.
 - Depends on `rustok-channel` for the first public channel-aware gating proof point on pages read paths and the first page-level publication proof point via `channelSlugs`.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
 - Depends on `rustok-api` for shared tenant/auth/request/GraphQL helper contracts.
@@ -31,6 +32,10 @@
 - Public pages read paths also honor page-level `channelSlugs` allowlists stored in metadata for
   unauthenticated published requests; empty allowlists stay globally visible, while authenticated/admin
   flows intentionally bypass this experimental publication gate.
+- Page CRUD and block CRUD now run on module-owned tables: `pages`, `page_translations`,
+  `page_bodies`, and `page_blocks`.
+- Menu CRUD now runs on module-owned tables: `menus`, `menu_translations`,
+  `menu_items`, and `menu_item_translations`.
 - Declares permissions via `rustok-core::Permission`.
 - Module adapters enforce `pages:*` permissions from `AuthContext.permissions` and pass a
   permission-aware `SecurityContext` into page services.

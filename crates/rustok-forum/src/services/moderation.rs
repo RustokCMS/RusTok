@@ -2,31 +2,23 @@ use sea_orm::{DatabaseConnection, TransactionTrait};
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_content::NodeService;
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::constants::{reply_status, topic_status, KIND_TOPIC};
-use crate::error::{ForumError, ForumResult};
-use crate::state_machine::TopicStatus;
+use crate::error::ForumResult;
+use crate::services::{ReplyService, TopicService};
+use crate::state_machine::{ReplyStatus, TopicStatus};
 
 pub struct ModerationService {
     db: DatabaseConnection,
-    nodes: NodeService,
     event_bus: TransactionalEventBus,
 }
 
 impl ModerationService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self {
-            nodes: NodeService::new(db.clone(), event_bus.clone()),
-            db,
-            event_bus,
-        }
+        Self { db, event_bus }
     }
-
-    // ── Reply moderation ───────────────────────────────────────────────────
 
     #[instrument(skip(self, security))]
     pub async fn approve_reply(
@@ -41,7 +33,7 @@ impl ModerationService {
             reply_id,
             topic_id,
             security,
-            reply_status::APPROVED,
+            ReplyStatus::Approved,
         )
         .await
     }
@@ -59,7 +51,7 @@ impl ModerationService {
             reply_id,
             topic_id,
             security,
-            reply_status::REJECTED,
+            ReplyStatus::Rejected,
         )
         .await
     }
@@ -72,17 +64,9 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_reply_status(
-            tenant_id,
-            reply_id,
-            topic_id,
-            security,
-            reply_status::HIDDEN,
-        )
-        .await
+        self.update_reply_status(tenant_id, reply_id, topic_id, security, ReplyStatus::Hidden)
+            .await
     }
-
-    // ── Topic moderation ───────────────────────────────────────────────────
 
     #[instrument(skip(self, security))]
     pub async fn pin_topic(
@@ -91,8 +75,22 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_topic_pin_flag(tenant_id, topic_id, security, true)
-            .await
+        let txn = self.db.begin().await?;
+        TopicService::set_pinned_in_tx(&txn, tenant_id, topic_id, true).await?;
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                DomainEvent::ForumTopicPinned {
+                    topic_id,
+                    is_pinned: true,
+                    moderator_id: security.user_id,
+                },
+            )
+            .await?;
+        txn.commit().await?;
+        Ok(())
     }
 
     #[instrument(skip(self, security))]
@@ -102,8 +100,22 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_topic_pin_flag(tenant_id, topic_id, security, false)
-            .await
+        let txn = self.db.begin().await?;
+        TopicService::set_pinned_in_tx(&txn, tenant_id, topic_id, false).await?;
+        self.event_bus
+            .publish_in_tx(
+                &txn,
+                tenant_id,
+                security.user_id,
+                DomainEvent::ForumTopicPinned {
+                    topic_id,
+                    is_pinned: false,
+                    moderator_id: security.user_id,
+                },
+            )
+            .await?;
+        txn.commit().await?;
+        Ok(())
     }
 
     #[instrument(skip(self, security))]
@@ -113,8 +125,11 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_topic_bool_flag(tenant_id, topic_id, security, "is_locked", true)
-            .await
+        let _ = security;
+        let txn = self.db.begin().await?;
+        TopicService::set_locked_in_tx(&txn, tenant_id, topic_id, true).await?;
+        txn.commit().await?;
+        Ok(())
     }
 
     #[instrument(skip(self, security))]
@@ -124,8 +139,11 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_topic_bool_flag(tenant_id, topic_id, security, "is_locked", false)
-            .await
+        let _ = security;
+        let txn = self.db.begin().await?;
+        TopicService::set_locked_in_tx(&txn, tenant_id, topic_id, false).await?;
+        txn.commit().await?;
+        Ok(())
     }
 
     #[instrument(skip(self, security))]
@@ -135,11 +153,10 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_topic_forum_status(tenant_id, topic_id, security, TopicStatus::Closed)
+        self.update_topic_status(tenant_id, topic_id, security, TopicStatus::Closed)
             .await
     }
 
-    /// Reopen a closed or archived topic.
     #[instrument(skip(self, security))]
     pub async fn reopen_topic(
         &self,
@@ -147,7 +164,7 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_topic_forum_status(tenant_id, topic_id, security, TopicStatus::Open)
+        self.update_topic_status(tenant_id, topic_id, security, TopicStatus::Open)
             .await
     }
 
@@ -158,11 +175,9 @@ impl ModerationService {
         topic_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.update_topic_forum_status(tenant_id, topic_id, security, TopicStatus::Archived)
+        self.update_topic_status(tenant_id, topic_id, security, TopicStatus::Archived)
             .await
     }
-
-    // ── Private helpers ────────────────────────────────────────────────────
 
     async fn update_reply_status(
         &self,
@@ -170,26 +185,19 @@ impl ModerationService {
         reply_id: Uuid,
         topic_id: Uuid,
         security: SecurityContext,
-        new_status: &str,
+        target: ReplyStatus,
     ) -> ForumResult<()> {
-        let node = self.nodes.get_node(tenant_id, reply_id).await?;
-        let mut metadata = node.metadata;
-        metadata["reply_status"] = serde_json::json!(new_status);
-
         let txn = self.db.begin().await?;
+        let reply = ReplyService::find_reply_in_tx(&txn, tenant_id, reply_id).await?;
+        let current = ReplyStatus::from_str_value(&reply.status).ok_or_else(|| {
+            crate::error::ForumError::Validation(format!("Unknown reply status: {}", reply.status))
+        })?;
+        current.validate_transition(&target)?;
 
-        self.nodes
-            .update_node_in_tx(
-                &txn,
-                tenant_id,
-                reply_id,
-                security.clone(),
-                rustok_content::UpdateNodeInput {
-                    metadata: Some(metadata),
-                    ..Default::default()
-                },
-            )
-            .await?;
+        let old_status = current.as_str().to_string();
+        let new_status = target.as_str().to_string();
+
+        ReplyService::set_status_in_tx(&txn, tenant_id, reply_id, &new_status).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -199,140 +207,34 @@ impl ModerationService {
                 DomainEvent::ForumReplyStatusChanged {
                     reply_id,
                     topic_id,
-                    new_status: new_status.to_string(),
+                    old_status,
+                    new_status,
                     moderator_id: security.user_id,
                 },
             )
             .await?;
 
         txn.commit().await?;
-
         Ok(())
     }
 
-    async fn update_topic_pin_flag(
-        &self,
-        tenant_id: Uuid,
-        topic_id: Uuid,
-        security: SecurityContext,
-        is_pinned: bool,
-    ) -> ForumResult<()> {
-        let node = self.nodes.get_node(tenant_id, topic_id).await?;
-        if node.kind != KIND_TOPIC {
-            return Err(ForumError::TopicNotFound(topic_id));
-        }
-        let mut metadata = node.metadata;
-        metadata["is_pinned"] = serde_json::json!(is_pinned);
-
-        let txn = self.db.begin().await?;
-
-        self.nodes
-            .update_node_in_tx(
-                &txn,
-                tenant_id,
-                topic_id,
-                security.clone(),
-                rustok_content::UpdateNodeInput {
-                    metadata: Some(metadata),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
-        self.event_bus
-            .publish_in_tx(
-                &txn,
-                tenant_id,
-                security.user_id,
-                DomainEvent::ForumTopicPinned {
-                    topic_id,
-                    is_pinned,
-                    moderator_id: security.user_id,
-                },
-            )
-            .await?;
-
-        txn.commit().await?;
-
-        Ok(())
-    }
-
-    async fn update_topic_bool_flag(
-        &self,
-        tenant_id: Uuid,
-        topic_id: Uuid,
-        security: SecurityContext,
-        flag: &str,
-        value: bool,
-    ) -> ForumResult<()> {
-        let node = self.nodes.get_node(tenant_id, topic_id).await?;
-        if node.kind != KIND_TOPIC {
-            return Err(ForumError::TopicNotFound(topic_id));
-        }
-        let mut metadata = node.metadata;
-        metadata[flag] = serde_json::json!(value);
-
-        self.nodes
-            .update_node(
-                tenant_id,
-                topic_id,
-                security,
-                rustok_content::UpdateNodeInput {
-                    metadata: Some(metadata),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        Ok(())
-    }
-
-    /// Update topic forum status with state machine validation.
-    ///
-    /// Reads the current status from metadata, validates the transition using
-    /// the state machine, and then applies the change atomically.
-    async fn update_topic_forum_status(
+    async fn update_topic_status(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
         security: SecurityContext,
         target: TopicStatus,
     ) -> ForumResult<()> {
-        let node = self.nodes.get_node(tenant_id, topic_id).await?;
-        if node.kind != KIND_TOPIC {
-            return Err(ForumError::TopicNotFound(topic_id));
-        }
-
-        let current_str = node
-            .metadata
-            .get("forum_status")
-            .and_then(|v| v.as_str())
-            .unwrap_or(topic_status::OPEN);
-        let current = TopicStatus::from_str_value(current_str).unwrap_or(TopicStatus::Open);
-
-        // Validate the state transition using the state machine
+        let topic_service = TopicService::new(self.db.clone(), self.event_bus.clone());
+        let topic = topic_service.find_topic(tenant_id, topic_id).await?;
+        let current = TopicStatus::from_str_value(&topic.status).unwrap_or(TopicStatus::Open);
         current.validate_transition(&target)?;
 
         let old_status = current.as_str().to_string();
         let new_status = target.as_str().to_string();
 
-        let mut metadata = node.metadata;
-        metadata["forum_status"] = serde_json::json!(&new_status);
-
         let txn = self.db.begin().await?;
-
-        self.nodes
-            .update_node_in_tx(
-                &txn,
-                tenant_id,
-                topic_id,
-                security.clone(),
-                rustok_content::UpdateNodeInput {
-                    metadata: Some(metadata),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
+        TopicService::set_status_in_tx(&txn, tenant_id, topic_id, &new_status).await?;
         self.event_bus
             .publish_in_tx(
                 &txn,
@@ -346,9 +248,7 @@ impl ModerationService {
                 },
             )
             .await?;
-
         txn.commit().await?;
-
         Ok(())
     }
 }

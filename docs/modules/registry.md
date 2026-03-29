@@ -4,14 +4,16 @@
 
 - **platform modules** — архитектурные модули платформы из `modules.toml`;
 - **crate** — техническую форму упаковки в Cargo;
-- **library/support crates** — вспомогательные crate'ы, которые лежат рядом с модулями, но не получают статус `Core` или `Optional`.
+- **library/support crates** — вспомогательные crate'ы, которые живут рядом с модулями, но не
+  получают статус `Core` или `Optional`.
 
 ## Главные правила
 
 1. Для platform modules существуют только два статуса: `Core` и `Optional`.
 2. Источник истины по составу platform modules — `modules.toml`.
-3. `ModuleRegistry`, bootstrap в `apps/server` и codegen в `build.rs` — это способы wiring, а не отдельные типы модулей.
-4. `rustok-outbox` — **Core module**. То, что event runtime использует его ещё и напрямую, не меняет его архитектурный статус.
+3. `ModuleRegistry`, bootstrap в `apps/server` и generated wiring из `build.rs` — это способы
+   подключения, а не отдельные архитектурные типы.
+4. `rustok-outbox` остаётся `Core` module, даже если server runtime использует его ещё и напрямую.
 
 ## Верхнеуровневая схема
 
@@ -52,6 +54,7 @@ graph TD
         COMMERCE["rustok-commerce"]
         BLOG["rustok-blog"]
         FORUM["rustok-forum"]
+        COMMENTS["rustok-comments"]
         PAGES["rustok-pages"]
         MEDIA["rustok-media"]
         WORKFLOW["rustok-workflow"]
@@ -93,6 +96,7 @@ graph TD
     SERVER --> COMMERCE
     SERVER --> BLOG
     SERVER --> FORUM
+    SERVER --> COMMENTS
     SERVER --> PAGES
     SERVER --> MEDIA
     SERVER --> WORKFLOW
@@ -106,12 +110,12 @@ graph TD
     COMMERCE --> ORDER
     COMMERCE --> PAYMENT
     COMMERCE --> FULFILLMENT
+    BLOG --> CONTENT
+    BLOG --> COMMENTS
+    FORUM --> CONTENT
     PRODUCT --> COMMERCE_FOUNDATION
     PRICING --> COMMERCE_FOUNDATION
     INVENTORY --> COMMERCE_FOUNDATION
-    BLOG --> CONTENT
-    FORUM --> CONTENT
-    PAGES --> CONTENT
     OUTBOX --> EVENTS
     OUTBOX --> IGGY
     MEDIA --> STORAGE
@@ -127,41 +131,44 @@ graph TD
 
 ### Core modules
 
-Core modules всегда включены в платформу, отражены в `modules.toml` как `required = true` и регистрируются в runtime как `ModuleKind::Core`.
+Core modules всегда включены в платформу, отражены в `modules.toml` как `required = true` и
+регистрируются в runtime как `ModuleKind::Core`.
 
 | Slug | Crate | Роль |
 |---|---|---|
 | `auth` | `rustok-auth` | JWT lifecycle, credentials, token flows |
 | `cache` | `rustok-cache` | Cache backend factory, Redis/in-memory fallback |
-| `channel` | `rustok-channel` | Experimental platform-level channel context, targets and OAuth app bindings |
+| `channel` | `rustok-channel` | Platform-level channel context, targets and OAuth app bindings |
 | `email` | `rustok-email` | SMTP transport, templates, delivery lifecycle |
 | `index` | `rustok-index` | Cross-module indexing, links, denormalized read-model substrate |
-| `search` | `rustok-search` | Product-facing search, dictionaries/query rules, engine selection, connector-ready contracts |
+| `search` | `rustok-search` | Product-facing search, dictionaries/query rules, engine selection |
 | `outbox` | `rustok-outbox` | Transactional event persistence, relay, retry, DLQ |
 | `tenant` | `rustok-tenant` | Tenant lifecycle и module enablement |
 | `rbac` | `rustok-rbac` | Permissions, authorization, role/policy runtime |
 
 ### Optional modules
 
-Optional modules компонуются в сборку и затем могут включаться или отключаться для tenant'а через `tenant_modules`.
+Optional modules компонуются в сборку и затем могут включаться или отключаться для tenant'а через
+`tenant_modules`.
 
 | Slug | Crate | Зависимости | Роль |
 |---|---|---|---|
-| `content` | `rustok-content` | — | Базовый контентный домен |
+| `content` | `rustok-content` | — | Shared content helpers и orchestration-модуль; больше не product storage/backend для `blog`, `forum`, `pages` и не публичный transport layer |
 | `cart` | `rustok-cart` | — | Дефолтный cart-подмодуль семейства `commerce/ecommerce`: cart lifecycle, line items и totals |
 | `customer` | `rustok-customer` | — | Дефолтный storefront customer-подмодуль семейства `commerce/ecommerce`: отдельный customer profile и optional linkage на `user_id` |
 | `product` | `rustok-product` | — | Дефолтный catalog-подмодуль семейства `commerce/ecommerce` |
 | `profiles` | `rustok-profiles` | — | Универсальный публичный профиль пользователя поверх platform `users`, отдельный от `customer` и будущих seller/staff доменов |
-| `region` | `rustok-region` | — | Дефолтный region-подмодуль семейства `commerce/ecommerce`: регионы, валюты, страны и базовый region lookup для storefront/checkout policy |
+| `region` | `rustok-region` | — | Дефолтный region-подмодуль семейства `commerce/ecommerce`: регионы, валюты, страны и базовый region lookup |
 | `pricing` | `rustok-pricing` | `product` | Дефолтный pricing-подмодуль семейства `commerce/ecommerce` |
 | `inventory` | `rustok-inventory` | `product` | Дефолтный inventory-подмодуль семейства `commerce/ecommerce` с нормализованными stock levels и reservations |
 | `order` | `rustok-order` | — | Дефолтный order-подмодуль семейства `commerce/ecommerce`: lifecycle, line item snapshots, order events |
-| `payment` | `rustok-payment` | — | Дефолтный payment-подмодуль семейства `commerce/ecommerce`: payment collections, attempts и базовый lifecycle авторизации/капчура |
+| `payment` | `rustok-payment` | — | Дефолтный payment-подмодуль семейства `commerce/ecommerce`: payment collections, attempts и базовый lifecycle авторизации |
 | `fulfillment` | `rustok-fulfillment` | — | Дефолтный fulfillment-подмодуль семейства `commerce/ecommerce`: shipping options, fulfillment records и shipment lifecycle |
-| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Root umbrella module семейства `ecommerce`: orchestration, compatibility facade, checkout flow layer, store context/locale policy и верхний вход в commerce family |
-| `blog` | `rustok-blog` | `content` | Блог поверх content |
-| `forum` | `rustok-forum` | `content` | Форум поверх content |
-| `pages` | `rustok-pages` | `content` | Страницы, блоки и меню |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Root umbrella module семейства `ecommerce`: orchestration, compatibility facade, checkout flow layer и store context |
+| `blog` | `rustok-blog` | `content`, `comments` | Блог владеет своими posts/categories/tags таблицами, использует `rustok-comments` для generic comments и `rustok-content` только как shared helper/orchestration dependency |
+| `forum` | `rustok-forum` | `content` | Форум со своими таблицами; `content` используется только как shared helper/orchestration dependency |
+| `comments` | `rustok-comments` | — | Generic comments domain со своими `comment_threads` / `comments` / `comment_bodies`; canonical storage-owner для классических комментариев вне форума |
+| `pages` | `rustok-pages` | `content` | Страницы, блоки и меню со своей persistence-моделью; `rustok-content` используется только как shared helper dependency |
 | `media` | `rustok-media` | — | Media lifecycle, upload, storage-facing API |
 | `workflow` | `rustok-workflow` | — | Workflow execution, templates, webhook ingress |
 
@@ -174,11 +181,13 @@ Optional modules компонуются в сборку и затем могут
 - `apps/server/src/services/app_runtime.rs` и `event_transport_factory.rs` поднимают event runtime;
 - `modules.toml` и `apps/server/src/modules/manifest.rs` сверяют manifest и runtime.
 
-Важно: эти механизмы не создают отдельные типы модулей. Они лишь описывают, как модуль подключается к runtime.
+Важно: эти механизмы не создают отдельные типы модулей. Они лишь описывают, как модуль
+подключается к runtime.
 
 ## Crate-слой вне taxonomy Core/Optional
 
-Не каждый crate в `crates/` является platform module. Рядом с модульными crate'ами живут библиотеки и support-компоненты.
+Не каждый crate в `crates/` является platform module. Рядом с модульными crate'ами живут
+библиотеки и support-компоненты.
 
 ### Shared library crates
 

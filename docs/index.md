@@ -53,13 +53,16 @@ graph TD
 ## Верификация платформы
 
 - [План верификации платформы](./verification/PLATFORM_VERIFICATION_PLAN.md) — главный orchestration-план для периодических прогонов с очищаемым master-checklist.
-- [Планы верификации](./verification/README.md) — каталог детальных и rolling-планов верификации, включая foundation/API/frontend/quality блоки, реестр проблем и специализированные weekly-проходы.
+- [Планы верификации](./verification/README.md) — каталог детальных и rolling-планов верификации, включая foundation/API/frontend/quality блоки и специализированные weekly-проходы.
 
 ## Корневые документы
 
 - [Системный манифест](../RUSTOK_MANIFEST.md) — философия, принципы и архитектурные инварианты платформы.
 - [Правила агентов](../AGENTS.md) — правила для AI-агентов и контрибьюторов.
 - [Архитектурные решения](../DECISIONS/README.md) — реестр архитектурных решений (ADR).
+  - [ADR: Разведение `content`-storage, введение `rustok-comments` и новая роль `rustok-content`](../DECISIONS/2026-03-28-content-domain-split-and-comments-module.md)
+  - [ADR: Портовая граница для `rustok-content` orchestration](../DECISIONS/2026-03-28-content-orchestration-port-boundary.md)
+  - [ADR: Многоязычный content contract для `blog` / `pages` / `comments`](../DECISIONS/2026-03-28-multilingual-content-contract.md)
   - [ADR: Dual UI Strategy — Leptos primary, Next.js modular packages](../DECISIONS/2026-03-17-dual-ui-strategy-next-batteries-included.md)
   - [ADR: `rustok-channel` как experimental core-модуль](../DECISIONS/2026-03-25-rustok-channel-experimental-core.md)
   - [ADR: Channel resolution pipeline и typed policy trajectory](../DECISIONS/2026-03-27-channel-resolution-pipeline-and-typed-policies.md)
@@ -208,9 +211,7 @@ graph TD
 - [README crate-контрактов событий](../crates/rustok-events/README.md) — канонический источник `DomainEvent`/`EventEnvelope`.
 - [Документация crate-контрактов событий](../crates/rustok-events/docs/README.md)
 - [План реализации контрактов событий](../crates/rustok-events/docs/implementation-plan.md)
-- [Документация модуля Content](../crates/rustok-content/docs/README.md) — включая модульные GraphQL/REST адаптеры content
-- [Пакет админского UI для Content](../crates/rustok-content/admin/README.md)
-- [Пакет storefront UI для Content](../crates/rustok-content/storefront/README.md)
+- [Документация модуля Content](../crates/rustok-content/docs/README.md) — shared helper/orchestration слой без product GraphQL/REST/admin/storefront surface
 - [План реализации модуля Content](../crates/rustok-content/docs/implementation-plan.md)
 - [Документация модуля Cart](../crates/rustok-cart/docs/README.md)
 - [Документация модуля Customer](../crates/rustok-customer/docs/README.md)
@@ -232,6 +233,8 @@ graph TD
 - [Пакет админского UI для Blog](../crates/rustok-blog/admin/README.md)
 - [Пакет storefront UI для Blog](../crates/rustok-blog/storefront/README.md)
 - [План реализации модуля Blog](../crates/rustok-blog/docs/implementation-plan.md)
+- [Документация модуля Comments](../crates/rustok-comments/docs/README.md)
+- [План реализации модуля Comments](../crates/rustok-comments/docs/implementation-plan.md)
 - [Документация модуля Forum](../crates/rustok-forum/docs/README.md)
 - [Пакет админского UI для Forum](../crates/rustok-forum/admin/README.md)
 - [Пакет storefront UI для Forum](../crates/rustok-forum/storefront/README.md)
@@ -330,8 +333,8 @@ UI-пакеты Next.js публикуются локально и живут в
 
 ### Крейты (`crates/*`)
 
-- `alloy-scripting`: [README](../crates/alloy-scripting/README.md), [docs/README](../crates/alloy-scripting/docs/README.md) � Alloy runtime/engine capability
-- `alloy`: [README](../crates/alloy/README.md), [docs/README](../crates/alloy/docs/README.md) � Alloy management/API transport-shell outside runtime module registry
+- `alloy-scripting`: [README](../crates/alloy-scripting/README.md), [docs/README](../crates/alloy-scripting/docs/README.md) — Alloy runtime/engine capability
+- `alloy`: [README](../crates/alloy/README.md), [docs/README](../crates/alloy/docs/README.md) — Alloy management/API transport-shell outside runtime module registry
 - `leptos-auth`: [README](../crates/leptos-auth/README.md), [docs/README](../crates/leptos-auth/docs/README.md)
 - `leptos-forms`: [README](../crates/leptos-forms/README.md)
 - `leptos-graphql`: [README](../crates/leptos-graphql/README.md), [docs/README](../crates/leptos-graphql/docs/README.md)
@@ -344,8 +347,9 @@ UI-пакеты Next.js публикуются локально и живут в
 - `iu-leptos` (UI/leptos): [README](../UI/leptos/README.md)
 - `UI/next/components`: [index](../UI/next/components/index.ts) — обёртки IU для React/Next.js.
 - `rustok-blog`: [README](../crates/rustok-blog/README.md), [docs/README](../crates/rustok-blog/docs/README.md), [docs/implementation-plan](../crates/rustok-blog/docs/implementation-plan.md)
+- `rustok-comments`: [README](../crates/rustok-comments/README.md), [docs/README](../crates/rustok-comments/docs/README.md), [docs/implementation-plan](../crates/rustok-comments/docs/implementation-plan.md)
 - `rustok-commerce`: [README](../crates/rustok-commerce/README.md), [docs/README](../crates/rustok-commerce/docs/README.md), [docs/implementation-plan](../crates/rustok-commerce/docs/implementation-plan.md)
-- `rustok-content`: [README](../crates/rustok-content/README.md), [docs/README](../crates/rustok-content/docs/README.md), [docs/implementation-plan](../crates/rustok-content/docs/implementation-plan.md) — content domain + module-owned GraphQL/REST adapters
+- `rustok-content`: [README](../crates/rustok-content/README.md), [docs/README](../crates/rustok-content/docs/README.md), [docs/implementation-plan](../crates/rustok-content/docs/implementation-plan.md) — shared helper/orchestration слой с typed canonical/idempotency/audit state, без product GraphQL/REST adapters
 - `rustok-core`: [README](../crates/rustok-core/README.md), [docs/README](../crates/rustok-core/docs/README.md), [docs/implementation-plan](../crates/rustok-core/docs/implementation-plan.md)
 - `rustok-api`: [README](../crates/rustok-api/README.md), [docs/README](../crates/rustok-api/docs/README.md)
 - `rustok-events`: [README](../crates/rustok-events/README.md) — канонический источник event-контрактов

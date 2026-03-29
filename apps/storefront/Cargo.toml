@@ -23,11 +23,11 @@ leptos_i18n = { workspace = true, features = ["ssr"] }
 leptos-next-metadata = { workspace = true }
 leptos_query = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_urlencoded.workspace = true
 futures = "0.3"
 rustok-api.workspace = true
 rustok-blog-storefront = { path = "../../crates/rustok-blog/storefront" }
 rustok-commerce-storefront = { path = "../../crates/rustok-commerce/storefront" }
-rustok-content-storefront = { path = "../../crates/rustok-content/storefront" }
 rustok-forum-storefront = { path = "../../crates/rustok-forum/storefront" }
 rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront" }
 rustok-search-storefront = { path = "../../crates/rustok-search/storefront" }
@@ -53,7 +53,6 @@ normal = [
   "leptos_router",
   "rustok-blog-storefront",
   "rustok-commerce-storefront",
-  "rustok-content-storefront",
   "rustok-forum-storefront",
   "rustok-pages-storefront",
   "rustok-search-storefront",

@@ -31,7 +31,6 @@
 
 - `rustok-pages-admin` — базовый page CRUD.
 - `rustok-blog-admin` — content CRUD без blog-specific логики в host.
-- `rustok-content-admin` — core module-owned CRUD без переноса content-specific UI в `apps/admin`.
 - `rustok-commerce-admin` — commerce catalog CRUD без переноса catalog-specific UI в host.
 - `rustok-forum-admin` — admin-only forum surface с category/topic CRUD через модульный REST contract.
 

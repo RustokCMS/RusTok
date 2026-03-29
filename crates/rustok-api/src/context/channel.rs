@@ -1,6 +1,6 @@
 use axum::{
     extract::FromRequestParts,
-    http::{StatusCode, request::Parts},
+    http::{request::Parts, StatusCode},
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

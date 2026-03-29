@@ -1,66 +1,57 @@
 # rustok-content / CRATE_API
 
-## Публичные модули
-`controllers`, `dto`, `entities`, `error`, `graphql`, `services`, `state_machine`.
+## Public Modules
+`dto`, `entities`, `error`, `locale`, `services`, `state_machine`.
 
-## Основные публичные типы и сигнатуры
+## Primary Public Types
 - `pub struct ContentModule`
-- `pub struct NodeService`
-- `pub struct ContentQuery`, `pub struct ContentMutation`
-- `pub struct Node`, `pub struct NodeTranslation`, `pub struct Body`
-- `pub struct ContentNode<S>` + состояния `Draft`, `Published`, `Archived`
-- `pub type ContentResult<T>`, `pub enum ContentError`
-- `pub fn validate_status_transition(current: &ContentStatus, target: &ContentStatus) -> Result<(), InvalidStatusTransition>`
-- `pub struct InvalidStatusTransition { from: ContentStatus, to: ContentStatus }`
+- `pub struct ContentOrchestrationService`
+- `pub trait ContentOrchestrationBridge`
+- `pub struct PromoteTopicToPostInput`
+- `pub struct DemotePostToTopicInput`
+- `pub struct SplitTopicInput`
+- `pub struct MergeTopicsInput`
+- `pub struct OrchestrationResult`
+- `pub type ContentResult<T>`
+- `pub enum ContentError`
 
-## События
-- Публикует доменные события контента через `TransactionalEventBus` (создание/обновление/публикация/архивация node).
-- Потребляет: внешние доменные события явно не подписывает (бизнес-операции вызываются сервисами).
+## Runtime Role
+- `rustok-content` no longer exposes product GraphQL/REST CRUD surfaces.
+- The crate remains a shared helper layer for locale, slug, rich-text, and legacy content helpers.
+- `NodeService` remains available only via `rustok_content::services::NodeService` as a shared-node helper and migration surface, but must not be used as the new primary persistence model for `blog`, `forum`, `pages`, or `comments`.
+- `ContentOrchestrationService` is a port-based orchestration core. It owns RBAC checks, idempotency, audit logging, and event publication, while domain conversion work is delegated through `ContentOrchestrationBridge`.
 
-## Зависимости от других rustok-крейтов
-- `rustok-api`
-- `rustok-core`
-- `rustok-outbox`
-- (dev) `rustok-test-utils`
+## Orchestration Contract
+- `ContentOrchestrationService` owns the following cross-domain use cases:
+  - `promote_topic_to_post`
+  - `demote_post_to_topic`
+  - `split_topic`
+  - `merge_topics`
+- `ContentOrchestrationBridge` is the only extension point for runtime adapters that know how to read/write `blog`, `forum`, and `comments` domain data.
+- The crate must not reintroduce direct `NodeService`-based child rebinding for orchestration flows.
 
-## Частые ошибки ИИ
-- Нарушает state-machine прямым изменением статуса — теперь `transition_status_in_tx` выбросит `Validation` на недопустимый переход.
-- Путает `entities::Model` SeaORM и DTO ответа API.
-- Пропускает `tenant_id` в фильтрах запросов.
-- Передаёт глубоко вложенный JSON в поле `metadata` — максимум 5 уровней вложенности.
+## Events
+- The crate publishes orchestration events through `TransactionalEventBus`.
+- Event payloads and event types must remain backward-compatible for downstream consumers.
 
-## Публичный контракт ошибок
-- `ContentError::DuplicateSlug { slug, locale }` — конфликт уникальности slug в пределах `tenant_id + locale`.
-- `ContentError::ConcurrentModification { expected, actual }` — optimistic locking при `UpdateNodeInput.expected_version`.
-- `ContentError::Validation(String)` — в том числе: недопустимый переход статусов (напр. `Draft → Archived`), превышение глубины вложенности `metadata` (> 5 уровней).
-- Первые два варианта конвертируются в `RichError` с `ErrorKind::Conflict` и кодами `DUPLICATE_SLUG` / `CONCURRENT_MODIFICATION`.
-
-## State machine — допустимые переходы статусов
-Единственным источником правды является `validate_status_transition` из `state_machine.rs`:
-
-| Из          | В           | Метод              |
-|-------------|-------------|-------------------|
-| `Draft`     | `Published` | `publish()`       |
-| `Published` | `Draft`     | `unpublish()`     |
-| `Published` | `Archived`  | `archive(reason)` |
-| `Archived`  | `Draft`     | `restore_to_draft()` |
-
-Все остальные комбинации (`Draft → Archived`, `Archived → Published`, self-переходы) возвращают `ContentError::Validation`.
+## Errors
+- `ContentError::Validation(String)` covers invalid orchestration inputs and contract violations.
+- `ContentError::Forbidden(String)` covers RBAC failures.
+- `ContentError::Database(DbErr)` covers persistence failures, including orchestration audit/idempotency tables.
 
 ## Минимальный набор контрактов
 
 ### Входные DTO/команды
-- Входной контракт формируется публичными DTO/командами из crate (см. разделы с `Create*Input`/`Update*Input`/query/filter выше и соответствующие `pub`-экспорты в `src/lib.rs`).
-- Все изменения публичных полей DTO считаются breaking-change и требуют синхронного обновления модульных transport-адаптеров (`src/graphql/*`, `src/controllers/*`) и server composition-root shim-слоя.
+- Public orchestration commands are defined by the `*Input` structs exported from `services`.
+- Changes to the public fields of these command types are breaking changes for orchestration consumers.
 
 ### Доменные инварианты
-- Инварианты модуля фиксируются в сервисах/стейт-машинах и валидации DTO; недопустимые переходы/параметры должны завершаться доменной ошибкой.
-- Инварианты multi-tenant boundary (tenant/resource isolation, auth context) считаются обязательной частью контракта.
+- Multi-tenant isolation and state-machine validation remain mandatory invariants.
+- Invalid transitions, unsafe payloads, and cross-tenant access must fail with domain errors.
 
 ### События / outbox-побочные эффекты
-- Если модуль публикует доменные события, публикация должна идти через транзакционный outbox/transport-контракт без локальных обходов.
-- Формат event payload и event-type должен оставаться обратно-совместимым для межмодульных потребителей.
+- Orchestration events must be published through `TransactionalEventBus`.
+- Event payloads and event types must remain stable for cross-module consumers.
 
 ### Ошибки / коды отказов
-- Публичные `*Error`/`*Result` типы модуля определяют контракт отказов и не должны терять семантику при маппинге в HTTP/GraphQL/CLI.
-- Для validation/auth/conflict/not-found сценариев должен сохраняться устойчивый error-class, используемый тестами и адаптерами.
+- `ContentError` and `ContentResult<T>` define the stable failure contract of the crate.

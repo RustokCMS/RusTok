@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{HeaderMap, Request, header::HOST},
+    http::{header::HOST, HeaderMap, Request},
     middleware::Next,
     response::Response,
 };
@@ -131,9 +131,9 @@ mod tests {
         channel_slug_from_query, resolved_detail_and_source,
     };
     use crate::context::ChannelResolutionSource;
-    use axum::http::{HeaderMap, header::HOST};
+    use axum::http::{header::HOST, HeaderMap};
     use rustok_channel::{
-        ChannelResolver, ChannelService, CreateChannelInput, CreateChannelTargetInput, migrations,
+        migrations, ChannelResolver, ChannelService, CreateChannelInput, CreateChannelTargetInput,
     };
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};

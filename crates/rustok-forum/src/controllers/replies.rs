@@ -18,6 +18,10 @@ use crate::{
     UpdateReplyInput,
 };
 
+fn clamp_per_page(per_page: u64) -> u64 {
+    per_page.min(100)
+}
+
 #[utoipa::path(
     get,
     path = "/api/forum/topics/{id}/replies",
@@ -48,7 +52,8 @@ pub async fn list_replies(
 
     filter.locale = filter.locale.or(Some(request_context.locale.clone()));
     let requested_limit = Some(filter.per_page);
-    let effective_limit = filter.per_page.min(100);
+    let effective_limit = clamp_per_page(filter.per_page);
+    filter.per_page = effective_limit;
     let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let list_started_at = Instant::now();
     let (replies, _) = service
@@ -78,6 +83,18 @@ pub async fn list_replies(
     );
 
     Ok(Json(replies))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clamp_per_page;
+
+    #[test]
+    fn replies_controller_clamp_per_page_caps_large_values() {
+        assert_eq!(clamp_per_page(20), 20);
+        assert_eq!(clamp_per_page(100), 100);
+        assert_eq!(clamp_per_page(250), 100);
+    }
 }
 
 #[utoipa::path(

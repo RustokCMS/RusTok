@@ -23,6 +23,25 @@ pub fn get_graphql_url() -> String {
 
 pub type ApiError = GraphqlHttpError;
 
+pub fn configured_tenant_slug() -> Option<String> {
+    [
+        "RUSTOK_TENANT_SLUG",
+        "NEXT_PUBLIC_TENANT_SLUG",
+        "NEXT_PUBLIC_DEFAULT_TENANT_SLUG",
+    ]
+    .into_iter()
+    .find_map(|key| {
+        std::env::var(key).ok().and_then(|value| {
+            let trimmed = value.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        })
+    })
+}
+
 pub async fn request<V, T>(
     query: &str,
     variables: V,

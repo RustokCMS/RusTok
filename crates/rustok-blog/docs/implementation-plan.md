@@ -18,13 +18,40 @@ compatibility with platform-level contracts.
 
 ## Delivery phases
 
+## Split track — target blog-owned persistence
+
+The current implementation already uses module-owned storage for blog posts,
+categories, tags, and `rustok-comments` for blog comments. Remaining
+`rustok-content` usage is limited to shared content helpers and orchestration.
+
+Target blog-owned tables after the split:
+
+- `blog_posts`
+- `blog_post_translations`
+- `blog_categories`
+- `blog_category_translations`
+- `blog_tags`
+- `blog_tag_translations`
+- `blog_post_tags`
+
+Target invariants:
+
+- `comment_count` is a typed column on `blog_posts`;
+- category/tag relations are normalized instead of being filtered through
+  metadata;
+- blog comments now use `rustok-comments`; this crate keeps the blog-facing
+  transport/domain facade only;
+- `rustok-content` stops being the canonical CRUD/storage backend for blog.
+
 ### Phase 0 — Foundation ✅ DONE
 
 - [x] Baseline crate/module structure is in place.
 - [x] Base docs and registry presence are established.
 - [x] Core compile-time integration with the workspace is available.
 - [x] Module metadata (slug, name, description, version).
-- [x] Empty migrations (wrapper module).
+- [x] Blog-owned migrations are in place for `blog_posts`, `blog_post_translations`,
+  `blog_categories`, `blog_category_translations`, `blog_tags`,
+  `blog_tag_translations`, and `blog_post_tags`.
 
 ### Phase 1 — Contract hardening ✅ DONE
 
@@ -71,8 +98,8 @@ compatibility with platform-level contracts.
 - [x] PostService full implementation:
   - [x] `author_id` from SecurityContext
   - [x] `get_post(post_id, locale)` with locale resolution
-  - [x] `list_posts()` fetches full nodes for correct metadata
-  - [x] `update_post()` with tenant_id from node
+  - [x] `list_posts()` reads from `blog_posts` + `blog_post_translations`
+  - [x] `update_post()` uses blog-owned persistence and version increments
   - [x] `publish_post()`, `unpublish_post()`, `archive_post()` with events
   - [x] `delete_post()` with CannotDeletePublished guard
 - [x] REST API expanded:
@@ -89,11 +116,13 @@ compatibility with platform-level contracts.
 ### Phase 3 — Productionization (in progress)
 
 - [x] CommentService implementation
+- [x] Blog comments moved to `rustok-comments`
+- [x] Blog posts moved off `rustok-content::NodeService`
 - [x] CategoryService implementation (`services/category.rs` — full CRUD, tenant isolation, slug auto-generation)
 - [x] TagService implementation (`services/tag.rs` — full CRUD, slug normalization)
 - [x] Integration tests with test database (all 5 post lifecycle tests + 2 new category/tag tests now green)
-- [x] `category` and `tag` kinds registered in content module validation and RBAC
-- [x] In-memory tag filtering in `PostService::list_posts` (pre-index fallback)
+- [x] Blog category/tag storage moved off `rustok-content`
+- [x] `PostService::list_posts` now filters by normalized tag relations instead of metadata scans
 - [x] Channel-aware pilot on public read-path via `rustok-channel` module bindings
 - [x] Extend the pilot to publication-level metadata-based `channelSlugs` allowlists on published public read-paths
 - [ ] RBAC enforcement: check permissions in service layer
@@ -117,7 +146,7 @@ compatibility with platform-level contracts.
 | `services/category.rs` | ✅ Complete | CRUD + tenant isolation + slug auto-generation |
 | `services/tag.rs` | ✅ Complete | CRUD + slug normalization |
 | `dto/post.rs` | ✅ Complete | All fields, i18n, SEO, pagination |
-| `entities/` | ✅ Complete | Re-exports from content module |
+| `entities/` | ✅ Complete | Blog-owned entities and relations |
 | Tests (unit) | ✅ Complete | State machine, DTOs, errors, locale, service |
 | Channel pilot | ✅ Complete | Public GraphQL read-path honors `channel_module_bindings` and metadata-based `channelSlugs` allowlists for `blog` |
 | Tests (integration) | ✅ Complete | All lifecycle and category/tag tests green; 18 integration tests pass |
@@ -134,8 +163,8 @@ compatibility with platform-level contracts.
 - Provide REST/GraphQL endpoints after service readiness (same release phase).
 
 **Dependencies (data/migrations/API)**
-- Data model source: `rustok-content` entities (`nodes` + metadata) and/or dedicated category storage decision.
-- Migrations: if category gets dedicated table, add migration in content/blog migration chain; if metadata-based, no schema migration but strict metadata contract update.
+- Data model source: `blog_categories` + `blog_category_translations`.
+- Migrations: owned blog migration already added; next changes should evolve blog-owned tables only.
 - API dependencies: synchronized changes in server handlers and GraphQL schema for category management.
 
 **Definition of Done**
@@ -162,8 +191,8 @@ compatibility with platform-level contracts.
 - Add API surface for tag discovery/management.
 
 **Dependencies (data/migrations/API)**
-- Data: resolve canonical tag storage (`nodes` metadata vs dedicated table) and uniqueness constraints.
-- Migrations: required if dedicated storage/unique index is introduced.
+- Data: canonical tag storage is `blog_tags` + `blog_tag_translations` + `blog_post_tags`.
+- Migrations: owned blog migration already added; future changes should extend the blog-owned taxonomy chain.
 - API: REST and GraphQL query/mutation additions for tags; docs + OpenAPI sync.
 
 **Definition of Done**

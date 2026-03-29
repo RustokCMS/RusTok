@@ -8,6 +8,7 @@
 - доменные модули crates/rustok-*
 - apps/admin и apps/next-frontend как клиенты API
 - `rustok-mcp` как platform MCP adapter; persisted MCP management/API, Alloy scaffold draft control plane и DB-backed runtime bridge живут в `apps/server`, включая live bridge обратно в persisted draft store
+- `rustok-content` orchestration runtime bridge и GraphQL conversion-команды (`promote_topic_to_post`, `demote_post_to_topic`, `split_topic`, `merge_topics`) также живут в `apps/server`
 
 ## Документация
 - Локальная документация: `./docs/`

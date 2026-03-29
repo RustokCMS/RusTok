@@ -10,17 +10,20 @@
 use axum::{extract::State, Json};
 use loco_rs::prelude::*;
 
-pub async fn list_nodes(State(ctx): State<AppContext>) -> Result<Json<Vec<NodeListItem>>> {
-    let service = NodeService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+pub async fn list_posts(State(ctx): State<AppContext>) -> Result<Json<Vec<PostListItem>>> {
+    let service = PostService::new(
+        ctx.db.clone(),
+        transactional_event_bus_from_context(&ctx),
+    );
     let (items, _) = service
-        .list_nodes(tenant.id, user.security_context(), filter)
+        .list_posts(tenant.id, user.security_context(), filter)
         .await
         .map_err(|e| Error::BadRequest(e.to_string()))?;
     Ok(Json(items))
 }
 
 pub fn routes() -> Routes {
-    Routes::new().prefix("content").add("/nodes", get(list_nodes))
+    Routes::new().prefix("blog").add("/posts", get(list_posts))
 }
 ```
 
@@ -34,7 +37,7 @@ pub fn routes() -> Routes {
 ```rust
 impl Hooks for App {
     fn routes(_ctx: &AppContext) -> AppRoutes {
-        AppRoutes::with_default_routes().add_route(controllers::content::routes())
+        AppRoutes::with_default_routes()
     }
 
     async fn connect_workers(ctx: &AppContext, _queue: &Queue) -> Result<()> {

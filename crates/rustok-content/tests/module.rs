@@ -8,7 +8,7 @@ fn module_metadata() {
     assert_eq!(module.name(), "Content");
     assert_eq!(
         module.description(),
-        "Core CMS Module (Nodes, Bodies, Categories)"
+        "Shared content helpers and cross-domain orchestration module"
     );
     assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
 }

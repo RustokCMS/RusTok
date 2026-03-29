@@ -7,8 +7,6 @@ pub mod blog;
 pub mod commerce;
 pub mod common;
 pub mod connection;
-#[cfg(any(feature = "mod-content", feature = "mod-blog"))]
-pub mod content;
 pub mod errors;
 pub mod flex;
 #[cfg(feature = "mod-forum")]

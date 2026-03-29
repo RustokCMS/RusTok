@@ -26,7 +26,6 @@
 /// - Closed   → Open     (reopen)
 /// - Closed   → Archived (archive)
 /// - Archived → Open     (reopen)
-
 use std::fmt;
 
 use crate::constants::{reply_status, topic_status};
@@ -76,10 +75,7 @@ impl TopicStatus {
     }
 
     /// Validate a transition and return an error if it's not allowed.
-    pub fn validate_transition(
-        &self,
-        target: &TopicStatus,
-    ) -> Result<(), InvalidTopicTransition> {
+    pub fn validate_transition(&self, target: &TopicStatus) -> Result<(), InvalidTopicTransition> {
         if self.can_transition_to(target) {
             Ok(())
         } else {
@@ -104,7 +100,9 @@ impl fmt::Display for TopicStatus {
 /// Enumerated reply status with validated transitions.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReplyStatus {
+    Pending,
     Approved,
+    Rejected,
     Hidden,
     Flagged,
     Deleted,
@@ -114,7 +112,9 @@ impl ReplyStatus {
     /// Parse a reply status from a string value.
     pub fn from_str_value(s: &str) -> Option<Self> {
         match s {
+            reply_status::PENDING => Some(Self::Pending),
             reply_status::APPROVED => Some(Self::Approved),
+            reply_status::REJECTED => Some(Self::Rejected),
             reply_status::HIDDEN => Some(Self::Hidden),
             reply_status::FLAGGED => Some(Self::Flagged),
             reply_status::DELETED => Some(Self::Deleted),
@@ -125,7 +125,9 @@ impl ReplyStatus {
     /// Convert to string for metadata storage.
     pub fn as_str(&self) -> &'static str {
         match self {
+            Self::Pending => reply_status::PENDING,
             Self::Approved => reply_status::APPROVED,
+            Self::Rejected => reply_status::REJECTED,
             Self::Hidden => reply_status::HIDDEN,
             Self::Flagged => reply_status::FLAGGED,
             Self::Deleted => reply_status::DELETED,
@@ -146,22 +148,29 @@ impl ReplyStatus {
     pub fn can_transition_to(&self, target: &ReplyStatus) -> bool {
         matches!(
             (self, target),
-            (Self::Approved, Self::Hidden)
+            (Self::Pending, Self::Approved)
+                | (Self::Pending, Self::Rejected)
+                | (Self::Pending, Self::Hidden)
+                | (Self::Pending, Self::Deleted)
+                | (Self::Approved, Self::Rejected)
+                | (Self::Approved, Self::Hidden)
                 | (Self::Approved, Self::Flagged)
                 | (Self::Approved, Self::Deleted)
+                | (Self::Rejected, Self::Approved)
+                | (Self::Rejected, Self::Hidden)
+                | (Self::Rejected, Self::Deleted)
                 | (Self::Flagged, Self::Approved)
+                | (Self::Flagged, Self::Rejected)
                 | (Self::Flagged, Self::Hidden)
                 | (Self::Flagged, Self::Deleted)
                 | (Self::Hidden, Self::Approved)
+                | (Self::Hidden, Self::Rejected)
                 | (Self::Hidden, Self::Deleted)
         )
     }
 
     /// Validate a transition and return an error if it's not allowed.
-    pub fn validate_transition(
-        &self,
-        target: &ReplyStatus,
-    ) -> Result<(), InvalidReplyTransition> {
+    pub fn validate_transition(&self, target: &ReplyStatus) -> Result<(), InvalidReplyTransition> {
         if self.can_transition_to(target) {
             Ok(())
         } else {
@@ -252,7 +261,11 @@ mod tests {
 
     #[test]
     fn topic_status_roundtrip() {
-        for status in [TopicStatus::Open, TopicStatus::Closed, TopicStatus::Archived] {
+        for status in [
+            TopicStatus::Open,
+            TopicStatus::Closed,
+            TopicStatus::Archived,
+        ] {
             let s = status.as_str();
             assert_eq!(TopicStatus::from_str_value(s), Some(status));
         }
@@ -306,8 +319,16 @@ mod tests {
     #[test]
     fn parse_valid_reply_statuses() {
         assert_eq!(
+            ReplyStatus::from_str_value("pending"),
+            Some(ReplyStatus::Pending)
+        );
+        assert_eq!(
             ReplyStatus::from_str_value("approved"),
             Some(ReplyStatus::Approved)
+        );
+        assert_eq!(
+            ReplyStatus::from_str_value("rejected"),
+            Some(ReplyStatus::Rejected)
         );
         assert_eq!(
             ReplyStatus::from_str_value("hidden"),
@@ -331,7 +352,9 @@ mod tests {
     #[test]
     fn reply_status_roundtrip() {
         for status in [
+            ReplyStatus::Pending,
             ReplyStatus::Approved,
+            ReplyStatus::Rejected,
             ReplyStatus::Hidden,
             ReplyStatus::Flagged,
             ReplyStatus::Deleted,
@@ -345,26 +368,38 @@ mod tests {
 
     #[test]
     fn valid_reply_transitions() {
+        assert!(ReplyStatus::Pending.can_transition_to(&ReplyStatus::Approved));
+        assert!(ReplyStatus::Pending.can_transition_to(&ReplyStatus::Rejected));
+        assert!(ReplyStatus::Pending.can_transition_to(&ReplyStatus::Hidden));
+        assert!(ReplyStatus::Pending.can_transition_to(&ReplyStatus::Deleted));
+        assert!(ReplyStatus::Approved.can_transition_to(&ReplyStatus::Rejected));
         assert!(ReplyStatus::Approved.can_transition_to(&ReplyStatus::Hidden));
         assert!(ReplyStatus::Approved.can_transition_to(&ReplyStatus::Flagged));
         assert!(ReplyStatus::Approved.can_transition_to(&ReplyStatus::Deleted));
+        assert!(ReplyStatus::Rejected.can_transition_to(&ReplyStatus::Approved));
+        assert!(ReplyStatus::Rejected.can_transition_to(&ReplyStatus::Hidden));
+        assert!(ReplyStatus::Rejected.can_transition_to(&ReplyStatus::Deleted));
         assert!(ReplyStatus::Flagged.can_transition_to(&ReplyStatus::Approved));
+        assert!(ReplyStatus::Flagged.can_transition_to(&ReplyStatus::Rejected));
         assert!(ReplyStatus::Flagged.can_transition_to(&ReplyStatus::Hidden));
         assert!(ReplyStatus::Flagged.can_transition_to(&ReplyStatus::Deleted));
         assert!(ReplyStatus::Hidden.can_transition_to(&ReplyStatus::Approved));
+        assert!(ReplyStatus::Hidden.can_transition_to(&ReplyStatus::Rejected));
         assert!(ReplyStatus::Hidden.can_transition_to(&ReplyStatus::Deleted));
     }
 
     #[test]
     fn invalid_reply_transitions() {
-        // Self-transitions
+        assert!(!ReplyStatus::Pending.can_transition_to(&ReplyStatus::Pending));
         assert!(!ReplyStatus::Approved.can_transition_to(&ReplyStatus::Approved));
+        assert!(!ReplyStatus::Rejected.can_transition_to(&ReplyStatus::Rejected));
         assert!(!ReplyStatus::Deleted.can_transition_to(&ReplyStatus::Deleted));
-        // Deleted → anything is invalid (terminal state)
+        assert!(!ReplyStatus::Deleted.can_transition_to(&ReplyStatus::Pending));
         assert!(!ReplyStatus::Deleted.can_transition_to(&ReplyStatus::Approved));
+        assert!(!ReplyStatus::Deleted.can_transition_to(&ReplyStatus::Rejected));
         assert!(!ReplyStatus::Deleted.can_transition_to(&ReplyStatus::Hidden));
         assert!(!ReplyStatus::Deleted.can_transition_to(&ReplyStatus::Flagged));
-        // Hidden → Flagged is invalid
+        assert!(!ReplyStatus::Pending.can_transition_to(&ReplyStatus::Flagged));
         assert!(!ReplyStatus::Hidden.can_transition_to(&ReplyStatus::Flagged));
     }
 

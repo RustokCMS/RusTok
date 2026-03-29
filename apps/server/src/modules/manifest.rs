@@ -1201,6 +1201,17 @@ fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             ),
         ),
         (
+            "region",
+            first_party_module(
+                "rustok-region",
+                "crates/rustok-region",
+                false,
+                &[],
+                &["leptos-admin"],
+                &[],
+            ),
+        ),
+        (
             "pricing",
             first_party_module(
                 "rustok-pricing",
@@ -1265,6 +1276,7 @@ fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
                     "cart",
                     "customer",
                     "product",
+                    "region",
                     "pricing",
                     "inventory",
                     "order",
@@ -1276,12 +1288,23 @@ fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
             ),
         ),
         (
+            "comments",
+            first_party_module(
+                "rustok-comments",
+                "crates/rustok-comments",
+                false,
+                &[],
+                &["leptos-admin"],
+                &[],
+            ),
+        ),
+        (
             "blog",
             first_party_module(
                 "rustok-blog",
                 "crates/rustok-blog",
                 false,
-                &["content"],
+                &["content", "comments"],
                 &["leptos-admin"],
                 &["next-admin"],
             ),
@@ -1303,7 +1326,7 @@ fn builtin_module_catalog() -> HashMap<&'static str, ManifestModuleSpec> {
                 "rustok-pages",
                 "crates/rustok-pages",
                 false,
-                &[],
+                &["content"],
                 &["leptos-admin"],
                 &[],
             ),
@@ -2309,6 +2332,7 @@ mod tests {
             "cart",
             "customer",
             "product",
+            "region",
             "pricing",
             "inventory",
             "order",
@@ -2337,6 +2361,7 @@ mod tests {
             "cart",
             "customer",
             "product",
+            "region",
             "pricing",
             "inventory",
             "order",
@@ -2352,6 +2377,7 @@ mod tests {
             "cart".to_string(),
             "customer".to_string(),
             "product".to_string(),
+            "region".to_string(),
             "pricing".to_string(),
             "inventory".to_string(),
             "order".to_string(),
@@ -2404,7 +2430,9 @@ showcase_admin_surfaces = ["next-admin", "storybook"]
         )
         .unwrap();
 
-        let mut manifest = manifest_with_modules(&["index", "outbox", "blog", "tenant", "rbac"]);
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
@@ -2476,8 +2504,9 @@ trust_level = "verified"
 "#,
         );
 
-        let mut manifest =
-            manifest_with_modules(&["index", "outbox", "blog", "content", "tenant", "rbac"]);
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         manifest.modules.get_mut("content").unwrap().path =
             Some("crates/rustok-content".to_string());
@@ -2534,7 +2563,9 @@ trust_level = "verified"
         let crate_dir = temp.path().join("crates").join("rustok-blog");
         std::fs::create_dir_all(&crate_dir).unwrap();
 
-        let mut manifest = manifest_with_modules(&["index", "outbox", "blog", "tenant", "rbac"]);
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
@@ -2578,7 +2609,9 @@ showcase_admin_surfaces = ["next-admin"]
         )
         .unwrap();
 
-        let mut manifest = manifest_with_modules(&["index", "outbox", "blog", "tenant", "rbac"]);
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
@@ -2626,7 +2659,9 @@ showAuthor = { type = "boolean", default = true }
 "#,
         );
 
-        let mut manifest = manifest_with_modules(&["index", "outbox", "blog", "tenant", "rbac"]);
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
@@ -2671,7 +2706,9 @@ postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
 "#,
         );
 
-        let mut manifest = manifest_with_modules(&["index", "outbox", "blog", "tenant", "rbac"]);
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
@@ -2721,7 +2758,9 @@ postsPerPage = { type = "integer", default = 20, min = 1, max = 100 }
 "#,
         );
 
-        let mut manifest = manifest_with_modules(&["index", "outbox", "blog", "tenant", "rbac"]);
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         ManifestManager::save_to_path(&manifest_path, &manifest).unwrap();
 
@@ -2781,8 +2820,9 @@ trust_level = "verified"
 "#,
         );
 
-        let mut manifest =
-            manifest_with_modules(&["index", "outbox", "blog", "content", "tenant", "rbac"]);
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         manifest.modules.get_mut("content").unwrap().path =
             Some("crates/rustok-content".to_string());
@@ -2844,7 +2884,14 @@ trust_level = "verified"
         );
 
         let mut manifest = manifest_with_modules(&[
-            "index", "outbox", "content", "blog", "forum", "tenant", "rbac",
+            "index",
+            "outbox",
+            "content",
+            "comments",
+            "blog",
+            "forum",
+            "tenant",
+            "rbac",
         ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         manifest.modules.get_mut("forum").unwrap().path = Some("crates/rustok-forum".to_string());
@@ -2904,8 +2951,9 @@ trust_level = "verified"
 "#,
         );
 
-        let mut manifest =
-            manifest_with_modules(&["index", "outbox", "blog", "content", "tenant", "rbac"]);
+        let mut manifest = manifest_with_modules(&[
+            "index", "outbox", "blog", "content", "comments", "tenant", "rbac",
+        ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         manifest.modules.get_mut("content").unwrap().path =
             Some("crates/rustok-content".to_string());

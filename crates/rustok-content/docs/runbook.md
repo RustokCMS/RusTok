@@ -41,8 +41,10 @@ curl -X POST /admin/content/reindex \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
-Until the admin API endpoint is implemented, reindex is triggered by replaying
-`NodeCreated` / `NodeUpdated` events for all nodes. See `rustok-index` crate for
+Until the admin API endpoint is implemented, reindex is triggered through the
+remaining shared-node replay path. In practice this means replaying
+`NodeCreated` / `NodeUpdated` only for node-backed surfaces that still participate
+in the shared content indexing flow. See `rustok-index` crate for
 `ContentIndexer::index_all`.
 
 ### Per-locale failure handling
@@ -54,8 +56,10 @@ Until the admin API endpoint is implemented, reindex is triggered by replaying
 **Monitoring:** Watch for `warn!` log entries with fields `node_id`, `locale`, `error`
 from the `rustok_index::content::indexer` target.
 
-**Recovery:** Re-trigger indexing for a specific node by publishing a synthetic
-`NodeUpdated` event or running a targeted reindex command.
+**Recovery:** Re-trigger indexing for a specific node-backed record by publishing a
+synthetic `NodeUpdated` event or by running a targeted reindex command. For
+storage-owner domains (`blog`, `forum`, `comments`, `pages`) prefer their typed
+domain/orchestration flows over extending the legacy node pipeline.
 
 ---
 

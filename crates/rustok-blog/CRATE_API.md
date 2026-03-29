@@ -9,7 +9,7 @@
 ```rust
 pub struct BlogModule;
 impl RusToKModule for BlogModule { ... }
-impl MigrationSource for BlogModule { fn migrations() -> Vec::new() }
+impl MigrationSource for BlogModule { fn migrations() -> Vec<Box<dyn MigrationTrait>> }
 ```
 
 ### Transport entry points
@@ -27,7 +27,7 @@ pub mod controllers {
 ### PostService
 ```rust
 pub struct PostService {
-    nodes: NodeService,
+    db: DatabaseConnection,
     event_bus: TransactionalEventBus,
 }
 
@@ -51,7 +51,7 @@ impl PostService {
 ### CommentService
 ```rust
 pub struct CommentService {
-    nodes: NodeService,
+    comments: CommentsService,
     event_bus: TransactionalEventBus,
 }
 

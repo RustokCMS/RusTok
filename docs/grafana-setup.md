@@ -156,8 +156,8 @@ The example dashboard (`grafana-dashboard-example.json`) includes:
 
 ### Panels Overview
 
-1. **Content Operations** - Rate of content CRUD operations by type and status
-2. **Content Operation Duration (p95)** - 95th percentile latency for content ops
+1. **Blog/Forum/Pages Operations** - Rate of domain CRUD operations by type and status
+2. **Domain Operation Duration (p95)** - 95th percentile latency for domain ops
 3. **Commerce Operations** - Rate of product/catalog operations
 4. **Commerce Operation Duration (p95)** - 95th percentile latency for commerce ops
 5. **HTTP Requests** - Incoming HTTP request rate by method, path, and status
@@ -213,10 +213,10 @@ rustok_commerce_orders_total
 
 ```promql
 # Request counter
-rustok_http_requests_total{method="GET", path="/api/content", status="200"}
+rustok_http_requests_total{method="GET", path="/api/blog/posts", status="200"}
 
 # Request duration histogram
-rustok_http_request_duration_seconds_bucket{method="GET", path="/api/content", le="0.1"}
+rustok_http_request_duration_seconds_bucket{method="GET", path="/api/blog/posts", le="0.1"}
 
 # Active connections gauge
 rustok_http_active_connections

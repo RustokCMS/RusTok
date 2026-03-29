@@ -18,12 +18,9 @@
 
 **Путь:** `apps/server/tests/`
 
-- [ ] `integration/content_flow_test.rs`
-- [ ] `integration/event_flow_test.rs`
-- [ ] `integration/order_flow_test.rs`
+- [ ] `commerce_openapi_contract.rs`
 - [ ] `library_api_smoke.rs`
 - [ ] `module_lifecycle.rs`
-- [ ] `multi_tenant_isolation_test.rs`
 - [ ] `tenant_cache_stampede_test.rs`
 
 ### 14.3 Crate integration / contract tests
@@ -169,6 +166,7 @@
 - [x] Использовать `cargo-nextest` как основной Rust test runner в CI и в локальном базовом workflow.
 - [x] Оставить `cargo test --workspace --doc --all-features` как отдельный doc-test baseline, а не пытаться скрыто заменить его.
 - [x] Подключить `cargo-machete` как advisory manifest-hygiene check без замены `cargo udeps`.
+- [x] Для Windows-local `cargo nextest --workspace --all-targets --all-features` временно подменить published `iggy_common 0.9.0` через `patch.crates-io`, потому что в опубликованной crate неверный `cfg` вокруг `posix_fadvise`; после выхода upstream-релиза с фиксом вернуть зависимость обратно на crates.io и удалить локальный patch.
 - [ ] Следующий этап внедрения: `Semgrep`, `GraphQL Inspector`, `knip`.
 - [ ] Следующий после него этап: `Playwright` + `axe-core`, `GraphQL Code Generator`.
 - [ ] Отложенный этап: `testcontainers`, `cargo-mutants`, `Stryker`.

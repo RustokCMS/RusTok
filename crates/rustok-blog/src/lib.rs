@@ -1,12 +1,13 @@
 //! Blog module for RusToK platform
 //!
-//! This module provides blog functionality built on top of the content module.
+//! This module provides blog functionality built on top of blog-owned storage and `rustok-comments`.
 //! It implements posts, comments, categories, and tags with proper state management.
 //!
 //! # Architecture
 //!
-//! The blog module is a "wrapper" module that:
-//! - Uses `rustok-content` tables for storage (no own database schema)
+//! The blog module is currently a bounded-context module that:
+//! - Uses module-owned tables for posts, categories, tags, and post-tag relations
+//! - Uses `rustok-comments` for comment storage and lifecycle
 //! - Adds blog-specific business logic and validation
 //! - Provides a type-safe state machine for post lifecycle
 //! - Publishes blog-specific domain events
@@ -48,6 +49,7 @@ pub mod entities;
 pub mod error;
 pub mod graphql;
 pub mod locale;
+pub mod migrations;
 pub mod services;
 pub mod state_machine;
 
@@ -88,7 +90,7 @@ impl RusToKModule for BlogModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content"]
+        &["content", "comments"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -106,7 +108,7 @@ impl RusToKModule for BlogModule {
 
 impl MigrationSource for BlogModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        migrations::migrations()
     }
 }
 
@@ -141,9 +143,9 @@ mod tests {
     }
 
     #[test]
-    fn module_migrations_empty() {
+    fn module_has_owned_migrations() {
         let module = BlogModule;
-        assert!(module.migrations().is_empty());
+        assert!(!module.migrations().is_empty());
     }
 }
 

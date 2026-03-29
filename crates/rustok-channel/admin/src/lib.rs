@@ -4,8 +4,8 @@ mod model;
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_api::UiRouteContext;
 use rustok_api::context::ChannelResolutionSource;
+use rustok_api::UiRouteContext;
 
 use crate::model::{
     BindChannelModulePayload, BindChannelOauthAppPayload, ChannelAdminBootstrap, ChannelDetail,

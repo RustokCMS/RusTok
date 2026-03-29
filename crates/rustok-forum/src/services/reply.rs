@@ -1,35 +1,36 @@
-use sea_orm::{DatabaseConnection, TransactionTrait};
+use std::collections::HashMap;
+
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+};
 use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_content::{
-    BodyInput, CreateNodeInput, ListNodesFilter, NodeService, UpdateNodeInput,
-    PLATFORM_FALLBACK_LOCALE,
+    normalize_locale_code, resolve_by_locale_with_fallback, PLATFORM_FALLBACK_LOCALE,
 };
 use rustok_core::{prepare_content_payload, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::constants::{reply_status, topic_status, KIND_REPLY, KIND_TOPIC};
+use crate::constants::{reply_status, topic_status};
 use crate::dto::{
     CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput,
 };
+use crate::entities::{forum_reply, forum_reply_body};
 use crate::error::{ForumError, ForumResult};
-use crate::locale::resolve_body_with_fallback;
+use crate::services::{CategoryService, TopicService};
 
 pub struct ReplyService {
     db: DatabaseConnection,
-    nodes: NodeService,
     event_bus: TransactionalEventBus,
 }
 
 impl ReplyService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self {
-            nodes: NodeService::new(db.clone(), event_bus.clone()),
-            db,
-            event_bus,
-        }
+        Self { db, event_bus }
     }
 
     #[instrument(skip(self, security, input))]
@@ -40,35 +41,20 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyInput,
     ) -> ForumResult<ReplyResponse> {
-        let topic_node = self.nodes.get_node(tenant_id, topic_id).await?;
-        if topic_node.kind != KIND_TOPIC {
-            return Err(ForumError::TopicNotFound(topic_id));
-        }
+        let locale = normalize_locale(&input.locale)?;
+        let txn = self.db.begin().await?;
+        let topic = TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
+        let category =
+            CategoryService::find_category_in_tx(&txn, tenant_id, topic.category_id).await?;
 
-        let topic_status_value = topic_node
-            .metadata
-            .get("forum_status")
-            .and_then(|v| v.as_str())
-            .unwrap_or(topic_status::OPEN);
-
-        if topic_status_value == topic_status::CLOSED {
+        if topic.status == topic_status::CLOSED {
             return Err(ForumError::TopicClosed);
         }
-        if topic_status_value == topic_status::ARCHIVED {
+        if topic.status == topic_status::ARCHIVED {
             return Err(ForumError::TopicArchived);
         }
 
-        let create_format = input.content_format.as_str();
-        if create_format != "rt_json_v1" && input.content.trim().is_empty() {
-            return Err(ForumError::Validation(
-                "Reply content cannot be empty".to_string(),
-            ));
-        }
-
-        let author_id = security.user_id;
-        let locale = input.locale.clone();
-
-        let prepared_content = prepare_content_payload(
+        let prepared_body = prepare_content_payload(
             Some(&input.content_format),
             Some(&input.content),
             input.content_json.as_ref(),
@@ -77,38 +63,51 @@ impl ReplyService {
         )
         .map_err(ForumError::Validation)?;
 
-        let metadata = serde_json::json!({
-            "parent_reply_id": input.parent_reply_id,
-            "reply_status": reply_status::APPROVED,
-        });
+        if let Some(parent_reply_id) = input.parent_reply_id {
+            let parent = Self::find_reply_in_tx(&txn, tenant_id, parent_reply_id).await?;
+            if parent.topic_id != topic_id {
+                return Err(ForumError::Validation(
+                    "Parent reply belongs to another topic".to_string(),
+                ));
+            }
+        }
 
-        let txn = self.db.begin().await?;
+        let position = Self::next_position_in_tx(&txn, topic_id).await?;
+        let reply_id = Uuid::new_v4();
+        let now = Utc::now();
+        forum_reply::ActiveModel {
+            id: Set(reply_id),
+            tenant_id: Set(tenant_id),
+            topic_id: Set(topic_id),
+            author_id: Set(security.user_id),
+            parent_reply_id: Set(input.parent_reply_id),
+            status: Set(if category.moderated {
+                reply_status::PENDING
+            } else {
+                reply_status::APPROVED
+            }
+            .to_string()),
+            position: Set(position),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&txn)
+        .await?;
 
-        let reply_id = self
-            .nodes
-            .create_node_in_tx(
-                &txn,
-                tenant_id,
-                security.clone(),
-                CreateNodeInput {
-                    kind: KIND_REPLY.to_string(),
-                    status: Some(rustok_content::entities::node::ContentStatus::Published),
-                    parent_id: Some(topic_id),
-                    author_id,
-                    category_id: None,
-                    position: None,
-                    depth: None,
-                    reply_count: None,
-                    metadata,
-                    translations: Vec::new(),
-                    bodies: vec![BodyInput {
-                        locale: locale.clone(),
-                        body: Some(prepared_content.body),
-                        format: Some(prepared_content.format),
-                    }],
-                },
-            )
-            .await?;
+        forum_reply_body::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            reply_id: Set(reply_id),
+            locale: Set(locale.clone()),
+            body: Set(prepared_body.body),
+            body_format: Set(prepared_body.format),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&txn)
+        .await?;
+
+        let topic = TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, 1).await?;
+        CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -118,15 +117,13 @@ impl ReplyService {
                 DomainEvent::ForumTopicReplied {
                     topic_id,
                     reply_id,
-                    author_id,
+                    author_id: security.user_id,
                 },
             )
             .await?;
 
         txn.commit().await?;
-
-        let node = self.nodes.get_node(tenant_id, reply_id).await?;
-        Ok(Self::node_to_reply(node, topic_id, &locale))
+        self.get(tenant_id, reply_id, &locale).await
     }
 
     #[instrument(skip(self))]
@@ -148,18 +145,15 @@ impl ReplyService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<ReplyResponse> {
-        let node = self.nodes.get_node(tenant_id, reply_id).await?;
-
-        if node.kind != KIND_REPLY {
-            return Err(ForumError::ReplyNotFound(reply_id));
-        }
-
-        let topic_id = node.parent_id.ok_or(ForumError::ReplyNotFound(reply_id))?;
-        Ok(Self::node_to_reply_with_fallback(
-            node,
-            topic_id,
-            locale,
-            fallback_locale,
+        let locale = normalize_locale(locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let reply = self.find_reply(tenant_id, reply_id).await?;
+        let bodies = self.load_bodies(reply_id).await?;
+        Ok(to_reply_response(
+            reply,
+            bodies,
+            &locale,
+            fallback_locale.as_deref(),
         ))
     }
 
@@ -171,74 +165,83 @@ impl ReplyService {
         security: SecurityContext,
         input: UpdateReplyInput,
     ) -> ForumResult<ReplyResponse> {
-        let existing = self.get(tenant_id, reply_id, &input.locale).await?;
-        let bodies = if input.content.is_some()
-            || input.content_json.is_some()
-            || input.content_format.is_some()
+        let locale = normalize_locale(&input.locale)?;
+        let existing = self.find_reply(tenant_id, reply_id).await?;
+
+        if input.content.is_none() && input.content_json.is_none() && input.content_format.is_none()
         {
-            let prepared_content = prepare_content_payload(
-                input.content_format.as_deref(),
-                input.content.as_deref(),
-                input.content_json.as_ref(),
-                &input.locale,
-                "Reply content",
-            )
-            .map_err(ForumError::Validation)?;
-            Some(vec![BodyInput {
-                locale: input.locale.clone(),
-                body: Some(prepared_content.body),
-                format: Some(prepared_content.format),
-            }])
-        } else {
-            None
-        };
+            return self.get(tenant_id, reply_id, &locale).await;
+        }
 
-        let node = self
-            .nodes
-            .update_node(
-                tenant_id,
-                reply_id,
-                security,
-                UpdateNodeInput {
-                    bodies,
-                    ..UpdateNodeInput::default()
-                },
-            )
-            .await?;
+        let prepared_body = prepare_content_payload(
+            input.content_format.as_deref(),
+            input.content.as_deref(),
+            input.content_json.as_ref(),
+            &locale,
+            "Reply content",
+        )
+        .map_err(ForumError::Validation)?;
 
-        Ok(Self::node_to_reply(node, existing.topic_id, &input.locale))
+        let txn = self.db.begin().await?;
+        self.upsert_body_in_tx(
+            &txn,
+            reply_id,
+            &locale,
+            prepared_body.body,
+            prepared_body.format,
+        )
+        .await?;
+
+        let mut active: forum_reply::ActiveModel = existing.into();
+        active.updated_at = Set(Utc::now().into());
+        active.update(&txn).await?;
+        let _ = security;
+        txn.commit().await?;
+        self.get(tenant_id, reply_id, &locale).await
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
         reply_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
     ) -> ForumResult<()> {
-        self.nodes
-            .delete_node(tenant_id, reply_id, security)
+        let reply = self.find_reply(tenant_id, reply_id).await?;
+        let txn = self.db.begin().await?;
+        forum_reply::Entity::delete_by_id(reply_id)
+            .exec(&txn)
             .await?;
+        let topic =
+            TopicService::adjust_reply_count_in_tx(&txn, tenant_id, reply.topic_id, -1).await?;
+        CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, -1).await?;
+        txn.commit().await?;
         Ok(())
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn list_for_topic(
         &self,
         tenant_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         topic_id: Uuid,
         filter: ListRepliesFilter,
     ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
-        self.list_for_topic_with_locale_fallback(tenant_id, security, topic_id, filter, None)
-            .await
+        self.list_for_topic_with_locale_fallback(
+            tenant_id,
+            SecurityContext::system(),
+            topic_id,
+            filter,
+            None,
+        )
+        .await
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn list_for_topic_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         topic_id: Uuid,
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
@@ -246,311 +249,446 @@ impl ReplyService {
         let locale = filter
             .locale
             .clone()
-            .or_else(|| fallback_locale.map(str::to_string))
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
-        let (items, total) = self
-            .nodes
-            .list_nodes_with_locale_fallback(
-                tenant_id,
-                security,
-                ListNodesFilter {
-                    kind: Some(KIND_REPLY.to_string()),
-                    status: None,
-                    parent_id: Some(topic_id),
-                    author_id: None,
-                    locale: Some(locale.clone()),
-                    page: filter.page,
-                    per_page: filter.per_page,
-                    include_deleted: false,
-                    category_id: None,
-                },
-                fallback_locale,
-            )
+        let locale = normalize_locale(&locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+
+        let (replies, total) = self
+            .fetch_reply_page(tenant_id, topic_id, filter.page, filter.per_page, None)
             .await?;
+        let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
+        let bodies_map = self.load_bodies_map(&reply_ids).await?;
 
-        let node_ids: Vec<Uuid> = items.iter().map(|item| item.id).collect();
-
-        let full_nodes = self.nodes.get_nodes_batch(tenant_id, &node_ids).await?;
-
-        let replies = full_nodes
+        let items = replies
             .into_iter()
-            .map(|node| {
-                let resolved = resolve_body_with_fallback(&node.bodies, &locale, fallback_locale);
-                let metadata = &node.metadata;
+            .map(|reply| {
+                let bodies = bodies_map.get(&reply.id).cloned().unwrap_or_default();
+                let resolved = resolve_reply_body(&bodies, &locale, fallback_locale.as_deref());
                 let content = resolved
-                    .body
-                    .and_then(|b| b.body.clone())
+                    .item
+                    .map(|body| body.body.clone())
                     .unwrap_or_default();
                 let preview: String = content.chars().take(200).collect();
                 ReplyListItem {
-                    id: node.id,
+                    id: reply.id,
                     locale: locale.clone(),
                     effective_locale: resolved.effective_locale,
-                    topic_id,
-                    author_id: node.author_id,
+                    topic_id: reply.topic_id,
+                    author_id: reply.author_id,
                     content_preview: preview,
-                    status: metadata
-                        .get("reply_status")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or(reply_status::APPROVED)
-                        .to_string(),
-                    parent_reply_id: metadata
-                        .get("parent_reply_id")
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok()),
-                    created_at: node.created_at,
+                    status: reply.status,
+                    parent_reply_id: reply.parent_reply_id,
+                    created_at: reply.created_at.to_rfc3339(),
                 }
             })
             .collect();
 
-        Ok((replies, total))
+        Ok((items, total))
     }
 
-    #[instrument(skip(self, security))]
+    #[instrument(skip(self, _security))]
     pub async fn list_response_for_topic_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        security: SecurityContext,
+        _security: SecurityContext,
         topic_id: Uuid,
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+        self.list_response_for_topic_by_statuses_with_locale_fallback(
+            tenant_id,
+            SecurityContext::system(),
+            topic_id,
+            filter,
+            fallback_locale,
+            None,
+        )
+        .await
+    }
+
+    #[instrument(skip(self, _security))]
+    pub async fn list_response_for_topic_by_statuses_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        _security: SecurityContext,
+        topic_id: Uuid,
+        filter: ListRepliesFilter,
+        fallback_locale: Option<&str>,
+        statuses: Option<&[&str]>,
+    ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
         let locale = filter
             .locale
             .clone()
-            .or_else(|| fallback_locale.map(str::to_string))
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
-        let (items, total) = self
-            .nodes
-            .list_nodes_with_locale_fallback(
-                tenant_id,
-                security,
-                ListNodesFilter {
-                    kind: Some(KIND_REPLY.to_string()),
-                    status: None,
-                    parent_id: Some(topic_id),
-                    author_id: None,
-                    locale: Some(locale.clone()),
-                    page: filter.page,
-                    per_page: filter.per_page,
-                    include_deleted: false,
-                    category_id: None,
-                },
-                fallback_locale,
-            )
+        let locale = normalize_locale(&locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        let (replies, total) = self
+            .fetch_reply_page(tenant_id, topic_id, filter.page, filter.per_page, statuses)
             .await?;
+        let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
+        let bodies_map = self.load_bodies_map(&reply_ids).await?;
 
-        let node_ids: Vec<Uuid> = items.iter().map(|item| item.id).collect();
-        let full_nodes = self.nodes.get_nodes_batch(tenant_id, &node_ids).await?;
-        let replies = full_nodes
+        let items = replies
             .into_iter()
-            .map(|node| Self::node_to_reply_with_fallback(node, topic_id, &locale, fallback_locale))
+            .map(|reply| {
+                let reply_id = reply.id;
+                to_reply_response(
+                    reply,
+                    bodies_map.get(&reply_id).cloned().unwrap_or_default(),
+                    &locale,
+                    fallback_locale.as_deref(),
+                )
+            })
             .collect();
 
+        Ok((items, total))
+    }
+
+    pub(crate) async fn find_reply(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<forum_reply::Model> {
+        Self::find_reply_in_conn(&self.db, tenant_id, reply_id).await
+    }
+
+    pub(crate) async fn find_reply_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<forum_reply::Model> {
+        Self::find_reply_in_conn(txn, tenant_id, reply_id).await
+    }
+
+    async fn find_reply_in_conn(
+        conn: &impl sea_orm::ConnectionTrait,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+    ) -> ForumResult<forum_reply::Model> {
+        forum_reply::Entity::find_by_id(reply_id)
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .one(conn)
+            .await?
+            .ok_or(ForumError::ReplyNotFound(reply_id))
+    }
+
+    pub(crate) async fn set_status_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        status: &str,
+    ) -> ForumResult<forum_reply::Model> {
+        let reply = Self::find_reply_in_tx(txn, tenant_id, reply_id).await?;
+        let mut active: forum_reply::ActiveModel = reply.clone().into();
+        active.status = Set(status.to_string());
+        active.updated_at = Set(Utc::now().into());
+        active.update(txn).await?;
+        Ok(reply)
+    }
+
+    async fn load_bodies(&self, reply_id: Uuid) -> ForumResult<Vec<forum_reply_body::Model>> {
+        Ok(forum_reply_body::Entity::find()
+            .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
+            .all(&self.db)
+            .await?)
+    }
+
+    async fn fetch_reply_page(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        page: u64,
+        per_page: u64,
+        statuses: Option<&[&str]>,
+    ) -> ForumResult<(Vec<forum_reply::Model>, u64)> {
+        let mut query = forum_reply::Entity::find()
+            .filter(forum_reply::Column::TenantId.eq(tenant_id))
+            .filter(forum_reply::Column::TopicId.eq(topic_id))
+            .order_by_asc(forum_reply::Column::Position);
+
+        if let Some(statuses) = statuses {
+            let normalized_statuses: Vec<String> = statuses
+                .iter()
+                .map(|status| (*status).to_string())
+                .collect();
+            if !normalized_statuses.is_empty() {
+                query = query.filter(forum_reply::Column::Status.is_in(normalized_statuses));
+            }
+        }
+
+        let paginator = query.paginate(&self.db, per_page.max(1));
+        let total = paginator.num_items().await?;
+        let replies = paginator.fetch_page(page.saturating_sub(1)).await?;
         Ok((replies, total))
     }
 
-    fn node_to_reply(
-        node: rustok_content::NodeResponse,
-        topic_id: Uuid,
-        locale: &str,
-    ) -> ReplyResponse {
-        Self::node_to_reply_with_fallback(node, topic_id, locale, None)
-    }
-
-    fn node_to_reply_with_fallback(
-        node: rustok_content::NodeResponse,
-        topic_id: Uuid,
-        locale: &str,
-        fallback_locale: Option<&str>,
-    ) -> ReplyResponse {
-        let resolved = resolve_body_with_fallback(&node.bodies, locale, fallback_locale);
-        let metadata = node.metadata;
-
-        let content = resolved
-            .body
-            .as_ref()
-            .and_then(|b| b.body.clone())
-            .unwrap_or_default();
-        let content_format = resolved
-            .body
-            .as_ref()
-            .map(|b| b.format.clone())
-            .unwrap_or_else(|| "markdown".to_string());
-        let content_json = if content_format == "rt_json_v1" {
-            serde_json::from_str(&content).ok()
-        } else {
-            None
-        };
-
-        ReplyResponse {
-            id: node.id,
-            requested_locale: locale.to_string(),
-            locale: locale.to_string(),
-            effective_locale: resolved.effective_locale,
-            topic_id,
-            author_id: node.author_id,
-            content,
-            content_format,
-            content_json,
-            status: metadata
-                .get("reply_status")
-                .and_then(|v| v.as_str())
-                .unwrap_or(reply_status::APPROVED)
-                .to_string(),
-            parent_reply_id: metadata
-                .get("parent_reply_id")
-                .and_then(|v| v.as_str())
-                .and_then(|s| Uuid::parse_str(s).ok()),
-            created_at: node.created_at,
-            updated_at: node.updated_at,
+    async fn load_bodies_map(
+        &self,
+        reply_ids: &[Uuid],
+    ) -> ForumResult<HashMap<Uuid, Vec<forum_reply_body::Model>>> {
+        if reply_ids.is_empty() {
+            return Ok(HashMap::new());
         }
+        let rows = forum_reply_body::Entity::find()
+            .filter(forum_reply_body::Column::ReplyId.is_in(reply_ids.to_vec()))
+            .all(&self.db)
+            .await?;
+        let mut map: HashMap<Uuid, Vec<forum_reply_body::Model>> = HashMap::new();
+        for row in rows {
+            map.entry(row.reply_id).or_default().push(row);
+        }
+        Ok(map)
     }
+
+    async fn next_position_in_tx(txn: &DatabaseTransaction, topic_id: Uuid) -> ForumResult<i64> {
+        Ok(forum_reply::Entity::find()
+            .filter(forum_reply::Column::TopicId.eq(topic_id))
+            .order_by_desc(forum_reply::Column::Position)
+            .one(txn)
+            .await?
+            .map(|reply| reply.position + 1)
+            .unwrap_or(1))
+    }
+
+    async fn upsert_body_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        reply_id: Uuid,
+        locale: &str,
+        body: String,
+        body_format: String,
+    ) -> ForumResult<()> {
+        let existing = forum_reply_body::Entity::find()
+            .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
+            .filter(forum_reply_body::Column::Locale.eq(locale))
+            .one(txn)
+            .await?;
+        let now = Utc::now();
+
+        match existing {
+            Some(existing) => {
+                let mut active: forum_reply_body::ActiveModel = existing.into();
+                active.body = Set(body);
+                active.body_format = Set(body_format);
+                active.updated_at = Set(now.into());
+                active.update(txn).await?;
+            }
+            None => {
+                let seed = forum_reply_body::Entity::find()
+                    .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
+                    .order_by_asc(forum_reply_body::Column::CreatedAt)
+                    .one(txn)
+                    .await?;
+                forum_reply_body::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    reply_id: Set(reply_id),
+                    locale: Set(locale.to_string()),
+                    body: Set(if body.is_empty() {
+                        seed.as_ref()
+                            .map(|row| row.body.clone())
+                            .unwrap_or_default()
+                    } else {
+                        body
+                    }),
+                    body_format: Set(if body_format.is_empty() {
+                        seed.as_ref()
+                            .map(|row| row.body_format.clone())
+                            .unwrap_or_else(|| "markdown".to_string())
+                    } else {
+                        body_format
+                    }),
+                    created_at: Set(now.into()),
+                    updated_at: Set(now.into()),
+                }
+                .insert(txn)
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn to_reply_response(
+    reply: forum_reply::Model,
+    bodies: Vec<forum_reply_body::Model>,
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> ReplyResponse {
+    let resolved = resolve_reply_body(&bodies, locale, fallback_locale);
+    let content = resolved
+        .item
+        .map(|body| body.body.clone())
+        .unwrap_or_default();
+    let content_format = resolved
+        .item
+        .map(|body| body.body_format.clone())
+        .unwrap_or_else(|| "markdown".to_string());
+    let content_json = if content_format == "rt_json_v1" {
+        serde_json::from_str(&content).ok()
+    } else {
+        None
+    };
+
+    ReplyResponse {
+        id: reply.id,
+        requested_locale: locale.to_string(),
+        locale: locale.to_string(),
+        effective_locale: resolved.effective_locale,
+        topic_id: reply.topic_id,
+        author_id: reply.author_id,
+        content,
+        content_format,
+        content_json,
+        status: reply.status,
+        parent_reply_id: reply.parent_reply_id,
+        created_at: reply.created_at.to_rfc3339(),
+        updated_at: reply.updated_at.to_rfc3339(),
+    }
+}
+
+fn normalize_locale(locale: &str) -> ForumResult<String> {
+    normalize_locale_code(locale)
+        .ok_or_else(|| ForumError::Validation("Invalid locale".to_string()))
+}
+
+fn resolve_reply_body<'a>(
+    bodies: &'a [forum_reply_body::Model],
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> rustok_content::ResolvedLocale<'a, forum_reply_body::Model> {
+    resolve_by_locale_with_fallback(bodies, locale, fallback_locale, |body| body.locale.as_str())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::constants::{reply_status, KIND_REPLY};
-    use rustok_content::dto::{BodyResponse, NodeResponse, NodeTranslationResponse};
-    use rustok_content::entities::node::ContentStatus;
+    use super::ReplyService;
+    use crate::{
+        migrations, CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
+        ListRepliesFilter, TopicService,
+    };
+    use rustok_core::{MemoryTransport, SecurityContext};
+    use rustok_outbox::TransactionalEventBus;
+    use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+    use sea_orm_migration::SchemaManager;
+    use std::sync::Arc;
+    use uuid::Uuid;
 
-    fn make_reply_node(
-        topic_id: Uuid,
-        author_id: Option<Uuid>,
-        content: Option<&str>,
-        locale: &str,
-        status: &str,
-        parent_reply_id: Option<Uuid>,
-    ) -> NodeResponse {
-        let metadata = serde_json::json!({
-            "reply_status": status,
-            "parent_reply_id": parent_reply_id.map(|u| u.to_string())
-        });
-        NodeResponse {
-            id: Uuid::nil(),
-            tenant_id: Uuid::nil(),
-            kind: KIND_REPLY.to_string(),
-            status: ContentStatus::Published,
-            parent_id: Some(topic_id),
-            author_id,
-            category_id: None,
-            position: 0,
-            depth: 0,
-            reply_count: 0,
-            metadata,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
-            published_at: None,
-            deleted_at: None,
-            version: 1,
-            translations: vec![NodeTranslationResponse {
-                locale: locale.to_string(),
-                title: None,
-                slug: None,
-                excerpt: None,
-            }],
-            bodies: content
-                .map(|c| {
-                    vec![BodyResponse {
-                        locale: locale.to_string(),
-                        body: Some(c.to_string()),
-                        format: "markdown".to_string(),
-                        updated_at: "2024-01-01T00:00:00Z".to_string(),
-                    }]
-                })
-                .unwrap_or_default(),
+    async fn setup_forum_test_db() -> DatabaseConnection {
+        let db_url = format!(
+            "sqlite:file:forum_reply_service_{}?mode=memory&cache=shared",
+            Uuid::new_v4()
+        );
+        let mut opts = ConnectOptions::new(db_url);
+        opts.max_connections(5)
+            .min_connections(1)
+            .sqlx_logging(false);
+
+        Database::connect(opts)
+            .await
+            .expect("failed to connect forum reply test sqlite database")
+    }
+
+    async fn ensure_forum_schema(db: &DatabaseConnection) {
+        let manager = SchemaManager::new(db);
+        for migration in migrations::migrations() {
+            migration
+                .up(&manager)
+                .await
+                .expect("forum migration should apply");
         }
     }
 
-    #[test]
-    fn node_to_reply_maps_fields() {
-        let topic_id = Uuid::new_v4();
-        let author_id = Uuid::new_v4();
-        let parent_reply_id = Uuid::new_v4();
-        let node = make_reply_node(
-            topic_id,
-            Some(author_id),
-            Some("Hello!"),
-            "en",
-            reply_status::APPROVED,
-            Some(parent_reply_id),
-        );
+    #[tokio::test]
+    async fn list_response_preserves_reply_order_by_position() {
+        let db = setup_forum_test_db().await;
+        ensure_forum_schema(&db).await;
 
-        let result = ReplyService::node_to_reply(node, topic_id, "en");
+        let transport = MemoryTransport::new();
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
 
-        assert_eq!(result.topic_id, topic_id);
-        assert_eq!(result.author_id, Some(author_id));
-        assert_eq!(result.content, "Hello!");
-        assert_eq!(result.content_format, "markdown");
-        assert!(result.content_json.is_none());
-        assert_eq!(result.status, reply_status::APPROVED);
-        assert_eq!(result.parent_reply_id, Some(parent_reply_id));
-        assert_eq!(result.effective_locale, "en");
-    }
+        let tenant_id = Uuid::new_v4();
+        let security = SecurityContext::system();
 
-    #[test]
-    fn node_to_reply_defaults_on_missing_fields() {
-        let topic_id = Uuid::new_v4();
-        let node = make_reply_node(topic_id, None, None, "en", reply_status::PENDING, None);
+        let category = CategoryService::new(db.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "General".to_string(),
+                    slug: "general".to_string(),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(0),
+                    moderated: false,
+                },
+            )
+            .await
+            .expect("category should be created");
 
-        let result = ReplyService::node_to_reply(node, topic_id, "en");
+        let topic = TopicService::new(db.clone(), event_bus.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category.id,
+                    title: "Ordered topic".to_string(),
+                    slug: Some("ordered-topic".to_string()),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    tags: vec![],
+                    channel_slugs: None,
+                },
+            )
+            .await
+            .expect("topic should be created");
 
-        assert_eq!(result.content, "");
-        assert_eq!(result.status, reply_status::PENDING);
-        assert_eq!(result.parent_reply_id, None);
-        assert!(result.author_id.is_none());
-    }
+        let service = ReplyService::new(db.clone(), event_bus.clone());
+        for content in ["first", "second", "third"] {
+            service
+                .create(
+                    tenant_id,
+                    security.clone(),
+                    topic.id,
+                    CreateReplyInput {
+                        locale: "en".to_string(),
+                        content: content.to_string(),
+                        content_format: "markdown".to_string(),
+                        content_json: None,
+                        parent_reply_id: None,
+                    },
+                )
+                .await
+                .expect("reply should be created");
+        }
 
-    #[test]
-    fn node_to_reply_extracts_rt_json_content_json() {
-        let topic_id = Uuid::new_v4();
-        let rich = serde_json::json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
-        let node = NodeResponse {
-            id: Uuid::new_v4(),
-            tenant_id: Uuid::nil(),
-            kind: KIND_REPLY.to_string(),
-            status: ContentStatus::Published,
-            parent_id: Some(topic_id),
-            author_id: None,
-            category_id: None,
-            position: 0,
-            depth: 0,
-            reply_count: 0,
-            metadata: serde_json::json!({"reply_status": reply_status::APPROVED}),
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
-            published_at: None,
-            deleted_at: None,
-            version: 1,
-            translations: vec![],
-            bodies: vec![BodyResponse {
-                locale: "en".to_string(),
-                body: Some(rich.to_string()),
-                format: "rt_json_v1".to_string(),
-                updated_at: "2024-01-01T00:00:00Z".to_string(),
-            }],
-        };
+        let (replies, total) = service
+            .list_response_for_topic_with_locale_fallback(
+                tenant_id,
+                security,
+                topic.id,
+                ListRepliesFilter {
+                    locale: Some("en".to_string()),
+                    page: 1,
+                    per_page: 20,
+                },
+                None,
+            )
+            .await
+            .expect("reply list should load");
 
-        let result = ReplyService::node_to_reply(node, topic_id, "en");
-        assert_eq!(result.content_format, "rt_json_v1");
-        assert_eq!(result.content_json, Some(rich));
-    }
-
-    #[test]
-    fn node_to_reply_falls_back_to_first_body_locale() {
-        let topic_id = Uuid::new_v4();
-        let node = make_reply_node(
-            topic_id,
-            None,
-            Some("Hallo!"),
-            "de",
-            reply_status::APPROVED,
-            None,
-        );
-
-        let result = ReplyService::node_to_reply(node, topic_id, "en");
-        assert_eq!(result.content, "Hallo!");
-        assert_eq!(result.effective_locale, "de");
+        assert_eq!(total, 3);
+        assert_eq!(replies.len(), 3);
+        let contents = replies
+            .into_iter()
+            .map(|reply| reply.content)
+            .collect::<Vec<_>>();
+        assert_eq!(contents, vec!["first", "second", "third"]);
     }
 }

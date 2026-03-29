@@ -1,4 +1,5 @@
 pub mod body;
+pub mod canonical_url;
 pub mod category;
 pub mod category_translation;
 pub mod node;
@@ -8,8 +9,10 @@ pub mod orchestration_operation;
 pub mod tag;
 pub mod tag_translation;
 pub mod taggable;
+pub mod url_alias;
 
 pub use body::Entity as Body;
+pub use canonical_url::Entity as CanonicalUrl;
 pub use category::Entity as Category;
 pub use category_translation::Entity as CategoryTranslation;
 pub use node::Entity as Node;
@@ -19,3 +22,4 @@ pub use orchestration_operation::Entity as OrchestrationOperation;
 pub use tag::Entity as Tag;
 pub use tag_translation::Entity as TagTranslation;
 pub use taggable::Entity as Taggable;
+pub use url_alias::Entity as UrlAlias;

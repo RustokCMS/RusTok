@@ -44,7 +44,6 @@ rustok-api.workspace = true
 rustok-blog-admin = { path = "../../crates/rustok-blog/admin" }
 rustok-channel-admin = { path = "../../crates/rustok-channel/admin" }
 rustok-commerce-admin = { path = "../../crates/rustok-commerce/admin" }
-rustok-content-admin = { path = "../../crates/rustok-content/admin" }
 rustok-forum-admin = { path = "../../crates/rustok-forum/admin" }
 rustok-pages-admin = { path = "../../crates/rustok-pages/admin" }
 rustok-search-admin = { path = "../../crates/rustok-search/admin" }
@@ -79,7 +78,6 @@ normal = [
   "rustok-blog-admin",
   "rustok-channel-admin",
   "rustok-commerce-admin",
-  "rustok-content-admin",
   "rustok-forum-admin",
   "rustok-pages-admin",
   "rustok-search-admin",

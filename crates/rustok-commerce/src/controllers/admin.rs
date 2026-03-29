@@ -936,8 +936,8 @@ mod tests {
     use uuid::Uuid;
 
     use crate::dto::{
-        CancelPaymentInput, CreateFulfillmentInput, CreateOrderInput,
-        CreateOrderLineItemInput, CreatePaymentCollectionInput, ShipFulfillmentInput,
+        CancelPaymentInput, CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
+        CreatePaymentCollectionInput, ShipFulfillmentInput,
     };
     use crate::{FulfillmentService, OrderService, PaymentService};
 

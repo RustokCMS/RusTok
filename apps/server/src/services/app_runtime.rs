@@ -18,6 +18,7 @@ use crate::middleware::rate_limit::{
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
+use crate::services::content_orchestration::init_content_orchestration;
 use crate::services::event_transport_factory::build_event_runtime;
 use crate::services::graphql_schema::init_graphql_schema;
 use crate::services::index_dispatcher::spawn_index_dispatcher;
@@ -100,6 +101,7 @@ pub async fn bootstrap_app_runtime(
             ))
         })?;
     middleware::tenant::init_tenant_cache_infrastructure(ctx, &cache_service).await;
+    init_content_orchestration(ctx);
 
     #[cfg(feature = "mod-media")]
     init_storage(ctx, settings);

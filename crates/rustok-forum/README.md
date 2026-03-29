@@ -2,12 +2,14 @@
 
 ## Purpose
 
-`rustok-forum` owns the forum domain built on top of the content module.
+`rustok-forum` owns the forum domain with forum-owned persistence.
 
 ## Responsibilities
 
 - Provide `ForumModule` metadata for the runtime registry.
 - Own forum categories, topics, replies, and moderation workflows.
+- Apply module-owned reply lifecycle rules, including pending replies for moderated categories and approved-only public storefront reads.
+- Own forum storage tables for categories, topics, translations, replies, and channel access.
 - Own forum GraphQL and REST transport adapters alongside the domain services.
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
@@ -16,7 +18,7 @@
 
 ## Interactions
 
-- Depends on `rustok-content` for shared content storage and orchestration primitives.
+- Depends on `rustok-content` for shared rich-text, locale, and future orchestration helpers.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
 - Depends on `rustok-api` for shared auth/tenant/request GraphQL+HTTP adapter contracts.
 - Used by `apps/server` through thin GraphQL/REST shims and route composition.

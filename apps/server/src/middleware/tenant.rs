@@ -942,6 +942,6 @@ mod invalidation_tests {
         assert!(should_bypass_tenant_resolution("/metrics"));
         assert!(should_bypass_tenant_resolution("/api/openapi.json"));
         assert!(should_bypass_tenant_resolution("/api/graphql/ws"));
-        assert!(!should_bypass_tenant_resolution("/api/content/nodes"));
+        assert!(!should_bypass_tenant_resolution("/api/blog/posts"));
     }
 }

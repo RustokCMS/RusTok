@@ -615,3 +615,86 @@ pub struct ActivityUser {
     pub id: String,
     pub name: Option<String>,
 }
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+#[derive(InputObject, Debug, Clone)]
+pub struct PromoteTopicToPostInput {
+    pub topic_id: Uuid,
+    pub locale: String,
+    pub blog_category_id: Option<Uuid>,
+    pub reason: Option<String>,
+    pub idempotency_key: String,
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+#[derive(InputObject, Debug, Clone)]
+pub struct DemotePostToTopicInput {
+    pub post_id: Uuid,
+    pub locale: String,
+    pub forum_category_id: Uuid,
+    pub reason: Option<String>,
+    pub idempotency_key: String,
+}
+
+#[cfg(feature = "mod-content")]
+#[derive(InputObject, Debug, Clone)]
+pub struct SplitTopicInput {
+    pub topic_id: Uuid,
+    pub locale: String,
+    pub reply_ids: Vec<Uuid>,
+    pub new_title: String,
+    pub reason: Option<String>,
+    pub idempotency_key: String,
+}
+
+#[cfg(feature = "mod-content")]
+#[derive(InputObject, Debug, Clone)]
+pub struct MergeTopicsInput {
+    pub target_topic_id: Uuid,
+    pub source_topic_ids: Vec<Uuid>,
+    pub reason: Option<String>,
+    pub idempotency_key: String,
+}
+
+#[cfg(feature = "mod-content")]
+#[derive(SimpleObject, Debug, Clone)]
+pub struct ContentOrchestrationPayload {
+    pub source_id: Uuid,
+    pub target_id: Uuid,
+    pub moved_comments: u64,
+}
+
+#[cfg(feature = "mod-content")]
+#[derive(SimpleObject, Debug, Clone)]
+pub struct ResolvedCanonicalRoute {
+    pub target_kind: String,
+    pub target_id: Uuid,
+    pub locale: String,
+    pub matched_url: String,
+    pub canonical_url: String,
+    pub redirect_required: bool,
+}
+
+#[cfg(feature = "mod-content")]
+impl From<rustok_content::ResolvedContentRoute> for ResolvedCanonicalRoute {
+    fn from(value: rustok_content::ResolvedContentRoute) -> Self {
+        Self {
+            target_kind: value.target_kind,
+            target_id: value.target_id,
+            locale: value.locale,
+            matched_url: value.matched_url,
+            canonical_url: value.canonical_url,
+            redirect_required: value.redirect_required,
+        }
+    }
+}

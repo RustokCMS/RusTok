@@ -4,7 +4,6 @@ use rustok_api::{
     AuthContext, RequestContext, TenantContext,
 };
 use rustok_channel::ChannelService;
-use rustok_content::NodeService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
@@ -175,25 +174,24 @@ impl BlogQuery {
         let locale = resolve_graphql_locale(ctx, filter.locale.as_deref());
         let effective_limit = filter.per_page.unwrap_or(20).clamp(1, 100);
 
-        let domain_filter = rustok_content::dto::ListNodesFilter {
-            kind: Some("post".to_string()),
-            status: filter.status.map(Into::into),
-            parent_id: None,
-            author_id: filter.author_id,
-            locale: Some(locale.clone()),
-            category_id: None,
-            page: filter.page.unwrap_or(1),
-            per_page: filter.per_page.unwrap_or(20),
-            include_deleted: false,
-        };
-
-        let service = NodeService::new(db.clone(), event_bus.clone());
+        let service = PostService::new(db.clone(), event_bus.clone());
         let list_started_at = Instant::now();
-        let (items, total): (Vec<rustok_content::dto::NodeListItem>, u64) = service
-            .list_nodes_with_locale_fallback(
+        let result = service
+            .list_posts_with_locale_fallback(
                 tenant_id,
                 auth_context_to_security(ctx),
-                domain_filter,
+                crate::PostListQuery {
+                    status: filter.status.map(Into::into),
+                    category_id: None,
+                    tag: None,
+                    author_id: filter.author_id,
+                    search: None,
+                    locale: Some(locale.clone()),
+                    page: Some(filter.page.unwrap_or(1) as u32),
+                    per_page: Some(filter.per_page.unwrap_or(20) as u32),
+                    sort_by: Some("created_at".to_string()),
+                    sort_order: Some("desc".to_string()),
+                },
                 Some(tenant.default_locale.as_str()),
             )
             .await?;
@@ -202,24 +200,23 @@ impl BlogQuery {
             "blog.posts",
             "service_list",
             list_started_at.elapsed().as_secs_f64(),
-            total,
+            result.total,
         );
 
         let author_profiles = load_author_profiles_map(
             ctx,
             db,
             tenant_id,
-            items.iter().map(|item| item.author_id),
+            result.items.iter().map(|item| Some(item.author_id)),
             locale.as_str(),
             tenant.default_locale.as_str(),
         )
         .await?;
-        let items = items
+        let items = result
+            .items
             .into_iter()
             .map(|item| {
-                let author_profile = item
-                    .author_id
-                    .and_then(|author_id| author_profiles.get(&author_id).cloned());
+                let author_profile = author_profiles.get(&item.author_id).cloned();
                 map_post_list_item(item, author_profile)
             })
             .collect::<Vec<_>>();
@@ -232,7 +229,10 @@ impl BlogQuery {
             items.len(),
         );
 
-        Ok(GqlPostList { items, total })
+        Ok(GqlPostList {
+            items,
+            total: result.total,
+        })
     }
 }
 
@@ -273,6 +273,22 @@ fn is_post_visible_for_request(
     is_authenticated || is_post_visible_for_channel(metadata, public_channel_slug)
 }
 
+fn is_post_summary_visible_for_channel(
+    item: &crate::PostSummary,
+    public_channel_slug: Option<&str>,
+) -> bool {
+    if item.channel_slugs.is_empty() {
+        return true;
+    }
+
+    let Some(channel_slug) = public_channel_slug else {
+        return false;
+    };
+
+    let normalized = channel_slug.trim().to_ascii_lowercase();
+    !normalized.is_empty() && item.channel_slugs.iter().any(|item| item == &normalized)
+}
+
 async fn list_public_visible_posts(
     ctx: &Context<'_>,
     db: &DatabaseConnection,
@@ -286,43 +302,45 @@ async fn list_public_visible_posts(
     let requested_page = filter.page.unwrap_or(1).max(1);
     let requested_per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
     let batch_size = requested_per_page.max(100);
-    let service = NodeService::new(db.clone(), event_bus.clone());
+    let service = PostService::new(db.clone(), event_bus.clone());
 
     let mut current_page = 1u64;
     let mut visible_items = Vec::new();
 
     loop {
-        let (items, total) = service
-            .list_nodes_with_locale_fallback(
+        let result = service
+            .list_posts_with_locale_fallback(
                 tenant_id,
                 SecurityContext::system(),
-                rustok_content::dto::ListNodesFilter {
-                    kind: Some("post".to_string()),
-                    status: Some(rustok_content::entities::node::ContentStatus::Published),
-                    parent_id: None,
-                    author_id: filter.author_id,
+                crate::PostListQuery {
+                    status: Some(crate::BlogPostStatus::Published),
                     category_id: None,
+                    tag: None,
+                    author_id: filter.author_id,
+                    search: None,
                     locale: Some(locale.clone()),
-                    page: current_page,
-                    per_page: batch_size,
-                    include_deleted: false,
+                    page: Some(current_page as u32),
+                    per_page: Some(batch_size as u32),
+                    sort_by: Some("published_at".to_string()),
+                    sort_order: Some("desc".to_string()),
                 },
                 Some(default_locale),
             )
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
-        if items.is_empty() {
+        if result.items.is_empty() {
             break;
         }
 
         visible_items.extend(
-            items
+            result
+                .items
                 .into_iter()
-                .filter(|item| is_post_visible_for_channel(&item.metadata, public_channel_slug)),
+                .filter(|item| is_post_summary_visible_for_channel(item, public_channel_slug)),
         );
 
-        if current_page.saturating_mul(batch_size) >= total {
+        if current_page.saturating_mul(batch_size) >= result.total {
             break;
         }
         current_page += 1;
@@ -341,7 +359,7 @@ async fn list_public_visible_posts(
         ctx,
         db,
         tenant_id,
-        page_items.iter().map(|item| item.author_id),
+        page_items.iter().map(|item| Some(item.author_id)),
         locale.as_str(),
         default_locale,
     )
@@ -349,9 +367,7 @@ async fn list_public_visible_posts(
     let items = page_items
         .into_iter()
         .map(|item| {
-            let author_profile = item
-                .author_id
-                .and_then(|author_id| author_profiles.get(&author_id).cloned());
+            let author_profile = author_profiles.get(&item.author_id).cloned();
             map_post_list_item(item, author_profile)
         })
         .collect::<Vec<_>>();
@@ -377,7 +393,7 @@ fn map_post(post: crate::PostResponse, author_profile: Option<GqlProfileSummary>
 }
 
 fn map_post_list_item(
-    item: rustok_content::dto::NodeListItem,
+    item: crate::PostSummary,
     author_profile: Option<GqlProfileSummary>,
 ) -> GqlPostListItem {
     let mut gql: GqlPostListItem = item.into();

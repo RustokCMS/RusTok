@@ -1,12 +1,17 @@
-//! Blog module entities
-//!
-//! The blog module is a wrapper module that uses content module tables.
-//! No separate database entities are needed.
-//!
-//! Entity references are provided through the content module:
-//! - `rustok_content::entities::node` - for blog posts
-//! - `rustok_content::entities::body` - for post body content
-//! - `rustok_content::entities::node_translation` - for localized titles/slugs
+//! Blog module entities.
 
-// Re-export content entities for convenience
-pub use rustok_content::entities::{Body, Node, NodeTranslation};
+pub mod blog_category;
+pub mod blog_category_translation;
+pub mod blog_post;
+pub mod blog_post_tag;
+pub mod blog_post_translation;
+pub mod blog_tag;
+pub mod blog_tag_translation;
+
+pub use blog_category::Entity as BlogCategory;
+pub use blog_category_translation::Entity as BlogCategoryTranslation;
+pub use blog_post::Entity as BlogPost;
+pub use blog_post_tag::Entity as BlogPostTag;
+pub use blog_post_translation::Entity as BlogPostTranslation;
+pub use blog_tag::Entity as BlogTag;
+pub use blog_tag_translation::Entity as BlogTagTranslation;

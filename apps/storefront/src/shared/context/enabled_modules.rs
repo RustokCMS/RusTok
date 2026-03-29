@@ -3,7 +3,7 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::shared::api::{request, ApiError};
+use crate::shared::api::{configured_tenant_slug, request, ApiError};
 
 const ENABLED_MODULES_QUERY: &str = "query EnabledModules { enabledModules }";
 
@@ -44,25 +44,6 @@ impl EnabledModulesContext {
             }
         });
     }
-}
-
-fn configured_tenant_slug() -> Option<String> {
-    [
-        "RUSTOK_TENANT_SLUG",
-        "NEXT_PUBLIC_TENANT_SLUG",
-        "NEXT_PUBLIC_DEFAULT_TENANT_SLUG",
-    ]
-    .into_iter()
-    .find_map(|key| {
-        std::env::var(key).ok().and_then(|value| {
-            let trimmed = value.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
-        })
-    })
 }
 
 pub async fn fetch_enabled_modules() -> Result<Vec<String>, ApiError> {

@@ -76,6 +76,14 @@ where
         .collect()
 }
 
+pub fn normalize_locale_code(locale: &str) -> Option<String> {
+    let normalized = locale.trim().replace('_', "-").to_ascii_lowercase();
+    if normalized.is_empty() || normalized.len() > 16 {
+        return None;
+    }
+    Some(normalized)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,5 +144,11 @@ mod tests {
 
         assert_eq!(resolved.item.map(|item| item.locale), Some("de"));
         assert_eq!(resolved.effective_locale, "de");
+    }
+
+    #[test]
+    fn normalizes_locale_code() {
+        assert_eq!(normalize_locale_code(" EN_us "), Some("en-us".to_string()));
+        assert_eq!(normalize_locale_code(""), None);
     }
 }

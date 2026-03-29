@@ -2,41 +2,46 @@
 
 ## Purpose
 
-`rustok-content` owns the core CMS domain for RusToK: nodes, posts, media, comments,
-categories, and tags.
+`rustok-content` provides shared content helpers and a port-based cross-domain orchestration core for RusToK.
 
 ## Responsibilities
 
 - Provide `ContentModule` metadata for the runtime registry.
-- Own content entities, services, orchestration, and migrations.
-- Own content GraphQL and REST transport adapters for module-facing APIs.
-- Publish module-owned Leptos UI packages in `admin/` and `storefront/` for host composition.
-- Publish the typed RBAC surface for content resources such as `nodes:*`, `posts:*`,
-  `media:*`, `comments:*`, `categories:*`, and `tags:*`.
+- Own shared content entities, legacy migrations, and orchestration state.
+- Provide shared locale, slug, and rich-text helpers used by domain modules.
+- Own orchestration state, idempotency, audit records, and canonical URL/alias mappings for cross-domain flows.
+- Expose a port-based `ContentOrchestrationService` that delegates domain work through `ContentOrchestrationBridge`.
+- Publish only orchestration-facing RBAC for `forum_topics:*` and `blog_posts:*`.
 
 ## Interactions
 
 - Depends on `rustok-core` for permissions, events, and `SecurityContext`.
 - Depends on `rustok-api` for shared tenant/auth/request and GraphQL helper contracts.
-- Exposes its own GraphQL and REST adapters; `apps/server` now acts only as a composition root
-  and re-export shim for content transport entry points.
-- Used as a storage/orchestration dependency by `rustok-blog`, `rustok-forum`, and `rustok-pages`.
+- No longer exposes product GraphQL, REST, admin, or storefront entry points.
+- Used as a shared helper dependency by `rustok-blog`, `rustok-forum`,
+  `rustok-comments`, and `rustok-pages`.
 - Declares permissions via `rustok-core::Permission`.
-- REST and GraphQL mutations enforce permissions from `AuthContext.permissions`, then pass a
-  permission-aware `SecurityContext` into content services.
-- `apps/admin` consumes `rustok-content-admin` and `apps/storefront` consumes
-  `rustok-content-storefront` through manifest-driven `build.rs` code generation.
+- `ContentOrchestrationService` enforces orchestration permissions from
+  `AuthContext.permissions`, persists idempotency/audit state, and publishes
+  orchestration events. Runtime adapters for domain conversions live outside the
+  shared helper layer and implement `ContentOrchestrationBridge`.
+- `apps/server` is the current runtime host for the bridge implementation and
+  exposes the live GraphQL mutations for `topic ↔ post`, `split_topic`, and
+  `merge_topics`.
+
+- Conversion flows persist typed redirect/canonical state in
+  `content_canonical_urls` and `content_url_aliases` and publish
+  `CanonicalUrlChanged` / `UrlAliasPurged` through the outbox contract.
 
 ## Entry points
 
 - `ContentModule`
-- `NodeService`
 - `ContentOrchestrationService`
+- `ContentOrchestrationBridge`
 - `CategoryService`
 - `TagService`
-- `graphql::ContentQuery`
-- `graphql::ContentMutation`
-- `controllers::routes`
-- `admin::ContentAdmin` (publishable Leptos package)
-- `storefront::ContentView` (publishable Leptos package)
 - content DTO and entity re-exports
+
+`NodeService` remains available only under `rustok-content::services` as a
+shared-node helper surface. It is intentionally no longer part of the top-level
+crate entry points.

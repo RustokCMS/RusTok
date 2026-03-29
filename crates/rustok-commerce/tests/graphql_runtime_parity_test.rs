@@ -2,11 +2,10 @@ use async_graphql::{EmptySubscription, Request, Schema};
 use rust_decimal::Decimal;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_commerce::dto::{
-    AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateProductInput,
-    CreateCustomerInput,
+    AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateCustomerInput,
     CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
-    CreatePaymentCollectionInput, CreateShippingOptionInput, CreateVariantInput, PriceInput,
-    ProductTranslationInput,
+    CreatePaymentCollectionInput, CreateProductInput, CreateShippingOptionInput,
+    CreateVariantInput, PriceInput, ProductTranslationInput,
 };
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::{
@@ -191,10 +190,10 @@ fn build_schema(
         CommerceMutation::default(),
         EmptySubscription,
     )
-        .data(db.clone())
-        .data(event_bus)
-        .data(tenant)
-        .data(request_context);
+    .data(db.clone())
+    .data(event_bus)
+    .data(tenant)
+    .data(request_context);
 
     if let Some(auth) = auth {
         builder = builder.data(auth);
@@ -322,7 +321,12 @@ fn admin_order_mutation(
     )
 }
 
-fn admin_order_parity_query(tenant_id: Uuid, order_id: Uuid, payment_collection_id: Uuid, fulfillment_id: Uuid) -> String {
+fn admin_order_parity_query(
+    tenant_id: Uuid,
+    order_id: Uuid,
+    payment_collection_id: Uuid,
+    fulfillment_id: Uuid,
+) -> String {
     format!(
         r#"
         query {{
@@ -486,7 +490,11 @@ fn storefront_cart_flow_mutation(tenant_id: Uuid) -> String {
     )
 }
 
-fn storefront_cart_add_line_item_mutation(tenant_id: Uuid, cart_id: Uuid, variant_id: Uuid) -> String {
+fn storefront_cart_add_line_item_mutation(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    variant_id: Uuid,
+) -> String {
     format!(
         r#"
         mutation {{
@@ -1348,7 +1356,10 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
         mutation_json["capturePaymentCollection"]["status"],
         Value::from("captured")
     );
-    assert_eq!(mutation_json["markOrderPaid"]["status"], Value::from("paid"));
+    assert_eq!(
+        mutation_json["markOrderPaid"]["status"],
+        Value::from("paid")
+    );
     assert_eq!(mutation_json["shipOrder"]["status"], Value::from("shipped"));
     assert_eq!(
         mutation_json["deliverOrder"]["status"],
@@ -1377,7 +1388,10 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
         .into_json()
         .expect("GraphQL query response must serialize");
 
-    assert_eq!(query_json["order"]["order"]["status"], Value::from("delivered"));
+    assert_eq!(
+        query_json["order"]["order"]["status"],
+        Value::from("delivered")
+    );
     assert_eq!(
         query_json["order"]["order"]["paymentId"],
         Value::from("graphql-pay-1")
@@ -1491,7 +1505,10 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
         Value::from("buyer@example.com")
     );
     assert_eq!(json["storefrontMe"]["locale"], Value::from("de"));
-    assert_eq!(json["storefrontOrder"]["id"], Value::from(order.id.to_string()));
+    assert_eq!(
+        json["storefrontOrder"]["id"],
+        Value::from(order.id.to_string())
+    );
     assert_eq!(
         json["storefrontOrder"]["customerId"],
         Value::from(customer.id.to_string())
@@ -1677,7 +1694,12 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
         .await
         .unwrap();
 
-    let schema = build_schema(&db, tenant_context(tenant_id), request_context(tenant_id, "de"), None);
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        None,
+    );
     let response = schema
         .execute(Request::new(storefront_checkout_mutation(
             tenant_id, cart.id,
@@ -1803,7 +1825,10 @@ async fn storefront_graphql_payment_collection_rejects_foreign_customer_cart_acc
         .await;
 
     assert_eq!(response.errors.len(), 1);
-    assert_eq!(response.errors[0].message, "Cart belongs to another customer");
+    assert_eq!(
+        response.errors[0].message,
+        "Cart belongs to another customer"
+    );
 }
 
 #[tokio::test]
@@ -1826,12 +1851,15 @@ async fn storefront_graphql_cart_flow_creates_reads_updates_and_removes_line_ite
         .first()
         .expect("published product must have variant");
 
-    let schema = build_schema(&db, tenant_context(tenant_id), request_context(tenant_id, "de"), None);
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        None,
+    );
 
     let created_cart = schema
-        .execute(Request::new(storefront_cart_flow_mutation(
-            tenant_id,
-        )))
+        .execute(Request::new(storefront_cart_flow_mutation(tenant_id)))
         .await;
     assert!(
         created_cart.errors.is_empty(),
@@ -2015,7 +2043,10 @@ async fn storefront_graphql_cart_query_rejects_foreign_customer_access() {
         .await;
 
     assert_eq!(response.errors.len(), 1);
-    assert_eq!(response.errors[0].message, "Cart belongs to another customer");
+    assert_eq!(
+        response.errors[0].message,
+        "Cart belongs to another customer"
+    );
 }
 
 #[tokio::test]
@@ -2069,7 +2100,12 @@ async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
         .await
         .expect("cart should be created");
 
-    let schema = build_schema(&db, tenant_context(tenant_id), request_context(tenant_id, "de"), None);
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        None,
+    );
     let response = schema
         .execute(Request::new(storefront_cart_context_update_mutation(
             tenant_id,
@@ -2088,7 +2124,10 @@ async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
         .into_json()
         .expect("GraphQL response must serialize");
 
-    assert_eq!(json["updateStorefrontCartContext"]["cart"]["email"], Value::Null);
+    assert_eq!(
+        json["updateStorefrontCartContext"]["cart"]["email"],
+        Value::Null
+    );
     assert_eq!(
         json["updateStorefrontCartContext"]["cart"]["regionId"],
         Value::from(region.id.to_string())
@@ -2175,7 +2214,12 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
         .await
         .expect("cart should be created");
 
-    let schema = build_schema(&db, tenant_context(tenant_id), request_context(tenant_id, "de"), None);
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        None,
+    );
     let response = schema
         .execute(Request::new(storefront_discovery_query(tenant_id, cart.id)))
         .await;
@@ -2189,7 +2233,10 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
         .into_json()
         .expect("GraphQL response must serialize");
 
-    assert_eq!(json["storefrontRegions"][0]["id"], Value::from(region.id.to_string()));
+    assert_eq!(
+        json["storefrontRegions"][0]["id"],
+        Value::from(region.id.to_string())
+    );
     assert_eq!(
         json["storefrontRegions"][0]["currencyCode"],
         Value::from("EUR")
@@ -2284,5 +2331,8 @@ async fn storefront_graphql_shipping_options_reject_foreign_customer_cart_access
         .await;
 
     assert_eq!(response.errors.len(), 1);
-    assert_eq!(response.errors[0].message, "Cart belongs to another customer");
+    assert_eq!(
+        response.errors[0].message,
+        "Cart belongs to another customer"
+    );
 }

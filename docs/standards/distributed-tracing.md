@@ -47,7 +47,7 @@ Distributed tracing tracks requests as they flow through multiple services, crea
 ```
 ┌─────────────────────────────────────────────────────┐
 │                  HTTP Request                       │
-│  GET /api/content/nodes/{id}                       │
+│  GET /api/blog/posts/{id}                          │
 └────────────────┬────────────────────────────────────┘
                  │
                  ↓

@@ -183,6 +183,7 @@ fn sample_events() -> Vec<DomainEvent> {
         DomainEvent::ForumReplyStatusChanged {
             reply_id: id(67),
             topic_id: id(68),
+            old_status: "pending".to_string(),
             new_status: "approved".to_string(),
             moderator_id: Some(id(69)),
         },
@@ -212,62 +213,75 @@ fn sample_events() -> Vec<DomainEvent> {
             moved_comments: 5,
             reason: Some("duplicate_threads".to_string()),
         },
-        DomainEvent::TenantCreated { tenant_id: id(79) },
-        DomainEvent::TenantUpdated { tenant_id: id(80) },
+        DomainEvent::CanonicalUrlChanged {
+            target_id: id(79),
+            target_kind: "blog_post".to_string(),
+            locale: "en".to_string(),
+            new_canonical_url: "/modules/blog?slug=release-notes".to_string(),
+            old_urls: vec!["/modules/forum?topic=79".to_string()],
+        },
+        DomainEvent::UrlAliasPurged {
+            target_id: id(80),
+            target_kind: "forum_topic".to_string(),
+            locale: "en".to_string(),
+            urls: vec!["/modules/blog?slug=old-thread".to_string()],
+        },
+        DomainEvent::TenantCreated { tenant_id: id(81) },
+        DomainEvent::TenantUpdated { tenant_id: id(82) },
         DomainEvent::LocaleEnabled {
-            tenant_id: id(81),
+            tenant_id: id(83),
             locale: "en".to_string(),
         },
         DomainEvent::LocaleDisabled {
-            tenant_id: id(82),
+            tenant_id: id(84),
             locale: "fr".to_string(),
         },
         DomainEvent::FieldDefinitionCreated {
-            tenant_id: id(83),
+            tenant_id: id(85),
             entity_type: "user".to_string(),
             field_key: "nickname".to_string(),
             field_type: "text".to_string(),
         },
         DomainEvent::FieldDefinitionUpdated {
-            tenant_id: id(84),
+            tenant_id: id(86),
             entity_type: "product".to_string(),
             field_key: "sku_extra".to_string(),
         },
         DomainEvent::FieldDefinitionDeleted {
-            tenant_id: id(85),
+            tenant_id: id(87),
             entity_type: "order".to_string(),
             field_key: "legacy_note".to_string(),
         },
         DomainEvent::FlexSchemaCreated {
-            tenant_id: id(86),
-            schema_id: id(87),
-            slug: "faq".to_string(),
-        },
-        DomainEvent::FlexSchemaUpdated {
             tenant_id: id(88),
             schema_id: id(89),
             slug: "faq".to_string(),
         },
-        DomainEvent::FlexSchemaDeleted {
+        DomainEvent::FlexSchemaUpdated {
             tenant_id: id(90),
             schema_id: id(91),
+            slug: "faq".to_string(),
         },
-        DomainEvent::FlexEntryCreated {
+        DomainEvent::FlexSchemaDeleted {
             tenant_id: id(92),
             schema_id: id(93),
-            entry_id: id(94),
+        },
+        DomainEvent::FlexEntryCreated {
+            tenant_id: id(94),
+            schema_id: id(95),
+            entry_id: id(96),
             entity_type: Some("product".to_string()),
-            entity_id: Some(id(95)),
+            entity_id: Some(id(97)),
         },
         DomainEvent::FlexEntryUpdated {
-            tenant_id: id(96),
-            schema_id: id(97),
-            entry_id: id(98),
+            tenant_id: id(98),
+            schema_id: id(99),
+            entry_id: id(100),
         },
         DomainEvent::FlexEntryDeleted {
-            tenant_id: id(99),
-            schema_id: id(100),
-            entry_id: id(101),
+            tenant_id: id(101),
+            schema_id: id(102),
+            entry_id: id(103),
         },
     ]
 }

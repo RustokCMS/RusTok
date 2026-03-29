@@ -54,7 +54,7 @@ impl ForumMutation {
                         .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
                     content_json: input.content_json,
                     tags: input.tags,
-                    channel_slugs: None,
+                    channel_slugs: input.channel_slugs,
                 },
             )
             .await?;
@@ -120,7 +120,7 @@ impl ForumMutation {
                     body_format: input.body_format,
                     content_json: input.content_json,
                     tags: input.tags,
-                    channel_slugs: None,
+                    channel_slugs: input.channel_slugs,
                 },
             )
             .await?;

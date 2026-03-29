@@ -39,8 +39,12 @@ impl Default for PaginationParams {
 
 impl PaginationParams {
     pub fn limit(&self) -> u64 {
-        self.per_page.min(100)
+        clamp_per_page(self.per_page)
     }
+}
+
+fn clamp_per_page(per_page: u64) -> u64 {
+    per_page.min(100)
 }
 
 fn default_page() -> u64 {
@@ -77,7 +81,8 @@ pub async fn list_topics(
 
     filter.locale = filter.locale.or(Some(request_context.locale.clone()));
     let requested_limit = Some(filter.per_page);
-    let effective_limit = filter.per_page.min(100);
+    let effective_limit = clamp_per_page(filter.per_page);
+    filter.per_page = effective_limit;
     let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let list_started_at = Instant::now();
     let (topics, _) = service
@@ -106,6 +111,27 @@ pub async fn list_topics(
     );
 
     Ok(Json(topics))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clamp_per_page, PaginationParams};
+
+    #[test]
+    fn pagination_params_limit_clamps_large_page_size() {
+        let params = PaginationParams {
+            page: 1,
+            per_page: 500,
+        };
+        assert_eq!(params.limit(), 100);
+    }
+
+    #[test]
+    fn controller_clamp_per_page_caps_large_values() {
+        assert_eq!(clamp_per_page(20), 20);
+        assert_eq!(clamp_per_page(100), 100);
+        assert_eq!(clamp_per_page(1000), 100);
+    }
 }
 
 #[utoipa::path(

@@ -17,13 +17,14 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::{
-    CategoryListItem, CategoryService, ForumError, ReplyResponse, ReplyService, TopicListItem,
-    TopicResponse, TopicService,
+    CategoryListItem, CategoryService, ForumError, ForumResult, ReplyResponse, ReplyService,
+    TopicListItem, TopicResponse, TopicService,
 };
 
 use super::types::*;
 
 const MODULE_SLUG: &str = "forum";
+const PUBLIC_REPLY_STATUSES: [&str; 1] = [crate::constants::reply_status::APPROVED];
 
 #[derive(Default)]
 pub struct ForumQuery;
@@ -342,14 +343,17 @@ impl ForumQuery {
         };
 
         let list_started_at = Instant::now();
-        let (topics, total) = service
-            .list_with_locale_fallback(
-                resolved_tenant_id,
-                forum_security_or_system(ctx),
-                filter,
-                Some(tenant.default_locale.as_str()),
-            )
-            .await?;
+        let (topics, total) = list_public_storefront_topics(
+            &service,
+            resolved_tenant_id,
+            forum_security_or_system(ctx),
+            filter,
+            Some(tenant.default_locale.as_str()),
+            public_channel_slug(ctx),
+            offset as usize,
+            limit as usize,
+        )
+        .await?;
         metrics::record_read_path_query(
             "graphql",
             "forum.storefront_topics",
@@ -358,25 +362,16 @@ impl ForumQuery {
             total,
         );
 
-        let mut visible_topics = topics;
-        if is_public_request(ctx) {
-            let channel = public_channel_slug(ctx);
-            visible_topics.retain(|topic| {
-                topic.status == crate::constants::topic_status::OPEN
-                    && is_topic_visible_for_channel(&topic.channel_slugs, channel.as_deref())
-            });
-        }
-
         let author_profiles = load_author_profiles_map(
             ctx,
             db,
             resolved_tenant_id,
-            visible_topics.iter().map(|topic| topic.author_id),
+            topics.iter().map(|topic| topic.author_id),
             locale.as_str(),
             tenant.default_locale.as_str(),
         )
         .await?;
-        let items = visible_topics
+        let items = topics
             .into_iter()
             .map(|topic| {
                 let author_profile = topic
@@ -434,7 +429,10 @@ impl ForumQuery {
 
         if is_public_request(ctx)
             && (topic.status != crate::constants::topic_status::OPEN
-                || !is_topic_visible_for_channel(&topic.channel_slugs, public_channel_slug(ctx).as_deref()))
+                || !is_topic_visible_for_channel(
+                    &topic.channel_slugs,
+                    public_channel_slug(ctx).as_deref(),
+                ))
         {
             return Ok(None);
         }
@@ -474,6 +472,33 @@ impl ForumQuery {
         let requested_limit = pagination.requested_limit();
         let (offset, limit) = pagination.normalize()?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let topic_service = TopicService::new(db.clone(), event_bus.clone());
+        let topic = match topic_service
+            .get_with_locale_fallback(
+                resolved_tenant_id,
+                topic_id,
+                &locale,
+                Some(tenant.default_locale.as_str()),
+            )
+            .await
+        {
+            Ok(topic) => Some(topic),
+            Err(ForumError::TopicNotFound(_)) => None,
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
+        };
+
+        let topic_is_visible = topic.as_ref().is_some_and(|topic| {
+            is_storefront_topic_visible(
+                &topic.status,
+                &topic.channel_slugs,
+                public_channel_slug(ctx).as_deref(),
+            )
+        });
+
+        if !topic_is_visible {
+            return Ok(ForumReplyConnection::new(Vec::new(), 0, offset, limit));
+        }
+
         let filter = crate::ListRepliesFilter {
             locale: Some(locale.clone()),
             page: (offset / limit + 1) as u64,
@@ -482,12 +507,13 @@ impl ForumQuery {
 
         let list_started_at = Instant::now();
         let (replies, total) = service
-            .list_response_for_topic_with_locale_fallback(
+            .list_response_for_topic_by_statuses_with_locale_fallback(
                 resolved_tenant_id,
                 forum_security_or_system(ctx),
                 topic_id,
                 filter,
                 Some(tenant.default_locale.as_str()),
+                Some(&PUBLIC_REPLY_STATUSES),
             )
             .await?;
         metrics::record_read_path_query(
@@ -743,8 +769,10 @@ async fn ensure_public_forum_channel_enabled(
         return Ok(());
     }
 
-    Err(async_graphql::Error::new("Forum module is not enabled for this channel")
-        .extend_with(|_, ext| ext.set("code", "FORBIDDEN")))
+    Err(
+        async_graphql::Error::new("Forum module is not enabled for this channel")
+            .extend_with(|_, ext| ext.set("code", "FORBIDDEN")),
+    )
 }
 
 fn is_public_request(ctx: &Context<'_>) -> bool {
@@ -756,7 +784,10 @@ fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
         .and_then(|rc| rc.channel_slug.clone())
 }
 
-pub(crate) fn is_topic_visible_for_channel(channel_slugs: &[String], channel_slug: Option<&str>) -> bool {
+pub(crate) fn is_topic_visible_for_channel(
+    channel_slugs: &[String],
+    channel_slug: Option<&str>,
+) -> bool {
     if channel_slugs.is_empty() {
         return true;
     }
@@ -767,4 +798,439 @@ pub(crate) fn is_topic_visible_for_channel(channel_slugs: &[String], channel_slu
 
     let normalized = channel_slug.trim().to_ascii_lowercase();
     !normalized.is_empty() && channel_slugs.iter().any(|item| item == &normalized)
+}
+
+fn is_storefront_topic_visible(
+    status: &str,
+    channel_slugs: &[String],
+    channel_slug: Option<&str>,
+) -> bool {
+    status == crate::constants::topic_status::OPEN
+        && is_topic_visible_for_channel(channel_slugs, channel_slug)
+}
+
+async fn list_public_storefront_topics(
+    service: &TopicService,
+    tenant_id: Uuid,
+    security: SecurityContext,
+    base_filter: crate::ListTopicsFilter,
+    fallback_locale: Option<&str>,
+    channel_slug: Option<String>,
+    offset: usize,
+    limit: usize,
+) -> ForumResult<(Vec<TopicListItem>, u64)> {
+    let mut page = 1u64;
+    let mut raw_seen = 0u64;
+    let mut visible_total = 0u64;
+    let mut window = Vec::with_capacity(limit);
+
+    loop {
+        let mut filter = base_filter.clone();
+        filter.page = page;
+
+        let (topics, total) = service
+            .list_with_locale_fallback(tenant_id, security.clone(), filter.clone(), fallback_locale)
+            .await?;
+
+        if topics.is_empty() {
+            break;
+        }
+
+        let fetched_count = topics.len();
+        raw_seen += fetched_count as u64;
+
+        for topic in topics {
+            if !is_storefront_topic_visible(
+                &topic.status,
+                &topic.channel_slugs,
+                channel_slug.as_deref(),
+            ) {
+                continue;
+            }
+
+            if visible_total >= offset as u64 && window.len() < limit {
+                window.push(topic);
+            }
+            visible_total += 1;
+        }
+
+        let source_exhausted = raw_seen >= total || fetched_count < filter.per_page as usize;
+        if source_exhausted {
+            break;
+        }
+
+        page += 1;
+    }
+
+    Ok((window, visible_total))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        is_storefront_topic_visible, is_topic_visible_for_channel, list_public_storefront_topics,
+        ForumQuery,
+    };
+    use crate::{
+        migrations, CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
+        ReplyService, TopicService,
+    };
+    use async_graphql::{EmptyMutation, EmptySubscription, Schema};
+    use rustok_api::{RequestContext, TenantContext};
+    use rustok_core::{MemoryTransport, SecurityContext};
+    use rustok_outbox::TransactionalEventBus;
+    use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement};
+    use sea_orm_migration::SchemaManager;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    async fn setup_forum_query_db() -> DatabaseConnection {
+        let db_url = format!(
+            "sqlite:file:forum_query_{}?mode=memory&cache=shared",
+            Uuid::new_v4()
+        );
+        let mut opts = ConnectOptions::new(db_url);
+        opts.max_connections(5)
+            .min_connections(1)
+            .sqlx_logging(false);
+
+        Database::connect(opts)
+            .await
+            .expect("failed to connect forum query test sqlite database")
+    }
+
+    async fn ensure_forum_query_schema(db: &DatabaseConnection) {
+        let manager = SchemaManager::new(db);
+        for migration in migrations::migrations() {
+            migration
+                .up(&manager)
+                .await
+                .expect("forum migration should apply");
+        }
+
+        db.execute(Statement::from_string(
+            db.get_database_backend(),
+            r#"
+            CREATE TABLE IF NOT EXISTS tenant_modules (
+                id TEXT PRIMARY KEY NOT NULL,
+                tenant_id TEXT NOT NULL,
+                module_slug TEXT NOT NULL,
+                enabled BOOLEAN NOT NULL,
+                settings TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#
+            .to_string(),
+        ))
+        .await
+        .expect("tenant_modules table should exist");
+    }
+
+    async fn enable_forum_module(db: &DatabaseConnection, tenant_id: Uuid) {
+        db.execute(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            [
+                Uuid::new_v4().into(),
+                tenant_id.into(),
+                "forum".to_string().into(),
+                true.into(),
+                "{}".to_string().into(),
+            ],
+        ))
+        .await
+        .expect("forum module should be enabled");
+    }
+
+    fn tenant_context(tenant_id: Uuid) -> TenantContext {
+        TenantContext {
+            id: tenant_id,
+            name: "Forum Tenant".to_string(),
+            slug: "forum-tenant".to_string(),
+            domain: None,
+            settings: serde_json::json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        }
+    }
+
+    fn request_context(tenant_id: Uuid, channel_slug: Option<&str>) -> RequestContext {
+        RequestContext {
+            tenant_id,
+            user_id: None,
+            channel_id: None,
+            channel_slug: channel_slug.map(|slug| slug.to_string()),
+            channel_resolution_source: None,
+            locale: "en".to_string(),
+        }
+    }
+
+    #[test]
+    fn topic_visibility_without_channel_restriction_is_public() {
+        assert!(is_topic_visible_for_channel(&[], None));
+    }
+
+    #[test]
+    fn topic_visibility_requires_matching_channel_when_restricted() {
+        let channels = vec!["news".to_string()];
+        assert!(is_topic_visible_for_channel(&channels, Some("news")));
+        assert!(is_topic_visible_for_channel(&channels, Some(" NEWS ")));
+        assert!(!is_topic_visible_for_channel(&channels, Some("blog")));
+        assert!(!is_topic_visible_for_channel(&channels, None));
+    }
+
+    #[test]
+    fn storefront_topic_requires_open_status() {
+        let channels = vec!["news".to_string()];
+        assert!(is_storefront_topic_visible("open", &channels, Some("news")));
+        assert!(!is_storefront_topic_visible(
+            "closed",
+            &channels,
+            Some("news")
+        ));
+    }
+
+    #[tokio::test]
+    async fn storefront_topics_refill_page_after_filtered_items() {
+        let db = setup_forum_query_db().await;
+        ensure_forum_query_schema(&db).await;
+
+        let transport = MemoryTransport::new();
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
+        let tenant_id = Uuid::new_v4();
+        let security = SecurityContext::system();
+
+        let category = CategoryService::new(db.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "General".to_string(),
+                    slug: "general".to_string(),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(0),
+                    moderated: false,
+                },
+            )
+            .await
+            .expect("category should be created");
+
+        let service = TopicService::new(db.clone(), event_bus.clone());
+        let first_visible = service
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category.id,
+                    title: "Visible One".to_string(),
+                    slug: Some("visible-one".to_string()),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    tags: vec![],
+                    channel_slugs: Some(vec!["web".to_string()]),
+                },
+            )
+            .await
+            .expect("first visible topic should be created");
+        let closed_topic = service
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category.id,
+                    title: "Closed".to_string(),
+                    slug: Some("closed".to_string()),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    tags: vec![],
+                    channel_slugs: None,
+                },
+            )
+            .await
+            .expect("closed topic should be created");
+        use crate::entities::forum_topic;
+        use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
+        let closed_model = forum_topic::Entity::find_by_id(closed_topic.id)
+            .one(&db)
+            .await
+            .expect("closed topic lookup should succeed")
+            .expect("closed topic should exist");
+        let mut closed_active: forum_topic::ActiveModel = closed_model.into();
+        closed_active.status = Set(crate::constants::topic_status::CLOSED.to_string());
+        closed_active
+            .update(&db)
+            .await
+            .expect("status update should succeed");
+
+        let _channel_filtered = service
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category.id,
+                    title: "Mobile Only".to_string(),
+                    slug: Some("mobile-only".to_string()),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    tags: vec![],
+                    channel_slugs: Some(vec!["mobile".to_string()]),
+                },
+            )
+            .await
+            .expect("channel filtered topic should be created");
+        let second_visible = service
+            .create(
+                tenant_id,
+                security,
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category.id,
+                    title: "Visible Two".to_string(),
+                    slug: Some("visible-two".to_string()),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    tags: vec![],
+                    channel_slugs: Some(vec!["web".to_string()]),
+                },
+            )
+            .await
+            .expect("second visible topic should be created");
+
+        let (topics, total) = list_public_storefront_topics(
+            &service,
+            tenant_id,
+            SecurityContext::system(),
+            crate::ListTopicsFilter {
+                category_id: Some(category.id),
+                status: None,
+                locale: Some("en".to_string()),
+                page: 1,
+                per_page: 2,
+            },
+            Some("en"),
+            Some("web".to_string()),
+            0,
+            2,
+        )
+        .await
+        .expect("storefront topic list should succeed");
+
+        assert_eq!(total, 2);
+        assert_eq!(topics.len(), 2);
+        let ids = topics.into_iter().map(|topic| topic.id).collect::<Vec<_>>();
+        assert!(ids.contains(&first_visible.id));
+        assert!(ids.contains(&second_visible.id));
+    }
+
+    #[tokio::test]
+    async fn storefront_replies_return_empty_for_channel_ineligible_topic() {
+        let db = setup_forum_query_db().await;
+        ensure_forum_query_schema(&db).await;
+
+        let transport = MemoryTransport::new();
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
+        let tenant_id = Uuid::new_v4();
+        enable_forum_module(&db, tenant_id).await;
+
+        let security = SecurityContext::system();
+        let category = CategoryService::new(db.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateCategoryInput {
+                    locale: "en".to_string(),
+                    name: "General".to_string(),
+                    slug: "general".to_string(),
+                    description: None,
+                    icon: None,
+                    color: None,
+                    parent_id: None,
+                    position: Some(0),
+                    moderated: false,
+                },
+            )
+            .await
+            .expect("category should be created");
+
+        let topic = TopicService::new(db.clone(), event_bus.clone())
+            .create(
+                tenant_id,
+                security.clone(),
+                CreateTopicInput {
+                    locale: "en".to_string(),
+                    category_id: category.id,
+                    title: "Restricted".to_string(),
+                    slug: Some("restricted".to_string()),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    tags: vec![],
+                    channel_slugs: Some(vec!["mobile".to_string()]),
+                },
+            )
+            .await
+            .expect("restricted topic should be created");
+
+        ReplyService::new(db.clone(), event_bus.clone())
+            .create(
+                tenant_id,
+                security,
+                topic.id,
+                CreateReplyInput {
+                    locale: "en".to_string(),
+                    content: "Reply".to_string(),
+                    content_format: "markdown".to_string(),
+                    content_json: None,
+                    parent_reply_id: None,
+                },
+            )
+            .await
+            .expect("reply should be created");
+
+        let schema = Schema::build(ForumQuery, EmptyMutation, EmptySubscription)
+            .data(db.clone())
+            .data(event_bus)
+            .data(tenant_context(tenant_id))
+            .data(request_context(tenant_id, Some("web")))
+            .finish();
+
+        let response = schema
+            .execute(format!(
+                "{{ forumStorefrontReplies(topicId: \"{}\") {{ pageInfo {{ totalCount }} items {{ id }} }} }}",
+                topic.id
+            ))
+            .await;
+        assert!(
+            response.errors.is_empty(),
+            "storefront replies query should not error: {:?}",
+            response.errors
+        );
+
+        let data = response
+            .data
+            .into_json()
+            .expect("graphql data should be json");
+        assert_eq!(data["forumStorefrontReplies"]["pageInfo"]["totalCount"], 0);
+        assert_eq!(
+            data["forumStorefrontReplies"]["items"]
+                .as_array()
+                .expect("items should be array")
+                .len(),
+            0
+        );
+    }
 }

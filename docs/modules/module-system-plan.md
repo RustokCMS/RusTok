@@ -31,7 +31,7 @@
 - ✅ `ManifestManager` теперь валидирует не только metadata path-модулей и admin-surface конфликты, но и semver-диапазоны зависимостей, product/runtime-конфликты модулей и ошибки schema-driven module settings contract.
 - ✅ `updateModuleSettings` теперь закрыт end-to-end: GraphQL mutation и `/modules` в Leptos Admin валидируют payload по `[settings]` из `rustok-module.toml`, применяют `default`, рендерят typed controls для scalar-полей, top-level structured editor и deep nested editor с create-actions / key rename / array reorder для `object` / `array`, и per-field JSON editors с helper-actions (`Format JSON`, `Reset`, `Add property/item`) для complex values.
 - ✅ `buildProgress` теперь работает end-to-end: `apps/server` поднимает GraphQL WS transport на `/api/graphql/ws`, а `/modules` в `apps/admin` подписывается на live progress и держит polling только как fallback.
-- ⚠️ `apps/server/build.rs` уже генерирует optional module registry, GraphQL schema fragments и HTTP routes из `modules.toml`; explicit server entry-point contract через `[crate]` / `[provides.graphql]` / `[provides.http]` уже поднят, `apps/admin/build.rs` уже доведён до generic module root pages/nav/dashboard wiring и nested route metadata из `[[provides.admin_ui.pages]]`, `apps/storefront/build.rs` уже поддерживает multi-slot storefront sections, generic module route `/modules/{route_segment}`, streaming SSR и module-agnostic `UiRouteContext`, а `pages`, `blog`, `commerce`, `content`, `forum` и `workflow/templates` теперь служат рабочими Leptos exemplar-ами с реальным admin/storefront data flow. Перенос остальных модулей и внешний registry всё ещё открыты.
+- ⚠️ `apps/server/build.rs` уже генерирует optional module registry, GraphQL schema fragments и HTTP routes из `modules.toml`; explicit server entry-point contract через `[crate]` / `[provides.graphql]` / `[provides.http]` уже поднят, `apps/admin/build.rs` уже доведён до generic module root pages/nav/dashboard wiring и nested route metadata из `[[provides.admin_ui.pages]]`, `apps/storefront/build.rs` уже поддерживает multi-slot storefront sections, generic module route `/modules/{route_segment}`, streaming SSR и module-agnostic `UiRouteContext`, а `pages`, `blog`, `commerce`, `forum` и `workflow/templates` теперь служат рабочими Leptos exemplar-ами с реальным admin/storefront data flow. Перенос остальных модулей и внешний registry всё ещё открыты.
 
 > [!NOTE]
 > Раздел 9 ниже и этот статус-блок являются канонической точкой отсчёта на 2026-03-25.
@@ -545,7 +545,7 @@ rustok mod yank 1.2.0    # РћС‚РѕР·РІР°С‚СЊ РІРµСЂСЃР
 apps/server/src/
 в”њв”Ђв”Ђ graphql/
 в”‚   в”њв”Ђв”Ђ blog/        (~535 СЃС‚СЂРѕРє)   в†ђ Р·РЅР°Р» Рѕ rustok_blog::PostService
-в”‚   в”њв”Ђв”Ђ content/     (~723 СЃС‚СЂРѕРє)   в†ђ Р·РЅР°Р» Рѕ rustok_content::NodeService
+в”‚   в”њв”Ђв”Ђ content/     (removed)            в†ђ product GraphQL/REST transport removed; `rustok-content` remains shared helper/orchestration only
 в”‚   в”њв”Ђв”Ђ commerce/    (~682 СЃС‚СЂРѕРє)   в†ђ Р·РЅР°Р» Рѕ rustok_commerce::CatalogService
 в”‚   в”њв”Ђв”Ђ forum/       (~740 СЃС‚СЂРѕРє)   в†ђ Р·РЅР°Р» Рѕ rustok_forum::TopicService
 в”‚   в”њв”Ђв”Ђ pages/       (~823 СЃС‚СЂРѕРє)   в†ђ Р·РЅР°Р» Рѕ rustok_pages::PageService
@@ -781,7 +781,7 @@ leptos_crate  = "rustok-workflow-storefront"
 
 | # | Р—Р°РґР°С‡Р° | РЎР»РѕР¶РЅРѕСЃС‚СЊ | Р¦РµРЅРЅРѕСЃС‚СЊ |
 |---|---|---|---|
-| **1** | **Перенос Leptos UI в publishable module packages beyond `rustok-pages` и `rustok-blog`** | Большая | Критическая — `workflow` уже дал root-page template, `pages`, `blog`, `commerce`, `content` и `forum` стали рабочими exemplar-ами, но остальные модули ещё не переведены, а scaffold-only пакеты больше не должны считаться достаточным результатом |
+| **1** | **Перенос Leptos UI в publishable module packages beyond `rustok-pages` и `rustok-blog`** | Большая | Критическая — `workflow` уже дал root-page template, `pages`, `blog`, `commerce` и `forum` стали рабочими exemplar-ами, но остальные модули ещё не переведены, а scaffold-only пакеты больше не должны считаться достаточным результатом |
 | 2 | Внешний реестр V1 (read-only catalog) | Большая | Высокая — фундамент marketplace |
 | 3 | Внешний реестр V2 + publish/governance | Очень большая | Средняя — следующий шаг после read-only каталога |
 | 4 | richer nested schema metadata для type-directed subforms beyond generic JSON tree | Средняя | Средняя — текущий editor уже рабочий, но nested contracts пока не описывают shape/items декларативно |

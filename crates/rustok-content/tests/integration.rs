@@ -1,175 +1,169 @@
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_content::{
-    BodyInput, ContentOrchestrationService, CreateNodeInput, DemotePostToTopicInput,
-    MergeTopicsInput, NodeService, NodeTranslationInput, PromoteTopicToPostInput, SplitTopicInput,
+    CanonicalUrlMutation, ContentOrchestrationBridge, ContentOrchestrationService, ContentResult,
+    DemotePostToTopicInput, DemotePostToTopicOutput, MergeTopicsInput, MergeTopicsOutput,
+    PromoteTopicToPostInput, PromoteTopicToPostOutput, RetiredCanonicalTarget, SplitTopicInput,
+    SplitTopicOutput,
 };
-use rustok_core::events::{
-    DomainEvent, EventDispatcher, EventEnvelope, EventHandler, HandlerResult,
-};
-use rustok_core::{EventBus, MemoryTransport, SecurityContext, UserRole};
+use rustok_core::{DomainEvent, MemoryTransport, SecurityContext, UserRole};
+use rustok_events::EventEnvelope;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, Statement,
 };
 use uuid::Uuid;
 
-#[derive(Clone, Default)]
-struct ContentIndexProjection {
-    documents: Arc<Mutex<HashMap<Uuid, String>>>,
+use rustok_content::entities::{
+    canonical_url, orchestration_audit_log, orchestration_operation, url_alias,
+};
+
+#[derive(Default)]
+struct MockBridge {
+    promote_calls: AtomicUsize,
+    demote_calls: AtomicUsize,
+    split_calls: AtomicUsize,
+    merge_calls: AtomicUsize,
+    promoted_post_id: Uuid,
+    demoted_topic_id: Uuid,
+    split_topic_id: Uuid,
 }
 
-impl ContentIndexProjection {
-    fn upsert(&self, node_id: Uuid, kind: &str) {
-        self.documents
-            .lock()
-            .expect("content projection lock poisoned")
-            .insert(node_id, kind.to_string());
-    }
-
-    fn get(&self, node_id: Uuid) -> Option<String> {
-        self.documents
-            .lock()
-            .expect("content projection lock poisoned")
-            .get(&node_id)
-            .cloned()
-    }
-
-    fn len(&self) -> usize {
-        self.documents
-            .lock()
-            .expect("content projection lock poisoned")
-            .len()
-    }
-}
-
-#[derive(Clone)]
-struct NodeCreatedIndexHandler {
-    projection: ContentIndexProjection,
-    processed_count: Arc<AtomicUsize>,
-}
-
-impl NodeCreatedIndexHandler {
-    fn new(projection: ContentIndexProjection, processed_count: Arc<AtomicUsize>) -> Self {
+impl MockBridge {
+    fn new() -> Self {
         Self {
-            projection,
-            processed_count,
+            promote_calls: AtomicUsize::new(0),
+            demote_calls: AtomicUsize::new(0),
+            split_calls: AtomicUsize::new(0),
+            merge_calls: AtomicUsize::new(0),
+            promoted_post_id: Uuid::new_v4(),
+            demoted_topic_id: Uuid::new_v4(),
+            split_topic_id: Uuid::new_v4(),
         }
     }
 }
 
 #[async_trait]
-impl EventHandler for NodeCreatedIndexHandler {
-    fn name(&self) -> &'static str {
-        "node_created_index_handler"
+impl ContentOrchestrationBridge for MockBridge {
+    async fn promote_topic_to_post(
+        &self,
+        _txn: &sea_orm::DatabaseTransaction,
+        _tenant_id: Uuid,
+        _actor_id: Option<Uuid>,
+        input: &PromoteTopicToPostInput,
+    ) -> ContentResult<PromoteTopicToPostOutput> {
+        self.promote_calls.fetch_add(1, Ordering::Relaxed);
+        Ok(PromoteTopicToPostOutput {
+            topic_id: input.topic_id,
+            post_id: self.promoted_post_id,
+            moved_comments: 2,
+            effective_locale: input.locale.to_ascii_lowercase(),
+            url_updates: vec![CanonicalUrlMutation {
+                target_kind: "blog_post".to_string(),
+                target_id: self.promoted_post_id,
+                locale: input.locale.to_ascii_lowercase(),
+                canonical_url: "/modules/blog?slug=hello".to_string(),
+                alias_urls: vec!["/modules/forum?topic=legacy".to_string()],
+                retired_targets: vec![RetiredCanonicalTarget {
+                    target_kind: "forum_topic".to_string(),
+                    target_id: input.topic_id,
+                    locale: input.locale.to_ascii_lowercase(),
+                }],
+            }],
+        })
     }
 
-    fn handles(&self, event: &DomainEvent) -> bool {
-        matches!(event, DomainEvent::NodeCreated { .. })
+    async fn demote_post_to_topic(
+        &self,
+        _txn: &sea_orm::DatabaseTransaction,
+        _tenant_id: Uuid,
+        _actor_id: Option<Uuid>,
+        input: &DemotePostToTopicInput,
+    ) -> ContentResult<DemotePostToTopicOutput> {
+        self.demote_calls.fetch_add(1, Ordering::Relaxed);
+        Ok(DemotePostToTopicOutput {
+            post_id: input.post_id,
+            topic_id: self.demoted_topic_id,
+            moved_comments: 3,
+            effective_locale: input.locale.to_ascii_lowercase(),
+            url_updates: vec![CanonicalUrlMutation {
+                target_kind: "forum_topic".to_string(),
+                target_id: self.demoted_topic_id,
+                locale: input.locale.to_ascii_lowercase(),
+                canonical_url: "/modules/forum?topic=demoted".to_string(),
+                alias_urls: vec!["/modules/blog?slug=legacy".to_string()],
+                retired_targets: vec![RetiredCanonicalTarget {
+                    target_kind: "blog_post".to_string(),
+                    target_id: input.post_id,
+                    locale: input.locale.to_ascii_lowercase(),
+                }],
+            }],
+        })
     }
 
-    async fn handle(&self, envelope: &EventEnvelope) -> HandlerResult {
-        if let DomainEvent::NodeCreated { node_id, kind, .. } = &envelope.event {
-            self.projection.upsert(*node_id, kind);
-            self.processed_count.fetch_add(1, Ordering::Relaxed);
-        }
-
-        Ok(())
-    }
-}
-
-#[tokio::test]
-async fn test_node_created_event_updates_index_projection() {
-    let tenant_id = Uuid::new_v4();
-    let node_id = Uuid::new_v4();
-
-    let bus = EventBus::new();
-    let mut event_stream = bus.subscribe();
-
-    let projection = ContentIndexProjection::default();
-    let processed_count = Arc::new(AtomicUsize::new(0));
-
-    let mut dispatcher = EventDispatcher::new(bus.clone());
-    dispatcher.register(NodeCreatedIndexHandler::new(
-        projection.clone(),
-        Arc::clone(&processed_count),
-    ));
-    let running_dispatcher = dispatcher.start();
-
-    bus.publish(
-        tenant_id,
-        None,
-        DomainEvent::NodeCreated {
-            node_id,
-            kind: "post".to_string(),
-            author_id: None,
-        },
-    )
-    .expect("must publish NodeCreated event");
-
-    let envelope = tokio::time::timeout(std::time::Duration::from_secs(1), event_stream.recv())
-        .await
-        .expect("must receive published event")
-        .expect("event stream should stay open");
-
-    assert!(matches!(
-        envelope.event,
-        DomainEvent::NodeCreated { node_id: event_node_id, .. } if event_node_id == node_id
-    ));
-
-    wait_until(|| processed_count.load(Ordering::Relaxed) == 1).await;
-
-    assert_eq!(processed_count.load(Ordering::Relaxed), 1);
-    assert_eq!(projection.get(node_id).as_deref(), Some("post"));
-    assert_eq!(projection.len(), 1);
-
-    running_dispatcher.stop();
-}
-
-#[tokio::test]
-async fn test_node_created_event_repeat_is_idempotent_for_index_projection() {
-    let tenant_id = Uuid::new_v4();
-    let node_id = Uuid::new_v4();
-
-    let bus = EventBus::new();
-    let projection = ContentIndexProjection::default();
-    let processed_count = Arc::new(AtomicUsize::new(0));
-
-    let mut dispatcher = EventDispatcher::new(bus.clone());
-    dispatcher.register(NodeCreatedIndexHandler::new(
-        projection.clone(),
-        Arc::clone(&processed_count),
-    ));
-    let running_dispatcher = dispatcher.start();
-
-    for _ in 0..2 {
-        bus.publish(
-            tenant_id,
-            None,
-            DomainEvent::NodeCreated {
-                node_id,
-                kind: "post".to_string(),
-                author_id: None,
-            },
-        )
-        .expect("NodeCreated publish must succeed");
+    async fn split_topic(
+        &self,
+        _txn: &sea_orm::DatabaseTransaction,
+        _tenant_id: Uuid,
+        _actor_id: Option<Uuid>,
+        input: &SplitTopicInput,
+    ) -> ContentResult<SplitTopicOutput> {
+        self.split_calls.fetch_add(1, Ordering::Relaxed);
+        Ok(SplitTopicOutput {
+            source_topic_id: input.topic_id,
+            target_topic_id: self.split_topic_id,
+            moved_reply_ids: input.reply_ids.clone(),
+            moved_comments: input.reply_ids.len() as u64,
+            url_updates: vec![CanonicalUrlMutation {
+                target_kind: "forum_topic".to_string(),
+                target_id: self.split_topic_id,
+                locale: input.locale.to_ascii_lowercase(),
+                canonical_url: "/modules/forum?topic=split".to_string(),
+                alias_urls: Vec::new(),
+                retired_targets: Vec::new(),
+            }],
+        })
     }
 
-    wait_until(|| processed_count.load(Ordering::Relaxed) >= 2).await;
-
-    assert_eq!(processed_count.load(Ordering::Relaxed), 2);
-    assert_eq!(projection.get(node_id).as_deref(), Some("post"));
-    assert_eq!(projection.len(), 1, "projection must stay deduplicated");
-
-    running_dispatcher.stop();
+    async fn merge_topics(
+        &self,
+        _txn: &sea_orm::DatabaseTransaction,
+        _tenant_id: Uuid,
+        _actor_id: Option<Uuid>,
+        input: &MergeTopicsInput,
+    ) -> ContentResult<MergeTopicsOutput> {
+        self.merge_calls.fetch_add(1, Ordering::Relaxed);
+        Ok(MergeTopicsOutput {
+            target_topic_id: input.target_topic_id,
+            source_topic_ids: input.source_topic_ids.clone(),
+            moved_comments: 5,
+            url_updates: vec![CanonicalUrlMutation {
+                target_kind: "forum_topic".to_string(),
+                target_id: input.target_topic_id,
+                locale: "en".to_string(),
+                canonical_url: "/modules/forum?topic=target".to_string(),
+                alias_urls: vec!["/modules/forum?topic=source".to_string()],
+                retired_targets: input
+                    .source_topic_ids
+                    .iter()
+                    .copied()
+                    .map(|target_id| RetiredCanonicalTarget {
+                        target_kind: "forum_topic".to_string(),
+                        target_id,
+                        locale: "en".to_string(),
+                    })
+                    .collect(),
+            }],
+        })
+    }
 }
 
 async fn setup_content_test_db() -> DatabaseConnection {
     let db_url = format!(
-        "sqlite:file:content_integration_{}?mode=memory&cache=shared",
+        "sqlite:file:content_orchestration_{}?mode=memory&cache=shared",
         Uuid::new_v4()
     );
     let mut opts = ConnectOptions::new(db_url);
@@ -186,65 +180,6 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     if db.get_database_backend() != DbBackend::Sqlite {
         return;
     }
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS nodes (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT NOT NULL,
-            parent_id TEXT NULL,
-            author_id TEXT NULL,
-            kind TEXT NOT NULL,
-            category_id TEXT NULL,
-            status TEXT NOT NULL,
-            position INTEGER NOT NULL,
-            depth INTEGER NOT NULL,
-            reply_count INTEGER NOT NULL,
-            metadata TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            published_at TEXT NULL,
-            deleted_at TEXT NULL,
-            version INTEGER NOT NULL DEFAULT 1
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create nodes table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS node_translations (
-            id TEXT PRIMARY KEY,
-            node_id TEXT NOT NULL,
-            locale TEXT NOT NULL,
-            title TEXT NULL,
-            slug TEXT NULL,
-            excerpt TEXT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY(node_id) REFERENCES nodes(id)
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create node_translations table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS bodies (
-            id TEXT PRIMARY KEY,
-            node_id TEXT NOT NULL,
-            locale TEXT NOT NULL,
-            body TEXT NULL,
-            format TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY(node_id) REFERENCES nodes(id)
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create bodies table");
 
     db.execute(Statement::from_string(
         DbBackend::Sqlite,
@@ -289,6 +224,77 @@ async fn ensure_content_schema(db: &DatabaseConnection) {
     ))
     .await
     .expect("failed to create content_orchestration_audit_logs table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS content_canonical_urls (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            target_kind TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            canonical_url TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create content_canonical_urls table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_content_canonical_urls_target_locale
+            ON content_canonical_urls(tenant_id, target_kind, target_id, locale)"
+            .to_string(),
+    ))
+    .await
+    .expect("failed to create idx_content_canonical_urls_target_locale");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_content_canonical_urls_unique_url
+            ON content_canonical_urls(tenant_id, locale, canonical_url)"
+            .to_string(),
+    ))
+    .await
+    .expect("failed to create idx_content_canonical_urls_unique_url");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE TABLE IF NOT EXISTS content_url_aliases (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            target_kind TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            alias_url TEXT NOT NULL,
+            canonical_url TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"
+        .to_string(),
+    ))
+    .await
+    .expect("failed to create content_url_aliases table");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE INDEX IF NOT EXISTS idx_content_url_aliases_target_locale
+            ON content_url_aliases(tenant_id, target_kind, target_id, locale)"
+            .to_string(),
+    ))
+    .await
+    .expect("failed to create idx_content_url_aliases_target_locale");
+
+    db.execute(Statement::from_string(
+        DbBackend::Sqlite,
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_content_url_aliases_unique_url
+            ON content_url_aliases(tenant_id, locale, alias_url)"
+            .to_string(),
+    ))
+    .await
+    .expect("failed to create idx_content_url_aliases_unique_url");
 }
 
 fn drain_event_envelopes(
@@ -311,532 +317,252 @@ fn orchestration_security() -> SecurityContext {
 }
 
 #[tokio::test]
-async fn test_orchestration_topic_post_split_merge_and_idempotency_with_events() {
+async fn test_promote_topic_to_post_is_idempotent_and_publishes_single_event() {
     let db = setup_content_test_db().await;
     ensure_content_schema(&db).await;
 
     let transport = MemoryTransport::new();
     let mut receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-
-    let node_service = NodeService::new(db.clone(), event_bus.clone());
-    let orchestration = ContentOrchestrationService::new(NodeService::new(db, event_bus));
+    let bridge = Arc::new(MockBridge::new());
+    let orchestration = ContentOrchestrationService::new(db.clone(), event_bus, bridge.clone());
 
     let tenant_id = Uuid::new_v4();
     let security = orchestration_security();
+    let topic_id = Uuid::new_v4();
+    let input = PromoteTopicToPostInput {
+        topic_id,
+        locale: "EN_us".to_string(),
+        blog_category_id: None,
+        reason: Some("promote".to_string()),
+        idempotency_key: "promote-topic-1".to_string(),
+    };
 
-    let topic = node_service
-        .create_node(
-            tenant_id,
-            security.clone(),
-            CreateNodeInput {
-                kind: "forum_topic".to_string(),
-                translations: vec![
-                    NodeTranslationInput {
-                        locale: "en".to_string(),
-                        title: Some("Topic A".to_string()),
-                        slug: None,
-                        excerpt: None,
-                    },
-                    NodeTranslationInput {
-                        locale: "ru".to_string(),
-                        title: Some("Тема уникальная".to_string()),
-                        slug: None,
-                        excerpt: None,
-                    },
-                ],
-                bodies: vec![
-                    BodyInput {
-                        locale: "en".to_string(),
-                        body: Some("Topic body".to_string()),
-                        format: Some("markdown".to_string()),
-                    },
-                    BodyInput {
-                        locale: "ru".to_string(),
-                        body: Some("Тело темы".to_string()),
-                        format: Some("markdown".to_string()),
-                    },
-                ],
-                status: Some(rustok_content::entities::node::ContentStatus::Published),
-                parent_id: None,
-                author_id: security.user_id,
-                category_id: None,
-                position: Some(0),
-                depth: Some(0),
-                reply_count: Some(0),
-                metadata: serde_json::json!({"forum_status": "open"}),
-            },
-        )
+    let first = orchestration
+        .promote_topic_to_post(tenant_id, security.clone(), input.clone())
         .await
-        .expect("topic should be created");
-
-    node_service
-        .db()
-        .execute(Statement::from_string(
-            DbBackend::Sqlite,
-            format!(
-                "UPDATE node_translations SET slug = NULL WHERE node_id = '{}'",
-                topic.id
-            ),
-        ))
+        .expect("first orchestration call should succeed");
+    let second = orchestration
+        .promote_topic_to_post(tenant_id, security, input)
         .await
-        .expect("clear source slugs for orchestration duplicate-slug workaround");
+        .expect("second orchestration call should reuse idempotent result");
 
-    let reply1 = node_service
-        .create_node(
-            tenant_id,
-            security.clone(),
-            CreateNodeInput {
-                kind: "forum_reply".to_string(),
-                translations: vec![NodeTranslationInput {
-                    locale: "en".to_string(),
-                    title: Some("r1".to_string()),
-                    slug: None,
-                    excerpt: None,
-                }],
-                bodies: vec![BodyInput {
-                    locale: "en".to_string(),
-                    body: Some("reply-1".to_string()),
-                    format: Some("markdown".to_string()),
-                }],
-                status: Some(rustok_content::entities::node::ContentStatus::Published),
-                parent_id: Some(topic.id),
-                author_id: security.user_id,
-                category_id: None,
-                position: None,
-                depth: None,
-                reply_count: None,
-                metadata: serde_json::json!({}),
-            },
-        )
+    assert_eq!(first, second);
+    assert_eq!(bridge.promote_calls.load(Ordering::Relaxed), 1);
+
+    let operations = orchestration_operation::Entity::find()
+        .filter(orchestration_operation::Column::TenantId.eq(tenant_id))
+        .all(&db)
         .await
-        .expect("reply1 should be created");
-
-    let reply2 = node_service
-        .create_node(
-            tenant_id,
-            security.clone(),
-            CreateNodeInput {
-                kind: "forum_reply".to_string(),
-                translations: vec![NodeTranslationInput {
-                    locale: "en".to_string(),
-                    title: Some("r2".to_string()),
-                    slug: None,
-                    excerpt: None,
-                }],
-                bodies: vec![BodyInput {
-                    locale: "en".to_string(),
-                    body: Some("reply-2".to_string()),
-                    format: Some("markdown".to_string()),
-                }],
-                status: Some(rustok_content::entities::node::ContentStatus::Published),
-                parent_id: Some(topic.id),
-                author_id: security.user_id,
-                category_id: None,
-                position: None,
-                depth: None,
-                reply_count: None,
-                metadata: serde_json::json!({}),
-            },
-        )
+        .expect("operations query should succeed");
+    let audits = orchestration_audit_log::Entity::find()
+        .filter(orchestration_audit_log::Column::TenantId.eq(tenant_id))
+        .all(&db)
         .await
-        .expect("reply2 should be created");
-
-    let promoted = orchestration
-        .promote_topic_to_post(
-            tenant_id,
-            security.clone(),
-            PromoteTopicToPostInput {
-                topic_id: topic.id,
-                locale: "en".to_string(),
-                reason: Some("editorial".to_string()),
-                idempotency_key: "promote-key-1".to_string(),
-            },
-        )
+        .expect("audit query should succeed");
+    let canonical_urls = canonical_url::Entity::find()
+        .filter(canonical_url::Column::TenantId.eq(tenant_id))
+        .all(&db)
         .await
-        .expect("topic->post should succeed");
-    assert_eq!(promoted.moved_comments, 2);
-
-    let promoted_post = node_service
-        .get_node(tenant_id, promoted.target_id)
+        .expect("canonical url query should succeed");
+    let aliases = url_alias::Entity::find()
+        .filter(url_alias::Column::TenantId.eq(tenant_id))
+        .all(&db)
         .await
-        .expect("promoted post should exist");
-    assert_eq!(promoted_post.kind, "blog_post");
-    assert_eq!(
-        promoted_post
-            .metadata
-            .get("canonical_node_id")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned),
-        Some(topic.id.to_string())
-    );
+        .expect("alias query should succeed");
 
-    let reply1_after = node_service.get_node(tenant_id, reply1.id).await.unwrap();
-    assert_eq!(reply1_after.parent_id, Some(promoted.target_id));
+    assert_eq!(operations.len(), 1);
+    assert_eq!(audits.len(), 1);
+    assert_eq!(canonical_urls.len(), 1);
+    assert_eq!(aliases.len(), 1);
+    assert_eq!(operations[0].source_id, topic_id);
+    assert_eq!(operations[0].target_id, bridge.promoted_post_id);
+    assert_eq!(canonical_urls[0].target_kind, "blog_post");
+    assert_eq!(canonical_urls[0].canonical_url, "/modules/blog?slug=hello");
+    assert_eq!(aliases[0].alias_url, "/modules/forum?topic=legacy");
+    assert_eq!(aliases[0].canonical_url, "/modules/blog?slug=hello");
+
+    let envelopes = drain_event_envelopes(&mut receiver);
+    assert_eq!(envelopes.len(), 3);
+    assert!(matches!(
+        &envelopes[0].event,
+        DomainEvent::CanonicalUrlChanged { target_id, target_kind, locale, new_canonical_url, old_urls }
+            if *target_id == bridge.promoted_post_id
+                && target_kind == "blog_post"
+                && locale == "en-us"
+                && new_canonical_url == "/modules/blog?slug=hello"
+                && old_urls == &vec!["/modules/forum?topic=legacy".to_string()]
+    ));
+    assert!(matches!(
+        &envelopes[1].event,
+        DomainEvent::UrlAliasPurged { target_id, target_kind, locale, urls }
+            if *target_id == bridge.promoted_post_id
+                && target_kind == "blog_post"
+                && locale == "en-us"
+                && urls == &vec!["/modules/forum?topic=legacy".to_string()]
+    ));
+    assert!(matches!(
+        &envelopes[2].event,
+        DomainEvent::TopicPromotedToPost { topic_id: event_topic_id, post_id, moved_comments, locale, reason }
+            if *event_topic_id == topic_id
+                && *post_id == bridge.promoted_post_id
+                && *moved_comments == 2
+                && locale == "en_us"
+                && reason.as_deref() == Some("promote")
+    ));
+}
+
+#[tokio::test]
+async fn test_demote_split_and_merge_use_bridge_and_persist_audit_records() {
+    let db = setup_content_test_db().await;
+    ensure_content_schema(&db).await;
+
+    let transport = MemoryTransport::new();
+    let mut receiver = transport.subscribe();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let bridge = Arc::new(MockBridge::new());
+    let orchestration = ContentOrchestrationService::new(db.clone(), event_bus, bridge.clone());
+
+    let tenant_id = Uuid::new_v4();
+    let security = orchestration_security();
+    let post_id = Uuid::new_v4();
+    let source_topic_id = Uuid::new_v4();
+    let target_topic_id = Uuid::new_v4();
+    let moved_reply_ids = vec![Uuid::new_v4(), Uuid::new_v4()];
 
     let demoted = orchestration
         .demote_post_to_topic(
             tenant_id,
             security.clone(),
             DemotePostToTopicInput {
-                post_id: promoted.target_id,
-                locale: "en".to_string(),
-                reason: Some("revert".to_string()),
-                idempotency_key: "demote-key-1".to_string(),
+                post_id,
+                locale: "ru".to_string(),
+                forum_category_id: Uuid::new_v4(),
+                reason: Some("demote".to_string()),
+                idempotency_key: "demote-post-1".to_string(),
             },
         )
         .await
-        .expect("post->topic should succeed");
-    assert_eq!(demoted.moved_comments, 2);
-
-    let demoted_topic = node_service
-        .get_node(tenant_id, demoted.target_id)
-        .await
-        .unwrap();
-    assert_eq!(demoted_topic.kind, "forum_topic");
-    assert_eq!(
-        demoted_topic
-            .metadata
-            .get("canonical_node_id")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned),
-        Some(promoted.target_id.to_string())
-    );
-
-    node_service
-        .update_node(
-            tenant_id,
-            demoted.target_id,
-            security.clone(),
-            rustok_content::UpdateNodeInput {
-                translations: Some(vec![NodeTranslationInput {
-                    locale: "en".to_string(),
-                    title: Some("Topic B".to_string()),
-                    slug: None,
-                    excerpt: None,
-                }]),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("normalize demoted topic translations before split");
+        .expect("demote must succeed");
+    assert_eq!(demoted.source_id, post_id);
+    assert_eq!(demoted.target_id, bridge.demoted_topic_id);
 
     let split = orchestration
         .split_topic(
             tenant_id,
             security.clone(),
             SplitTopicInput {
-                topic_id: demoted.target_id,
-                locale: "en".to_string(),
-                reply_ids: vec![reply1.id],
-                new_title: "Topic split".to_string(),
-                reason: Some("cleanup".to_string()),
-                idempotency_key: "split-key-1".to_string(),
+                topic_id: source_topic_id,
+                locale: "ru".to_string(),
+                reply_ids: moved_reply_ids.clone(),
+                new_title: "Split target".to_string(),
+                reason: Some("split".to_string()),
+                idempotency_key: "split-topic-1".to_string(),
             },
         )
         .await
-        .expect("split should succeed");
-    assert_eq!(split.moved_comments, 1);
+        .expect("split must succeed");
+    assert_eq!(split.source_id, source_topic_id);
+    assert_eq!(split.target_id, bridge.split_topic_id);
+    assert_eq!(split.moved_comments, moved_reply_ids.len() as u64);
 
-    let split_repeat = orchestration
-        .split_topic(
-            tenant_id,
-            security.clone(),
-            SplitTopicInput {
-                topic_id: demoted.target_id,
-                locale: "en".to_string(),
-                reply_ids: vec![reply1.id],
-                new_title: "Topic split repeat".to_string(),
-                reason: Some("retry".to_string()),
-                idempotency_key: "split-key-1".to_string(),
-            },
-        )
-        .await
-        .expect("same split command should not corrupt data");
-    assert_eq!(split_repeat.moved_comments, 1);
-
-    let reply1_split = node_service.get_node(tenant_id, reply1.id).await.unwrap();
-    let reply2_stays = node_service.get_node(tenant_id, reply2.id).await.unwrap();
-    assert_eq!(reply1_split.parent_id, Some(split.target_id));
-    assert_eq!(reply2_stays.parent_id, Some(demoted.target_id));
-
-    let split_topic = node_service
-        .get_node(tenant_id, split.target_id)
-        .await
-        .unwrap();
-    assert_eq!(
-        split_topic
-            .metadata
-            .get("canonical_node_id")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned),
-        Some(demoted.target_id.to_string())
-    );
-
-    let merge = orchestration
+    let merged = orchestration
         .merge_topics(
             tenant_id,
             security,
             MergeTopicsInput {
-                target_topic_id: demoted.target_id,
-                source_topic_ids: vec![split.target_id],
-                reason: Some("merge-back".to_string()),
-                idempotency_key: "merge-key-1".to_string(),
+                target_topic_id,
+                source_topic_ids: vec![Uuid::new_v4(), Uuid::new_v4()],
+                reason: Some("merge".to_string()),
+                idempotency_key: "merge-topic-1".to_string(),
             },
         )
         .await
-        .expect("merge should succeed");
-    assert_eq!(merge.moved_comments, 1);
+        .expect("merge must succeed");
+    assert_eq!(merged.source_id, target_topic_id);
+    assert_eq!(merged.target_id, target_topic_id);
+    assert_eq!(merged.moved_comments, 5);
 
-    let reply1_merged = node_service.get_node(tenant_id, reply1.id).await.unwrap();
-    assert_eq!(reply1_merged.parent_id, Some(demoted.target_id));
+    assert_eq!(bridge.demote_calls.load(Ordering::Relaxed), 1);
+    assert_eq!(bridge.split_calls.load(Ordering::Relaxed), 1);
+    assert_eq!(bridge.merge_calls.load(Ordering::Relaxed), 1);
 
-    let merge_target = node_service
-        .get_node(tenant_id, demoted.target_id)
+    let operations = orchestration_operation::Entity::find()
+        .filter(orchestration_operation::Column::TenantId.eq(tenant_id))
+        .all(&db)
         .await
-        .unwrap();
-    assert_eq!(
-        merge_target
-            .metadata
-            .get("canonical_node_id")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned),
-        Some(demoted.target_id.to_string())
-    );
-
-    let operations_rows = node_service
-        .db()
-        .query_all(Statement::from_string(
-            DbBackend::Sqlite,
-            "SELECT id FROM content_orchestration_operations".to_string(),
-        ))
+        .expect("operations query should succeed");
+    let audits = orchestration_audit_log::Entity::find()
+        .filter(orchestration_audit_log::Column::TenantId.eq(tenant_id))
+        .all(&db)
         .await
-        .expect("operations table should be queryable");
-    assert_eq!(operations_rows.len(), 4);
+        .expect("audit query should succeed");
+    assert_eq!(operations.len(), 3);
+    assert_eq!(audits.len(), 3);
 
-    let audit_rows = node_service
-        .db()
-        .query_all(Statement::from_string(
-            DbBackend::Sqlite,
-            "SELECT id FROM content_orchestration_audit_logs".to_string(),
-        ))
-        .await
-        .expect("audit table should be queryable");
-    assert_eq!(audit_rows.len(), 4);
-
-    let events = drain_event_envelopes(&mut receiver);
-    assert!(events.iter().any(|e| {
-        matches!(
-            &e.event,
-            DomainEvent::TopicPromotedToPost {
-                topic_id,
-                post_id,
-                moved_comments,
-                ..
-            } if *topic_id == topic.id && *post_id == promoted.target_id && *moved_comments == 2
-        )
-    }));
-    assert!(events.iter().any(|e| {
-        matches!(
-            &e.event,
-            DomainEvent::PostDemotedToTopic {
-                post_id,
-                topic_id,
-                moved_comments,
-                ..
-            } if *post_id == promoted.target_id && *topic_id == demoted.target_id && *moved_comments == 2
-        )
-    }));
-    assert!(events.iter().any(|e| {
-        matches!(
-            &e.event,
-            DomainEvent::TopicSplit {
-                source_topic_id,
-                target_topic_id,
-                moved_comment_ids,
-                moved_comments,
-                ..
-            } if *source_topic_id == demoted.target_id
-                && *target_topic_id == split.target_id
-                && *moved_comments == 1
-                && moved_comment_ids.contains(&reply1.id)
-        )
-    }));
-    assert!(events.iter().any(|e| {
-        matches!(
-            &e.event,
-            DomainEvent::TopicsMerged {
-                target_topic_id,
-                moved_comments,
-                ..
-            } if *target_topic_id == demoted.target_id && *moved_comments == 1
-        )
-    }));
+    let envelopes = drain_event_envelopes(&mut receiver);
+    assert_eq!(envelopes.len(), 8);
+    assert!(envelopes.iter().any(|envelope| matches!(
+        &envelope.event,
+        DomainEvent::PostDemotedToTopic { post_id: event_post_id, topic_id, moved_comments, locale, reason }
+            if *event_post_id == post_id
+                && *topic_id == bridge.demoted_topic_id
+                && *moved_comments == 3
+                && locale == "ru"
+                && reason.as_deref() == Some("demote")
+    )));
+    assert!(envelopes.iter().any(|envelope| matches!(
+        &envelope.event,
+        DomainEvent::TopicSplit { source_topic_id: event_source, target_topic_id: event_target, moved_comment_ids, moved_comments, reason }
+            if *event_source == source_topic_id
+                && *event_target == bridge.split_topic_id
+                && moved_comment_ids == &moved_reply_ids
+                && *moved_comments == moved_reply_ids.len() as u64
+                && reason.as_deref() == Some("split")
+    )));
+    assert!(envelopes.iter().any(|envelope| matches!(
+        &envelope.event,
+        DomainEvent::TopicsMerged { target_topic_id: event_target, moved_comments, reason }
+            if *event_target == target_topic_id
+                && *moved_comments == 5
+                && reason.as_deref() == Some("merge")
+    )));
+    assert!(envelopes.iter().any(|envelope| matches!(
+        &envelope.event,
+        DomainEvent::CanonicalUrlChanged { target_kind, .. } if target_kind == "forum_topic"
+    )));
+    assert!(envelopes.iter().any(|envelope| matches!(
+        &envelope.event,
+        DomainEvent::UrlAliasPurged { target_kind, .. } if target_kind == "forum_topic"
+    )));
 }
 
 #[tokio::test]
-async fn test_orchestration_rejects_unsafe_payload() {
+async fn test_split_topic_rejects_empty_reply_list_before_bridge_call() {
     let db = setup_content_test_db().await;
     ensure_content_schema(&db).await;
 
     let transport = MemoryTransport::new();
-    let _receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
-
-    let node_service = NodeService::new(db.clone(), event_bus.clone());
-    let orchestration = ContentOrchestrationService::new(NodeService::new(db, event_bus));
-
-    let tenant_id = Uuid::new_v4();
-    let security = orchestration_security();
-
-    let topic = node_service
-        .create_node(
-            tenant_id,
-            security.clone(),
-            CreateNodeInput {
-                kind: "forum_topic".to_string(),
-                translations: vec![NodeTranslationInput {
-                    locale: "en".to_string(),
-                    title: Some("Topic A".to_string()),
-                    slug: None,
-                    excerpt: None,
-                }],
-                bodies: vec![BodyInput {
-                    locale: "en".to_string(),
-                    body: Some("Topic body".to_string()),
-                    format: Some("markdown".to_string()),
-                }],
-                status: Some(rustok_content::entities::node::ContentStatus::Published),
-                parent_id: None,
-                author_id: security.user_id,
-                category_id: None,
-                position: Some(0),
-                depth: Some(0),
-                reply_count: Some(0),
-                metadata: serde_json::json!({"forum_status": "open"}),
-            },
-        )
-        .await
-        .expect("topic should be created");
+    let bridge = Arc::new(MockBridge::new());
+    let orchestration = ContentOrchestrationService::new(db, event_bus, bridge.clone());
 
     let err = orchestration
-        .promote_topic_to_post(
-            tenant_id,
-            security,
-            PromoteTopicToPostInput {
-                topic_id: topic.id,
-                locale: "en".to_string(),
-                reason: Some("<script>alert(1)</script>".to_string()),
-                idempotency_key: "unsafe-key-1".to_string(),
+        .split_topic(
+            Uuid::new_v4(),
+            orchestration_security(),
+            SplitTopicInput {
+                topic_id: Uuid::new_v4(),
+                locale: "ru".to_string(),
+                reply_ids: Vec::new(),
+                new_title: "Bad split".to_string(),
+                reason: None,
+                idempotency_key: "split-empty".to_string(),
             },
         )
         .await
-        .expect_err("unsafe reason must be rejected");
+        .expect_err("empty split must fail");
 
-    assert!(matches!(
-        err,
-        rustok_content::ContentError::Validation(message)
-            if message.contains("unsafe payload")
-    ));
-}
-
-#[tokio::test]
-async fn test_orchestration_locale_fallback_prefers_en_then_first_available() {
-    let db = setup_content_test_db().await;
-    ensure_content_schema(&db).await;
-
-    let transport = MemoryTransport::new();
-    let mut receiver = transport.subscribe();
-    let event_bus = TransactionalEventBus::new(Arc::new(transport));
-
-    let node_service = NodeService::new(db.clone(), event_bus.clone());
-    let orchestration = ContentOrchestrationService::new(NodeService::new(db, event_bus));
-
-    let tenant_id = Uuid::new_v4();
-    let security = orchestration_security();
-
-    let topic = node_service
-        .create_node(
-            tenant_id,
-            security.clone(),
-            CreateNodeInput {
-                kind: "forum_topic".to_string(),
-                translations: vec![NodeTranslationInput {
-                    locale: "ru".to_string(),
-                    title: Some("Тема А".to_string()),
-                    slug: None,
-                    excerpt: None,
-                }],
-                bodies: vec![BodyInput {
-                    locale: "ru".to_string(),
-                    body: Some("Тело темы".to_string()),
-                    format: Some("markdown".to_string()),
-                }],
-                status: Some(rustok_content::entities::node::ContentStatus::Published),
-                parent_id: None,
-                author_id: security.user_id,
-                category_id: None,
-                position: Some(0),
-                depth: Some(0),
-                reply_count: Some(0),
-                metadata: serde_json::json!({"forum_status": "open"}),
-            },
-        )
-        .await
-        .expect("topic should be created");
-
-    node_service
-        .db()
-        .execute(Statement::from_string(
-            DbBackend::Sqlite,
-            format!(
-                "UPDATE node_translations SET slug = NULL WHERE node_id = '{}'",
-                topic.id
-            ),
-        ))
-        .await
-        .expect("clear source slugs for orchestration duplicate-slug workaround");
-
-    let promoted = orchestration
-        .promote_topic_to_post(
-            tenant_id,
-            security,
-            PromoteTopicToPostInput {
-                topic_id: topic.id,
-                locale: "de".to_string(),
-                reason: Some("locale-fallback".to_string()),
-                idempotency_key: "locale-fallback-key-1".to_string(),
-            },
-        )
-        .await
-        .expect("promotion should use fallback locale");
-
-    let promoted_post = node_service
-        .get_node(tenant_id, promoted.target_id)
-        .await
-        .expect("promoted post should exist");
-    assert!(
-        promoted_post.translations.iter().any(|t| t.locale == "ru"),
-        "fallback locale payload must preserve available translations"
-    );
-
-    let events = drain_event_envelopes(&mut receiver);
-    assert!(events.iter().any(|e| {
-        matches!(
-            &e.event,
-            DomainEvent::TopicPromotedToPost { topic_id, locale, .. }
-                if *topic_id == topic.id && locale == "ru"
-        )
-    }));
-}
-
-async fn wait_until(condition: impl Fn() -> bool) {
-    for _ in 0..40 {
-        if condition() {
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    }
-
-    panic!("condition was not met within the expected time");
+    assert!(matches!(err, rustok_content::ContentError::Validation(_)));
+    assert_eq!(bridge.split_calls.load(Ordering::Relaxed), 0);
 }

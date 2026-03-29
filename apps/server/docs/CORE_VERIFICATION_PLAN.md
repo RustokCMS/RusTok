@@ -28,7 +28,7 @@ grep -rn "use rustok_pages" apps/server/src/ --include="*.rs"
 
 **Ожидаемый результат:** Нет результатов, кроме:
 - `graphql/schema.rs` — KNOWN ISSUE до Фазы 4 (dynamic registration).
-- `graphql/{content,blog,commerce,forum,pages}/` — допустимо ТОЛЬКО если модуль-scope GraphQL.
+- `graphql/{blog,commerce,forum,pages}/` — допустимо ТОЛЬКО если модуль-scope GraphQL.
 - `app.rs` — регистрация модулей через `ModuleRegistry::register()`.
 
 ### 1.2 `schema.rs` — проверка на domain coupling
@@ -37,7 +37,7 @@ grep -rn "use rustok_pages" apps/server/src/ --include="*.rs"
 grep -n "Query\|Mutation" apps/server/src/graphql/schema.rs
 ```
 
-**Ожидаемый результат (текущий/known):** `ContentQuery`, `BlogQuery`, и т.д. — помечены в интеграционном плане. После Фазы 4 должны исчезнуть.
+**Ожидаемый результат (текущий/known):** product `ContentQuery`/`ContentMutation` уже выведены из runtime; в schema остаются только доменные query/mutation root'ы.
 
 ### 1.3 `rustok-core` — не содержит domain logic
 

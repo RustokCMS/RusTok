@@ -123,6 +123,7 @@ fn create_topic_input_fields() {
         body_format: "markdown".to_string(),
         content_json: None,
         tags: vec!["tag1".to_string()],
+        channel_slugs: None,
     };
     assert_eq!(input.locale, "en");
     assert_eq!(input.title, "Hello");

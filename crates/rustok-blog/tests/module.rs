@@ -44,13 +44,13 @@ fn module_has_permissions() {
 }
 
 #[test]
-fn module_migrations_empty() {
+fn module_has_owned_migrations() {
     let module = BlogModule;
 
-    // Blog module uses content module tables, so no own migrations
+    // Blog module now owns post storage and must ship its own migrations.
     assert!(
-        module.migrations().is_empty(),
-        "Blog module should not have own migrations"
+        !module.migrations().is_empty(),
+        "Blog module should expose its own migrations"
     );
 }
 

@@ -238,7 +238,9 @@ impl CommerceMutation {
         let cart_service = CartService::new(db.clone());
         let cart = cart_service.get_cart(tenant_id, cart_id).await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
-        let updated = cart_service.remove_line_item(tenant_id, cart_id, line_id).await?;
+        let updated = cart_service
+            .remove_line_item(tenant_id, cart_id, line_id)
+            .await?;
         Ok(updated.into())
     }
 
@@ -394,13 +396,7 @@ impl CommerceMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let order = OrderService::new(db.clone(), event_bus.clone())
-            .ship_order(
-                tenant_id,
-                user_id,
-                id,
-                input.tracking_number,
-                input.carrier,
-            )
+            .ship_order(tenant_id, user_id, id, input.tracking_number, input.carrier)
             .await?;
 
         Ok(order.into())

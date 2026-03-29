@@ -69,7 +69,7 @@
 
 - REST controllers: health, metrics, auth, swagger, pages.
 - Domain controllers: commerce, content, blog, forum.
-- GraphQL endpoint + domain GraphQL modules (`auth`, `commerce`, `content`, `blog`, `forum`, loaders, persisted queries).
+- GraphQL endpoint + domain GraphQL modules (`auth`, `commerce`, `blog`, `forum`, `pages`, loaders, persisted queries).
 
 ### 2.4 Models / ORM / persistence
 

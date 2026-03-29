@@ -24,14 +24,14 @@ fn module_permissions() {
         .iter()
         .any(|p| { p.resource == Resource::Pages && p.action == Action::Publish }));
 
-    // Check nodes (blocks) permissions exist
-    assert!(permissions
-        .iter()
-        .any(|p| { p.resource == Resource::Nodes && p.action == Action::Create }));
+    assert!(
+        permissions.iter().all(|p| p.resource != Resource::Nodes),
+        "pages module should no longer publish node permissions"
+    );
 }
 
 #[test]
-fn module_migrations_empty() {
+fn module_has_migrations() {
     let module = PagesModule;
-    assert!(module.migrations().is_empty());
+    assert!(!module.migrations().is_empty());
 }

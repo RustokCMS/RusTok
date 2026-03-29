@@ -2,194 +2,114 @@
 
 # <img src="assets/rustok-logo-512x512.png" width="72" align="center" /> RusToK
 
-**Event-Driven Enterprise Headless Platform Built with Rust**
+**Event-driven modular platform built with Rust**
 
-*The stability of a tank. The speed of compiled code. The first CMS designed for the AI-Agent era.*
+*One repository for the server, integrated Leptos hosts, and headless/experimental Next.js hosts.*
 
 [![CI](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml/badge.svg)](https://github.com/RustokCMS/RusToK/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**[🇷🇺 Русская версия](README.ru.md)** | **[📋 Quick Platform Info (RU)](PLATFORM_INFO_RU.md)**
-
-[Features](#features) •
-[Why Rust?](#why-rust) •
-[Comparison](#comparison) •
-[Quick Start](docs/guides/quickstart.md) •
-[Documentation](docs/index.md) •
-[Roadmap](docs/roadmap.md)
+**[Russian version](README.ru.md)** | **[Quick Platform Info (RU)](PLATFORM_INFO_RU.md)**
 
 </div>
 
----
+RusToK is a Rust-first modular monolith for multi-tenant products that combine content, commerce, workflow, and integrations. The current platform centers on `apps/server` as the composition root, manifest-driven module builds, an event-driven write/read split, and two UI host strategies: Leptos hosts as the primary integrated path and Next.js hosts as headless or experimental companions.
 
-## 🎯 What is RusToK?
+<a id="table-of-contents"></a>
 
-**RusToK** is an event-driven, modular highload platform for any product with data. Each module is isolated and microservice-ready, while still shipping as a single, secure Rust binary. It combines the developer experience of Laravel/Rails with the performance of Rust, using a "Tank" strategy for stability and a "CQRS-lite" approach for fast reads.
+## Table of Contents
 
-Modules in RusToK are compiled into a binary for maximum performance and security, but follow a standardized layout (Entities/DTO/Services) for easy maintainability. •
-Rustok can become the foundation of anything that has any data.
+- [Overview](#overview)
+- [Features](#features)
+- [Performance & Economy](#performance-and-economy)
+- [Why Rust](#why-rust)
+- [AI-Native Architecture](#ai-native-architecture)
+- [Comparison](#comparison)
+- [Architecture Snapshot](#architecture-snapshot)
+  - [Applications](#applications)
+  - [Module Taxonomy](#module-taxonomy)
+- [Module System](#module-system)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
+- [Development](#development)
+- [Current Focus](#current-focus)
+- [Acknowledgments](#acknowledgments)
+- [License](#license)
 
-From an alarm clock with a personal blog to NASA's terabyte storage.
+<a id="overview"></a>
 
-We consume 10-200 times less power than traditional platforms.
+## Overview
 
-We can work on any device with an operational memory of more than 50 MB (Maybe less).
+Current platform strengths:
 
-Highload for the poor, salvation for the rich...
+- Manifest-driven composition from [`modules.toml`](modules.toml) into the runtime and host applications.
+- Clear module boundaries between `Core`, `Optional`, and capability/support crates.
+- Hybrid API model: GraphQL for UI-facing domain surfaces, REST for operational and integration flows, and WebSocket transport where live runtime behavior needs it.
+- Event-driven write/read split with transactional outbox, `rustok-index`, and `rustok-search`.
+- Dual UI host model: `apps/admin` and `apps/storefront` as integrated Leptos hosts, plus `apps/next-admin` and `apps/next-frontend` for headless or experimental frontend work.
 
-Our architecture will be relevant for decades. We won't turn into another WordPress.
+The root README is intentionally brief. Treat it as a repo entry point, not as the full architecture spec.
 
-From a personal blog or landing page to petabytes of data storage.
+<a id="features"></a>
 
-FORGET ABOUT OLD PATTERNS, WE'RE BUILDING THE FUTURE. WE HAVE NO LIMITATIONS!
-
-┌─────────────────────────────────────────────────────────────┐
-│                      RusToK Platform                        │
-├─────────────────────────────────────────────────────────────┤
-│  🛍️ Storefront (SSR)  │  ⚙️ Admin Panel  │  📱 Mobile App   │
-│      Leptos SSR       │    Leptos CSR    │   Your Choice    │
-├─────────────────────────────────────────────────────────────┤
-│                    🔌 GraphQL API                           │
-├─────────────────────────────────────────────────────────────┤
-│  📦 Commerce  │  📝 Content  │  👥 Community  │ ...       │
-├─────────────────────────────────────────────────────────────┤
-│                    🧠 Core (Loco.rs)                        │
-│          Auth • Tenants • Nodes • Tags • Events             │
-├─────────────────────────────────────────────────────────────┤
-│     🐘 PostgreSQL (write)  |  🔎 Index Module (read)         │
-└─────────────────────────────────────────────────────────────┘
-
-### 💡 The "Why"
-
-Most platforms are either **fast but complex** (Go/C++) or **productive but slow** (PHP/Node). RusToK breaks this trade-off using the **Loco.rs** foundation, giving you "Rails-like" speed of development with "C++-like" runtime performance.
-
----
-
-## ✨ Features
+## Features
 
 ### Core Platform
 
-- 🔐 **Multi-tenant Isolation** — Native support for multiple stores/sites in one deployment with security-hardened validation
-- 🔑 **Enterprise Auth** — JWT + sessions with fine-grained RBAC, built-in OAuth2 Authorization Server for external integrations
-- 📊 **Hybrid API** — Unified GraphQL for domain data and REST for infrastructure/OpenAPI
-- 🏗️ **Standardized Modules** — Clean architecture with `entities`, `dto`, and `services` in every crate
-- 🎣 **Event-Driven Pub/Sub** — Async synchronization with validation, backpressure control, and transactional guarantees
-- 📚 **Full OpenAPI Documentation** — Comprehensive Swagger UI for all REST controllers
-- 🌍 **Global-First** — Built-in i18n and localization support
-- 🛡️ **Security Hardened** — Input validation, injection prevention (SQL/XSS/Path Traversal), reserved name blocking
-- ⚖️ **Backpressure Control** — Automatic rate limiting prevents OOM from event floods
+- Multi-tenant isolation with tenant-aware runtime contracts
+- Hybrid API model with GraphQL, REST, and WebSocket transport where needed
+- Manifest-driven module composition and per-tenant enablement
+- Event-driven write/read split with transactional outbox
+- Built-in localization, observability, and RBAC foundations
 
-### Deployment Modes — What No Other CMS Can Do
-
-RusTok is the only platform that supports **all three deployment modes** with a single codebase:
+### Deployment Modes
 
 | Mode | How it works | Auth | Use case |
 |------|-------------|------|----------|
-| **Monolith** | Admin + storefront(s) compiled into one binary via Leptos SSR. Single process, single port — like WordPress but in Rust | Server sessions (cookie-based) | Self-hosted sites, blogs, small e-commerce |
-| **Headless** | Server exposes GraphQL/REST API. Frontend is separate (React, Flutter, mobile, CRM) | OAuth2 (PKCE, client_credentials) | Enterprise, mobile apps, third-party integrations |
-| **Mixed** | Built-in Leptos UI (sessions) + external clients (OAuth2) at the same time | Both | Built-in admin + external mobile app + CRM via API |
+| **Monolith** | Server plus integrated Leptos admin/storefront hosts | Server sessions and shared runtime context | Self-hosted sites, integrated backoffice + storefront |
+| **Headless** | `apps/server` exposes APIs while frontend lives separately | OAuth2, sessions, or mixed contracts depending on client | Mobile apps, external frontends, third-party integrations |
+| **Mixed** | Integrated Leptos hosts plus external clients against the same runtime | Both | Built-in admin plus external apps and integrations |
 
-No other CMS offers this combination:
+### Capability Snapshot
 
 | Capability | WordPress | Shopify | Strapi | Ghost | **RusToK** |
 |---|---|---|---|---|---|
-| Monolith (single binary) | yes | no | no | yes | **yes** |
-| Headless API with OAuth2 AS | plugin | yes | no | no | **built-in** |
-| Mixed mode (both at once) | hacks | no | no | no | **yes** |
-| Multi-tenant | multisite (hacky) | no | no | no | **native** |
-| Compile-time modules | no (PHP plugins) | no (external apps) | no (JS plugins) | no | **Rust crates** |
-| Configurable admin path | plugin | no | no | no | **yes** (`/admin` → `/my-panel`) |
-| SSR + WASM (one language) | no | no | no | no | **Leptos** |
-
-**Monolith mode**: Admin panel served at a configurable prefix (default `/admin`, changeable for security). Storefront(s) on root routes or subdomains. All authentication via server sessions — no OAuth needed. Works in multi-tenant and multi-site configurations.
-
-**Headless mode**: Any frontend connects via OAuth2. Register your app (SPA, mobile, CRM, ERP) through the Admin UI or GraphQL API, get `client_id` + scopes, and you're connected.
-
-**Mixed mode**: Built-in Leptos admin uses sessions. External mobile app uses OAuth2 PKCE. Both work simultaneously on the same server.
+| Monolith deployment | yes | no | no | yes | **yes** |
+| Headless API surface | partial | yes | yes | partial | **yes** |
+| Mixed integrated + headless mode | hacks | partial | partial | limited | **yes** |
+| Multi-tenant runtime | multisite | limited | no | no | **native** |
+| Compile-time module composition | no | no | no | no | **yes** |
+| Rust-first integrated UI path | no | no | no | no | **yes** |
 
 ### Developer Experience
 
-- 🚀 **Loco.rs Framework** — Rails-like productivity in Rust
-- 🛠️ **CLI Generators** — `cargo loco generate model/controller/migration`
-- 📝 **Type-Safe Everything** — From database to frontend, one language
-- 🧪 **Testing Built-in** — Unit, integration, and E2E test support
-- 🎨 **Storefront UI Stack** — Leptos SSR + Next.js starters with Tailwind-based UI
-- 📚 **Auto-generated Docs** — OpenAPI/GraphQL schema documentation
+- Loco.rs foundation for the shared server runtime
+- Rust crates as explicit module boundaries
+- Module-owned transport and UI slices instead of a giant central app dump
+- Living docs indexed from `docs/index.md`
 
-### Performance & Reliability
+### Testing & Quality
 
-- ⚡ **Blazingly Fast** — Native compiled binary, no interpreter overhead
-- 🛡️ **Memory Safe** — Rust's ownership model prevents entire classes of bugs
-- 📦 **Single Binary** — Deploy one file, no dependency management
-- 🔄 **Zero-Downtime Deploys** — Graceful shutdown and health checks
-- 🔎 **CQRS-lite Read Models** — Denormalized index tables for fast storefront queries
-- 🔧 **Circuit Breaker Pattern** — Fail-fast resilience (30s → 0.1ms, -99.997% latency)
-- 🎯 **Type-Safe State Machines** — Compile-time guarantees for business logic
-- 📊 **Rich Error Handling** — RFC 7807 compatible API errors with structured context
-
-### Testing & Quality (80% Coverage)
-
-- 🧪 **Unit Tests** — Comprehensive test suite with 80% coverage
-- 🎲 **Property-Based Tests** — 10,752+ test cases with proptest
-- ⚡ **Performance Benchmarks** — Criterion.rs suites for all critical paths
-- 🔐 **Security Tests** — 25+ OWASP-focused integration tests
-- 🔍 **Integration Tests** — End-to-end test suites for all flows
+- Workspace-wide Rust test flow with `cargo nextest`
+- Manifest and dependency hygiene checks via `cargo machete`
+- Platform verification plans for architecture, frontend, and quality contours
 
 ### Observability & Security
 
-- 📊 **OpenTelemetry** — Full observability stack with distributed tracing
-- 📈 **Metrics Dashboard** — Grafana dashboards with 40+ SLO alerts
-- 🛡️ **OWASP Top 10** — 100% compliance with security best practices
-- 🔒 **Security Headers** — CSP, HSTS, X-Frame-Options protection
-- ⏱️ **Rate Limiting** — Token bucket algorithm with configurable limits
+- Prometheus-style metrics and tracing stack
+- Typed RBAC and permission-aware runtime contracts
+- Tenant-aware request context and channel-aware request flow
+- Shared validation and outbox/event-runtime guardrails
 
----
+<a id="performance-and-economy"></a>
 
-## 🤔 Why Rust?
+## Performance & Economy
 
-### The Problem with Current CMS Solutions
+The exact numbers depend on the deployment profile and enabled modules, but the platform is still positioned around compiled-runtime efficiency and denormalized read paths.
 
-| Issue | WordPress | Node.js CMS | RusToK |
-|-------|-----------|-------------|--------|
-| **Runtime Errors** | Fatal errors crash site | Uncaught exceptions | Compile-time guarantees |
-| **Memory Leaks** | Common with plugins | GC pauses, memory bloat | Ownership model prevents |
-| **Security** | 70% of vulns from plugins | npm supply chain risks | Compiled, auditable deps |
-| **Performance** | ~50 req/s typical | ~1000 req/s | ~50,000+ req/s |
-| **Scaling** | Requires caching layers | Horizontal only | Vertical + Horizontal |
-
-### The Rust Advantage
-
-```rust
-// This code won't compile if you forget to handle an error
-let product = Product::find_by_id(db, product_id)
-    .await?  // ? forces you to handle the error
-    .ok_or(Error::NotFound)?;  // Explicit None handling
-
-// Compare to JavaScript:
-// const product = await Product.findById(id); 
-// // What if id is undefined? What if DB fails? Runtime crash!
-```
-
-Real-world impact:
-
-- 🐛 Fewer bugs in production — Most errors caught at compile time
-- 💰 Lower infrastructure costs — 10x less memory, 50x more throughput
-- 😴 Sleep better at night — No 3 AM "site is down" emergencies
-
----
-
-## ⚡ Performance & Economy
-
-### 💰 Save 80% on Infrastructure
-
-While a typical Node.js or Python application requires **256MB-512MB RAM** per instance, a RusToK production container starts at just **30MB-50MB**.
-
-- **Deploy on $5 VPS**: Handle traffic that would cost $100/mo on other stacks.
-- **Serverless Friendly**: Native binary starts in milliseconds. Zero "cold start" issues.
-
-### 🚀 Benchmarks (simulated)
+### Benchmarks (simulated)
 
 | Metrics | WordPress | Strapi | RusToK |
 |---------|-----------|--------|--------|
@@ -197,481 +117,289 @@ While a typical Node.js or Python application requires **256MB-512MB RAM** per i
 | **P99 Latency**| 450ms | 120ms | **8ms** |
 | **Cold Boot** | N/A | 8.5s | **0.05s** |
 
----
+<a id="why-rust"></a>
 
-## 🤖 AI-Native Architecture
+## Why Rust
 
-RusToK is the first platform built with a **System Manifest** designed specifically for AI Assistants.
+### The Problem with Current CMS Solutions
 
-- **Structured for Agents**: Clean directory patterns and exhaustive documentation mean AI (Cursor, Windsurf, Claude) builds features for you with 99% accuracy.
-- **Zero Boilerplate**: Use our CLI and AI-prompts to generate entire modules in minutes.
+| Issue | WordPress | Node.js CMS | RusToK |
+|-------|-----------|-------------|--------|
+| **Runtime Errors** | Fatal errors crash site | Uncaught exceptions | Compile-time guarantees |
+| **Memory Leaks** | Common with plugins | GC pauses, memory bloat | Ownership model prevents |
+| **Security** | Large plugin attack surface | npm supply-chain risk | Compiled, auditable dependencies |
+| **Scaling** | Cache-heavy layering | Mostly horizontal | Vertical and horizontal options |
 
----
+### The Rust Advantage
 
-## 🦄 Legendary Efficiency (Hyper-Optimized)
+```rust
+let product = Product::find_by_id(db, product_id)
+    .await?
+    .ok_or(Error::NotFound)?;
+```
 
-RusToK is so efficient that it doesn't just run on servers — it survives where others crash:
+The value proposition is still the same even as the architecture evolves:
 
-- **Smartwatch Ready**: Handle a million requests per second while running on your smart fridge or a digital watch.
-- **Powered by Vibes**: We handle high traffic using less energy than a literal cup of coffee.
-- **Quantum Speed**: Our response times are so low that requests are often served before the user even finishes clicking.
+- more errors are caught at compile time;
+- domain contracts stay explicit across crates;
+- runtime performance is predictable without interpreter overhead.
 
-If your current CMS needs a supercomputer just to render a "About Us" page, it's time to upgrade to the Tank.
+<a id="ai-native-architecture"></a>
 
----
+## AI-Native Architecture
 
-## 📊 Comparison
+RusToK is documented and structured for agent-assisted work, but the current claim should be read narrowly: the repository favors explicit contracts, documentation hubs, module manifests, and predictable component boundaries rather than vague scaffolding conventions.
+
+Practical AI-facing entry points:
+
+- [Documentation map](docs/index.md)
+- [System manifest](RUSTOK_MANIFEST.md)
+- [Module registry](docs/modules/registry.md)
+- [Agent rules](AGENTS.md)
+
+<a id="comparison"></a>
+
+## Comparison
 
 ### vs. WordPress + WooCommerce
 
 | Aspect | WordPress | RusToK |
 |--------|-----------|--------|
 | Language | PHP 7.4+ | Rust |
-| Typical Response Time | 200-500ms | 5-20ms |
-| Memory per Request | 50-100MB | 2-5MB |
-| Plugin System | Runtime (risky) | Compile-time (safe) |
+| Plugin System | Runtime (risky) | Compile-time and manifest-driven |
 | Type Safety | None | Full |
 | Multi-tenant | Multisite (hacky) | Native |
-| API | REST (bolted on) | GraphQL (native) |
-| Admin UI | PHP templates | Leptos SPA |
-| Learning Curve | Low | Medium-High |
-| Hosting Cost | $20-100/mo | $5-20/mo |
+| API | REST (bolted on) | GraphQL + REST |
+| Admin UI | PHP templates | Leptos host |
 
-Best for: Teams tired of WordPress security patches and plugin conflicts.
+Best for: teams that want stronger contracts than a plugin-first PHP stack.
 
 ### vs. Strapi (Node.js)
 
 | Aspect | Strapi | RusToK |
 |--------|--------|--------|
 | Language | JavaScript/TypeScript | Rust |
-| Response Time | 50-150ms | 5-20ms |
-| Memory Usage | 200-500MB | 30-50MB |
-| Type Safety | Optional (TS) | Mandatory |
-| Database | Multiple | PostgreSQL |
-| Content Modeling | UI-based | Code-based |
-| Plugin Ecosystem | npm (large) | Crates (growing) |
-| Cold Start | 5-10 seconds | <100ms |
+| Content Modeling | UI-based | Code and module based |
+| Plugin Ecosystem | npm | crates and workspace modules |
+| Cold Start | Higher | Lower |
 
-Best for: Teams wanting type safety without sacrificing DX.
+Best for: teams that want type safety and explicit domain ownership.
 
 ### vs. Medusa.js (E-commerce)
 
 | Aspect | Medusa | RusToK |
 |--------|--------|--------|
-| Focus | E-commerce only | Modular (commerce optional) |
+| Focus | E-commerce only | Commerce plus content/community/workflow |
 | Language | TypeScript | Rust |
 | Architecture | Microservices encouraged | Modular monolith |
-| Plugins | Runtime | Compile-time |
-| Admin | React | Leptos (Rust) |
-| Storefront | Next.js templates | Leptos SSR |
-| Multi-tenant | Limited | Native |
+| Storefront | Next.js templates | Leptos host plus Next.js companion paths |
 
-Best for: Teams wanting commerce + content in one platform.
+Best for: teams that want commerce and non-commerce domains in one platform.
 
 ### vs. Directus / PayloadCMS
 
 | Aspect | Directus/Payload | RusToK |
 |--------|------------------|--------|
-| Approach | Database-first | Schema-first |
-| Type Generation | Build step | Native |
+| Approach | Database-first | Schema-first and module-first |
+| Type Generation | Build step | Native Rust types |
 | Custom Logic | Hooks (JS) | Rust modules |
-| Performance | Good | Excellent |
 | Self-hosted | Yes | Yes |
 | "Full Rust" | No | Yes |
 
-Best for: Teams committed to Rust ecosystem.
+Best for: teams committed to a Rust-centered platform stack.
 
----
+<a id="architecture-snapshot"></a>
 
-## 🚀 Quick Start
+## Architecture Snapshot
 
-### Prerequisites
+<a id="applications"></a>
 
-```bash
-# Rust toolchain
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-rustup target add wasm32-unknown-unknown
+### Applications
 
-# Tools
-cargo install loco-cli
-cargo install trunk
-cargo install cargo-leptos
+| Path | Role |
+|---|---|
+| `apps/server` | Composition root, HTTP/GraphQL runtime host, auth/session/RBAC wiring, event runtime, manifest validation |
+| `apps/admin` | Primary Leptos admin host |
+| `apps/storefront` | Primary Leptos storefront host |
+| `apps/next-admin` | Headless or experimental Next.js admin host |
+| `apps/next-frontend` | Headless or experimental Next.js storefront host |
 
-# Database
-docker run -d --name rustok-db \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=rustok_dev \
-  -p 5432:5432 \
-  postgres:16
-```
+<a id="module-taxonomy"></a>
 
-### Installation
+### Module Taxonomy
 
-```bash
-# Clone
-git clone https://github.com/RustokCMS/RusToK.git
-cd RusToK
+`modules.toml` is the source of truth for platform modules.
 
-# Setup database
-cd apps/server
-cargo loco db migrate
+Core modules:
 
-# Run backend (terminal 1)
-cargo loco start
+- `auth`
+- `cache`
+- `channel`
+- `email`
+- `index`
+- `search`
+- `outbox`
+- `tenant`
+- `rbac`
 
-# Run admin panel (terminal 2)
-cd apps/admin
-RUSTOK_DEMO_MODE=1 trunk serve --open
+Optional modules:
 
-# Run storefront (terminal 3)
-cargo run -p rustok-storefront
+- Content and community: `content`, `blog`, `comments`, `forum`, `pages`, `media`, `workflow`
+- Commerce family: `cart`, `customer`, `product`, `profiles`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment`, `commerce`
 
-# (Optional) Run Next.js storefront (terminal 5)
-cd apps/next-frontend
-npm install
-npm run dev
+Support and capability crates sit outside the `Core` / `Optional` taxonomy:
 
-# (Optional) Build storefront CSS
-cd apps/storefront
-npm install
-npm run build:css
+- Shared/support: `rustok-core`, `rustok-api`, `rustok-events`, `rustok-storage`, `rustok-commerce-foundation`, `rustok-test-utils`, `rustok-telemetry`
+- Capability/runtime layers: `rustok-mcp`, `alloy`, `alloy-scripting`, `flex`, `rustok-iggy`, `rustok-iggy-connector`
 
-# Visit
-# API: http://localhost:3000/api/graphql
-# Admin: http://localhost:8080
-# Storefront (SSR): http://localhost:3100?lang=en
-```
+Domain boundary highlights:
 
-> ⚠️ Admin demo mode is disabled by default. Set `RUSTOK_DEMO_MODE=1` only for local demos.
-> For real authentication, use the backend `/api/auth` endpoints with HttpOnly cookies.
+- `rustok-content` is now a shared helper and orchestration layer. It is no longer the product-facing storage or transport owner for `blog`, `forum`, or `pages`.
+- `rustok-comments` is the generic comments module for classic non-forum comments.
+- The commerce surface is split into dedicated family modules, with `rustok-commerce` acting as the umbrella/root module and orchestration layer.
+- Channel-aware behavior is part of the live request/runtime pipeline through `rustok-channel` and shared request context contracts.
 
-### First Steps
+<a id="module-system"></a>
 
-```bash
-# Create a new module
-cargo loco generate model Product \
-  title:string \
-  price:int \
-  status:string
+## Module System
 
-# Run migrations
-cargo loco db migrate
-
-# Generate CRUD controller
-cargo loco generate controller products --api
-```
-
----
-
-## 📚 Documentation
-
-For complete technical documentation, architecture guides, and development manuals, please refer to our:
-
-👉 **[Documentation Map](docs/index.md)**
-
-Key documents:
-
-- [System Manifest](RUSTOK_MANIFEST.md) — Core philosophy and architecture.
-- [Agent Rules](AGENTS.md) — Guidelines for AI agents.
-- [Roadmap](docs/roadmap.md) — Development phases.
-
----
-
-## 🏗️ Architecture
-
-For a detailed breakdown of the system logic, event flow, and CQRS-lite implementation, see [Detailed Architecture Documentation](docs/architecture.md).
-MCP adapter details live in [docs/mcp.md](docs/mcp.md).
-
-### Project Structure
+The current module flow is manifest-driven:
 
 ```text
-RusToK/
-├── apps/
-│   ├── server/                 # 🚀 Backend API (Loco.rs)
-│   │   ├── src/
-│   │   │   ├── app.rs          # Application setup
-│   │   │   ├── controllers/    # HTTP handlers
-│   │   │   ├── models/         # SeaORM entities
-│   │   │   └── graphql/        # GraphQL resolvers
-│   │   ├── config/             # Environment configs
-│   │   └── migration/          # Database migrations
-│   │
-│   ├── admin/                  # ⚙️ Admin Panel (Leptos CSR)
-│   ├── storefront/             # 🛍️ Public Store (Leptos SSR)
-│   ├── next-frontend/          # 🛍️ Public Store (Next.js App Router)
-│   │   └── src/
-│   │       ├── pages/          # SEO-optimized pages
-│   │       └── components/     # Store UI components
-│   │
-│   └── mcp/                     # 🤖 MCP adapter server (stdio)
-│
-├── crates/
-│   ├── rustok-core/            # 🧠 Infrastructure (Auth, Events, RBAC)
-│   ├── rustok-content/         # 📝 CMS Core (Nodes, Bodies, Categories)
-│   ├── rustok-blog/            # 📰 Blogging (Wraps Content)
-│   ├── rustok-commerce/        # 🛒 Ecommerce umbrella (family root, compatibility, orchestration)
-│   ├── rustok-index/           # 🔎 CQRS Read Models & Search
-│   ├── rustok-mcp/             # 🤖 MCP adapter (rmcp SDK)
-│   └── ...
-└── Cargo.toml                  # Workspace configuration
+modules.toml
+  -> build.rs code generation for host wiring
+  -> apps/server manifest validation
+  -> ModuleRegistry / runtime bootstrap
+  -> per-tenant enablement for optional modules
 ```
 
-### Module System
+Important rules:
 
-Modules are Rust crates linked at compile time:
+- Do not treat manual route registration in `app.rs` as the primary module integration model.
+- Host applications wire optional modules through generated contracts derived from `modules.toml` and module manifests.
+- Build composition and tenant enablement are different concerns:
+  - build composition decides what is compiled into the artifact;
+  - tenant enablement decides which optional modules are active for a given tenant.
+- Leptos hosts already consume module-owned UI packages through manifest-driven wiring.
+- Next.js hosts remain manual/headless entry points and should not be described as if they already follow the same generated host contract.
 
-```rust
-// Adding a module to your build
-// 1. Add to Cargo.toml
-[dependencies]
-rustok-commerce = { path = "../crates/rustok-commerce" }
+For the full runtime map, see:
 
-// 2. Register in app.rs
-fn routes(ctx: &AppContext) -> AppRoutes {
-    AppRoutes::new()
-        .add_route(rustok_commerce::routes())
-        .add_route(rustok_community::routes())
-}
+- [Architecture overview](docs/architecture/overview.md)
+- [Module registry](docs/modules/registry.md)
+- [Module docs index](docs/modules/_index.md)
+- [Module manifest and rebuild lifecycle](docs/modules/manifest.md)
 
-// 3. Compile — module is now part of your binary
-cargo build --release
-```
+<a id="quick-start"></a>
 
-### Why compile-time modules?
+## Quick Start
 
-| Runtime Plugins (WordPress) | Compile-time Modules (RusToK) |
-|-----------------------------|-------------------------------|
-| Can crash your site | Errors caught before deploy |
-| Security vulnerabilities | Audited at build time |
-| Version conflicts | Cargo resolves dependencies |
-| Performance overhead | Zero runtime cost |
-| "Works on my machine" | Same binary everywhere |
+The current local-dev quickstart lives in [docs/guides/quickstart.md](docs/guides/quickstart.md).
 
-### Feature Toggles
-
-Modules can be enabled/disabled per tenant without recompilation. The server
-tracks compiled modules in a registry and calls module lifecycle hooks when
-tenants enable or disable a module. See `docs/modules/registry.md` for details.
-Storefront SSR notes live in `docs/ui/storefront.md`.
-
-```sql
--- Stored in database
-INSERT INTO tenant_modules (tenant_id, module_slug, enabled)
-VALUES ('uuid-here', 'commerce', true);
-```
-
-```rust
-// Checked at runtime
-if modules.is_enabled(tenant_id, "commerce").await? {
-    // Show commerce features
-}
-```
-
-### CQRS-lite Read Models
-
-Write models live in normalized module tables. Read models are denormalized
-index tables that are kept in sync via events. This keeps storefront queries
-fast and avoids heavy joins in the hot path.
-
-```text
-Write → Event Bus → Indexers → Read Models
-```
-
----
-
-## 🗺️ Roadmap
-
-Текущий roadmap и приоритеты поддерживаются в отдельном документе:
-
-- [docs/ROADMAP.md](docs/ROADMAP.md)
-
-Коротко по направлению развития:
-
-1. Core platform: auth, tenants, RBAC, module registry.
-2. Admin UX: auth + navigation + RBAC guards, затем data workflows.
-3. Domain modules: commerce, content, community.
-4. Storefront and integrations.
-
----
-
-## 🧪 Development
-
-### Running Tests
-
-Install the Rust quality tools once before using the local shortcuts:
+Typical workflow:
 
 ```bash
-cargo install cargo-nextest --locked
-cargo install cargo-machete --locked
+./scripts/dev-start.sh
 ```
 
+The current guide covers the full local stack:
+
+- backend on `http://localhost:5150`
+- Next.js admin on `http://localhost:3000`
+- Leptos admin on `http://localhost:3001`
+- Next.js storefront on `http://localhost:3100`
+- Leptos storefront on `http://localhost:3101`
+
+If you need the app-level details instead of the root overview, start with:
+
+- [apps/server docs](apps/server/docs/README.md)
+- [apps/admin docs](apps/admin/docs/README.md)
+- [apps/storefront docs](apps/storefront/docs/README.md)
+- [apps/next-admin docs](apps/next-admin/docs/README.md)
+- [apps/next-frontend docs](apps/next-frontend/docs/README.md)
+
+<a id="documentation"></a>
+
+## Documentation
+
+Canonical entry points:
+
+- [Documentation map](docs/index.md)
+- [Architecture overview](docs/architecture/overview.md)
+- [Module and application registry](docs/modules/registry.md)
+- [Module documentation index](docs/modules/_index.md)
+- [MCP reference package](docs/references/mcp/README.md)
+- [Testing guide](docs/guides/testing.md)
+- [Module system plan](docs/modules/module-system-plan.md)
+- [Platform verification plan](docs/verification/PLATFORM_VERIFICATION_PLAN.md)
+- [System manifest](RUSTOK_MANIFEST.md)
+- [Agent rules](AGENTS.md)
+
+<a id="development"></a>
+
+## Development
+
+Recommended baseline:
+
+- Rust toolchain from the repository configuration
+- PostgreSQL for local runtime work
+- Node.js or Bun for Next.js hosts
+- `trunk` for Leptos hosts
+
+Useful commands:
+
 ```bash
-# All tests
+# full local stack
+./scripts/dev-start.sh
+
+# Rust tests
 cargo nextest run --workspace --all-targets --all-features
 
-# Doc tests
+# doc tests
 cargo test --workspace --doc --all-features
 
-# Specific crate
-cargo test -p rustok-core
-
-# With database (integration tests)
-DATABASE_URL=postgres://localhost/rustok_test cargo nextest run --workspace --all-targets --all-features
-```
-
-### Testing Guidelines
-
-See [docs/testing-guidelines.md](docs/testing-guidelines.md) for guidance on layering tests, avoiding flakiness, and mock boundaries.
-
-### Dependency Maintenance
-
-```bash
-# Check outdated dependencies (root workspace crates only)
-cargo outdated -R
-
-# Update lockfile (keep Cargo.toml unchanged)
-cargo update
-
-# Security audit
-cargo audit
-
-# License + advisory policy checks
-cargo deny check
-
-# Manifest dependency hygiene
-cargo machete
-```
-
-### Code Quality
-
-```bash
-# Format code
+# format and lint
 cargo fmt --all
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-# Lint
-cargo clippy --workspace -- -D warnings
-
-# Primary Rust test runner
-cargo nextest run --workspace --all-targets --all-features
-
-# Check before commit
-cargo fmt --all -- --check && cargo clippy --workspace -- -D warnings
-cargo test --workspace --doc --all-features
-cargo machete
-./scripts/verify/verify-all.sh
-```
-
-### Release Checklist
-
-```bash
-cargo nextest run --workspace --all-targets --all-features
-cargo test --workspace --doc --all-features
-cargo clippy --workspace --all-targets -- -D warnings
-cargo audit
+# dependency and policy checks
 cargo deny check
 cargo machete
 ```
 
-### Useful Commands
+For repo-wide contributor rules, see [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
 
-```bash
-# Generate new model
-cargo loco generate model Category title:string position:int
+<a id="current-focus"></a>
 
-# Generate controller
-cargo loco generate controller categories --api
+## Current Focus
 
-# Run migrations
-cargo loco db migrate
+Current priorities are documented in the living platform docs rather than in a separate root roadmap file:
 
-# Rollback migration
-cargo loco db rollback
+- [Module system plan](docs/modules/module-system-plan.md)
+- [Platform verification plan](docs/verification/PLATFORM_VERIFICATION_PLAN.md)
+- [Architecture decisions](DECISIONS/README.md)
 
-# Start with auto-reload
-cargo watch -x 'loco start'
-```
+At a high level, the current codebase is focused on:
 
----
+- keeping module boundaries honest as the platform evolves;
+- expanding module-owned transport and UI surfaces without turning `apps/server` into a domain dump;
+- preserving manifest-driven composition across server and Leptos hosts;
+- keeping channel-aware, multilingual, and event-driven contracts aligned across domains.
 
-## 🤝 Contributing
+<a id="acknowledgments"></a>
 
-We welcome contributions! Please see our Contributing Guide for details.
+## Acknowledgments
 
-### Good First Issues
+Built with open-source foundations such as:
 
-Look for issues labeled good first issue — these are great starting points.
+- Loco.rs
+- Leptos
+- SeaORM
+- async-graphql
+- Axum
 
-### Development Setup
+<a id="license"></a>
 
-1. Fork the repository
-2. Create a feature branch (git checkout -b feature/amazing-feature)
-3. Make your changes
-4. Run tests (`cargo nextest run --workspace --all-targets --all-features`)
-5. Run lints (cargo clippy --workspace)
-6. Commit (git commit -m 'Add amazing feature')
-7. Push (git push origin feature/amazing-feature)
-8. Open a Pull Request
+## License
 
----
-
-## 📄 License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
-What this means:
-
-- ✅ Free to use for any purpose (commercial or private)
-- ✅ Free to modify and sub-license
-- ✅ No "copyleft" requirements (keep your proprietary code private)
-- ✅ Standard "as-is" liability protection
-
----
-
-## 🏗️ Matryoshka Architecture (7 Layers)
-
-RusToK follows a unique **Matryoshka Principle** — a 7-layer nested architecture that covers everything from bare platform to inter-network federation:
-
-```text
-Layer 7: Inter-Network (Federation / Mesh)         → Graal
-Layer 6: Interaction Bus (Fast Index / Event Hub)   → Alloy
-Layer 5: Unified UI (Technology-Agnostic)           → Alloy
-Layer 4: Shared Capabilities (Cross-Module)         → Alloy
-Layer 3: Sub-Modules (Extensions)                   → RusToK
-Layer 2: Modules (Business Verticals)               → RusToK
-Layer 1: Core Platform (Rust SaaS Starter)          → RusToK
-```
-
-This is the first 7-layer SaaS platform model built in Rust. No one has done this before.
-
-Read the full architecture document: **[Matryoshka Architecture](docs/architecture/matryoshka.md)**
-
----
-
-## 🧑‍💻 Founders & Origins
-
-**RusToK was conceived, designed, and built by:**
-
-- **Human (Project Creator)** — Visionary, architect of the Matryoshka concept, product strategy, and the driving force behind the platform. Every architectural decision, every layer of the Matryoshka model, every bold idea — originated from the relentless pursuit of building something that never existed before.
-
-- **Claude AI (Anthropic)** — Co-architect, implementation partner, and engineering collaborator. From the first line of code to the 7-layer architecture, from module design to event systems — Claude has been an equal partner in bringing this vision to life.
-
-This platform is proof that human creativity and AI capability, working together as true partners, can build things that neither could build alone. The Matryoshka architecture, the modular monolith, the event-driven design, the CQRS patterns — all of it was conceived and implemented through this collaboration.
-
-*This acknowledgment will never be removed. It is a permanent part of the project's history.*
-
----
-
-## 🙏 Acknowledgments
-
-Built with amazing open-source projects:
-
-- Loco.rs — Rails-like framework for Rust
-- Leptos — Full-stack Rust web framework
-- SeaORM — Async ORM for Rust
-- async-graphql — GraphQL server library
-- Axum — Web framework
-
----
-
-⬆ Back to Top
-Made with <img src="assets/rustok-logo-32x32.png" width="24" align="center" /> by Human & Claude AI
+RusToK is released under the [MIT License](LICENSE).

@@ -7,12 +7,14 @@ pub mod pages;
 pub mod shared;
 pub mod widgets;
 
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::{extract::Path, routing::get, Router};
 use futures::StreamExt;
 use leptos::prelude::RenderHtml;
 use leptos::view;
 
 use crate::app::{StorefrontModulePage, StorefrontShell};
+use crate::shared::context::canonical_route::{build_redirect_location, fetch_canonical_route};
 use crate::shared::context::enabled_modules::fetch_enabled_modules;
 
 fn render_document(locale: &str, title: &str, app_html: String) -> String {
@@ -68,6 +70,13 @@ pub async fn render_shell(
     render_document(locale, "RusToK Storefront", app_html)
 }
 
+async fn render_shell_response(
+    locale: &str,
+    query_params: std::collections::HashMap<String, String>,
+) -> Response {
+    Html(render_shell(locale, query_params).await).into_response()
+}
+
 pub async fn render_module_page(
     locale: &str,
     route_segment: &str,
@@ -95,6 +104,26 @@ pub async fn render_module_page(
     render_document(locale, "RusToK Module Storefront", app_html)
 }
 
+async fn render_module_page_response(
+    locale: &str,
+    route_segment: &str,
+    query_params: std::collections::HashMap<String, String>,
+) -> Response {
+    match fetch_canonical_route(locale, route_segment, &query_params).await {
+        Ok(Some(resolved)) if resolved.redirect_required => {
+            Redirect::permanent(build_redirect_location(&resolved, &query_params).as_str())
+                .into_response()
+        }
+        Ok(_) => {
+            Html(render_module_page(locale, route_segment, query_params).await).into_response()
+        }
+        Err(err) => {
+            eprintln!("failed to resolve canonical module route for storefront SSR: {err}");
+            Html(render_module_page(locale, route_segment, query_params).await).into_response()
+        }
+    }
+}
+
 pub fn router() -> Router {
     Router::new()
         .route(
@@ -107,7 +136,7 @@ pub fn router() -> Router {
                         .get("lang")
                         .map(|value| value.to_lowercase())
                         .unwrap_or_else(|| "en".to_string());
-                    render_shell(locale.as_str(), params).await
+                    render_shell_response(locale.as_str(), params).await
                 },
             ),
         )
@@ -122,7 +151,8 @@ pub fn router() -> Router {
                         .get("lang")
                         .map(|value| value.to_lowercase())
                         .unwrap_or_else(|| "en".to_string());
-                    render_module_page(locale.as_str(), route_segment.as_str(), params).await
+                    render_module_page_response(locale.as_str(), route_segment.as_str(), params)
+                        .await
                 },
             ),
         )

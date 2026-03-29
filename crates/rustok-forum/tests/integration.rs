@@ -27,6 +27,7 @@ async fn test_topic_lifecycle() -> TestResult<()> {
         body_format: "markdown".to_string(),
         content_json: None,
         tags: vec!["rust".to_string()],
+        channel_slugs: None,
     };
 
     let topic = ctx

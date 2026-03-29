@@ -47,6 +47,7 @@ Core module UI packages:
 | `rustok-fulfillment` | [docs](../../crates/rustok-fulfillment/docs/README.md) | via [commerce split plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
 | `rustok-commerce` | [docs](../../crates/rustok-commerce/docs/README.md) | [plan](../../crates/rustok-commerce/docs/implementation-plan.md) |
 | `rustok-blog` | [docs](../../crates/rustok-blog/docs/README.md) | [plan](../../crates/rustok-blog/docs/implementation-plan.md) |
+| `rustok-comments` | [docs](../../crates/rustok-comments/docs/README.md) | [plan](../../crates/rustok-comments/docs/implementation-plan.md) |
 | `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |
 | `rustok-pages` | [docs](../../crates/rustok-pages/docs/README.md) | [plan](../../crates/rustok-pages/docs/implementation-plan.md) |
 | `rustok-media` | [docs](../../crates/rustok-media/docs/README.md) | [plan](../../crates/rustok-media/docs/implementation-plan.md) |
@@ -65,29 +66,30 @@ Core module UI packages:
 When creating a new module, copy the `_template` folder and fill in all sections.
 
 > [!IMPORTANT]
-> Р•СЃР»Рё РЅРѕРІС‹Р№ РјРѕРґСѓР»СЊ РїСѓР±Р»РёРєСѓРµС‚ РёР»Рё РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚ `DomainEvent`, РІ РµРіРѕ `crates/<name>/docs/README.md`
-> РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ РґРѕР±Р°РІРёС‚СЊ СЃРµРєС†РёСЋ `Event contracts` СЃРѕ СЃСЃС‹Р»РєРѕР№ РЅР°
-> `docs/architecture/event-flow-contract.md`, Рё РѕР±РЅРѕРІРёС‚СЊ `docs/index.md`/`docs/modules/registry.md` РїСЂРё РґРѕР±Р°РІР»РµРЅРёРё РЅРѕРІРѕРіРѕ РјРѕРґСѓР»СЏ.
+> Если новый модуль публикует или обрабатывает `DomainEvent`, в его
+> `crates/<name>/docs/README.md` обязательно добавляется секция `Event contracts`
+> со ссылкой на `docs/architecture/event-flow-contract.md`, а при добавлении
+> нового модуля обновляются `docs/index.md` и `docs/modules/registry.md`.
 
 
 ```
 docs/modules/_template/
-  _index.md    вЂ” entry point with purpose and key flows
-  api.md       вЂ” GraphQL/REST contracts
-  commands.md  вЂ” write-side commands
-  queries.md   вЂ” read-side queries
-  events.md    вЂ” published domain events
-  domain.md    вЂ” entity model
-  storage.md   вЂ” tables and indexes
-  testing.md   вЂ” test strategy
-  workflows.md вЂ” key business workflows
+  _index.md    — entry point with purpose and key flows
+  api.md       — GraphQL/REST contracts
+  commands.md  — write-side commands
+  queries.md   — read-side queries
+  events.md    — published domain events
+  domain.md    — entity model
+  storage.md   — tables and indexes
+  testing.md   — test strategy
+  workflows.md — key business workflows
 ```
 
 ## Related documents
 
-- [Module overview](./overview.md) вЂ” which modules are registered and their kinds
-- [Module & application registry](./registry.md) вЂ” full component directory with dependencies
-- [Module manifest](./manifest.md) вЂ” modules.toml format and rebuild lifecycle
-- [Rich-text (Tiptap) and GrapesJS Page Builder implementation plan](./tiptap-page-builder-implementation-plan.md) вЂ” phased rollout plan with completion marks
-- [Flex docs](../../crates/flex/docs/README.md) вЂ” Flex module concept
+- [Module overview](./overview.md) — which modules are registered and their kinds
+- [Module & application registry](./registry.md) — full component directory with dependencies
+- [Module manifest](./manifest.md) — modules.toml format and rebuild lifecycle
+- [Rich-text (Tiptap) and GrapesJS Page Builder implementation plan](./tiptap-page-builder-implementation-plan.md) — phased rollout plan with completion marks
+- [Flex docs](../../crates/flex/docs/README.md) — Flex module concept
 

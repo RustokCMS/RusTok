@@ -25,7 +25,7 @@ pub fn validate_body_format(format: &str) -> Result<(), ValidationError> {
 pub fn validate_kind(kind: &str) -> Result<(), ValidationError> {
     match kind {
         // Core CMS kinds
-        "post" | "page" | "article" | "custom" => Ok(()),
+        "post" | "page" | "article" | "custom" | "block" | "menu" | "menu_item" => Ok(()),
         // Forum domain kinds
         "forum_category" | "forum_topic" | "forum_reply" => Ok(()),
         // Blog domain kinds
@@ -167,6 +167,9 @@ mod tests {
         assert!(validate_kind("page").is_ok());
         assert!(validate_kind("article").is_ok());
         assert!(validate_kind("custom").is_ok());
+        assert!(validate_kind("block").is_ok());
+        assert!(validate_kind("menu").is_ok());
+        assert!(validate_kind("menu_item").is_ok());
         assert!(validate_kind("blog_post").is_ok());
         assert!(validate_kind("comment").is_ok());
         assert!(validate_kind("category").is_ok());

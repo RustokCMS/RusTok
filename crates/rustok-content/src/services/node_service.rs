@@ -42,14 +42,10 @@ impl NodeService {
         &self.db
     }
 
-    pub(crate) fn event_bus(&self) -> &TransactionalEventBus {
-        &self.event_bus
-    }
-
     fn kind_to_resource(kind: &str) -> ContentResult<Resource> {
         match kind {
             "post" | "article" | "custom" => Ok(Resource::Posts),
-            "page" => Ok(Resource::Pages),
+            "page" | "block" | "menu" | "menu_item" => Ok(Resource::Pages),
             "comment" => Ok(Resource::Comments),
             "blog_post" => Ok(Resource::BlogPosts),
             "forum_category" => Ok(Resource::ForumCategories),

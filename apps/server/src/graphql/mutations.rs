@@ -3,9 +3,14 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, Tran
 
 use crate::auth::hash_password;
 use crate::context::{AuthContext, TenantContext};
+use crate::graphql::common::require_module_enabled;
 use crate::graphql::errors::GraphQLError;
+use crate::graphql::schema::module_slug;
 use crate::graphql::types::{
-    BuildJob, CreateUserInput, DeleteUserPayload, TenantModule, UpdateUserInput, User,
+    BuildJob, ContentOrchestrationPayload, CreateUserInput, DeleteUserPayload,
+    DemotePostToTopicInput as GqlDemotePostToTopicInput, MergeTopicsInput as GqlMergeTopicsInput,
+    PromoteTopicToPostInput as GqlPromoteTopicToPostInput, SplitTopicInput as GqlSplitTopicInput,
+    TenantModule, UpdateUserInput, User,
 };
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
@@ -17,6 +22,13 @@ use crate::services::build_event_hub::{
 };
 use crate::services::build_service::EventBusBuildEventPublisher;
 use crate::services::build_service::{BuildRequest, BuildService};
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+use crate::services::content_orchestration::content_orchestration_from_context;
 use crate::services::event_bus::event_bus_from_context;
 use crate::services::module_lifecycle::{
     ModuleLifecycleService, ToggleModuleError, UpdateModuleSettingsError,
@@ -132,6 +144,31 @@ fn map_manifest_error(err: ManifestError) -> FieldError {
 
 fn parse_build_id(build_id: &str) -> Result<Uuid> {
     Uuid::parse_str(build_id).map_err(|_| FieldError::new("Invalid build ID"))
+}
+
+#[cfg(feature = "mod-content")]
+fn map_content_error(err: rustok_content::ContentError) -> FieldError {
+    match err {
+        rustok_content::ContentError::Validation(message)
+        | rustok_content::ContentError::Forbidden(message) => FieldError::new(message),
+        rustok_content::ContentError::NodeNotFound(_)
+        | rustok_content::ContentError::CategoryNotFound(_)
+        | rustok_content::ContentError::TagNotFound(_)
+        | rustok_content::ContentError::TranslationNotFound { .. }
+        | rustok_content::ContentError::DuplicateSlug { .. }
+        | rustok_content::ContentError::ConcurrentModification { .. } => {
+            FieldError::new(err.to_string())
+        }
+        rustok_content::ContentError::Database(inner) => {
+            <FieldError as GraphQLError>::internal_error(&inner.to_string())
+        }
+        rustok_content::ContentError::Core(inner) => {
+            <FieldError as GraphQLError>::internal_error(&inner.to_string())
+        }
+        rustok_content::ContentError::Rich(inner) => {
+            <FieldError as GraphQLError>::internal_error(&inner.to_string())
+        }
+    }
 }
 
 async fn ensure_modules_manage_permission(
@@ -292,6 +329,182 @@ impl RootMutation {
         }
 
         Ok(User::from(&user))
+    }
+
+    #[cfg(all(
+        feature = "mod-content",
+        feature = "mod-blog",
+        feature = "mod-forum",
+        feature = "mod-comments"
+    ))]
+    async fn promote_topic_to_post(
+        &self,
+        ctx: &Context<'_>,
+        input: GqlPromoteTopicToPostInput,
+    ) -> Result<ContentOrchestrationPayload> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
+        require_module_enabled(ctx, module_slug::BLOG).await?;
+        require_module_enabled(ctx, module_slug::FORUM).await?;
+        require_module_enabled(ctx, "comments").await?;
+
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let service = content_orchestration_from_context(app_ctx);
+
+        let result = service
+            .promote_topic_to_post(
+                tenant.id,
+                auth.security_context(),
+                rustok_content::PromoteTopicToPostInput {
+                    topic_id: input.topic_id,
+                    locale: input.locale,
+                    blog_category_id: input.blog_category_id,
+                    reason: input.reason,
+                    idempotency_key: input.idempotency_key,
+                },
+            )
+            .await
+            .map_err(map_content_error)?;
+
+        Ok(ContentOrchestrationPayload {
+            source_id: result.source_id,
+            target_id: result.target_id,
+            moved_comments: result.moved_comments,
+        })
+    }
+
+    #[cfg(all(
+        feature = "mod-content",
+        feature = "mod-blog",
+        feature = "mod-forum",
+        feature = "mod-comments"
+    ))]
+    async fn demote_post_to_topic(
+        &self,
+        ctx: &Context<'_>,
+        input: GqlDemotePostToTopicInput,
+    ) -> Result<ContentOrchestrationPayload> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
+        require_module_enabled(ctx, module_slug::BLOG).await?;
+        require_module_enabled(ctx, module_slug::FORUM).await?;
+        require_module_enabled(ctx, "comments").await?;
+
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let service = content_orchestration_from_context(app_ctx);
+
+        let result = service
+            .demote_post_to_topic(
+                tenant.id,
+                auth.security_context(),
+                rustok_content::DemotePostToTopicInput {
+                    post_id: input.post_id,
+                    locale: input.locale,
+                    forum_category_id: input.forum_category_id,
+                    reason: input.reason,
+                    idempotency_key: input.idempotency_key,
+                },
+            )
+            .await
+            .map_err(map_content_error)?;
+
+        Ok(ContentOrchestrationPayload {
+            source_id: result.source_id,
+            target_id: result.target_id,
+            moved_comments: result.moved_comments,
+        })
+    }
+
+    #[cfg(all(
+        feature = "mod-content",
+        feature = "mod-blog",
+        feature = "mod-forum",
+        feature = "mod-comments"
+    ))]
+    async fn split_topic(
+        &self,
+        ctx: &Context<'_>,
+        input: GqlSplitTopicInput,
+    ) -> Result<ContentOrchestrationPayload> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
+        require_module_enabled(ctx, module_slug::FORUM).await?;
+
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let service = content_orchestration_from_context(app_ctx);
+
+        let result = service
+            .split_topic(
+                tenant.id,
+                auth.security_context(),
+                rustok_content::SplitTopicInput {
+                    topic_id: input.topic_id,
+                    locale: input.locale,
+                    reply_ids: input.reply_ids,
+                    new_title: input.new_title,
+                    reason: input.reason,
+                    idempotency_key: input.idempotency_key,
+                },
+            )
+            .await
+            .map_err(map_content_error)?;
+
+        Ok(ContentOrchestrationPayload {
+            source_id: result.source_id,
+            target_id: result.target_id,
+            moved_comments: result.moved_comments,
+        })
+    }
+
+    #[cfg(all(
+        feature = "mod-content",
+        feature = "mod-blog",
+        feature = "mod-forum",
+        feature = "mod-comments"
+    ))]
+    async fn merge_topics(
+        &self,
+        ctx: &Context<'_>,
+        input: GqlMergeTopicsInput,
+    ) -> Result<ContentOrchestrationPayload> {
+        require_module_enabled(ctx, module_slug::CONTENT).await?;
+        require_module_enabled(ctx, module_slug::FORUM).await?;
+
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let service = content_orchestration_from_context(app_ctx);
+
+        let result = service
+            .merge_topics(
+                tenant.id,
+                auth.security_context(),
+                rustok_content::MergeTopicsInput {
+                    target_topic_id: input.target_topic_id,
+                    source_topic_ids: input.source_topic_ids,
+                    reason: input.reason,
+                    idempotency_key: input.idempotency_key,
+                },
+            )
+            .await
+            .map_err(map_content_error)?;
+
+        Ok(ContentOrchestrationPayload {
+            source_id: result.source_id,
+            target_id: result.target_id,
+            moved_comments: result.moved_comments,
+        })
     }
 
     async fn update_user(

@@ -29,12 +29,6 @@ use utoipa::OpenApi;
         crate::controllers::auth::accept_invite,
         crate::controllers::auth::request_verification,
         crate::controllers::auth::confirm_verification,
-        // Content
-        crate::controllers::content::nodes::list_nodes,
-        crate::controllers::content::nodes::get_node,
-        crate::controllers::content::nodes::create_node,
-        crate::controllers::content::nodes::update_node,
-        crate::controllers::content::nodes::delete_node,
         // Blog
         crate::controllers::blog::posts::list_posts,
         crate::controllers::blog::posts::get_post,
@@ -136,18 +130,6 @@ use utoipa::OpenApi;
             crate::common::PaginationMeta,
             crate::common::ApiError,
 
-            // Content
-            rustok_content::dto::NodeListItem,
-            rustok_content::dto::NodeResponse,
-            rustok_content::dto::CreateNodeInput,
-            rustok_content::dto::UpdateNodeInput,
-            rustok_content::dto::NodeTranslationInput,
-            rustok_content::dto::BodyInput,
-            rustok_content::dto::ListNodesFilter,
-            rustok_content::dto::NodeTranslationResponse,
-            rustok_content::dto::BodyResponse,
-            rustok_content::entities::node::ContentStatus,
-
             // Blog
             rustok_blog::dto::CreatePostInput,
             rustok_blog::dto::UpdatePostInput,
@@ -247,7 +229,6 @@ use utoipa::OpenApi;
     modifiers(&SecurityAddon),
     tags(
         (name = "auth", description = "Authentication endpoints"),
-        (name = "content", description = "Content Management endpoints"),
         (name = "blog", description = "Blog endpoints"),
         (name = "forum", description = "Forum endpoints"),
         (name = "pages", description = "Pages endpoints"),

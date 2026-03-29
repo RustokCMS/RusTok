@@ -25,6 +25,7 @@ default = [
     "mod-content",
     "mod-blog",
     "mod-forum",
+    "mod-comments",
     "mod-pages",
     "mod-alloy",
     "mod-media",
@@ -50,6 +51,7 @@ mod-commerce  = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product
 mod-content   = ["dep:rustok-content"]
 mod-blog      = ["dep:rustok-blog", "dep:rustok-content"]
 mod-forum     = ["dep:rustok-forum"]
+mod-comments  = ["dep:rustok-comments"]
 mod-pages     = ["dep:rustok-pages"]
 mod-alloy     = ["dep:alloy-scripting", "dep:alloy"]
 mod-media     = ["dep:rustok-media", "dep:rustok-storage"]
@@ -77,6 +79,7 @@ rustok-payment   = { workspace = true, optional = true }
 rustok-fulfillment = { workspace = true, optional = true }
 rustok-commerce  = { workspace = true, optional = true }
 rustok-blog      = { workspace = true, optional = true }
+rustok-comments  = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }
 rustok-forum     = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }

@@ -4,6 +4,7 @@ pub mod app_runtime;
 pub mod auth_lifecycle;
 pub mod build_event_hub;
 pub mod build_executor;
+pub mod content_orchestration;
 pub mod email;
 pub mod event_bus;
 pub mod graphql_schema;

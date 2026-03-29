@@ -7,7 +7,7 @@
 - **Companion-план:** [Главный план верификации платформы](./PLATFORM_VERIFICATION_PLAN.md)
 
 **Принцип работы с планом:**
-При прогоне — **устранять найденные проблемы сразу**, в той же сессии. Найденная проблема не закрывается до момента исправления. Нерешённые блокеры фиксируются в артефакте прогона как open blocker. После исправления — перепроверить соответствующую фазу. Реестр проблем ведётся в [platform-verification-issues-registry.md](./platform-verification-issues-registry.md).
+При прогоне — **устранять найденные проблемы сразу**, в той же сессии. Найденная проблема не закрывается до момента исправления. Нерешённые блокеры фиксируются в артефакте прогона как open blocker. После исправления — перепроверить соответствующую фазу.
 
 **Легенда режимов:**
 - `🔧 Static` — выполнимо без запущенной инфраструктуры (cargo build/check/test, npm build/lint, git grep)
@@ -413,5 +413,4 @@ docker compose up -d db
 - [План foundation-верификации](./platform-foundation-verification-plan.md) — полный auth/RBAC/tenancy/registry аудит
 - [План верификации API-поверхностей](./platform-api-surfaces-verification-plan.md) — полный GraphQL/REST аудит
 - [План rolling-верификации RBAC для server и runtime-модулей](./rbac-server-modules-verification-plan.md)
-- [Реестр проблем платформенной верификации](./platform-verification-issues-registry.md)
 - [README каталога verification](./README.md)

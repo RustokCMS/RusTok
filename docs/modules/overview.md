@@ -1,6 +1,7 @@
 # Документация по модулям RusToK
 
-Этот документ фиксирует актуальную модульную модель RusToK без смешения архитектурных терминов и технической упаковки.
+Этот документ фиксирует актуальную модульную модель RusToK без смешения
+архитектурных терминов и технической упаковки.
 
 ## Базовая модель
 
@@ -9,7 +10,7 @@
 - `Core`
 - `Optional`
 
-Источник истины по ним — `modules.toml`.
+Источник истины по ним: `modules.toml`.
 
 При этом:
 
@@ -50,49 +51,61 @@
 | `customer` | `rustok-customer` | — |
 | `product` | `rustok-product` | — |
 | `profiles` | `rustok-profiles` | — |
+| `region` | `rustok-region` | — |
 | `pricing` | `rustok-pricing` | `product` |
 | `inventory` | `rustok-inventory` | `product` |
 | `order` | `rustok-order` | — |
 | `payment` | `rustok-payment` | — |
 | `fulfillment` | `rustok-fulfillment` | — |
 | `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` |
-| `blog` | `rustok-blog` | `content` |
+| `blog` | `rustok-blog` | `content`, `comments` |
 | `forum` | `rustok-forum` | `content` |
+| `comments` | `rustok-comments` | — |
 | `pages` | `rustok-pages` | `content` |
 | `media` | `rustok-media` | — |
 | `workflow` | `rustok-workflow` | — |
 
 ## Важное уточнение по wiring
 
-`ModuleRegistry` — это runtime composition point, а не классификатор архитектурных ролей.
+`ModuleRegistry` — это runtime composition point, а не классификатор
+архитектурных ролей.
 
 Из этого следуют два правила:
 
-1. Если компонент объявлен как platform module в `modules.toml`, он обязан быть либо `Core`, либо `Optional`.
+1. Если компонент объявлен как platform module в `modules.toml`, он обязан быть
+   либо `Core`, либо `Optional`.
 2. Технический способ подключения модуля может отличаться:
    - регистрация в `ModuleRegistry`
    - bootstrap/runtime wiring
    - generated host wiring
 
-`rustok-outbox` — хороший пример. Он является `Core` module и одновременно используется напрямую event runtime слоем. Это не делает его отдельным “третьим типом”.
+`rustok-outbox` — хороший пример. Он является `Core` module и одновременно
+используется напрямую event runtime слоем. Это не делает его отдельным
+"третьим типом".
 
 ## Что лежит рядом с модулями
 
-В `crates/` также живут компоненты, которые не входят в taxonomy `Core/Optional`:
+В `crates/` также живут компоненты, которые не входят в taxonomy
+`Core/Optional`:
 
-- shared libraries: `rustok-core`, `rustok-api`, `rustok-events`, `rustok-storage`, `rustok-test-utils`
-- infra/capability crates: `rustok-iggy`, `rustok-iggy-connector`, `rustok-telemetry`, `rustok-mcp`, `alloy`, `alloy-scripting`, `flex`
+- shared libraries: `rustok-core`, `rustok-api`, `rustok-events`,
+  `rustok-storage`, `rustok-test-utils`
+- infra/capability crates: `rustok-iggy`, `rustok-iggy-connector`,
+  `rustok-telemetry`, `rustok-mcp`, `alloy`, `alloy-scripting`, `flex`
 
-Именно поэтому нельзя автоматически приравнивать “любой crate в `crates/`” к platform module.
+Именно поэтому нельзя автоматически приравнивать "любой crate в `crates/`" к
+platform module.
 
 ## UI composition policy
 
 Если у модуля есть UI, он должен поставляться самим модулем:
 
 - Leptos: через sub-crates `admin/` и `storefront/`
-- Next.js: через пакеты в `apps/next-admin/packages/*` и `apps/next-frontend/packages/*`
+- Next.js: через пакеты в `apps/next-admin/packages/*` и
+  `apps/next-frontend/packages/*`
 
-Host-приложения должны монтировать эти поверхности через manifest-driven wiring, а не через жёстко пришитые module-specific ветки.
+Host-приложения должны монтировать эти поверхности через manifest-driven
+wiring, а не через жёстко пришитые module-specific ветки.
 
 ## Связанные документы
 

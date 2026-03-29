@@ -1,14 +1,32 @@
 # Витрина (Leptos SSR + Next.js)
 
-В RusToK витрина реализована в двух вариантах:
-- **Leptos SSR** (`apps/storefront`) — Rust-first SSR приложение на Tailwind.
-- **Next.js App Router** (`apps/next-frontend`) — React/Next.js реализация витрины.
+В RusToK витрина существует в двух вариантах:
 
-Обе реализации выравниваются по тем же принципам, что и параллельные админки:
+- `apps/storefront` — Rust-first Leptos SSR host.
+- `apps/next-frontend` — Next.js storefront.
 
-- FSD-границы между `app / modules / shared`;
-- единые внутренние frontend-библиотеки (`leptos-*`) для API/Auth/State-контрактов;
-- паритет UI-контрактов через `UI/docs/api-contracts.md`.
+Обе реализации должны держать один и тот же backend contract, но Leptos storefront остаётся эталоном для SSR-host логики внутри Rust runtime.
+
+## Leptos storefront host contract
+
+- Host рендерит shell и generic module pages по маршруту `/modules/{route_segment}`.
+- Module-owned storefront packages читают route state через `UiRouteContext`.
+- Enabled modules резолвятся отдельно и фильтруют registry до SSR.
+- Для async module surfaces используется in-order HTML streaming.
+
+## Canonical route resolution
+
+- Canonical URL policy и alias storage живут в `rustok-content`, а не в storefront.
+- `apps/storefront` не читает БД напрямую и не знает о typed canonical tables.
+- Перед SSR module-route storefront делает GraphQL preflight `resolveCanonicalRoute` в `apps/server`.
+- Если запрошенный URL оказался alias-ом, storefront отдаёт HTTP redirect на canonical URL до рендера страницы.
+- Query-параметр `lang` исключается из canonical lookup key, потому что locale передаётся отдельно.
+- При redirect storefront сохраняет исходный `lang` в canonical target URL, чтобы SSR не терял выбранную локаль.
+
+## Next.js parity
+
+- Next.js storefront должен следовать той же canonical routing policy.
+- Redirect resolution не должен дублировать storage-логику во frontend-приложении; источником истины остаётся backend/server surface.
 
 ## Локальный запуск
 
@@ -22,44 +40,4 @@ npm install
 npm run dev
 ```
 
-Leptos SSR сервер слушает `http://localhost:3100`. Next.js приложение — `http://localhost:3000`.
-
-## Контракты паритета фронтендов
-
-### Next.js storefront (`apps/next-frontend`)
-
-- GraphQL-контракт подключается через `leptos-graphql/next`.
-- Auth/session контракт подключается через `leptos-auth/next`.
-- FSD-gateway для интеграций расположен в `src/shared/lib/`:
-  - `shared/lib/graphql.ts` (`storefrontGraphql`, re-export констант и типов)
-  - `shared/lib/auth.ts` (re-export auth типов и хелперов)
-
-Такой слой устраняет разрозненные ad-hoc реализации fetch/auth и удерживает витрину
-в том же контрактном поле, что и админки.
-
-### Leptos storefront (`apps/storefront`)
-
-- Использует workspace-крейты `leptos-auth`, `leptos-graphql`, `leptos-table`.
-- Остаётся Rust-first вариантом витрины с тем же backend-контуром доменных модулей.
-
-## Стили Tailwind
-
-Leptos storefront использует Tailwind-only стили. CSS-пайплайн построен на `tailwind-rs`.
-Для оффлайн-сборки или кастомной темы:
-
-```bash
-cd apps/storefront
-npm install
-npm run build:css
-```
-
-Собранный файл `apps/storefront/static/app.css` раздаётся SSR-сервером по `/assets/app.css`.
-
-## Локализация
-
-Витрина поддерживает English и Russian. Переключение языка через query-параметр `lang`:
-
-- English: `http://localhost:3100?lang=en`
-- Russian: `http://localhost:3100?lang=ru`
-
-Для новых языков расширяйте `locale_strings` в `apps/storefront/src/main.rs`.
+Leptos SSR сервер слушает `http://localhost:3100`, Next.js storefront — `http://localhost:3000`.

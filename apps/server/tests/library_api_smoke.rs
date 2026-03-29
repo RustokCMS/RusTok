@@ -1,6 +1,6 @@
 #[test]
 fn order_scenario_uses_library_contract_types_not_local_shadows() {
-    let scenario = include_str!("integration/order_flow_test.rs");
+    let scenario = include_str!("fixtures/order_scenario.rs.txt");
 
     for forbidden in [
         "enum OrderStatus",

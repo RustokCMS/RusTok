@@ -296,6 +296,7 @@ pub enum DomainEvent {
     ForumReplyStatusChanged {
         reply_id: Uuid,
         topic_id: Uuid,
+        old_status: String,
         new_status: String,
         moderator_id: Option<Uuid>,
     },
@@ -326,6 +327,19 @@ pub enum DomainEvent {
         target_topic_id: Uuid,
         moved_comments: u64,
         reason: Option<String>,
+    },
+    CanonicalUrlChanged {
+        target_id: Uuid,
+        target_kind: String,
+        locale: String,
+        new_canonical_url: String,
+        old_urls: Vec<String>,
+    },
+    UrlAliasPurged {
+        target_id: Uuid,
+        target_kind: String,
+        locale: String,
+        urls: Vec<String>,
     },
 
     // ════════════════════════════════════════════════════════════════
@@ -477,6 +491,8 @@ impl DomainEvent {
             Self::PostDemotedToTopic { .. } => "content.post.demoted_to_topic",
             Self::TopicSplit { .. } => "content.topic.split",
             Self::TopicsMerged { .. } => "content.topics.merged",
+            Self::CanonicalUrlChanged { .. } => "content.canonical_url.changed",
+            Self::UrlAliasPurged { .. } => "content.url_alias.purged",
 
             Self::TenantCreated { .. } => "tenant.created",
             Self::TenantUpdated { .. } => "tenant.updated",
@@ -577,6 +593,8 @@ impl DomainEvent {
             Self::PostDemotedToTopic { .. } => 1,
             Self::TopicSplit { .. } => 1,
             Self::TopicsMerged { .. } => 1,
+            Self::CanonicalUrlChanged { .. } => 1,
+            Self::UrlAliasPurged { .. } => 1,
 
             // Tenant events (v1)
             Self::TenantCreated { .. } => 1,
@@ -629,6 +647,8 @@ impl DomainEvent {
                 | Self::ForumTopicCreated { .. }
                 | Self::ForumTopicReplied { .. }
                 | Self::ForumTopicStatusChanged { .. }
+                | Self::CanonicalUrlChanged { .. }
+                | Self::UrlAliasPurged { .. }
         )
     }
 }
@@ -1038,13 +1058,22 @@ impl ValidateEvent for DomainEvent {
             Self::ForumReplyStatusChanged {
                 reply_id,
                 topic_id,
+                old_status,
                 new_status,
                 moderator_id,
             } => {
                 validators::validate_not_nil_uuid("reply_id", reply_id)?;
                 validators::validate_not_nil_uuid("topic_id", topic_id)?;
+                validators::validate_not_empty("old_status", old_status)?;
+                validators::validate_max_length("old_status", old_status, 50)?;
                 validators::validate_not_empty("new_status", new_status)?;
                 validators::validate_max_length("new_status", new_status, 50)?;
+                if old_status == new_status {
+                    return Err(EventValidationError::InvalidValue(
+                        "new_status",
+                        "must be different from old_status".to_string(),
+                    ));
+                }
                 validators::validate_optional_uuid("moderator_id", moderator_id)?;
                 Ok(())
             }
@@ -1111,6 +1140,67 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("target_topic_id", target_topic_id)?;
                 if let Some(reason) = reason {
                     validators::validate_max_length("reason", reason, 500)?;
+                }
+                Ok(())
+            }
+            Self::CanonicalUrlChanged {
+                target_id,
+                target_kind,
+                locale,
+                new_canonical_url,
+                old_urls,
+            } => {
+                validators::validate_not_nil_uuid("target_id", target_id)?;
+                validators::validate_not_empty("target_kind", target_kind)?;
+                validators::validate_max_length("target_kind", target_kind, 64)?;
+                validators::validate_not_empty("locale", locale)?;
+                validators::validate_max_length("locale", locale, 16)?;
+                validators::validate_not_empty("new_canonical_url", new_canonical_url)?;
+                validators::validate_max_length("new_canonical_url", new_canonical_url, 512)?;
+                if !new_canonical_url.starts_with('/') {
+                    return Err(EventValidationError::InvalidValue(
+                        "new_canonical_url",
+                        "must start with `/`".to_string(),
+                    ));
+                }
+                for url in old_urls {
+                    validators::validate_not_empty("old_urls[]", url)?;
+                    validators::validate_max_length("old_urls[]", url, 512)?;
+                    if !url.starts_with('/') {
+                        return Err(EventValidationError::InvalidValue(
+                            "old_urls[]",
+                            "must start with `/`".to_string(),
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            Self::UrlAliasPurged {
+                target_id,
+                target_kind,
+                locale,
+                urls,
+            } => {
+                validators::validate_not_nil_uuid("target_id", target_id)?;
+                validators::validate_not_empty("target_kind", target_kind)?;
+                validators::validate_max_length("target_kind", target_kind, 64)?;
+                validators::validate_not_empty("locale", locale)?;
+                validators::validate_max_length("locale", locale, 16)?;
+                if urls.is_empty() {
+                    return Err(EventValidationError::InvalidValue(
+                        "urls",
+                        "must not be empty".to_string(),
+                    ));
+                }
+                for url in urls {
+                    validators::validate_not_empty("urls[]", url)?;
+                    validators::validate_max_length("urls[]", url, 512)?;
+                    if !url.starts_with('/') {
+                        return Err(EventValidationError::InvalidValue(
+                            "urls[]",
+                            "must start with `/`".to_string(),
+                        ));
+                    }
                 }
                 Ok(())
             }

@@ -1,171 +1,133 @@
-use rustok_content::{CreateNodeInput, NodeService, NodeTranslationInput};
-use rustok_core::SecurityContext;
+use rustok_core::{MigrationSource, SecurityContext};
+use rustok_pages::dto::{BlockType, CreateBlockInput, CreatePageInput, PageTranslationInput};
 use rustok_pages::error::PagesError;
-use rustok_pages::services::PageService;
+use rustok_pages::services::{BlockService, PageService};
+use rustok_pages::PagesModule;
 use rustok_test_utils::{db::setup_test_db, helpers::admin_context, mock_transactional_event_bus};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-async fn ensure_content_schema(db: &DatabaseConnection) {
-    if db.get_database_backend() != DbBackend::Sqlite {
-        return;
+async fn setup() -> (PageService, BlockService, Uuid, SecurityContext) {
+    let db = setup_test_db().await;
+    let module = PagesModule;
+    let schema = SchemaManager::new(&db);
+    for migration in module.migrations() {
+        migration
+            .up(&schema)
+            .await
+            .expect("failed to apply pages migrations");
     }
 
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS nodes (
-            id TEXT PRIMARY KEY,
-            tenant_id TEXT NOT NULL,
-            parent_id TEXT NULL,
-            author_id TEXT NULL,
-            kind TEXT NOT NULL,
-            category_id TEXT NULL,
-            status TEXT NOT NULL,
-            position INTEGER NOT NULL,
-            depth INTEGER NOT NULL,
-            reply_count INTEGER NOT NULL,
-            metadata TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            published_at TEXT NULL,
-            deleted_at TEXT NULL,
-            version INTEGER NOT NULL DEFAULT 1
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create nodes test table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS node_translations (
-            id TEXT PRIMARY KEY,
-            node_id TEXT NOT NULL,
-            locale TEXT NOT NULL,
-            title TEXT NULL,
-            slug TEXT NULL,
-            excerpt TEXT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY(node_id) REFERENCES nodes(id)
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create node_translations test table");
-
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE IF NOT EXISTS bodies (
-            id TEXT PRIMARY KEY,
-            node_id TEXT NOT NULL,
-            locale TEXT NOT NULL,
-            body TEXT NULL,
-            format TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY(node_id) REFERENCES nodes(id)
-        )"
-        .to_string(),
-    ))
-    .await
-    .expect("failed to create bodies test table");
-}
-
-async fn setup() -> (PageService, NodeService, Uuid, SecurityContext) {
-    let db = setup_test_db().await;
-    ensure_content_schema(&db).await;
     let event_bus = mock_transactional_event_bus();
     let page_service = PageService::new(db.clone(), event_bus.clone());
-    let node_service = NodeService::new(db, event_bus);
+    let block_service = BlockService::new(db, event_bus);
 
-    (page_service, node_service, Uuid::new_v4(), admin_context())
+    (page_service, block_service, Uuid::new_v4(), admin_context())
 }
 
-async fn create_post_node(
-    node_service: &NodeService,
+async fn create_page(
+    page_service: &PageService,
     tenant_id: Uuid,
     security: SecurityContext,
-) -> rustok_content::dto::NodeResponse {
-    node_service
-        .create_node(
+) -> rustok_pages::dto::PageResponse {
+    page_service
+        .create(
             tenant_id,
             security,
-            CreateNodeInput {
-                kind: "post".to_string(),
-                status: Some(rustok_content::entities::node::ContentStatus::Draft),
-                parent_id: None,
-                author_id: None,
-                category_id: None,
-                position: Some(0),
-                depth: Some(0),
-                reply_count: Some(0),
-                metadata: serde_json::json!({}),
-                translations: vec![NodeTranslationInput {
+            CreatePageInput {
+                translations: vec![PageTranslationInput {
                     locale: "en".to_string(),
-                    title: Some("Post".to_string()),
-                    slug: None,
-                    excerpt: None,
+                    title: "Page".to_string(),
+                    slug: Some("page".to_string()),
+                    meta_title: None,
+                    meta_description: None,
                 }],
-                bodies: vec![],
+                template: Some("default".to_string()),
+                body: None,
+                blocks: None,
+                channel_slugs: None,
+                publish: false,
             },
         )
         .await
-        .expect("failed to create post node")
+        .expect("failed to create page")
+}
+
+async fn create_block(
+    block_service: &BlockService,
+    tenant_id: Uuid,
+    security: SecurityContext,
+    page_id: Uuid,
+) -> rustok_pages::dto::BlockResponse {
+    block_service
+        .create(
+            tenant_id,
+            security,
+            page_id,
+            CreateBlockInput {
+                block_type: BlockType::Text,
+                position: 0,
+                data: serde_json::json!({ "text": "hello" }),
+                translations: None,
+            },
+        )
+        .await
+        .expect("failed to create block")
 }
 
 #[tokio::test]
-async fn publish_returns_page_not_found_for_post_id_and_keeps_status() {
-    let (page_service, node_service, tenant_id, security) = setup().await;
-    let post = create_post_node(&node_service, tenant_id, security.clone()).await;
+async fn publish_returns_page_not_found_for_block_id_and_keeps_page_status() {
+    let (page_service, block_service, tenant_id, security) = setup().await;
+    let page = create_page(&page_service, tenant_id, security.clone()).await;
+    let block = create_block(&block_service, tenant_id, security.clone(), page.id).await;
 
     let result = page_service
-        .publish(tenant_id, security.clone(), post.id)
+        .publish(tenant_id, security.clone(), block.id)
         .await;
 
-    assert!(matches!(result, Err(PagesError::PageNotFound(id)) if id == post.id));
+    assert!(matches!(result, Err(PagesError::PageNotFound(id)) if id == block.id));
 
-    let unchanged = node_service
-        .get_node(tenant_id, post.id)
+    let unchanged = page_service
+        .get(tenant_id, security, page.id)
         .await
-        .expect("post node should remain accessible");
-    assert_eq!(unchanged.status, post.status);
-    assert!(unchanged.deleted_at.is_none());
+        .expect("page should remain accessible");
+    assert_eq!(unchanged.status, page.status);
 }
 
 #[tokio::test]
-async fn unpublish_returns_page_not_found_for_post_id_and_keeps_status() {
-    let (page_service, node_service, tenant_id, security) = setup().await;
-    let post = create_post_node(&node_service, tenant_id, security.clone()).await;
+async fn unpublish_returns_page_not_found_for_block_id_and_keeps_page_status() {
+    let (page_service, block_service, tenant_id, security) = setup().await;
+    let page = create_page(&page_service, tenant_id, security.clone()).await;
+    let block = create_block(&block_service, tenant_id, security.clone(), page.id).await;
 
     let result = page_service
-        .unpublish(tenant_id, security.clone(), post.id)
+        .unpublish(tenant_id, security.clone(), block.id)
         .await;
 
-    assert!(matches!(result, Err(PagesError::PageNotFound(id)) if id == post.id));
+    assert!(matches!(result, Err(PagesError::PageNotFound(id)) if id == block.id));
 
-    let unchanged = node_service
-        .get_node(tenant_id, post.id)
+    let unchanged = page_service
+        .get(tenant_id, security, page.id)
         .await
-        .expect("post node should remain accessible");
-    assert_eq!(unchanged.status, post.status);
-    assert!(unchanged.deleted_at.is_none());
+        .expect("page should remain accessible");
+    assert_eq!(unchanged.status, page.status);
 }
 
 #[tokio::test]
-async fn delete_returns_page_not_found_for_post_id_and_keeps_record() {
-    let (page_service, node_service, tenant_id, security) = setup().await;
-    let post = create_post_node(&node_service, tenant_id, security.clone()).await;
+async fn delete_returns_page_not_found_for_block_id_and_keeps_page_record() {
+    let (page_service, block_service, tenant_id, security) = setup().await;
+    let page = create_page(&page_service, tenant_id, security.clone()).await;
+    let block = create_block(&block_service, tenant_id, security.clone(), page.id).await;
 
     let result = page_service
-        .delete(tenant_id, security.clone(), post.id)
+        .delete(tenant_id, security.clone(), block.id)
         .await;
 
-    assert!(matches!(result, Err(PagesError::PageNotFound(id)) if id == post.id));
+    assert!(matches!(result, Err(PagesError::PageNotFound(id)) if id == block.id));
 
-    let unchanged = node_service
-        .get_node(tenant_id, post.id)
+    let unchanged = page_service
+        .get(tenant_id, security, page.id)
         .await
-        .expect("post node should remain accessible");
-    assert_eq!(unchanged.status, post.status);
-    assert!(unchanged.deleted_at.is_none());
+        .expect("page should remain accessible");
+    assert_eq!(unchanged.status, page.status);
 }

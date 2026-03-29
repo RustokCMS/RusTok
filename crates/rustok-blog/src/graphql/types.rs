@@ -3,9 +3,7 @@ use rustok_profiles::graphql::GqlProfileSummary;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::services::extract_channel_slugs;
-use crate::{BlogPostStatus, CreatePostInput as DomainCreatePostInput, PostResponse};
-use rustok_content::dto::NodeListItem;
+use crate::{BlogPostStatus, CreatePostInput as DomainCreatePostInput, PostResponse, PostSummary};
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
 #[graphql(name = "BlogPostStatus", rename_items = "SCREAMING_SNAKE_CASE")]
@@ -15,22 +13,22 @@ pub enum GqlContentStatus {
     Archived,
 }
 
-impl From<rustok_content::entities::node::ContentStatus> for GqlContentStatus {
-    fn from(status: rustok_content::entities::node::ContentStatus) -> Self {
+impl From<BlogPostStatus> for GqlContentStatus {
+    fn from(status: BlogPostStatus) -> Self {
         match status {
-            rustok_content::entities::node::ContentStatus::Draft => Self::Draft,
-            rustok_content::entities::node::ContentStatus::Published => Self::Published,
-            rustok_content::entities::node::ContentStatus::Archived => Self::Archived,
+            BlogPostStatus::Draft => Self::Draft,
+            BlogPostStatus::Published => Self::Published,
+            BlogPostStatus::Archived => Self::Archived,
         }
     }
 }
 
-impl From<GqlContentStatus> for rustok_content::entities::node::ContentStatus {
+impl From<GqlContentStatus> for BlogPostStatus {
     fn from(status: GqlContentStatus) -> Self {
         match status {
-            GqlContentStatus::Draft => Self::Draft,
-            GqlContentStatus::Published => Self::Published,
-            GqlContentStatus::Archived => Self::Archived,
+            GqlContentStatus::Draft => BlogPostStatus::Draft,
+            GqlContentStatus::Published => BlogPostStatus::Published,
+            GqlContentStatus::Archived => BlogPostStatus::Archived,
         }
     }
 }
@@ -158,20 +156,20 @@ impl From<PostResponse> for GqlPost {
     }
 }
 
-impl From<NodeListItem> for GqlPostListItem {
-    fn from(item: NodeListItem) -> Self {
+impl From<PostSummary> for GqlPostListItem {
+    fn from(item: PostSummary) -> Self {
         Self {
             id: item.id,
-            title: item.title.unwrap_or_default(),
+            title: item.title,
             effective_locale: item.effective_locale,
-            slug: item.slug,
+            slug: Some(item.slug),
             excerpt: item.excerpt,
             status: item.status.into(),
-            author_id: item.author_id,
+            author_id: Some(item.author_id),
             author_profile: None,
-            created_at: item.created_at,
-            published_at: item.published_at,
-            channel_slugs: extract_channel_slugs(&item.metadata),
+            created_at: item.created_at.to_rfc3339(),
+            published_at: item.published_at.map(|value| value.to_rfc3339()),
+            channel_slugs: item.channel_slugs,
         }
     }
 }

@@ -18,6 +18,29 @@ compatibility with platform-level contracts.
 
 ## Delivery phases
 
+### Current role after content/domain separation
+
+The storage split is complete and `rustok-content` now has a stable target role:
+
+- `rustok-content` is no longer generic shared product storage;
+- blog/forum/pages domain CRUD no longer lives in this crate;
+- the module acts as shared content library + orchestration layer;
+- shared locale normalization and fallback helpers are the canonical
+  multilingual contract for `rustok-blog`, `rustok-pages`, `rustok-comments`,
+  and the forum storage model after cutover;
+- conversion flows `blog post + comments <-> forum topic + replies` are
+  implemented here through domain integrations, not through shared `nodes`.
+
+Target orchestration tables:
+
+- `content_conversion_operations`
+- `content_entity_links`
+- `content_orchestration_audit`
+
+This document supersedes the old split execution plan and any assumption that
+`rustok-content` should keep growing as the canonical storage owner for blog,
+forum, or pages.
+
 ### Phase 0 — Foundation (done)
 
 - [x] Baseline crate/module structure is in place.
@@ -39,15 +62,14 @@ compatibility with platform-level contracts.
 
 **Exit criteria**
 - [x] API contract frozen. (`CRATE_API.md` with all required sections; verified by `contract_tests.rs`)
-- [x] Sanitizer coverage is enforced for orchestration command payloads. (`ensure_safe_text` / `ensure_safe_optional_text` / `ensure_idempotency_key` called on all inputs in `ContentOrchestrationService`)
+- [x] Sanitizer coverage is enforced for orchestration command payloads. (`ensure_safe_text` / `ensure_safe_optional_text` / `ensure_idempotency_key` called on all inputs in the port-based `ContentOrchestrationService`)
 - [x] RBAC matrix is complete for moderation/create cross-domain actions. (`ensure_scope` enforces `Action::Moderate` + `Action::Create` on all four orchestration methods)
 - [x] Event/reindex integration is covered by minimal integration/e2e tests. (`tests/node_event_index_integration_test.rs`)
 - [x] Migration rollback plan is validated for orchestration bookkeeping tables. (`down()` in `m20260311_000001_create_content_orchestration_tables.rs` drops both tables)
 
 ### Phase 2 — Domain expansion (done)
 
-- [x] Complete GraphQL mutation surface for `rustok-content`:
-  - [x] `publish_node` / `unpublish_node` / `archive_node` / `restore_node` mutations added to `ContentMutation`.
+- [x] Legacy product GraphQL mutation surface for `rustok-content` was implemented as a temporary transition step and has now been removed from runtime composition.
   - [x] `CreateNodeInput` exposes `metadata` field (previously hardcoded as empty object).
   - [x] `UpdateNodeInput` exposes `expected_version` for optimistic locking; removed stale `published_at` field.
 - [x] Integrate `state_machine.rs` into `NodeService` for runtime-enforced status safety (P2.5):

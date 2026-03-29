@@ -5336,8 +5336,6 @@ dependencies = [
 [[package]]
 name = "iggy_common"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7816f6db9b09576b90c9b029a99f28a86be39f9be9a500801c867fc15c73ee33"
 dependencies = [
  "aes-gcm",
  "ahash 0.8.12",
@@ -9624,7 +9622,6 @@ dependencies = [
  "rustok-blog-admin",
  "rustok-channel-admin",
  "rustok-commerce-admin",
- "rustok-content-admin",
  "rustok-forum-admin",
  "rustok-pages-admin",
  "rustok-search-admin",
@@ -9709,6 +9706,7 @@ dependencies = [
  "proptest",
  "rustok-api",
  "rustok-channel",
+ "rustok-comments",
  "rustok-content",
  "rustok-core",
  "rustok-events",
@@ -9821,6 +9819,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-comments"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-content",
+ "rustok-core",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-commerce"
 version = "0.1.0"
 dependencies = [
@@ -9904,13 +9919,9 @@ dependencies = [
 name = "rustok-content"
 version = "0.1.0"
 dependencies = [
- "async-graphql",
  "async-trait",
- "axum",
  "chrono",
- "loco-rs",
  "proptest",
- "rustok-api",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
@@ -9927,28 +9938,6 @@ dependencies = [
  "utoipa",
  "uuid",
  "validator",
-]
-
-[[package]]
-name = "rustok-content-admin"
-version = "0.1.0"
-dependencies = [
- "leptos 0.8.17",
- "leptos-auth",
- "leptos-graphql",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "rustok-content-storefront"
-version = "0.1.0"
-dependencies = [
- "leptos 0.8.17",
- "leptos-graphql",
- "rustok-api",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -10269,6 +10258,7 @@ dependencies = [
  "async-trait",
  "axum",
  "base64 0.22.1",
+ "chrono",
  "loco-rs",
  "rustok-api",
  "rustok-channel",
@@ -10505,6 +10495,7 @@ dependencies = [
  "rustok-cache",
  "rustok-cart",
  "rustok-channel",
+ "rustok-comments",
  "rustok-commerce",
  "rustok-content",
  "rustok-core",
@@ -10596,11 +10587,11 @@ dependencies = [
  "rustok-api",
  "rustok-blog-storefront",
  "rustok-commerce-storefront",
- "rustok-content-storefront",
  "rustok-forum-storefront",
  "rustok-pages-storefront",
  "rustok-search-storefront",
  "serde",
+ "serde_urlencoded",
  "tokio",
  "toml 1.0.7+spec-1.1.0",
 ]

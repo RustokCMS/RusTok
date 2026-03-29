@@ -1,48 +1,13 @@
-//! Pages module for RusToK platform
+//! Pages module for RusToK platform.
 //!
-//! This module provides pages, blocks and menus functionality built on top of the content module.
-//!
-//! # Architecture
-//!
-//! The pages module is a "wrapper" module that:
-//! - Uses `rustok-content` tables for storage (no own database schema)
-//! - Adds pages-specific business logic and validation
-//! - Provides PageService, BlockService, and MenuService
-//! - Publishes domain events through TransactionalEventBus
+//! The module owns storage for pages, page blocks, menus, and menu items.
 //!
 //! # Example
 //!
 //! ```rust,ignore
-//! use rustok_pages::{PageService, CreatePageInput, PageResponse};
+//! use rustok_pages::{CreatePageInput, PageBodyInput, PageService, PageTranslationInput};
 //!
-//! // Create a page service
 //! let service = PageService::new(db, event_bus);
-//!
-//! // Create a page
-//! let input = CreatePageInput {
-//!     translations: vec![PageTranslationInput {
-//!         locale: "en".to_string(),
-//! Pages module for RusToK platform
-//!
-//! This module provides pages, blocks and menus functionality built on top of the content module.
-//!
-//! # Architecture
-//!
-//! The pages module is a "wrapper" module that:
-//! - Uses `rustok-content` tables for storage (no own database schema)
-//! - Adds pages-specific business logic and validation
-//! - Provides PageService, BlockService, and MenuService
-//! - Publishes domain events through TransactionalEventBus
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use rustok_pages::{PageService, CreatePageInput, PageResponse};
-//!
-//! // Create a page service
-//! let service = PageService::new(db, event_bus);
-//!
-//! // Create a page
 //! let input = CreatePageInput {
 //!     translations: vec![PageTranslationInput {
 //!         locale: "en".to_string(),
@@ -63,7 +28,7 @@
 //!     publish: false,
 //! };
 //!
-//! let page = service.create_page(tenant_id, security, input).await?;
+//! let page = service.create(tenant_id, security, input).await?;
 //! ```
 
 pub mod controllers;
@@ -71,6 +36,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
+pub mod migrations;
 pub mod services;
 
 pub use dto::*;
@@ -84,7 +50,7 @@ use rustok_core::permissions::{Action, Permission, Resource};
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
-/// Pages module instance
+/// Pages module instance.
 pub struct PagesModule;
 
 #[async_trait]
@@ -111,7 +77,6 @@ impl RusToKModule for PagesModule {
 
     fn permissions(&self) -> Vec<Permission> {
         vec![
-            // Pages
             Permission::new(Resource::Pages, Action::Create),
             Permission::new(Resource::Pages, Action::Read),
             Permission::new(Resource::Pages, Action::Update),
@@ -119,21 +84,13 @@ impl RusToKModule for PagesModule {
             Permission::new(Resource::Pages, Action::List),
             Permission::new(Resource::Pages, Action::Publish),
             Permission::new(Resource::Pages, Action::Manage),
-            // Blocks (stored as nodes)
-            Permission::new(Resource::Nodes, Action::Create),
-            Permission::new(Resource::Nodes, Action::Read),
-            Permission::new(Resource::Nodes, Action::Update),
-            Permission::new(Resource::Nodes, Action::Delete),
-            Permission::new(Resource::Nodes, Action::List),
-            Permission::new(Resource::Nodes, Action::Manage),
         ]
     }
 }
 
 impl MigrationSource for PagesModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        // Pages module uses content module tables, no own migrations
-        Vec::new()
+        migrations::migrations()
     }
 }
 
@@ -155,27 +112,22 @@ mod tests {
         let module = PagesModule;
         let permissions = module.permissions();
 
-        // Check pages permissions
         assert!(permissions
             .iter()
-            .any(|p| { p.resource == Resource::Pages && p.action == Action::Create }));
+            .any(|p| p.resource == Resource::Pages && p.action == Action::Create));
         assert!(permissions
             .iter()
-            .any(|p| { p.resource == Resource::Pages && p.action == Action::Publish }));
-
-        // Check blocks (nodes) permissions
-        assert!(permissions
-            .iter()
-            .any(|p| { p.resource == Resource::Nodes && p.action == Action::Create }));
-        assert!(permissions
-            .iter()
-            .any(|p| { p.resource == Resource::Nodes && p.action == Action::Delete }));
+            .any(|p| p.resource == Resource::Pages && p.action == Action::Publish));
+        assert!(
+            permissions.iter().all(|p| p.resource != Resource::Nodes),
+            "pages module should no longer publish node permissions"
+        );
     }
 
     #[test]
-    fn module_migrations_empty() {
+    fn module_has_migrations() {
         let module = PagesModule;
-        assert!(module.migrations().is_empty());
+        assert!(!module.migrations().is_empty());
     }
 }
 
