@@ -230,27 +230,28 @@ RusTok does not pick sides in the frontend war. **Leptos** — a Rust/WASM frame
 
 ### Deployment profiles
 
-RusTok supports every deployment topology — from a single-binary monolith to fully decoupled multi-frontend architectures. The server is always the same compiled binary; what changes is where the UI surfaces live and how they are deployed.
+RusTok supports every deployment topology — from a single-binary monolith to fully decoupled multi-frontend architectures. The server is always the same compiled binary; what changes is where the UI surfaces live and what transport connects them.
 
-| Profile | Server | Admin | Storefront(s) | Best for |
-|---------|--------|-------|---------------|----------|
-| **Monolith** | ✓ | Leptos (same process) | Leptos (same process) | Dev environments, small deployments, operational simplicity |
-| **Server + admin co-deployed, storefront external** | ✓ | Leptos or Next.js (co-deployed with server) | Any client, deployed separately | Different scaling needs per surface |
-| **Server standalone, admin and storefront separate** | ✓ (standalone API) | Next.js or any, deployed independently | Any client, deployed independently | Large teams, independent release cycles |
-| **API-only / pure headless** | ✓ (standalone API) | External tool, custom build, or none | Any consumer | Mobile-first products, third-party system integrations |
-| **Multi-frontend** | ✓ (standalone API) | Any of the above | Multiple simultaneous: web + mobile + partner portals | Multi-brand, multi-channel, marketplace |
+Leptos apps (admin and storefront) use `#[server]` functions as their data layer. In monolith mode these become direct in-process calls — no HTTP, no serialization overhead. In any standalone deployment the same code automatically switches to HTTP. GraphQL remains the external API surface for Next.js, mobile clients, and third-party integrations.
+
+| Profile | Admin | Storefront(s) | Transport between layers | Best for |
+|---------|-------|---------------|--------------------------|----------|
+| **Monolith** | Leptos SSR (same process) | Leptos SSR (same process) | **none — in-process `#[server]` calls** | Zero infrastructure overhead, WordPress-style simplicity |
+| **Server + admin embedded, storefront external** | Leptos SSR (same process) | Any client, separate process | in-process for admin; HTTP for storefront | Admin stays fast, storefront scales independently |
+| **All separate** | Leptos standalone or Next.js | Any, separate process | HTTP `/api/fn/*` for Leptos; GraphQL for Next.js | Large teams, independent release cycles |
+| **Pure headless** | External / custom | Any consumer | GraphQL | Mobile-first, third-party integrations |
+| **Multi-frontend** | Any of the above | Multiple: web + mobile + partner portals | HTTP `/api/fn/*` or GraphQL per client type | Multi-brand, multi-channel, marketplace |
 
 ### How deployment flexibility compares
 
 | Deployment profile | Traditional CMS (WP, Drupal) | JS CMS (Strapi, Directus) | Headless CMS (Contentful, Sanity) | E-commerce (Shopify, Magento) | RusTok |
 |---|---|---|---|---|---|
-| Monolith — all in one process | yes | no | no | hosted only | **yes** |
+| Monolith — all in one process, zero HTTP between layers | yes | no | no | hosted only | **yes** |
 | Server + admin together, storefront separate | manual / plugins | partial | no | limited | **yes** |
 | Server, admin, and storefront all separate | manual | yes | yes | headless add-on | **yes** |
 | Multiple independent storefronts | manual | yes | yes | limited / paid tier | **yes** |
-| Admin embedded in server binary (no extra process) | no | no | no | no | **yes** |
-| Consistent API surface across all topologies | no | partial | yes | no | **yes** |
-| Same type contracts at any topology | no | no | no | no | **yes** |
+| Same code, transport switches automatically per topology | no | no | no | no | **yes** |
+| Consistent typed API surface across all topologies | no | no | partial | no | **yes** |
 
 ### Applications
 
