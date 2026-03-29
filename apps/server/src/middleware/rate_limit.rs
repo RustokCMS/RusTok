@@ -934,6 +934,7 @@ mod tests {
             &config,
             Uuid::new_v4(),
             tenant_id,
+            UserRole::Customer,
             client_id,
             &["catalog:read".to_string()],
             "client_credentials",

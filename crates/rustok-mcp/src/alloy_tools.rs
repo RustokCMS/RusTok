@@ -7,11 +7,11 @@ pub use crate::alloy_scaffold::{
     ReviewModuleScaffoldRequest, ReviewModuleScaffoldResponse, ScaffoldModulePreview,
     ScaffoldModuleRequest, StageModuleScaffoldResponse, StagedModuleScaffold,
 };
-use alloy_scripting::model::{Script, ScriptStatus, ScriptTrigger};
-use alloy_scripting::runner::ExecutionOutcome;
-use alloy_scripting::storage::{ScriptQuery, ScriptRegistry};
-use alloy_scripting::utils::{dynamic_to_json, json_to_dynamic};
-use alloy_scripting::{EntityProxy, ScriptEngine, ScriptOrchestrator};
+use alloy::model::{Script, ScriptStatus, ScriptTrigger};
+use alloy::runner::ExecutionOutcome;
+use alloy::storage::{ScriptQuery, ScriptRegistry};
+use alloy::utils::{dynamic_to_json, json_to_dynamic};
+use alloy::{EntityProxy, ScriptEngine, ScriptOrchestrator};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -411,7 +411,7 @@ pub async fn alloy_create_script<R: ScriptRegistry>(
         serde_json::from_value(request.trigger).map_err(|e| e.to_string())?;
 
     if let ScriptTrigger::Cron { ref expression } = trigger {
-        alloy_scripting::utils::validate_cron_expression(expression)?;
+        alloy::utils::validate_cron_expression(expression)?;
     }
 
     let mut scope = rhai::Scope::new();
@@ -510,7 +510,7 @@ pub fn alloy_validate_script<R: ScriptRegistry>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_scripting::{create_default_engine, InMemoryStorage, ScriptOrchestrator};
+    use alloy::{create_default_engine, InMemoryStorage, ScriptOrchestrator};
     use anyhow::Result as AnyhowResult;
     use async_trait::async_trait;
     use std::sync::atomic::{AtomicUsize, Ordering};

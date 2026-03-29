@@ -6,8 +6,9 @@
 //! # Architecture
 //!
 //! The blog module is currently a bounded-context module that:
-//! - Uses module-owned tables for posts, categories, tags, and post-tag relations
+//! - Uses module-owned tables for posts, categories, and post-tag relations
 //! - Uses `rustok-comments` for comment storage and lifecycle
+//! - Uses `rustok-taxonomy` as the shared vocabulary dictionary behind blog tags
 //! - Adds blog-specific business logic and validation
 //! - Provides a type-safe state machine for post lifecycle
 //! - Publishes blog-specific domain events
@@ -90,7 +91,7 @@ impl RusToKModule for BlogModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content", "comments"]
+        &["content", "comments", "taxonomy"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
@@ -124,6 +125,7 @@ mod tests {
         assert_eq!(module.name(), "Blog");
         assert_eq!(module.description(), "Posts, Comments, Categories, Tags");
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(module.dependencies(), &["content", "comments", "taxonomy"]);
     }
 
     #[test]

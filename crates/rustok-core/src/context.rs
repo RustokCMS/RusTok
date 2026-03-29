@@ -6,7 +6,6 @@ use sea_orm::DatabaseConnection;
 
 use crate::cache::CacheStats;
 use crate::events::EventTransport;
-use crate::scripting::ScriptingContext;
 use crate::Result;
 
 #[async_trait]
@@ -29,7 +28,6 @@ pub struct AppContext {
     pub events: Arc<dyn EventTransport>,
     pub cache: Arc<dyn CacheBackend>,
     pub search: Arc<dyn SearchBackend>,
-    pub scripting: Arc<ScriptingContext>,
 }
 
 impl AppContext {
@@ -40,18 +38,14 @@ impl AppContext {
         search: Arc<dyn SearchBackend>,
     ) -> Result<Self> {
         let db = Arc::new(db);
-        let scripting = Arc::new(ScriptingContext::new((*db).clone()).await?);
 
         Ok(Self {
             db,
             events,
             cache,
             search,
-            scripting,
         })
     }
 
-    pub fn start_background_tasks(&self) {
-        self.scripting.start_scheduler();
-    }
+    pub fn start_background_tasks(&self) {}
 }

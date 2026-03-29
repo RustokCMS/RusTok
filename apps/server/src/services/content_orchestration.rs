@@ -4,8 +4,8 @@ use std::sync::Arc;
 use chrono::Utc;
 use loco_rs::app::AppContext;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait, JoinType,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
 };
 use uuid::Uuid;
 
@@ -22,9 +22,7 @@ use async_trait::async_trait;
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-use rustok_blog::entities::{
-    blog_category, blog_post, blog_post_tag, blog_post_translation, blog_tag, blog_tag_translation,
-};
+use rustok_blog::entities::{blog_category, blog_post, blog_post_tag, blog_post_translation};
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -67,6 +65,16 @@ use rustok_forum::constants::{reply_status, topic_status};
 ))]
 use rustok_forum::entities::{
     forum_category, forum_reply, forum_reply_body, forum_topic, forum_topic_translation,
+};
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+use rustok_taxonomy::{
+    entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
+    TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermStatus,
 };
 
 #[cfg(all(
@@ -1172,39 +1180,18 @@ async fn sync_blog_tags_for_post_in_tx(
     names.sort();
     names.dedup();
 
+    blog_post_tag::Entity::delete_many()
+        .filter(blog_post_tag::Column::PostId.eq(post_id))
+        .exec(txn)
+        .await?;
+
     for name in names {
         let slug = normalize_slug(&name);
-        let existing_translation = blog_tag_translation::Entity::find()
-            .filter(blog_tag_translation::Column::TenantId.eq(tenant_id))
-            .filter(blog_tag_translation::Column::Slug.eq(slug.clone()))
-            .one(txn)
-            .await?;
-
-        let tag_id = match existing_translation {
-            Some(translation) => translation.tag_id,
-            None => {
-                let tag_id = Uuid::new_v4();
-                blog_tag::ActiveModel {
-                    id: Set(tag_id),
-                    tenant_id: Set(tenant_id),
-                    use_count: Set(0),
-                    created_at: Set(Utc::now().into()),
-                }
-                .insert(txn)
-                .await?;
-                blog_tag_translation::ActiveModel {
-                    id: Set(Uuid::new_v4()),
-                    tag_id: Set(tag_id),
-                    tenant_id: Set(tenant_id),
-                    locale: Set(locale.clone()),
-                    name: Set(name),
-                    slug: Set(slug),
-                }
-                .insert(txn)
-                .await?;
-                tag_id
-            }
-        };
+        if slug.is_empty() {
+            continue;
+        }
+        let tag_id =
+            find_or_create_blog_taxonomy_term_in_tx(txn, tenant_id, &locale, &name, &slug).await?;
 
         blog_post_tag::ActiveModel {
             post_id: Set(post_id),
@@ -1213,21 +1200,125 @@ async fn sync_blog_tags_for_post_in_tx(
         }
         .insert(txn)
         .await?;
-
-        let use_count = blog_post_tag::Entity::find()
-            .filter(blog_post_tag::Column::TagId.eq(tag_id))
-            .count(txn)
-            .await? as i32;
-        let tag = blog_tag::Entity::find_by_id(tag_id)
-            .one(txn)
-            .await?
-            .ok_or_else(|| ContentError::tag_not_found(tag_id))?;
-        let mut tag_active: blog_tag::ActiveModel = tag.into();
-        tag_active.use_count = Set(use_count);
-        tag_active.update(txn).await?;
     }
 
     Ok(())
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+async fn find_or_create_blog_taxonomy_term_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    locale: &str,
+    name: &str,
+    slug: &str,
+) -> ContentResult<Uuid> {
+    if let Some(term_id) = find_blog_taxonomy_term_id_in_tx(txn, tenant_id, locale, slug).await? {
+        return Ok(term_id);
+    }
+
+    let now = Utc::now();
+    let term_id = Uuid::new_v4();
+    taxonomy_term::ActiveModel {
+        id: Set(term_id),
+        tenant_id: Set(tenant_id),
+        kind: Set(TaxonomyTermKind::Tag),
+        scope_type: Set(TaxonomyScopeType::Module),
+        scope_value: Set("blog".to_string()),
+        canonical_key: Set(slug.to_string()),
+        status: Set(TaxonomyTermStatus::Active),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(txn)
+    .await?;
+
+    taxonomy_term_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        term_id: Set(term_id),
+        tenant_id: Set(tenant_id),
+        locale: Set(locale.to_string()),
+        name: Set(name.to_string()),
+        slug: Set(slug.to_string()),
+        description: Set(None),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(txn)
+    .await?;
+
+    Ok(term_id)
+}
+
+#[cfg(all(
+    feature = "mod-content",
+    feature = "mod-blog",
+    feature = "mod-forum",
+    feature = "mod-comments"
+))]
+async fn find_blog_taxonomy_term_id_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    locale: &str,
+    slug: &str,
+) -> ContentResult<Option<Uuid>> {
+    for (scope_type, scope_value) in [
+        (TaxonomyScopeType::Module, "blog"),
+        (TaxonomyScopeType::Global, ""),
+    ] {
+        if let Some(translation) = taxonomy_term_translation::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                taxonomy_term_translation::Relation::Term.def(),
+            )
+            .filter(taxonomy_term_translation::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_translation::Column::Locale.eq(locale))
+            .filter(taxonomy_term_translation::Column::Slug.eq(slug))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
+            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+            .one(txn)
+            .await?
+        {
+            return Ok(Some(translation.term_id));
+        }
+
+        if let Some(alias) = taxonomy_term_alias::Entity::find()
+            .join(
+                JoinType::InnerJoin,
+                taxonomy_term_alias::Relation::Term.def(),
+            )
+            .filter(taxonomy_term_alias::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term_alias::Column::Locale.eq(locale))
+            .filter(taxonomy_term_alias::Column::Slug.eq(slug))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
+            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+            .one(txn)
+            .await?
+        {
+            return Ok(Some(alias.term_id));
+        }
+
+        if let Some(term) = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Tag))
+            .filter(taxonomy_term::Column::ScopeType.eq(scope_type))
+            .filter(taxonomy_term::Column::ScopeValue.eq(scope_value))
+            .filter(taxonomy_term::Column::CanonicalKey.eq(slug))
+            .one(txn)
+            .await?
+        {
+            return Ok(Some(term.id));
+        }
+    }
+
+    Ok(None)
 }
 
 #[cfg(all(
@@ -1468,14 +1559,23 @@ async fn load_blog_tag_names_for_post_in_tx(
     }
 
     let tag_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
-    let translations = blog_tag_translation::Entity::find()
-        .filter(blog_tag_translation::Column::TagId.is_in(tag_ids))
+    let terms = taxonomy_term::Entity::find()
+        .filter(taxonomy_term::Column::Id.is_in(tag_ids.clone()))
         .all(txn)
         .await?;
-    let mut translations_by_tag: HashMap<Uuid, Vec<blog_tag_translation::Model>> = HashMap::new();
+    let term_by_id = terms
+        .into_iter()
+        .map(|term| (term.id, term))
+        .collect::<HashMap<_, _>>();
+    let translations = taxonomy_term_translation::Entity::find()
+        .filter(taxonomy_term_translation::Column::TermId.is_in(tag_ids))
+        .all(txn)
+        .await?;
+    let mut translations_by_tag: HashMap<Uuid, Vec<taxonomy_term_translation::Model>> =
+        HashMap::new();
     for translation in translations {
         translations_by_tag
-            .entry(translation.tag_id)
+            .entry(translation.term_id)
             .or_default()
             .push(translation);
     }
@@ -1492,6 +1592,8 @@ async fn load_blog_tag_names_for_post_in_tx(
             });
         if let Some(translation) = resolved.item {
             names.push(translation.name.clone());
+        } else if let Some(term) = term_by_id.get(&relation.tag_id) {
+            names.push(term.canonical_key.clone());
         }
     }
 
@@ -1535,9 +1637,7 @@ fn unique_source_ids(target_topic_id: Uuid, source_ids: &[Uuid]) -> ContentResul
 mod tests {
     use super::*;
     use rustok_blog::{
-        entities::{
-            blog_post, blog_post_tag, blog_post_translation, blog_tag, blog_tag_translation,
-        },
+        entities::{blog_post, blog_post_tag, blog_post_translation},
         CommentService as BlogCommentService, CreateCommentInput as BlogCreateCommentInput,
         CreatePostInput, PostService,
     };
@@ -1555,6 +1655,10 @@ mod tests {
         ListRepliesFilter, ReplyService, TopicService,
     };
     use rustok_outbox::TransactionalEventBus;
+    use rustok_taxonomy::{
+        entities::{taxonomy_term, taxonomy_term_translation},
+        TaxonomyModule, TaxonomyScopeType,
+    };
     use sea_orm::{
         ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
     };
@@ -1630,6 +1734,12 @@ mod tests {
                 .up(&manager)
                 .await
                 .expect("comments migration should apply");
+        }
+        for migration in TaxonomyModule.migrations() {
+            migration
+                .up(&manager)
+                .await
+                .expect("taxonomy migration should apply");
         }
         for migration in rustok_blog::BlogModule.migrations() {
             migration
@@ -1777,17 +1887,19 @@ mod tests {
         assert_eq!(translation.title, "Legacy thread");
         assert_eq!(translation.body, "Original forum body");
 
-        let tags = blog_tag::Entity::find()
-            .filter(blog_tag::Column::TenantId.eq(tenant_id))
+        let tags = taxonomy_term::Entity::find()
+            .filter(taxonomy_term::Column::TenantId.eq(tenant_id))
+            .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+            .filter(taxonomy_term::Column::ScopeValue.eq("blog"))
             .all(&db)
             .await
             .expect("blog tags query should succeed");
-        let tag_translations = blog_tag_translation::Entity::find()
+        let tag_translations = taxonomy_term_translation::Entity::find()
             .filter(
-                blog_tag_translation::Column::TagId
+                taxonomy_term_translation::Column::TermId
                     .is_in(tags.iter().map(|tag| tag.id).collect::<Vec<_>>()),
             )
-            .filter(blog_tag_translation::Column::Locale.eq("en"))
+            .filter(taxonomy_term_translation::Column::Locale.eq("en"))
             .all(&db)
             .await
             .expect("blog tag translations query should succeed");
@@ -1796,8 +1908,7 @@ mod tests {
             .all(&db)
             .await
             .expect("blog post tags query should succeed");
-        let tag_slugs: HashSet<String> =
-            tag_translations.into_iter().map(|tag| tag.slug).collect();
+        let tag_slugs: HashSet<String> = tag_translations.into_iter().map(|tag| tag.slug).collect();
         assert_eq!(
             tag_slugs,
             HashSet::from(["release".to_string(), "notes".to_string()])

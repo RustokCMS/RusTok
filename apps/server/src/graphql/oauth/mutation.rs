@@ -46,6 +46,7 @@ impl OAuthMutation {
             redirect_uris: input.redirect_uris.unwrap_or_default(),
             scopes: input.scopes,
             grant_types: input.grant_types,
+            granted_permissions: input.granted_permissions,
         };
 
         let result = OAuthAppService::create_app(db, auth.tenant_id, service_input)
@@ -91,6 +92,7 @@ impl OAuthMutation {
                 redirect_uris: input.redirect_uris,
                 scopes: input.scopes,
                 grant_types: input.grant_types,
+                granted_permissions: input.granted_permissions,
             },
         )
         .await

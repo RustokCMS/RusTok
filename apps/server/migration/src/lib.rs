@@ -48,7 +48,7 @@ impl MigratorTrait for Migrator {
 
         // Pull module-owned migrations from the domain crates and merge them into
         // the server migrator in chronological order.
-        all.extend(alloy_scripting::migrations::migrations());
+        all.extend(alloy::migrations::migrations());
         all.extend(rustok_auth::migrations::migrations());
         all.extend(rustok_channel::migrations::migrations());
         all.extend(rustok_cart::migrations::migrations());

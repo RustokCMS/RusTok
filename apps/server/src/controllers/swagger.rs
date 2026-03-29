@@ -106,6 +106,8 @@ use utoipa::OpenApi;
         crate::controllers::health::modules,
         // Metrics
         crate::controllers::metrics::metrics,
+        // Marketplace
+        crate::controllers::marketplace_registry::catalog,
         // Admin Events
         crate::controllers::admin_events::list_dlq,
         crate::controllers::admin_events::replay_dlq_event,
@@ -215,6 +217,12 @@ use utoipa::OpenApi;
             rustok_commerce::dto::CompleteCheckoutResponse,
             crate::controllers::commerce::admin::AdminOrderDetailResponse,
 
+            // Marketplace
+            crate::services::marketplace_catalog::RegistryCatalogResponse,
+            crate::services::marketplace_catalog::RegistryCatalogModule,
+            crate::services::marketplace_catalog::RegistryCatalogVersion,
+            crate::modules::ModuleSettingSpec,
+
             // Health
             crate::controllers::health::HealthResponse,
             crate::controllers::health::ModuleHealth,
@@ -234,6 +242,7 @@ use utoipa::OpenApi;
         (name = "pages", description = "Pages endpoints"),
         (name = "commerce", description = "Ecommerce endpoints"),
         (name = "store", description = "Storefront ecommerce endpoints"),
+        (name = "marketplace", description = "Marketplace registry and catalog endpoints"),
         (name = "health", description = "Health check endpoints"),
         (name = "observability", description = "Observability and metrics endpoints"),
         (name = "admin", description = "Admin operations")
@@ -334,5 +343,21 @@ impl utoipa::Modify for SecurityAddon {
                 ),
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApiDoc;
+    use utoipa::OpenApi;
+
+    #[test]
+    fn openapi_includes_registry_catalog_path() {
+        let openapi = ApiDoc::openapi();
+
+        assert!(
+            openapi.paths.paths.contains_key("/v1/catalog"),
+            "OpenAPI spec must include /v1/catalog"
+        );
     }
 }

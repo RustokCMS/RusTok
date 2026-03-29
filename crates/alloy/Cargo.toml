@@ -3,16 +3,27 @@ name = "alloy"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Alloy transport adapters and GraphQL integration"
+description = "Alloy runtime and scripting capability"
 
 [dependencies]
-alloy-scripting.workspace = true
-async-graphql.workspace = true
 axum.workspace = true
 chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "rt"] }
+async-trait.workspace = true
+async-graphql.workspace = true
+reqwest.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+loco-rs.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-telemetry.workspace = true
-serde_json.workspace = true
-uuid.workspace = true
+parking_lot = "0.12"
+cron = "0.15"
+email_address = "0.2.9"
 rhai-full = { package = "rhai", git = "https://github.com/rhaiscript/rhai", tag = "v1.24.0", features = ["sync", "metadata"] }

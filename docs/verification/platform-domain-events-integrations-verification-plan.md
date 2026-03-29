@@ -1,132 +1,133 @@
-# План верификации платформы: события, доменные модули и интеграции
+# РџР»Р°РЅ РІРµСЂРёС„РёРєР°С†РёРё РїР»Р°С‚С„РѕСЂРјС‹: СЃРѕР±С‹С‚РёСЏ, РґРѕРјРµРЅРЅС‹Рµ РјРѕРґСѓР»Рё Рё РёРЅС‚РµРіСЂР°С†РёРё
 
-- **Статус:** Актуализированный детальный чеклист
-- **Контур:** Event flow, outbox/runtime transport, доменные модули, модульные зависимости, межконтурные интеграции
-- **Примечание:** API- и UI-поверхности проверяются в отдельных планах, но интеграционные склейки остаются здесь.
+- **РЎС‚Р°С‚СѓСЃ:** РђРєС‚СѓР°Р»РёР·РёСЂРѕРІР°РЅРЅС‹Р№ РґРµС‚Р°Р»СЊРЅС‹Р№ С‡РµРєР»РёСЃС‚
+- **РљРѕРЅС‚СѓСЂ:** Event flow, outbox/runtime transport, РґРѕРјРµРЅРЅС‹Рµ РјРѕРґСѓР»Рё, РјРѕРґСѓР»СЊРЅС‹Рµ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё, РјРµР¶РєРѕРЅС‚СѓСЂРЅС‹Рµ РёРЅС‚РµРіСЂР°С†РёРё
+- **РџСЂРёРјРµС‡Р°РЅРёРµ:** API- Рё UI-РїРѕРІРµСЂС…РЅРѕСЃС‚Рё РїСЂРѕРІРµСЂСЏСЋС‚СЃСЏ РІ РѕС‚РґРµР»СЊРЅС‹С… РїР»Р°РЅР°С…, РЅРѕ РёРЅС‚РµРіСЂР°С†РёРѕРЅРЅС‹Рµ СЃРєР»РµР№РєРё РѕСЃС‚Р°СЋС‚СЃСЏ Р·РґРµСЃСЊ.
 
 ---
 
-## Фаза 6: Событийная система
+## Р¤Р°Р·Р° 6: РЎРѕР±С‹С‚РёР№РЅР°СЏ СЃРёСЃС‚РµРјР°
 
 ### 6.1 Event runtime
 
-**Файлы:**
+**Р¤Р°Р№Р»С‹:**
 - `apps/server/src/services/event_transport_factory.rs`
 - `apps/server/src/services/event_bus.rs`
 - `crates/rustok-outbox/`
 - `crates/rustok-iggy/`
 
-- [ ] Подтверждено, что server bootstrap поднимает актуальный event runtime.
-- [ ] Подтверждено, что поддерживаемые transport modes соответствуют коду и settings.
-- [ ] `outbox` остаётся production-first transport path там, где это ожидается архитектурой.
-- [ ] Iggy transport не дрейфует от текущих contracts и feature gates.
+- [ ] РџРѕРґС‚РІРµСЂР¶РґРµРЅРѕ, С‡С‚Рѕ server bootstrap РїРѕРґРЅРёРјР°РµС‚ Р°РєС‚СѓР°Р»СЊРЅС‹Р№ event runtime.
+- [ ] РџРѕРґС‚РІРµСЂР¶РґРµРЅРѕ, С‡С‚Рѕ РїРѕРґРґРµСЂР¶РёРІР°РµРјС‹Рµ transport modes СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ РєРѕРґСѓ Рё settings.
+- [ ] `outbox` РѕСЃС‚Р°С‘С‚СЃСЏ production-first transport path С‚Р°Рј, РіРґРµ СЌС‚Рѕ РѕР¶РёРґР°РµС‚СЃСЏ Р°СЂС…РёС‚РµРєС‚СѓСЂРѕР№.
+- [ ] Iggy transport РЅРµ РґСЂРµР№С„СѓРµС‚ РѕС‚ С‚РµРєСѓС‰РёС… contracts Рё feature gates.
 
 ### 6.2 Transactional publish path
 
-- [ ] Write-path доменных сервисов публикует события через transactional mechanism.
-- [ ] Нет критичных publish-after-commit сценариев в content/commerce/blog/forum/pages/workflow.
-- [ ] Event envelope и retry metadata совпадают с текущим contract layer.
+- [ ] Write-path РґРѕРјРµРЅРЅС‹С… СЃРµСЂРІРёСЃРѕРІ РїСѓР±Р»РёРєСѓРµС‚ СЃРѕР±С‹С‚РёСЏ С‡РµСЂРµР· transactional mechanism.
+- [ ] РќРµС‚ РєСЂРёС‚РёС‡РЅС‹С… publish-after-commit СЃС†РµРЅР°СЂРёРµРІ РІ content/commerce/blog/forum/pages/workflow.
+- [ ] Event envelope Рё retry metadata СЃРѕРІРїР°РґР°СЋС‚ СЃ С‚РµРєСѓС‰РёРј contract layer.
 
 ### 6.3 Read-side / consumers
 
-- [ ] `rustok-index` и другие consumers подписываются на актуальные события.
-- [ ] Error handling в consumers не ломает batch/runtime loop.
-- [ ] Backlog, retries и failed/DLQ semantics соответствуют текущему коду.
+- [ ] `rustok-index` Рё РґСЂСѓРіРёРµ consumers РїРѕРґРїРёСЃС‹РІР°СЋС‚СЃСЏ РЅР° Р°РєС‚СѓР°Р»СЊРЅС‹Рµ СЃРѕР±С‹С‚РёСЏ.
+- [ ] Error handling РІ consumers РЅРµ Р»РѕРјР°РµС‚ batch/runtime loop.
+- [ ] Backlog, retries Рё failed/DLQ semantics СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ РєРѕРґСѓ.
 
-### 6.4 Coverage доменных событий
+### 6.4 Coverage РґРѕРјРµРЅРЅС‹С… СЃРѕР±С‹С‚РёР№
 
-- [ ] Content: creation/update/publish/archive/delete сценарии отражены в текущем event vocabulary.
-- [ ] Commerce: product/variant/inventory/price сценарии отражены в текущем event vocabulary.
-- [ ] Blog/Forum: wrapper-модули не теряют модуль-специфичные события.
-- [ ] Pages: корректно используют content/node event path.
-- [ ] Media и Workflow event surfaces отражены там, где они уже реализованы в коде.
-- [ ] Для не реализованных product areas нет устаревших обещаний в плане.
+- [ ] Content: creation/update/publish/archive/delete СЃС†РµРЅР°СЂРёРё РѕС‚СЂР°Р¶РµРЅС‹ РІ С‚РµРєСѓС‰РµРј event vocabulary.
+- [ ] Commerce: product/variant/inventory/price СЃС†РµРЅР°СЂРёРё РѕС‚СЂР°Р¶РµРЅС‹ РІ С‚РµРєСѓС‰РµРј event vocabulary.
+- [ ] Blog/Forum: wrapper-РјРѕРґСѓР»Рё РЅРµ С‚РµСЂСЏСЋС‚ РјРѕРґСѓР»СЊ-СЃРїРµС†РёС„РёС‡РЅС‹Рµ СЃРѕР±С‹С‚РёСЏ.
+- [ ] Pages: РєРѕСЂСЂРµРєС‚РЅРѕ РёСЃРїРѕР»СЊР·СѓСЋС‚ content/node event path.
+- [ ] Media Рё Workflow event surfaces РѕС‚СЂР°Р¶РµРЅС‹ С‚Р°Рј, РіРґРµ РѕРЅРё СѓР¶Рµ СЂРµР°Р»РёР·РѕРІР°РЅС‹ РІ РєРѕРґРµ.
+- [ ] Р”Р»СЏ РЅРµ СЂРµР°Р»РёР·РѕРІР°РЅРЅС‹С… product areas РЅРµС‚ СѓСЃС‚Р°СЂРµРІС€РёС… РѕР±РµС‰Р°РЅРёР№ РІ РїР»Р°РЅРµ.
 
 ---
 
-## Фаза 7: Доменные модули
+## Р¤Р°Р·Р° 7: Р”РѕРјРµРЅРЅС‹Рµ РјРѕРґСѓР»Рё
 
 ### 7.1 `rustok-content`
 
-- [ ] Entities, DTOs, GraphQL/REST adapters и `NodeService` соответствуют текущему коду.
-- [ ] State machine, translations, bodies и tenant scoping отражены корректно.
-- [ ] Миграции через `apps/server/migration` и/или shared migration path задокументированы честно.
+- [ ] Entities, DTOs, GraphQL/REST adapters Рё `NodeService` СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ РєРѕРґСѓ.
+- [ ] State machine, translations, bodies Рё tenant scoping РѕС‚СЂР°Р¶РµРЅС‹ РєРѕСЂСЂРµРєС‚РЅРѕ.
+- [ ] РњРёРіСЂР°С†РёРё С‡РµСЂРµР· `apps/server/migration` Рё/РёР»Рё shared migration path Р·Р°РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅС‹ С‡РµСЃС‚РЅРѕ.
 
 ### 7.2 `rustok-commerce`
 
-- [ ] Product/variant/inventory/pricing surfaces соответствуют текущему набору сервисов.
-- [ ] DTO validation и state machine checks отражены без устаревших допущений.
-- [ ] Order-related ожидания не опережают фактическую реализацию.
+- [ ] Product/variant/inventory/pricing surfaces СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ РЅР°Р±РѕСЂСѓ СЃРµСЂРІРёСЃРѕРІ.
+- [ ] DTO validation Рё state machine checks РѕС‚СЂР°Р¶РµРЅС‹ Р±РµР· СѓСЃС‚Р°СЂРµРІС€РёС… РґРѕРїСѓС‰РµРЅРёР№.
+- [ ] Order-related РѕР¶РёРґР°РЅРёСЏ РЅРµ РѕРїРµСЂРµР¶Р°СЋС‚ С„Р°РєС‚РёС‡РµСЃРєСѓСЋ СЂРµР°Р»РёР·Р°С†РёСЋ.
 
 ### 7.3 `rustok-blog`
 
-- [ ] `BlogModule` остаётся wrapper-модулем поверх content.
-- [ ] Post/category/comment/tag surfaces соответствуют текущему коду.
-- [ ] i18n, state machine и event publishing path актуальны.
+- [ ] `BlogModule` РѕСЃС‚Р°С‘С‚СЃСЏ wrapper-РјРѕРґСѓР»РµРј РїРѕРІРµСЂС… content.
+- [ ] Post/category/comment/tag surfaces СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ РєРѕРґСѓ.
+- [ ] i18n, state machine Рё event publishing path Р°РєС‚СѓР°Р»СЊРЅС‹.
 
 ### 7.4 `rustok-forum`
 
-- [ ] Topic/reply/category/moderation surfaces соответствуют текущему коду.
-- [ ] Wrapper-логика поверх content задокументирована корректно.
-- [ ] Permissions и события не расходятся с module contract.
+- [ ] Topic/reply/category/moderation surfaces СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ РєРѕРґСѓ.
+- [ ] Wrapper-Р»РѕРіРёРєР° РїРѕРІРµСЂС… content Р·Р°РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅР° РєРѕСЂСЂРµРєС‚РЅРѕ.
+- [ ] Permissions Рё СЃРѕР±С‹С‚РёСЏ РЅРµ СЂР°СЃС…РѕРґСЏС‚СЃСЏ СЃ module contract.
 
 ### 7.5 `rustok-pages`
 
-- [ ] `pages -> content` отражено как runtime dependency.
-- [ ] `PageService`, blocks, menus и node-backed persistence задокументированы корректно.
-- [ ] Module-owned admin/storefront surfaces соответствуют коду.
+- [ ] `pages -> content` РѕС‚СЂР°Р¶РµРЅРѕ РєР°Рє runtime dependency.
+- [ ] `PageService`, blocks, menus Рё node-backed persistence Р·Р°РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅС‹ РєРѕСЂСЂРµРєС‚РЅРѕ.
+- [ ] Module-owned admin/storefront surfaces СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ РєРѕРґСѓ.
 
 ### 7.6 `rustok-media`
 
-- [ ] `MediaModule` включён в optional modules и отражён в плане.
-- [ ] Entities, DTOs, GraphQL surface и `MediaService` соответствуют текущему коду.
-- [ ] Storage integration и localized metadata отражены без устаревших предположений.
+- [ ] `MediaModule` РІРєР»СЋС‡С‘РЅ РІ optional modules Рё РѕС‚СЂР°Р¶С‘РЅ РІ РїР»Р°РЅРµ.
+- [ ] Entities, DTOs, GraphQL surface Рё `MediaService` СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ РєРѕРґСѓ.
+- [ ] Storage integration Рё localized metadata РѕС‚СЂР°Р¶РµРЅС‹ Р±РµР· СѓСЃС‚Р°СЂРµРІС€РёС… РїСЂРµРґРїРѕР»РѕР¶РµРЅРёР№.
 
 ### 7.7 `rustok-workflow`
 
-- [ ] `WorkflowModule` включён в optional modules и отражён в плане.
-- [ ] Entities, GraphQL/REST surfaces, engine, trigger handler и built-in steps соответствуют текущему коду.
-- [ ] Workflow не описан как runtime dependency Alloy, если в коде такой зависимости нет.
+- [ ] `WorkflowModule` РІРєР»СЋС‡С‘РЅ РІ optional modules Рё РѕС‚СЂР°Р¶С‘РЅ РІ РїР»Р°РЅРµ.
+- [ ] Entities, GraphQL/REST surfaces, engine, trigger handler Рё built-in steps СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ РєРѕРґСѓ.
+- [ ] Workflow РЅРµ РѕРїРёСЃР°РЅ РєР°Рє runtime dependency Alloy, РµСЃР»Рё РІ РєРѕРґРµ С‚Р°РєРѕР№ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РЅРµС‚.
 
 ### 7.8 `rustok-index`
 
-- [ ] `IndexModule` и search/read-model contract соответствуют текущему коду.
-- [ ] Content/Product indexers и search engine wiring задокументированы корректно.
+- [ ] `IndexModule` Рё search/read-model contract СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ РєРѕРґСѓ.
+- [ ] Content/Product indexers Рё search engine wiring Р·Р°РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅС‹ РєРѕСЂСЂРµРєС‚РЅРѕ.
 
-### 7.9 `rustok-rbac` и `rustok-tenant`
+### 7.9 `rustok-rbac` Рё `rustok-tenant`
 
-- [ ] `rustok-rbac` описан как `Core` module с relation/policy/runtime resolvers.
-- [ ] `rustok-tenant` описан как `Core` module с CRUD + tenant_modules lifecycle.
-- [ ] Migration ownership для этих модулей задокументирован честно.
+- [ ] `rustok-rbac` РѕРїРёСЃР°РЅ РєР°Рє `Core` module СЃ relation/policy/runtime resolvers.
+- [ ] `rustok-tenant` РѕРїРёСЃР°РЅ РєР°Рє `Core` module СЃ CRUD + tenant_modules lifecycle.
+- [ ] Migration ownership РґР»СЏ СЌС‚РёС… РјРѕРґСѓР»РµР№ Р·Р°РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅ С‡РµСЃС‚РЅРѕ.
 
-### 7.10 Alloy и другие capability-crate'ы
+### 7.10 Alloy Рё РґСЂСѓРіРёРµ capability-crate'С‹
 
-- [ ] `alloy` и `alloy-scripting` не описаны как обычные tenant-toggle доменные модули.
-- [ ] Capability boundaries и связь с workflow/MCP отражены без смешения с taxonomy platform modules.
+- [ ] `alloy` Рё `alloy` РЅРµ РѕРїРёСЃР°РЅС‹ РєР°Рє РѕР±С‹С‡РЅС‹Рµ tenant-toggle РґРѕРјРµРЅРЅС‹Рµ РјРѕРґСѓР»Рё.
+- [ ] Capability boundaries Рё СЃРІСЏР·СЊ СЃ workflow/MCP РѕС‚СЂР°Р¶РµРЅС‹ Р±РµР· СЃРјРµС€РµРЅРёСЏ СЃ taxonomy platform modules.
 
 ---
 
-## Фаза 13: Интеграционные связи
+## Р¤Р°Р·Р° 13: РРЅС‚РµРіСЂР°С†РёРѕРЅРЅС‹Рµ СЃРІСЏР·Рё
 
 ### 13.1 Module dependency contract
 
-- [ ] Manifest dependencies и runtime dependencies совпадают.
-- [ ] `blog/forum/pages -> content` проверяются как build-time и runtime инвариант.
-- [ ] Optional modules не обходят dependency checks через host-приложения.
+- [ ] Manifest dependencies Рё runtime dependencies СЃРѕРІРїР°РґР°СЋС‚.
+- [ ] `blog/forum/pages -> content` РїСЂРѕРІРµСЂСЏСЋС‚СЃСЏ РєР°Рє build-time Рё runtime РёРЅРІР°СЂРёР°РЅС‚.
+- [ ] Optional modules РЅРµ РѕР±С…РѕРґСЏС‚ dependency checks С‡РµСЂРµР· host-РїСЂРёР»РѕР¶РµРЅРёСЏ.
 
 ### 13.2 Write -> Event -> Read model
 
-- [ ] Content/commerce/blog/forum/pages сценарии проходят путь write -> event -> index/read-side без разрыва.
-- [ ] Workflow/event trigger path не расходится с текущим engine runtime.
-- [ ] Build/event hub и GraphQL subscription path соответствуют текущему server runtime.
+- [ ] Content/commerce/blog/forum/pages СЃС†РµРЅР°СЂРёРё РїСЂРѕС…РѕРґСЏС‚ РїСѓС‚СЊ write -> event -> index/read-side Р±РµР· СЂР°Р·СЂС‹РІР°.
+- [ ] Workflow/event trigger path РЅРµ СЂР°СЃС…РѕРґРёС‚СЃСЏ СЃ С‚РµРєСѓС‰РёРј engine runtime.
+- [ ] Build/event hub Рё GraphQL subscription path СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ server runtime.
 
-### 13.3 Host apps и module-owned surfaces
+### 13.3 Host apps Рё module-owned surfaces
 
-- [ ] Leptos Admin использует module-owned admin pages через `/modules/:module_slug` и `/*module_path`.
-- [ ] Leptos Storefront использует module-owned page registrations и slot injections.
-- [ ] Next.js/other hosts не документированы как потребители тех surfaces, которых в коде ещё нет.
+- [ ] Leptos Admin РёСЃРїРѕР»СЊР·СѓРµС‚ module-owned admin pages С‡РµСЂРµР· `/modules/:module_slug` Рё `/*module_path`.
+- [ ] Leptos Storefront РёСЃРїРѕР»СЊР·СѓРµС‚ module-owned page registrations Рё slot injections.
+- [ ] Next.js/other hosts РЅРµ РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅС‹ РєР°Рє РїРѕС‚СЂРµР±РёС‚РµР»Рё С‚РµС… surfaces, РєРѕС‚РѕСЂС‹С… РІ РєРѕРґРµ РµС‰С‘ РЅРµС‚.
 
-### 13.4 Build, manifest и lifecycle integration
+### 13.4 Build, manifest Рё lifecycle integration
 
-- [ ] Manifest diff -> build request -> build progress path соответствует текущим `BuildService` / GraphQL subscription / event hub контрактам.
-- [ ] Tenant module lifecycle и build pipeline не описаны как независимые, если в коде они связаны.
+- [ ] Manifest diff -> build request -> build progress path СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ С‚РµРєСѓС‰РёРј `BuildService` / GraphQL subscription / event hub РєРѕРЅС‚СЂР°РєС‚Р°Рј.
+- [ ] Tenant module lifecycle Рё build pipeline РЅРµ РѕРїРёСЃР°РЅС‹ РєР°Рє РЅРµР·Р°РІРёСЃРёРјС‹Рµ, РµСЃР»Рё РІ РєРѕРґРµ РѕРЅРё СЃРІСЏР·Р°РЅС‹.
+

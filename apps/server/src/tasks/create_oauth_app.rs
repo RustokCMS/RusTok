@@ -60,6 +60,7 @@ impl Task for CreateOAuthAppTask {
                 "authorization_code".to_string(),
                 "refresh_token".to_string(),
             ],
+            granted_permissions: vec![],
         };
 
         let result = OAuthAppService::create_app(db, tenant.id, input)

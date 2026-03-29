@@ -3,7 +3,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -11,6 +11,7 @@ use rustok_content::{
     dto::validation::validate_body_format, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::{Action, PermissionScope, Resource, SecurityContext};
+use rustok_telemetry::metrics;
 
 use crate::dto::{
     CommentListItem, CommentRecord, CreateCommentInput, ListCommentsFilter, UpdateCommentInput,
@@ -21,6 +22,9 @@ use crate::error::{CommentsError, CommentsResult};
 pub struct CommentsService {
     db: DatabaseConnection,
 }
+
+const MODULE: &str = "comments";
+const LIBRARY_PATH: &str = "library";
 
 #[cfg(test)]
 mod locale_fallback_tests {
@@ -111,14 +115,21 @@ impl CommentsService {
         security: SecurityContext,
         input: CreateCommentInput,
     ) -> CommentsResult<CommentRecord> {
-        let locale = input.locale.clone();
-        let txn = self.db.begin().await?;
-        let comment_id = self
-            .create_comment_in_tx(&txn, tenant_id, security.clone(), input)
-            .await?;
-        txn.commit().await?;
-        self.get_comment(tenant_id, security, comment_id, &locale, None)
-            .await
+        record_entrypoint("create_comment");
+        let started = Instant::now();
+        let result = async {
+            let locale = input.locale.clone();
+            let txn = self.db.begin().await?;
+            let comment_id = self
+                .create_comment_in_tx(&txn, tenant_id, security.clone(), input)
+                .await?;
+            txn.commit().await?;
+            self.get_comment(tenant_id, security, comment_id, &locale, None)
+                .await
+        }
+        .await;
+        record_operation_result("comments.create_comment", started, &result);
+        result
     }
 
     pub async fn create_comment_in_tx(
@@ -134,6 +145,8 @@ impl CommentsService {
         let thread = self
             .find_or_create_thread_in_tx(txn, tenant_id, &input.target_type, input.target_id)
             .await?;
+        self.ensure_thread_is_open(&thread)?;
+        let status = self.resolve_create_status(&security, input.status)?;
 
         if let Some(parent_comment_id) = input.parent_comment_id {
             let parent = self
@@ -157,7 +170,7 @@ impl CommentsService {
             thread_id: Set(thread.id),
             author_id: Set(author_id),
             parent_comment_id: Set(input.parent_comment_id),
-            status: Set(input.status),
+            status: Set(status),
             position: Set(position),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -193,25 +206,32 @@ impl CommentsService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> CommentsResult<CommentRecord> {
-        self.enforce_read_scope(&security, Action::Read)?;
-        let locale = normalize_locale(locale)?;
-        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        record_entrypoint("get_comment");
+        let started = Instant::now();
+        let result = async {
+            self.enforce_read_scope(&security, Action::Read)?;
+            let locale = normalize_locale(locale)?;
+            let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
 
-        let comment = self.find_comment(tenant_id, comment_id, false).await?;
-        let thread = comment_thread::Entity::find_by_id(comment.thread_id)
-            .filter(comment_thread::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| CommentsError::CommentThreadNotFound {
-                target_type: "unknown".to_string(),
-                target_id: Uuid::nil(),
-            })?;
-        let bodies = comment_body::Entity::find()
-            .filter(comment_body::Column::CommentId.eq(comment.id))
-            .all(&self.db)
-            .await?;
+            let comment = self.find_comment(tenant_id, comment_id, false).await?;
+            let thread = comment_thread::Entity::find_by_id(comment.thread_id)
+                .filter(comment_thread::Column::TenantId.eq(tenant_id))
+                .one(&self.db)
+                .await?
+                .ok_or_else(|| CommentsError::CommentThreadNotFound {
+                    target_type: "unknown".to_string(),
+                    target_id: Uuid::nil(),
+                })?;
+            let bodies = comment_body::Entity::find()
+                .filter(comment_body::Column::CommentId.eq(comment.id))
+                .all(&self.db)
+                .await?;
 
-        self.build_comment_record(comment, thread, bodies, &locale, fallback_locale.as_deref())
+            self.build_comment_record(comment, thread, bodies, &locale, fallback_locale.as_deref())
+        }
+        .await;
+        record_operation_result("comments.get_comment", started, &result);
+        result
     }
 
     #[instrument(skip(self, security, input))]
@@ -222,33 +242,40 @@ impl CommentsService {
         comment_id: Uuid,
         input: UpdateCommentInput,
     ) -> CommentsResult<CommentRecord> {
-        let existing = self.find_comment(tenant_id, comment_id, false).await?;
-        self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
+        record_entrypoint("update_comment");
+        let started = Instant::now();
+        let result = async {
+            let existing = self.find_comment(tenant_id, comment_id, false).await?;
+            self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
 
-        let locale = normalize_locale(&input.locale)?;
-        if input.body.is_none() && input.body_format.is_none() {
-            return self
-                .get_comment(tenant_id, security, comment_id, &locale, None)
-                .await;
+            let locale = normalize_locale(&input.locale)?;
+            if input.body.is_none() && input.body_format.is_none() {
+                return self
+                    .get_comment(tenant_id, security, comment_id, &locale, None)
+                    .await;
+            }
+
+            let body = input
+                .body
+                .ok_or_else(|| CommentsError::Validation("Comment body is required".to_string()))?;
+            let body_format = input.body_format.unwrap_or_else(|| "markdown".to_string());
+            self.validate_body(&body, &body_format)?;
+
+            let txn = self.db.begin().await?;
+            self.upsert_body_in_tx(&txn, comment_id, &locale, body, body_format)
+                .await?;
+
+            let mut active: comment::ActiveModel = existing.into();
+            active.updated_at = Set(Utc::now().into());
+            active.update(&txn).await?;
+            txn.commit().await?;
+
+            self.get_comment(tenant_id, security, comment_id, &locale, None)
+                .await
         }
-
-        let body = input
-            .body
-            .ok_or_else(|| CommentsError::Validation("Comment body is required".to_string()))?;
-        let body_format = input.body_format.unwrap_or_else(|| "markdown".to_string());
-        self.validate_body(&body, &body_format)?;
-
-        let txn = self.db.begin().await?;
-        self.upsert_body_in_tx(&txn, comment_id, &locale, body, body_format)
-            .await?;
-
-        let mut active: comment::ActiveModel = existing.into();
-        active.updated_at = Set(Utc::now().into());
-        active.update(&txn).await?;
-        txn.commit().await?;
-
-        self.get_comment(tenant_id, security, comment_id, &locale, None)
-            .await
+        .await;
+        record_operation_result("comments.update_comment", started, &result);
+        result
     }
 
     #[instrument(skip(self, security))]
@@ -258,11 +285,18 @@ impl CommentsService {
         security: SecurityContext,
         comment_id: Uuid,
     ) -> CommentsResult<()> {
-        let txn = self.db.begin().await?;
-        self.delete_comment_in_tx(&txn, tenant_id, security, comment_id)
-            .await?;
-        txn.commit().await?;
-        Ok(())
+        record_entrypoint("delete_comment");
+        let started = Instant::now();
+        let result = async {
+            let txn = self.db.begin().await?;
+            self.delete_comment_in_tx(&txn, tenant_id, security, comment_id)
+                .await?;
+            txn.commit().await?;
+            Ok(())
+        }
+        .await;
+        record_operation_result("comments.delete_comment", started, &result);
+        result
     }
 
     pub async fn delete_comment_in_tx(
@@ -305,69 +339,157 @@ impl CommentsService {
         filter: ListCommentsFilter,
         fallback_locale: Option<&str>,
     ) -> CommentsResult<(Vec<CommentListItem>, u64)> {
-        self.enforce_read_scope(&security, Action::List)?;
-        let locale = normalize_locale(&filter.locale)?;
-        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+        record_entrypoint("list_comments_for_target");
+        let started = Instant::now();
+        let result = async {
+            self.enforce_read_scope(&security, Action::List)?;
+            let locale = normalize_locale(&filter.locale)?;
+            let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+            let requested_limit = Some(filter.per_page);
+            let effective_limit = filter.per_page.max(1);
 
-        let thread = comment_thread::Entity::find()
-            .filter(comment_thread::Column::TenantId.eq(tenant_id))
-            .filter(comment_thread::Column::TargetType.eq(target_type))
-            .filter(comment_thread::Column::TargetId.eq(target_id))
-            .one(&self.db)
-            .await?;
+            let thread_lookup_started = Instant::now();
+            let thread = comment_thread::Entity::find()
+                .filter(comment_thread::Column::TenantId.eq(tenant_id))
+                .filter(comment_thread::Column::TargetType.eq(target_type))
+                .filter(comment_thread::Column::TargetId.eq(target_id))
+                .one(&self.db)
+                .await?;
+            metrics::record_read_path_query(
+                LIBRARY_PATH,
+                "comments.list_comments_for_target",
+                "comment_threads.lookup",
+                thread_lookup_started.elapsed().as_secs_f64(),
+                if thread.is_some() { 1 } else { 0 },
+            );
 
-        let Some(thread) = thread else {
-            return Ok((Vec::new(), 0));
-        };
+            let Some(thread) = thread else {
+                metrics::record_read_path_budget(
+                    LIBRARY_PATH,
+                    "comments.list_comments_for_target",
+                    requested_limit,
+                    effective_limit,
+                    0,
+                );
+                return Ok((Vec::new(), 0));
+            };
 
-        let paginator = comment::Entity::find()
-            .filter(comment::Column::TenantId.eq(tenant_id))
-            .filter(comment::Column::ThreadId.eq(thread.id))
-            .filter(comment::Column::DeletedAt.is_null())
-            .order_by_asc(comment::Column::Position)
-            .paginate(&self.db, filter.per_page.max(1));
+            let paginator = comment::Entity::find()
+                .filter(comment::Column::TenantId.eq(tenant_id))
+                .filter(comment::Column::ThreadId.eq(thread.id))
+                .filter(comment::Column::DeletedAt.is_null())
+                .order_by_asc(comment::Column::Position)
+                .paginate(&self.db, effective_limit);
 
-        let total = paginator.num_items().await?;
-        let comments = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
+            let page_query_started = Instant::now();
+            let total = paginator.num_items().await?;
+            let comments = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
+            metrics::record_read_path_query(
+                LIBRARY_PATH,
+                "comments.list_comments_for_target",
+                "comments.page",
+                page_query_started.elapsed().as_secs_f64(),
+                comments.len() as u64,
+            );
 
-        let comment_ids: Vec<Uuid> = comments.iter().map(|item| item.id).collect();
-        let bodies = comment_body::Entity::find()
-            .filter(comment_body::Column::CommentId.is_in(comment_ids))
-            .all(&self.db)
-            .await?;
-        let mut bodies_map: HashMap<Uuid, Vec<comment_body::Model>> = HashMap::new();
-        for body in bodies {
-            bodies_map.entry(body.comment_id).or_default().push(body);
-        }
+            let comment_ids: Vec<Uuid> = comments.iter().map(|item| item.id).collect();
+            let body_query_started = Instant::now();
+            let bodies = comment_body::Entity::find()
+                .filter(comment_body::Column::CommentId.is_in(comment_ids))
+                .all(&self.db)
+                .await?;
+            metrics::record_read_path_query(
+                LIBRARY_PATH,
+                "comments.list_comments_for_target",
+                "comment_bodies.batch",
+                body_query_started.elapsed().as_secs_f64(),
+                bodies.len() as u64,
+            );
 
-        let items = comments
-            .into_iter()
-            .map(|item| {
-                let resolved = resolve_body(
-                    bodies_map.remove(&item.id).unwrap_or_default(),
-                    &locale,
-                    fallback_locale.as_deref(),
-                )?;
-                let preview: String = resolved.body.chars().take(200).collect();
+            let mut bodies_map: HashMap<Uuid, Vec<comment_body::Model>> = HashMap::new();
+            for body in bodies {
+                bodies_map.entry(body.comment_id).or_default().push(body);
+            }
 
-                Ok(CommentListItem {
-                    id: item.id,
-                    thread_id: item.thread_id,
-                    target_type: thread.target_type.clone(),
-                    target_id: thread.target_id,
-                    requested_locale: locale.clone(),
-                    effective_locale: resolved.effective_locale,
-                    author_id: item.author_id,
-                    parent_comment_id: item.parent_comment_id,
-                    body_preview: preview,
-                    status: item.status,
-                    position: item.position,
-                    created_at: item.created_at.to_rfc3339(),
+            let items = comments
+                .into_iter()
+                .map(|item| {
+                    let resolved = resolve_body(
+                        bodies_map.remove(&item.id).unwrap_or_default(),
+                        &locale,
+                        fallback_locale.as_deref(),
+                    )?;
+                    let preview: String = resolved.body.chars().take(200).collect();
+
+                    Ok(CommentListItem {
+                        id: item.id,
+                        thread_id: item.thread_id,
+                        target_type: thread.target_type.clone(),
+                        target_id: thread.target_id,
+                        requested_locale: locale.clone(),
+                        effective_locale: resolved.effective_locale,
+                        author_id: item.author_id,
+                        parent_comment_id: item.parent_comment_id,
+                        body_preview: preview,
+                        status: item.status,
+                        position: item.position,
+                        created_at: item.created_at.to_rfc3339(),
+                    })
                 })
-            })
-            .collect::<CommentsResult<Vec<_>>>()?;
+                .collect::<CommentsResult<Vec<_>>>()?;
 
-        Ok((items, total))
+            metrics::record_read_path_budget(
+                LIBRARY_PATH,
+                "comments.list_comments_for_target",
+                requested_limit,
+                effective_limit,
+                items.len(),
+            );
+
+            Ok((items, total))
+        }
+        .await;
+        record_operation_result("comments.list_comments_for_target", started, &result);
+        result
+    }
+
+    #[instrument(skip(self, security), fields(tenant_id = %tenant_id, target_type = %target_type, target_id = %target_id, status = ?status))]
+    pub async fn set_thread_status_for_target(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        target_type: &str,
+        target_id: Uuid,
+        status: crate::dto::CommentThreadStatus,
+    ) -> CommentsResult<()> {
+        record_entrypoint("set_thread_status_for_target");
+        let started = Instant::now();
+        let result = async {
+            self.enforce_moderation_scope(&security)?;
+            let thread = comment_thread::Entity::find()
+                .filter(comment_thread::Column::TenantId.eq(tenant_id))
+                .filter(comment_thread::Column::TargetType.eq(target_type))
+                .filter(comment_thread::Column::TargetId.eq(target_id))
+                .one(&self.db)
+                .await?
+                .ok_or_else(|| CommentsError::CommentThreadNotFound {
+                    target_type: target_type.to_string(),
+                    target_id,
+                })?;
+
+            if thread.status == status {
+                return Ok(());
+            }
+
+            let mut active: comment_thread::ActiveModel = thread.into();
+            active.status = Set(status);
+            active.updated_at = Set(Utc::now().into());
+            active.update(&self.db).await?;
+            Ok(())
+        }
+        .await;
+        record_operation_result("comments.set_thread_status_for_target", started, &result);
+        result
     }
 
     async fn find_or_create_thread_in_tx(
@@ -586,6 +708,13 @@ impl CommentsService {
         }
     }
 
+    fn enforce_moderation_scope(&self, security: &SecurityContext) -> CommentsResult<()> {
+        if self.can_moderate(security) {
+            return Ok(());
+        }
+        Err(CommentsError::Forbidden("Permission denied".to_string()))
+    }
+
     fn validate_body(&self, body: &str, body_format: &str) -> CommentsResult<()> {
         if body_format.trim().is_empty() {
             return Err(CommentsError::Validation(
@@ -604,11 +733,56 @@ impl CommentsService {
         }
         Ok(())
     }
+
+    fn ensure_thread_is_open(&self, thread: &comment_thread::Model) -> CommentsResult<()> {
+        if thread.status == crate::dto::CommentThreadStatus::Closed {
+            return Err(CommentsError::CommentThreadClosed {
+                target_type: thread.target_type.clone(),
+                target_id: thread.target_id,
+            });
+        }
+        Ok(())
+    }
+
+    fn resolve_create_status(
+        &self,
+        security: &SecurityContext,
+        requested: crate::dto::CommentStatus,
+    ) -> CommentsResult<crate::dto::CommentStatus> {
+        match requested {
+            crate::dto::CommentStatus::Pending | crate::dto::CommentStatus::Approved => {
+                Ok(requested)
+            }
+            crate::dto::CommentStatus::Spam | crate::dto::CommentStatus::Trash
+                if self.can_moderate(security) =>
+            {
+                Ok(requested)
+            }
+            crate::dto::CommentStatus::Spam | crate::dto::CommentStatus::Trash => {
+                Err(CommentsError::Forbidden(
+                    "Only moderators can create comments with spam/trash status".to_string(),
+                ))
+            }
+        }
+    }
+
+    fn can_moderate(&self, security: &SecurityContext) -> bool {
+        !matches!(
+            security.get_scope(Resource::Comments, Action::Moderate),
+            PermissionScope::None
+        ) || !matches!(
+            security.get_scope(Resource::Comments, Action::Manage),
+            PermissionScope::None
+        )
+    }
 }
 
 #[cfg(test)]
 mod format_validation_tests {
     use super::*;
+    use crate::migrations;
+    use rustok_core::UserRole;
+    use sea_orm_migration::SchemaManager;
 
     #[tokio::test]
     async fn rejects_unknown_comment_body_format() {
@@ -654,11 +828,129 @@ mod format_validation_tests {
             .validate_body("hello", CONTENT_FORMAT_MARKDOWN)
             .expect("markdown should remain valid");
     }
+
+    async fn setup_comments_service() -> CommentsService {
+        let db_url = format!(
+            "sqlite:file:comments_status_contract_{}?mode=memory&cache=shared",
+            Uuid::new_v4()
+        );
+        let db = Database::connect(db_url)
+            .await
+            .expect("sqlite connection should succeed");
+        let manager = SchemaManager::new(&db);
+        for migration in migrations::migrations() {
+            migration
+                .up(&manager)
+                .await
+                .expect("comments migration should apply");
+        }
+        CommentsService::new(db)
+    }
+
+    #[tokio::test]
+    async fn closed_thread_rejects_new_comment_creation() {
+        let service = setup_comments_service().await;
+        let tenant_id = Uuid::new_v4();
+        let target_id = Uuid::new_v4();
+        let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+        let moderator = SecurityContext::system();
+
+        service
+            .create_comment(
+                tenant_id,
+                customer.clone(),
+                CreateCommentInput {
+                    target_type: "blog_post".to_string(),
+                    target_id,
+                    locale: "en".to_string(),
+                    body: "first".to_string(),
+                    body_format: "markdown".to_string(),
+                    parent_comment_id: None,
+                    status: crate::dto::CommentStatus::Pending,
+                },
+            )
+            .await
+            .expect("initial comment should create the thread");
+
+        service
+            .set_thread_status_for_target(
+                tenant_id,
+                moderator,
+                "blog_post",
+                target_id,
+                crate::dto::CommentThreadStatus::Closed,
+            )
+            .await
+            .expect("moderator should be able to close the thread");
+
+        let err = service
+            .create_comment(
+                tenant_id,
+                customer,
+                CreateCommentInput {
+                    target_type: "blog_post".to_string(),
+                    target_id,
+                    locale: "en".to_string(),
+                    body: "second".to_string(),
+                    body_format: "markdown".to_string(),
+                    parent_comment_id: None,
+                    status: crate::dto::CommentStatus::Pending,
+                },
+            )
+            .await
+            .expect_err("closed thread must reject new comments");
+
+        assert!(matches!(
+            err,
+            CommentsError::CommentThreadClosed {
+                target_type,
+                target_id: closed_target_id
+            } if target_type == "blog_post" && closed_target_id == target_id
+        ));
+    }
+
+    #[tokio::test]
+    async fn non_moderator_cannot_create_spam_or_trash_comment() {
+        let service = setup_comments_service().await;
+        let tenant_id = Uuid::new_v4();
+        let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+        let err = service
+            .create_comment(
+                tenant_id,
+                customer,
+                CreateCommentInput {
+                    target_type: "blog_post".to_string(),
+                    target_id: Uuid::new_v4(),
+                    locale: "en".to_string(),
+                    body: "spam".to_string(),
+                    body_format: "markdown".to_string(),
+                    parent_comment_id: None,
+                    status: crate::dto::CommentStatus::Spam,
+                },
+            )
+            .await
+            .expect_err("non-moderator should not create spam comments");
+
+        assert!(matches!(err, CommentsError::Forbidden(_)));
+    }
 }
 
 fn normalize_locale(locale: &str) -> CommentsResult<String> {
     normalize_locale_code(locale)
         .ok_or_else(|| CommentsError::Validation("Invalid locale".to_string()))
+}
+
+fn record_entrypoint(entry_point: &str) {
+    metrics::record_module_entrypoint_call(MODULE, entry_point, LIBRARY_PATH);
+}
+
+fn record_operation_result<T>(operation: &str, started: Instant, result: &CommentsResult<T>) {
+    metrics::record_span_duration(operation, started.elapsed().as_secs_f64());
+    if let Err(error) = result {
+        metrics::record_span_error(operation, error.kind());
+        metrics::record_module_error(MODULE, error.kind(), error.severity());
+    }
 }
 
 struct ResolvedBody {

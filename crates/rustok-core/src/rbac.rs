@@ -26,6 +26,7 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Nodes,
         Resource::Media,
         Resource::Comments,
+        Resource::Taxonomy,
         Resource::Analytics,
         Resource::Logs,
         Resource::Webhooks,
@@ -59,6 +60,7 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::Nodes,
         Resource::Media,
         Resource::Comments,
+        Resource::Taxonomy,
         Resource::Analytics,
         Resource::Webhooks,
     ];
@@ -141,6 +143,11 @@ static MANAGER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     }
 
     permissions.insert(Permission::ANALYTICS_READ);
+    permissions.insert(Permission::TAXONOMY_CREATE);
+    permissions.insert(Permission::TAXONOMY_READ);
+    permissions.insert(Permission::TAXONOMY_UPDATE);
+    permissions.insert(Permission::TAXONOMY_DELETE);
+    permissions.insert(Permission::TAXONOMY_LIST);
 
     permissions.insert(Permission::PAGES_CREATE);
     permissions.insert(Permission::PAGES_READ);
@@ -199,6 +206,8 @@ static CUSTOMER_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
     permissions.insert(Permission::new(Resource::Comments, Action::Create));
     permissions.insert(Permission::new(Resource::Comments, Action::Read));
     permissions.insert(Permission::new(Resource::Comments, Action::List));
+    permissions.insert(Permission::TAXONOMY_READ);
+    permissions.insert(Permission::TAXONOMY_LIST);
 
     permissions.insert(Permission::BLOG_POSTS_READ);
     permissions.insert(Permission::BLOG_POSTS_LIST);

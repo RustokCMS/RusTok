@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use axum::Router as AxumRouter;
 use loco_rs::app::AppContext;
 
 use crate::error::{Error, Result};
@@ -8,8 +7,6 @@ use rustok_core::ModuleRegistry;
 
 use crate::auth::auth_config_from_ctx;
 use crate::common::settings::RustokSettings;
-use crate::controllers;
-use crate::graphql::alloy::AlloyState;
 use crate::graphql::AppSchema;
 use crate::middleware;
 use crate::middleware::rate_limit::{
@@ -32,16 +29,10 @@ use rustok_cache::CacheService;
 pub struct AppRuntimeBootstrap {
     pub deployment_surfaces: DeploymentSurfaceContract,
     pub registry: ModuleRegistry,
-    pub alloy_rest_router: AxumRouter,
     pub graphql_schema: Arc<AppSchema>,
     pub api_rate_limit_state: PathRateLimitMiddlewareState,
     pub auth_rate_limit_state: PathRateLimitMiddlewareState,
     pub oauth_rate_limit_state: PathRateLimitMiddlewareState,
-}
-
-struct AlloyBootstrap {
-    graphql_state: AlloyState,
-    rest_router: AxumRouter,
 }
 
 fn validate_compiled_surface_contract(
@@ -109,14 +100,13 @@ pub async fn bootstrap_app_runtime(
     #[cfg(feature = "mod-workflow")]
     init_workflow_runtime(ctx);
 
-    let alloy = init_alloy_runtime(ctx);
-    let graphql_schema = init_graphql_schema(ctx, alloy.graphql_state.clone());
+    init_alloy_runtime(ctx);
+    let graphql_schema = init_graphql_schema(ctx);
     let rate_limits = init_rate_limit_layers(ctx, settings, &cache_service)?;
 
     Ok(AppRuntimeBootstrap {
         deployment_surfaces,
         registry,
-        alloy_rest_router: alloy.rest_router,
         graphql_schema,
         api_rate_limit_state: rate_limits.api_state,
         auth_rate_limit_state: rate_limits.auth_state,
@@ -143,39 +133,10 @@ fn init_marketplace_catalog(ctx: &AppContext) {
         .insert(SharedMarketplaceCatalogService(marketplace_catalog));
 }
 
-fn init_alloy_runtime(ctx: &AppContext) -> AlloyBootstrap {
-    let engine = Arc::new(alloy_scripting::create_default_engine());
-    let storage = Arc::new(alloy_scripting::SeaOrmStorage::new(ctx.db.clone()));
-    let orchestrator = Arc::new(alloy_scripting::ScriptOrchestrator::new(
-        engine.clone(),
-        storage.clone(),
-    ));
-    let execution_log = Arc::new(alloy_scripting::SeaOrmExecutionLog::new(ctx.db.clone()));
-    let graphql_state = crate::graphql::alloy::AlloyState::new(
-        engine.clone(),
-        storage.clone(),
-        orchestrator.clone(),
-        execution_log,
-    );
-
-    let executor = alloy_scripting::ScriptExecutor::new(engine.clone(), storage.clone());
-    let scheduler = Arc::new(alloy_scripting::Scheduler::new(executor, storage.clone()));
-    tokio::spawn(async move {
-        if let Err(err) = scheduler.load_jobs().await {
-            tracing::warn!("Failed to load scheduler jobs: {}", err);
-        }
-        scheduler.start().await;
-    });
-
-    let alloy_app_state = Arc::new(alloy_scripting::AppState {
-        registry: storage,
-        orchestrator,
-        engine,
-    });
-
-    AlloyBootstrap {
-        graphql_state,
-        rest_router: controllers::alloy::router(alloy_app_state),
+fn init_alloy_runtime(ctx: &AppContext) {
+    #[cfg(feature = "mod-alloy")]
+    {
+        alloy::init(ctx);
     }
 }
 

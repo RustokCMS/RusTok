@@ -42,6 +42,7 @@ impl PostService {
     pub async fn get_post(tenant_id, security, post_id, locale: &str) -> BlogResult<PostResponse>;
     pub async fn get_post_with_locale_fallback(tenant_id, security, post_id, locale: &str, fallback_locale: Option<&str>) -> BlogResult<PostResponse>;
     pub async fn list_posts(tenant_id, security, query: PostListQuery) -> BlogResult<PostListResponse>;
+    pub async fn list_public_visible_with_locale_fallback(tenant_id, query: PostListQuery, fallback_locale: Option<&str>, channel_slug: Option<&str>) -> BlogResult<PostListResponse>;
     pub async fn get_post_by_slug(tenant_id, security, locale: &str, slug: &str) -> BlogResult<Option<PostResponse>>;
     pub async fn get_posts_by_tag(tenant_id, security, tag, page, per_page) -> BlogResult<PostListResponse>;
     pub async fn get_posts_by_category(tenant_id, security, category_id, page, per_page) -> BlogResult<PostListResponse>;
@@ -117,6 +118,7 @@ pub struct CreatePostInput {
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    pub channel_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
 }
 ```
@@ -134,6 +136,7 @@ pub struct UpdatePostInput {
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    pub channel_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
     pub version: Option<i32>,
 }
@@ -160,6 +163,7 @@ pub struct PostResponse {
     pub featured_image_url: Option<String>,
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
+    pub channel_slugs: Vec<String>,
     pub metadata: Value,
     pub comment_count: i64,
     pub view_count: i64,
@@ -186,6 +190,7 @@ pub struct PostSummary {
     pub category_name: Option<String>,
     pub tags: Vec<String>,
     pub featured_image_url: Option<String>,
+    pub channel_slugs: Vec<String>,
     pub comment_count: i64,
     pub published_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -210,14 +215,33 @@ pub fn resolve_body<'a>(bodies: &'a [BodyResponse], requested: &str) -> Resolved
 pub fn available_locales(translations: &[NodeTranslationResponse]) -> Vec<String>;
 ```
 
+### Channel visibility
+- Wire-level `channel_slugs` / `channelSlugs` contract is preserved for create,
+  update, detail, and list surfaces.
+- Canonical persistence is typed relation `blog_post_channel_visibility`, not
+  metadata.
+- Public GraphQL read-path filters published posts at DB level through that
+  relation; empty allowlists remain globally visible.
+
+### Tag vocabulary
+- Wire-level `tags: Vec<String>` contract is preserved for post create, update,
+  detail, and list surfaces.
+- Canonical tag identity now lives in shared `rustok-taxonomy`
+  (`taxonomy_terms`, `taxonomy_term_translations`, `taxonomy_term_aliases`).
+- `rustok-blog` keeps `blog_post_tags` as the module-owned relation table and
+  resolves/creates module-scoped tags transactionally while reusing matching
+  global taxonomy terms.
+
 ## События
 - Публикует: `BlogPostCreated`, `BlogPostPublished`, `BlogPostUnpublished`, `BlogPostUpdated`, `BlogPostArchived`, `BlogPostDeleted`
 - Потребляет: нет
 
 ## Зависимости от других rustok-крейтов
 - `rustok-content`
+- `rustok-comments`
 - `rustok-core`
 - `rustok-outbox`
+- `rustok-taxonomy`
 
 ## Частые ошибки ИИ
 - Пытается добавлять отдельные миграции для blog (модуль использует таблицы content).

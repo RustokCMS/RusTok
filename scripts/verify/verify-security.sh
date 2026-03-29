@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# RusTok — Верификация безопасности
-# Фаза 18: password hashing, security headers, SSRF, secrets, JWT
+# RusTok вЂ” Р’РµСЂРёС„РёРєР°С†РёСЏ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё
+# Р¤Р°Р·Р° 18: password hashing, security headers, SSRF, secrets, JWT
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,20 +17,20 @@ ERRORS=0
 WARNINGS=0
 
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
-pass()   { echo -e "  ${GREEN}✓${NC} $1"; }
-fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
+pass()   { echo -e "  ${GREEN}вњ“${NC} $1"; }
+fail()   { echo -e "  ${RED}вњ—${NC} $1"; ERRORS=$((ERRORS + 1)); }
 warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 SERVER_SRC="apps/server/src"
 CORE_SRC="crates/rustok-core/src"
 
-# ─── 1. Password hashing: Argon2 ───
+# в”Ђв”Ђв”Ђ 1. Password hashing: Argon2 в”Ђв”Ђв”Ђ
 header "1. Password hashing: Argon2 (not MD5/SHA256/bcrypt)"
 
 if grep -rq "argon2\|Argon2" "$SERVER_SRC" "$CORE_SRC" --include="*.rs" 2>/dev/null; then
     pass "Argon2 password hashing found"
 else
-    fail "Argon2 not found — check password hashing algorithm"
+    fail "Argon2 not found вЂ” check password hashing algorithm"
 fi
 
 # Check for weak hashing algorithms
@@ -42,7 +42,7 @@ else
     pass "No weak password hashing (MD5/SHA256/bcrypt for passwords)"
 fi
 
-# ─── 2. JWT secret: env var, no fallback ───
+# в”Ђв”Ђв”Ђ 2. JWT secret: env var, no fallback в”Ђв”Ђв”Ђ
 header "2. JWT secret configuration"
 
 jwt_refs=$(grep -rn 'jwt\|JWT' "$SERVER_SRC" "$CORE_SRC" --include="*.rs" 2>/dev/null | grep -iE 'secret\|key' | grep -v "test\|// \|///\|pub struct\|pub enum" || true)
@@ -51,7 +51,7 @@ if [[ -n "$jwt_refs" ]]; then
     if echo "$jwt_refs" | grep -q "env::var\|env!\|std::env"; then
         pass "JWT secret loaded from env var"
     else
-        warn "JWT secret may not be from env var — review:"
+        warn "JWT secret may not be from env var вЂ” review:"
         echo "$jwt_refs" | head -5
     fi
 
@@ -65,7 +65,7 @@ if [[ -n "$jwt_refs" ]]; then
     fi
 fi
 
-# ─── 3. Token invalidation on password change ───
+# в”Ђв”Ђв”Ђ 3. Token invalidation on password change в”Ђв”Ђв”Ђ
 header "3. Token invalidation on password change"
 
 # Check if password change logic invalidates existing tokens/sessions
@@ -86,7 +86,7 @@ else
     warn "No password change implementation found"
 fi
 
-# ─── 4. Security headers middleware ───
+# в”Ђв”Ђв”Ђ 4. Security headers middleware в”Ђв”Ђв”Ђ
 header "4. Security headers (CSP, X-Frame-Options, HSTS)"
 
 security_headers=0
@@ -121,7 +121,7 @@ fi
 
 echo -e "\n  Security headers: $security_headers/4 configured"
 
-# ─── 5. CORS configuration ───
+# в”Ђв”Ђв”Ђ 5. CORS configuration в”Ђв”Ђв”Ђ
 header "5. CORS configuration"
 
 cors_refs=$(grep -rn "CorsLayer\|cors\|Cors\|Access-Control" "$SERVER_SRC" --include="*.rs" 2>/dev/null || true)
@@ -129,7 +129,7 @@ if [[ -n "$cors_refs" ]]; then
     pass "CORS configuration found"
     # Check for wildcard origin
     if echo "$cors_refs" | grep -q 'any()\|"\*"\|AllowOrigin::any'; then
-        warn "CORS allows ANY origin — restrict in production"
+        warn "CORS allows ANY origin вЂ” restrict in production"
     else
         pass "CORS is not wildcard (restricted origins)"
     fi
@@ -137,13 +137,13 @@ else
     warn "No CORS configuration found"
 fi
 
-# ─── 6. SSRF protection ───
+# в”Ђв”Ђв”Ђ 6. SSRF protection в”Ђв”Ђв”Ђ
 header "6. SSRF protection (external HTTP requests)"
 
 # Check for HTTP client usage without URL validation
-http_clients=$(grep -rn 'reqwest::Client\|reqwest::get\|hyper::Client\|http_client' "$SERVER_SRC" "crates/rustok-core/src" "crates/alloy-scripting/src" --include="*.rs" 2>/dev/null | grep -v "test\|// " || true)
+http_clients=$(grep -rn 'reqwest::Client\|reqwest::get\|hyper::Client\|http_client' "$SERVER_SRC" "crates/rustok-core/src" "crates/alloy/src" --include="*.rs" 2>/dev/null | grep -v "test\|// " || true)
 if [[ -n "$http_clients" ]]; then
-    url_validation=$(grep -rn 'allowlist\|whitelist\|allowed_hosts\|validate_url\|is_safe_url' "$SERVER_SRC" "crates/rustok-core/src" "crates/alloy-scripting/src" --include="*.rs" 2>/dev/null || true)
+    url_validation=$(grep -rn 'allowlist\|whitelist\|allowed_hosts\|validate_url\|is_safe_url' "$SERVER_SRC" "crates/rustok-core/src" "crates/alloy/src" --include="*.rs" 2>/dev/null || true)
     if [[ -n "$url_validation" ]]; then
         pass "URL validation/allowlist found for external requests"
     else
@@ -153,16 +153,16 @@ else
     pass "No external HTTP client in application code (or using middleware)"
 fi
 
-# ─── 7. Sensitive data in memory (zeroize) ───
+# в”Ђв”Ђв”Ђ 7. Sensitive data in memory (zeroize) в”Ђв”Ђв”Ђ
 header "7. Sensitive data: zeroize"
 
 if grep -rq "zeroize\|Zeroize" "crates" "apps" --include="*.rs" --include="Cargo.toml" 2>/dev/null; then
     pass "zeroize dependency/usage found"
 else
-    warn "zeroize not found — sensitive data (passwords, keys) may persist in memory"
+    warn "zeroize not found вЂ” sensitive data (passwords, keys) may persist in memory"
 fi
 
-# ─── 8. .env files and .gitignore ───
+# в”Ђв”Ђв”Ђ 8. .env files and .gitignore в”Ђв”Ђв”Ђ
 header "8. Secrets management"
 
 # Check .gitignore for .env
@@ -189,20 +189,20 @@ else
     warn "No example .env file found"
 fi
 
-# ─── 9. SQL injection patterns ───
+# в”Ђв”Ђв”Ђ 9. SQL injection patterns в”Ђв”Ђв”Ђ
 header "9. SQL injection prevention"
 
 # Check for raw SQL execution with string formatting
 raw_sql=$(grep -rn 'execute_unprepared\|raw_sql\|SqlxRawSql\|query_as!\|sqlx::query!' "$SERVER_SRC" "crates" --include="*.rs" 2>/dev/null | grep -v "test\|migration\|// " || true)
 if [[ -n "$raw_sql" ]]; then
     count=$(echo "$raw_sql" | wc -l)
-    warn "$count raw SQL usage(s) found — verify parameterization:"
+    warn "$count raw SQL usage(s) found вЂ” verify parameterization:"
     echo "$raw_sql" | head -10
 else
     pass "No raw SQL execution (using SeaORM query builder)"
 fi
 
-# ─── 10. Rate limiting on sensitive endpoints ───
+# в”Ђв”Ђв”Ђ 10. Rate limiting on sensitive endpoints в”Ђв”Ђв”Ђ
 header "10. Rate limiting on sensitive endpoints"
 
 if [[ -f "$SERVER_SRC/middleware/rate_limit.rs" ]]; then
@@ -221,14 +221,15 @@ else
     fail "Rate limiting middleware not found"
 fi
 
-# ─── Summary ───
+# в”Ђв”Ђв”Ђ Summary в”Ђв”Ђв”Ђ
 echo ""
-echo -e "${BOLD}━━━ Security Summary ━━━${NC}"
+echo -e "${BOLD}в”Ѓв”Ѓв”Ѓ Security Summary в”Ѓв”Ѓв”Ѓ${NC}"
 if [[ $ERRORS -eq 0 && $WARNINGS -eq 0 ]]; then
     echo -e "${GREEN}All checks passed!${NC}"
 elif [[ $ERRORS -eq 0 ]]; then
-    echo -e "${YELLOW}$WARNINGS warning(s) — manual review recommended${NC}"
+    echo -e "${YELLOW}$WARNINGS warning(s) вЂ” manual review recommended${NC}"
 else
     echo -e "${RED}$ERRORS error(s), $WARNINGS warning(s)${NC}"
 fi
 exit $ERRORS
+

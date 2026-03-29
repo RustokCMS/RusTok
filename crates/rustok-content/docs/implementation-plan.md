@@ -27,7 +27,7 @@ The storage split is complete and `rustok-content` now has a stable target role:
 - the module acts as shared content library + orchestration layer;
 - shared locale normalization and fallback helpers are the canonical
   multilingual contract for `rustok-blog`, `rustok-pages`, `rustok-comments`,
-  and the forum storage model after cutover;
+  and `rustok-forum`;
 - conversion flows `blog post + comments <-> forum topic + replies` are
   implemented here through domain integrations, not through shared `nodes`.
 

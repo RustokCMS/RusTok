@@ -17,6 +17,7 @@ pub struct Model {
     pub redirect_uris: Json,
     pub scopes: Json,
     pub grant_types: Json,
+    pub granted_permissions: Json,
     pub manifest_ref: Option<String>,
     pub auto_created: bool,
     pub is_active: bool,

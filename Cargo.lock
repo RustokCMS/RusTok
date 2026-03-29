@@ -142,30 +142,19 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 name = "alloy"
 version = "0.1.0"
 dependencies = [
- "alloy-scripting",
  "async-graphql",
- "axum",
- "chrono",
- "rhai 1.24.0 (git+https://github.com/rhaiscript/rhai?tag=v1.24.0)",
- "rustok-api",
- "rustok-core",
- "rustok-telemetry",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "alloy-scripting"
-version = "0.1.0"
-dependencies = [
  "async-trait",
  "axum",
  "chrono",
  "cron 0.15.0",
  "email_address",
+ "loco-rs",
  "parking_lot",
  "reqwest 0.13.2",
  "rhai 1.24.0 (git+https://github.com/rhaiscript/rhai?tag=v1.24.0)",
+ "rustok-api",
+ "rustok-core",
+ "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -6933,7 +6922,7 @@ dependencies = [
 name = "migration"
 version = "0.1.0"
 dependencies = [
- "alloy-scripting",
+ "alloy",
  "rust_decimal",
  "rustok-auth",
  "rustok-cart",
@@ -9712,6 +9701,7 @@ dependencies = [
  "rustok-events",
  "rustok-outbox",
  "rustok-profiles",
+ "rustok-taxonomy",
  "rustok-telemetry",
  "rustok-test-utils",
  "sea-orm",
@@ -9826,11 +9816,13 @@ dependencies = [
  "chrono",
  "rustok-content",
  "rustok-core",
+ "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -9944,7 +9936,6 @@ dependencies = [
 name = "rustok-core"
 version = "0.1.0"
 dependencies = [
- "alloy-scripting",
  "argon2",
  "async-trait",
  "base64 0.22.1",
@@ -9960,7 +9951,6 @@ dependencies = [
  "redis 1.0.5",
  "regex",
  "reqwest 0.13.2",
- "rhai 1.24.0 (git+https://github.com/rhaiscript/rhai?tag=v1.24.0)",
  "rustok-events",
  "rustok-outbox",
  "rustok-telemetry",
@@ -10045,6 +10035,7 @@ dependencies = [
  "rustok-events",
  "rustok-outbox",
  "rustok-profiles",
+ "rustok-taxonomy",
  "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
@@ -10171,7 +10162,7 @@ dependencies = [
 name = "rustok-mcp"
 version = "0.1.0"
 dependencies = [
- "alloy-scripting",
+ "alloy",
  "anyhow",
  "async-trait",
  "rhai 1.24.0 (git+https://github.com/rhaiscript/rhai?tag=v1.24.0)",
@@ -10462,7 +10453,6 @@ name = "rustok-server"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "alloy-scripting",
  "anyhow",
  "argon2",
  "async-graphql",
@@ -10521,6 +10511,7 @@ dependencies = [
  "rustok-search",
  "rustok-storage",
  "rustok-storefront",
+ "rustok-taxonomy",
  "rustok-telemetry",
  "rustok-tenant",
  "rustok-test-utils",
@@ -10594,6 +10585,25 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "toml 1.0.7+spec-1.1.0",
+]
+
+[[package]]
+name = "rustok-taxonomy"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-content",
+ "rustok-core",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "slug",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

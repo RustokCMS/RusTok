@@ -32,7 +32,7 @@ struct ModuleSpec {
 #[derive(Debug)]
 struct OptionalModuleEntry {
     feature: String,
-    module_expr: String,
+    module_expr: Option<String>,
     graphql_query_expr: Option<String>,
     graphql_mutation_expr: Option<String>,
     routes_expr: Option<String>,
@@ -152,11 +152,18 @@ fn build_optional_module_entry(
     let type_stem = pascal_case(&slug);
     let feature = format!("mod-{slug}");
     let crate_root = spec.path.as_ref().map(|value| workspace_root.join(value));
+    let has_package_manifest = crate_root
+        .as_ref()
+        .map(|root| root.join("rustok-module.toml").exists())
+        .unwrap_or(false);
 
-    let module_expr = spec
-        .entry_type
-        .clone()
-        .unwrap_or_else(|| format!("{crate_ident}::{type_stem}Module"));
+    let module_expr = spec.entry_type.clone().or_else(|| {
+        if has_package_manifest {
+            None
+        } else {
+            Some(format!("{crate_ident}::{type_stem}Module"))
+        }
+    });
 
     let graphql_query_expr = spec.graphql_query_type.clone().or_else(|| {
         crate_root
@@ -310,11 +317,13 @@ fn qualify_package_type_path(crate_name: &str, value: Option<&str>) -> Option<St
 fn render_registry_codegen(entries: &[OptionalModuleEntry]) -> String {
     let mut out = String::from("pub fn register_optional_modules(mut registry: rustok_core::ModuleRegistry) -> rustok_core::ModuleRegistry {\n");
     for entry in entries {
-        out.push_str(&format!(
-            "    #[cfg(feature = \"{feature}\")]\n    {{\n        registry = registry.register({module_expr});\n    }}\n",
-            feature = entry.feature,
-            module_expr = entry.module_expr,
-        ));
+        if let Some(module_expr) = &entry.module_expr {
+            out.push_str(&format!(
+                "    #[cfg(feature = \"{feature}\")]\n    {{\n        registry = registry.register({module_expr});\n    }}\n",
+                feature = entry.feature,
+                module_expr = module_expr,
+            ));
+        }
     }
     out.push_str("    registry\n}\n");
     out

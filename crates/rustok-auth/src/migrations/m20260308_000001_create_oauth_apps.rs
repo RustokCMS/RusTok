@@ -159,6 +159,7 @@ pub enum OAuthApps {
     RedirectUris,
     Scopes,
     GrantTypes,
+    GrantedPermissions,
     ManifestRef,
     AutoCreated,
     IsActive,

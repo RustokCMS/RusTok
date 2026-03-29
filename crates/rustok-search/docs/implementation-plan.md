@@ -158,6 +158,8 @@ Already implemented:
 - tenant-owned query normalization with stop-word removal and synonym expansion
 - exact-query pinned-result merchandising rules applied on admin/storefront search
 - local observability runbook for rebuilds, lag handling, and metrics
+- ADR-backed boundary between `rustok-index` and `rustok-search`
+- documented capability matrix and search-facing error/validation policy in the module README
 - Leptos admin control plane with overview, playground, diagnostics, dictionaries
 - Next admin control plane mirroring the same contract
 - first-class sidebar entry in both Leptos admin and Next admin
@@ -174,7 +176,7 @@ Not implemented yet:
 
 ### Phase S0 - Architecture fixation
 
-- [ ] Record ADR: `index != search`
+- [x] Record ADR: `index != search`
 - [x] Keep `rustok-search` as a dedicated core module
 - [x] Keep dependency direction explicit
 - [x] Define crate layout for core/admin/storefront packages
@@ -186,8 +188,8 @@ Not implemented yet:
 - [x] Define `SearchResult`
 - [x] Define `SearchEngine`
 - [x] Define settings-driven engine selection
-- [ ] Expand capability matrix and contract tests
-- [ ] Finalize search-facing error catalog and validation policy
+- [x] Expand capability matrix and contract tests
+- [x] Finalize search-facing error catalog and validation policy
 
 ### Phase S2 - PostgreSQL MVP
 

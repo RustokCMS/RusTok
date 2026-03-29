@@ -1,7 +1,10 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    sea_query::{Expr, Query, SelectStatement},
+    ActiveModelTrait,
+    ActiveValue::Set,
+    ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, Select, TransactionTrait,
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -18,14 +21,12 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
-use crate::entities::{page, page_body, page_translation};
+use crate::entities::{page, page_body, page_channel_visibility, page_translation};
 use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::{can_read_non_public_pages, enforce_owned_scope, enforce_scope};
 use crate::services::BlockService;
 
 const PAGE_KIND: &str = "page";
-const CHANNEL_VISIBILITY_KEY: &str = "channel_visibility";
-const ALLOWED_CHANNEL_SLUGS_KEY: &str = "allowed_channel_slugs";
 const PLATFORM_FALLBACK_LOCALE: &str = "en";
 
 pub struct PageService {
@@ -75,12 +76,8 @@ impl PageService {
             .template
             .clone()
             .unwrap_or_else(|| "default".to_string());
-        let metadata = build_page_metadata(
-            &template,
-            &input.translations,
-            input.channel_slugs.as_deref(),
-            None,
-        );
+        let metadata = build_page_metadata(&template, &input.translations, None);
+        let channel_slugs = normalize_channel_slugs(input.channel_slugs.as_deref().unwrap_or(&[]));
         let body = normalize_page_body_input(input.body)?;
         let now = Utc::now();
         let page_id = Uuid::new_v4();
@@ -124,6 +121,8 @@ impl PageService {
         .await?;
 
         self.replace_translations_in_tx(&txn, tenant_id, page_id, &input.translations)
+            .await?;
+        self.replace_channel_visibility_in_tx(&txn, tenant_id, page_id, &channel_slugs)
             .await?;
         self.upsert_body_in_tx(&txn, page_id, body, now).await?;
         if let Some(blocks) = input.blocks {
@@ -180,6 +179,7 @@ impl PageService {
         {
             return Err(PagesError::forbidden("Permission denied"));
         }
+        let channel_slugs = self.load_channel_slugs(page_id).await?;
         let translations = self.load_translations(page_id).await?;
         let bodies = self.load_bodies(page_id).await?;
         let blocks = self
@@ -190,6 +190,7 @@ impl PageService {
             page,
             translations,
             bodies,
+            channel_slugs,
             blocks,
             &locale,
             fallback_locale.as_deref(),
@@ -228,6 +229,7 @@ impl PageService {
         {
             return Ok(None);
         }
+        let channel_slugs = self.load_channel_slugs(page.id).await?;
         let translations = self.load_translations(page.id).await?;
         let bodies = self.load_bodies(page.id).await?;
         let blocks = self
@@ -238,6 +240,7 @@ impl PageService {
             page,
             translations,
             bodies,
+            channel_slugs,
             blocks,
             &requested_locale,
             normalized_fallback_locale.as_deref(),
@@ -278,11 +281,9 @@ impl PageService {
             ) {
                 return Ok((Vec::new(), 0));
             }
-            select = select.filter(
-                page::Column::Status.eq(status_to_storage(
-                    &rustok_content::entities::node::ContentStatus::Published,
-                )),
-            );
+            select = select.filter(page::Column::Status.eq(status_to_storage(
+                &rustok_content::entities::node::ContentStatus::Published,
+            )));
         }
         if let Some(status) = filter.status {
             select = select.filter(page::Column::Status.eq(status_to_storage(&status)));
@@ -297,6 +298,7 @@ impl PageService {
         let pages = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
         let page_ids: Vec<Uuid> = pages.iter().map(|item| item.id).collect();
         let translations_map = self.load_translations_map(&page_ids).await?;
+        let channel_slugs_map = self.load_channel_slugs_map(&page_ids).await?;
 
         let mut items = Vec::with_capacity(pages.len());
         for page in pages {
@@ -308,7 +310,55 @@ impl PageService {
                 template: page.template.clone(),
                 title: resolved.translation.map(|item| item.title.clone()),
                 slug: resolved.translation.map(|item| item.slug.clone()),
-                channel_slugs: extract_channel_slugs(&page.metadata),
+                channel_slugs: channel_slugs_map.get(&page.id).cloned().unwrap_or_default(),
+                updated_at: page.updated_at.to_string(),
+            });
+        }
+
+        Ok((items, total))
+    }
+
+    #[instrument(skip(self))]
+    pub async fn list_public_visible(
+        &self,
+        tenant_id: Uuid,
+        filter: ListPagesFilter,
+        channel_slug: Option<&str>,
+    ) -> PagesResult<(Vec<PageListItem>, u64)> {
+        let locale = filter
+            .locale
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let locale = normalize_locale(&locale)?;
+        let mut select = page::Entity::find()
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .filter(page::Column::Status.eq(status_to_storage(
+                &rustok_content::entities::node::ContentStatus::Published,
+            )));
+        if let Some(template) = filter.template {
+            select = select.filter(page::Column::Template.eq(template));
+        }
+        select = apply_public_page_channel_filter(select, tenant_id, channel_slug);
+
+        let paginator = select
+            .order_by_desc(page::Column::UpdatedAt)
+            .paginate(&self.db, filter.per_page.max(1));
+        let total = paginator.num_items().await?;
+        let pages = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
+        let page_ids: Vec<Uuid> = pages.iter().map(|item| item.id).collect();
+        let translations_map = self.load_translations_map(&page_ids).await?;
+        let channel_slugs_map = self.load_channel_slugs_map(&page_ids).await?;
+
+        let mut items = Vec::with_capacity(pages.len());
+        for page in pages {
+            let translations = translations_map.get(&page.id).cloned().unwrap_or_default();
+            let resolved = resolve_translation_record(&translations, &locale, None);
+            items.push(PageListItem {
+                id: page.id,
+                status: storage_to_status(&page.status)?,
+                template: page.template.clone(),
+                title: resolved.translation.map(|item| item.title.clone()),
+                slug: resolved.translation.map(|item| item.slug.clone()),
+                channel_slugs: channel_slugs_map.get(&page.id).cloned().unwrap_or_default(),
                 updated_at: page.updated_at.to_string(),
             });
         }
@@ -325,7 +375,12 @@ impl PageService {
         input: UpdatePageInput,
     ) -> PagesResult<PageResponse> {
         let existing = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(&security, Resource::Pages, Action::Update, existing.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Update,
+            existing.author_id,
+        )?;
         if input.status.is_some() {
             enforce_scope(&security, Resource::Pages, Action::Publish)?;
         }
@@ -340,9 +395,14 @@ impl PageService {
         let metadata = build_page_metadata(
             &template,
             input.translations.as_deref().unwrap_or(&[]),
-            input.channel_slugs.as_deref(),
             Some(&existing.metadata),
         );
+        let channel_slugs = input
+            .channel_slugs
+            .as_ref()
+            .map(|items| normalize_channel_slugs(items))
+            .unwrap_or_else(|| Vec::new());
+        let replace_channel_visibility = input.channel_slugs.is_some();
         let body = normalize_page_body_input(input.body)?;
         let locale = input
             .translations
@@ -382,6 +442,10 @@ impl PageService {
 
         if let Some(ref translations) = input.translations {
             self.replace_translations_in_tx(&txn, tenant_id, page_id, translations)
+                .await?;
+        }
+        if replace_channel_visibility {
+            self.replace_channel_visibility_in_tx(&txn, tenant_id, page_id, &channel_slugs)
                 .await?;
         }
         self.upsert_body_in_tx(&txn, page_id, body, Utc::now())
@@ -456,7 +520,12 @@ impl PageService {
         page_id: Uuid,
     ) -> PagesResult<()> {
         let existing = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(&security, Resource::Pages, Action::Delete, existing.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Delete,
+            existing.author_id,
+        )?;
         let txn = self.db.begin().await?;
         BlockService::delete_all_for_page_in_tx(&txn, tenant_id, page_id).await?;
         page_body::Entity::delete_many()
@@ -492,7 +561,12 @@ impl PageService {
         follow_up_event: Option<DomainEvent>,
     ) -> PagesResult<PageResponse> {
         let existing = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(&security, Resource::Pages, Action::Publish, existing.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Publish,
+            existing.author_id,
+        )?;
         let txn = self.db.begin().await?;
         let mut active: page::ActiveModel = existing.into();
         active.status = Set(status_to_storage(&status).to_string());
@@ -560,6 +634,36 @@ impl PageService {
             map.entry(translation.page_id)
                 .or_default()
                 .push(translation);
+        }
+        Ok(map)
+    }
+
+    async fn load_channel_slugs(&self, page_id: Uuid) -> PagesResult<Vec<String>> {
+        let records = page_channel_visibility::Entity::find()
+            .filter(page_channel_visibility::Column::PageId.eq(page_id))
+            .order_by_asc(page_channel_visibility::Column::ChannelSlug)
+            .all(&self.db)
+            .await?;
+        Ok(records.into_iter().map(|item| item.channel_slug).collect())
+    }
+
+    async fn load_channel_slugs_map(
+        &self,
+        page_ids: &[Uuid],
+    ) -> PagesResult<HashMap<Uuid, Vec<String>>> {
+        if page_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let records = page_channel_visibility::Entity::find()
+            .filter(page_channel_visibility::Column::PageId.is_in(page_ids.to_vec()))
+            .order_by_asc(page_channel_visibility::Column::ChannelSlug)
+            .all(&self.db)
+            .await?;
+        let mut map: HashMap<Uuid, Vec<String>> = HashMap::new();
+        for record in records {
+            map.entry(record.page_id)
+                .or_default()
+                .push(record.channel_slug);
         }
         Ok(map)
     }
@@ -680,11 +784,39 @@ impl PageService {
         Ok(())
     }
 
+    async fn replace_channel_visibility_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        page_id: Uuid,
+        channel_slugs: &[String],
+    ) -> PagesResult<()> {
+        page_channel_visibility::Entity::delete_many()
+            .filter(page_channel_visibility::Column::PageId.eq(page_id))
+            .exec(txn)
+            .await?;
+
+        for channel_slug in channel_slugs {
+            page_channel_visibility::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                page_id: Set(page_id),
+                tenant_id: Set(tenant_id),
+                channel_slug: Set(channel_slug.clone()),
+                created_at: Set(Utc::now().into()),
+            }
+            .insert(txn)
+            .await?;
+        }
+
+        Ok(())
+    }
+
     fn build_page_response(
         &self,
         page: page::Model,
         translations: Vec<page_translation::Model>,
         bodies: Vec<page_body::Model>,
+        channel_slugs: Vec<String>,
         blocks: Vec<BlockResponse>,
         locale: &str,
         fallback_locale: Option<&str>,
@@ -712,7 +844,7 @@ impl PageService {
             translation: translation.translation.map(page_translation_response),
             translations: translations.iter().map(page_translation_response).collect(),
             body: response_body,
-            channel_slugs: extract_channel_slugs(&page.metadata),
+            channel_slugs,
             blocks,
             metadata: page.metadata,
         })
@@ -842,7 +974,6 @@ fn status_to_storage(status: &rustok_content::entities::node::ContentStatus) -> 
 fn build_page_metadata(
     template: &str,
     translations: &[PageTranslationInput],
-    channel_slugs: Option<&[String]>,
     existing: Option<&serde_json::Value>,
 ) -> serde_json::Value {
     let mut metadata = existing
@@ -869,51 +1000,21 @@ fn build_page_metadata(
         metadata["seo"] = existing.clone();
     }
 
-    if let Some(channel_slugs) = channel_slugs {
-        let normalized = normalize_channel_slugs(channel_slugs);
-        if normalized.is_empty() {
-            if let Some(object) = metadata.as_object_mut() {
-                object.remove(CHANNEL_VISIBILITY_KEY);
-            }
-        } else {
-            metadata[CHANNEL_VISIBILITY_KEY] = serde_json::json!({
-                ALLOWED_CHANNEL_SLUGS_KEY: normalized,
-            });
-        }
-    }
-
     metadata
-}
-
-pub(crate) fn extract_channel_slugs(metadata: &serde_json::Value) -> Vec<String> {
-    metadata
-        .get(CHANNEL_VISIBILITY_KEY)
-        .and_then(|value| value.get(ALLOWED_CHANNEL_SLUGS_KEY))
-        .and_then(|value| value.as_array())
-        .map(|items| {
-            normalize_channel_slugs(
-                &items
-                    .iter()
-                    .filter_map(|item| item.as_str().map(ToOwned::to_owned))
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .unwrap_or_default()
 }
 
 pub(crate) fn is_page_visible_for_channel(
-    metadata: &serde_json::Value,
+    channel_slugs: &[String],
     channel_slug: Option<&str>,
 ) -> bool {
-    let allowed_channel_slugs = extract_channel_slugs(metadata);
-    if allowed_channel_slugs.is_empty() {
+    if channel_slugs.is_empty() {
         return true;
     }
     let Some(channel_slug) = channel_slug else {
         return false;
     };
     let normalized = channel_slug.trim().to_ascii_lowercase();
-    !normalized.is_empty() && allowed_channel_slugs.iter().any(|item| item == &normalized)
+    !normalized.is_empty() && channel_slugs.iter().any(|item| item == &normalized)
 }
 
 fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
@@ -925,6 +1026,70 @@ fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
     normalized.sort();
     normalized.dedup();
     normalized
+}
+
+fn apply_public_page_channel_filter(
+    select: Select<page::Entity>,
+    tenant_id: Uuid,
+    channel_slug: Option<&str>,
+) -> Select<page::Entity> {
+    let unrestricted = Expr::col((page::Entity, page::Column::Id))
+        .not_in_subquery(all_page_channel_visibility_subquery(tenant_id));
+    let condition = match normalize_public_channel_slug(channel_slug) {
+        Some(channel_slug) => Condition::any().add(unrestricted).add(
+            Expr::col((page::Entity, page::Column::Id)).in_subquery(
+                matching_page_channel_visibility_subquery(tenant_id, &channel_slug),
+            ),
+        ),
+        None => Condition::all().add(unrestricted),
+    };
+
+    select.filter(condition)
+}
+
+fn all_page_channel_visibility_subquery(tenant_id: Uuid) -> SelectStatement {
+    Query::select()
+        .column(page_channel_visibility::Column::PageId)
+        .from(page_channel_visibility::Entity)
+        .and_where(
+            Expr::col((
+                page_channel_visibility::Entity,
+                page_channel_visibility::Column::TenantId,
+            ))
+            .eq(tenant_id),
+        )
+        .to_owned()
+}
+
+fn matching_page_channel_visibility_subquery(
+    tenant_id: Uuid,
+    channel_slug: &str,
+) -> SelectStatement {
+    Query::select()
+        .column(page_channel_visibility::Column::PageId)
+        .from(page_channel_visibility::Entity)
+        .and_where(
+            Expr::col((
+                page_channel_visibility::Entity,
+                page_channel_visibility::Column::TenantId,
+            ))
+            .eq(tenant_id),
+        )
+        .and_where(
+            Expr::col((
+                page_channel_visibility::Entity,
+                page_channel_visibility::Column::ChannelSlug,
+            ))
+            .eq(channel_slug),
+        )
+        .to_owned()
+}
+
+fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
+    channel_slug
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty())
+        .map(|slug| slug.to_ascii_lowercase())
 }
 
 fn page_translation_response(translation: &page_translation::Model) -> PageTranslationResponse {
@@ -965,24 +1130,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn build_page_metadata_normalizes_channel_slugs() {
-        let metadata = build_page_metadata(
-            "default",
-            &[],
-            Some(&[" Web ".to_string(), "mobile".to_string(), "web".to_string()]),
-            None,
-        );
+    fn normalize_channel_slugs_deduplicates_and_normalizes() {
         assert_eq!(
-            extract_channel_slugs(&metadata),
+            normalize_channel_slugs(&[
+                " Web ".to_string(),
+                "mobile".to_string(),
+                "web".to_string()
+            ]),
             vec!["mobile".to_string(), "web".to_string()]
         );
     }
 
     #[test]
     fn page_visibility_respects_channel_allowlist() {
-        let metadata = build_page_metadata("default", &[], Some(&["web".to_string()]), None);
-        assert!(is_page_visible_for_channel(&metadata, Some("web")));
-        assert!(!is_page_visible_for_channel(&metadata, Some("blog")));
-        assert!(!is_page_visible_for_channel(&metadata, None));
+        let channel_slugs = vec!["web".to_string()];
+        assert!(is_page_visible_for_channel(&channel_slugs, Some("web")));
+        assert!(!is_page_visible_for_channel(&channel_slugs, Some("blog")));
+        assert!(!is_page_visible_for_channel(&channel_slugs, None));
     }
 }

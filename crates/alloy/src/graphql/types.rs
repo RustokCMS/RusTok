@@ -1,8 +1,9 @@
-use alloy_scripting::model::{EventType, HttpMethod, Script, ScriptStatus, ScriptTrigger};
 use async_graphql::{Enum, InputObject, OneofObject, SimpleObject, Union};
 use chrono::{DateTime, Utc};
 use rustok_api::graphql::PageInfo;
 use uuid::Uuid;
+
+use crate::model::{EventType, HttpMethod, Script, ScriptStatus, ScriptTrigger};
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
 #[graphql(rename_items = "SCREAMING_SNAKE_CASE")]

@@ -12,5 +12,6 @@ This directory contains local documentation for `crates/rustok-search`.
 ## Related
 
 - [Search README](../README.md)
+- [ADR: `rustok-index` vs `rustok-search` boundary](../../../DECISIONS/2026-03-29-index-search-boundary.md)
 - [Index module plan](../../rustok-index/docs/implementation-plan.md)
 - [Documentation map](../../../docs/index.md)

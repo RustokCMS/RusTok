@@ -1,4 +1,4 @@
-﻿# Реестр crate-модулей `crates/rustok-*`
+# Реестр crate-модулей `crates/rustok-*`
 
 Документ фиксирует:
 
@@ -24,7 +24,7 @@
 | `rustok-core` | Базовые платформенные контракты: модульная модель, события, RBAC-примитивы, shared types. | `RusToKModule`, `ModuleRegistry`, `Permission`, `Resource`, `Action`, `DomainEvent`, `EventEnvelope`. | Дублировать core-контракты в приложениях и модулях. |
 | `rustok-api` | Общий web/API слой для transport-адаптеров: tenant/auth/request context, GraphQL helper'ы, extractor-friendly types. | `AuthContext`, `TenantContext`, `RequestContext`, `PageInfo`, `PaginationInput`, `GraphQLError`, `scope_matches`. | Возвращать общие HTTP/GraphQL helper'ы обратно в `apps/server` или в `rustok-core`. |
 | `rustok-auth` | **[ЗАМЕНЯЕТ loco auth]** `Core` module аутентификации: JWT (HS256 и RS256), Argon2 хеширование, refresh tokens, password reset/invite/verification tokens. Bridge к loco — `apps/server/src/auth.rs`. Алгоритм: `AuthConfig::algorithm: JwtAlgorithm` (HS256 по умолчанию); RS256 — `with_rs256(private_pem, public_pem)`. | `AuthConfig`, `JwtAlgorithm`, `encode_access_token`, `decode_access_token`, `hash_password`, `verify_password`, `generate_refresh_token`. | Использовать `loco_rs::prelude::auth::JWT` напрямую; реализовывать JWT/хеширование вне этого crate. |
-| `rustok-cache` | **[ЗАМЕНЯЕТ loco cache config]** `Core` module управления Redis-соединением: единая точка подключения, in-memory fallback, `CacheService::health()`. Доступен через `ctx.shared_store.get::<CacheService>()`. Redis URL: `settings.rustok.cache.redis_url` (YAML) → `RUSTOK_REDIS_URL` → `REDIS_URL`. | `CacheService`, `CacheService::from_url`, `CacheHealthReport`, `CacheSettings`. | Читать `REDIS_URL` вручную в модулях; создавать `redis::Client` напрямую; использовать `ctx.config.cache`. |
+| `rustok-cache` | **[ЗАМЕНЯЕТ loco cache config]** `Core` module управления Redis-соединением: единая точка подключения, in-memory fallback, `CacheService::health()`. Доступен через `ctx.shared_store.get::<CacheService>()`. Redis URL: `settings.rustok.cache.redis_url` (YAML) > `RUSTOK_REDIS_URL` > `REDIS_URL`. | `CacheService`, `CacheService::from_url`, `CacheHealthReport`, `CacheSettings`. | Читать `REDIS_URL` вручную в модулях; создавать `redis::Client` напрямую; использовать `ctx.config.cache`. |
 | `rustok-email` | **[ЗАМЕНЯЕТ loco mailer как primary transport]** `Core` module email-рассылок: SMTP через lettre, Tera-шаблоны. Фабрика `email_service_from_ctx` в `apps/server/src/services/email.rs` выбирает провайдер (`smtp`\|`loco`\|`none`); SMTP кэшируется через `SharedSmtpEmailService`. Два публичных trait: `PasswordResetEmailSender` (узкий) и `TransactionalEmailSender` (общий, по template ID `"{module}/{action}"`). | `EmailService`, `PasswordResetEmailSender`, `TransactionalEmailSender`, `PasswordResetEmail`, `EmailTemplateProvider`, `RenderedEmail`, `SmtpEmailSender::with_provider`. | Вызывать `ctx.mailer` напрямую в обработчиках; создавать `AsyncSmtpTransport` вне email-сервиса; выносить email в отдельный platform module поверх crate. |
 | `rustok-storage` | **[ЗАМЕНЯЕТ loco storage abstraction]** Infrastructure crate: `StorageBackend` trait, `LocalStorage`, `StorageService`. Инициализируется в `bootstrap_app_runtime`, доступен через `ctx.shared_store.get::<StorageService>()`. S3 задекларирован в features, не реализован. | `StorageService`, `StorageBackend`, `UploadedObject`, `LocalStorageConfig`. | Создавать adhoc upload backends в контроллерах; добавлять параллельные storage paths мимо этого crate. |
 | `rustok-content` | Shared content helpers и port-based orchestration core для `blog` / `forum` / `comments` / `pages`; не product transport layer. | `ContentModule`, `ContentOrchestrationService`, `ContentOrchestrationBridge`, `locale::*`, helper surface `services::NodeService`. | Возвращать product GraphQL/REST/admin/storefront surfaces в `rustok-content`, строить новые доменные модули поверх `NodeService` как primary storage или снова зашивать orchestration в shared `nodes`. |
@@ -45,7 +45,7 @@
 | `rustok-pages` | Pages/menus/blocks и transport-адаптеры. | `PagesModule`, `PageService`, `graphql::*`, `controllers::*`. | Оставлять pages GraphQL/REST в `apps/server`. |
 | `rustok-workflow` | Workflow automation, execution history, webhook ingress и transport-адаптеры. | `WorkflowModule`, `WorkflowService`, `WorkflowEngine`, `graphql::*`, `controllers::*`. | Считать Alloy runtime-зависимостью workflow registry-графа. |
 | `rustok-media` | Media lifecycle, storage-facing services и transport-адаптеры. | `MediaService`, `graphql::*`, `controllers::*`. | Держать media transport/API слой в `apps/server`. |
-| `alloy` | Transport-shell Alloy: GraphQL/REST adapters поверх runtime crate `alloy-scripting`. | `graphql::AlloyQuery`, `graphql::AlloyMutation`, `graphql::AlloyState`, `controllers::router`. | Трактовать Alloy как tenant-toggle модуль или возвращать его transport-логику в `apps/server`. |
+| `alloy` | Module-agnostic Alloy runtime/engine capability: script storage, execution, scheduler, migrations и REST handler core. | `create_default_engine`, `ScriptEngine`, `ScriptOrchestrator`, `Scheduler`, `ScriptRegistry`, `SeaOrmStorage`, `create_router`. | Регистрировать Alloy как runtime-модуль или навешивать на него tenant module lifecycle. |
 | `rustok-index` | Индексация и search contracts. | `IndexModule`, `Indexer`, `LocaleIndexer`. | Строить ad-hoc индексацию мимо index contracts. |
 | `rustok-rbac` | Authorization contracts и Casbin-backed runtime. | `RbacModule`, `PermissionResolver`, `PermissionAuthorizer`, `AuthzEngine`. | Возвращаться к hardcoded role checks в server-коде. |
 | `rustok-tenant` | Tenant lifecycle и module enablement. | `TenantModule`, `TenantService`, tenant DTOs. | Менять tenant/module configuration напрямую в приложениях или SQL. |
@@ -54,7 +54,6 @@
 | `rustok-iggy-connector` | Подключение к Iggy и message I/O abstractions. | `IggyConnector`, `MessageSubscriber`, connector configs. | Обходить connector-абстракцию прямыми ad-hoc подключениями. |
 | `rustok-telemetry` | Observability bootstrap. | `init`, `TelemetryConfig`, `render_metrics`, `current_trace_id`. | Настраивать разрозненные telemetry pipelines в разных модулях. |
 | `rustok-mcp` | MCP adapter/server tool surface, Alloy-related integrations, identity/policy foundation, session-start runtime binding hooks, pluggable scaffold draft store и первый real Alloy scaffold flow через официальный SDK `rmcp`; persisted management layer, scaffold draft control plane и DB-backed runtime bridge живут в `apps/server`. | `RusToKMcpServer`, `McpServerConfig`, `McpSessionContext`, `McpRuntimeBinding`, `McpAccessResolver`, `McpAuditSink`, `McpScaffoldDraftStore`, `ScaffoldModuleRequest`, `StageModuleScaffoldResponse`, `ReviewModuleScaffoldRequest`, `ApplyModuleScaffoldRequest`, `serve_stdio`, tool re-exports. | Реализовывать отдельные MCP entrypoints в приложениях, если сценарий уже покрывает `rustok-mcp`; дублировать upstream spec/SDK docs в локальных файлах; считать текущий draft-store contract финальной заменой remote MCP bootstrap и полного codegen/publish pipeline. |
-| `alloy-scripting` | Module-agnostic Alloy runtime/engine capability: script storage, execution, migrations. | Script storage/execution APIs, migrations, runtime helpers. | Регистрировать Alloy как runtime-модуль или навешивать на него tenant module lifecycle. |
 
 ## Runtime registry RBAC contract
 
@@ -84,5 +83,6 @@ RBAC-контракт задаётся тремя источниками:
 - `rustok-workflow` -> `workflows:*`, `workflow_executions:*`
 
 Alloy остаётся capability-слоем с permission surface `scripts:*`, но не входит в runtime registry.
+
 
 

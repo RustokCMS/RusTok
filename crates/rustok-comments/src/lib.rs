@@ -29,7 +29,7 @@ impl RusToKModule for CommentsModule {
     }
 
     fn description(&self) -> &'static str {
-        "Generic comments domain for blog, pages and other non-forum discussion surfaces"
+        "Generic comments domain for blog and other opt-in non-forum discussion surfaces"
     }
 
     fn version(&self) -> &'static str {
@@ -67,7 +67,7 @@ mod tests {
         assert_eq!(module.name(), "Comments");
         assert_eq!(
             module.description(),
-            "Generic comments domain for blog, pages and other non-forum discussion surfaces"
+            "Generic comments domain for blog and other opt-in non-forum discussion surfaces"
         );
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
         assert!(module.dependencies().is_empty());

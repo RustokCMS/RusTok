@@ -1,8 +1,0 @@
-[module]
-slug = "alloy"
-name = "Alloy Scripting"
-version = "0.1.0"
-description = "Alloy runtime scripting capability contract"
-ownership = "first_party"
-trust_level = "verified"
-recommended_admin_surfaces = ["leptos-admin"]

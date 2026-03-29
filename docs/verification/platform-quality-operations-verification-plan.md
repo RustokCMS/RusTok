@@ -1,22 +1,22 @@
-# План верификации платформы: качество, эксплуатация и release-readiness
+# РџР»Р°РЅ РІРµСЂРёС„РёРєР°С†РёРё РїР»Р°С‚С„РѕСЂРјС‹: РєР°С‡РµСЃС‚РІРѕ, СЌРєСЃРїР»СѓР°С‚Р°С†РёСЏ Рё release-readiness
 
-- **Статус:** Актуализированный детальный чеклист
-- **Контур:** Тесты, observability, документация, CI/CD, безопасность, качество кода, correctness
+- **РЎС‚Р°С‚СѓСЃ:** РђРєС‚СѓР°Р»РёР·РёСЂРѕРІР°РЅРЅС‹Р№ РґРµС‚Р°Р»СЊРЅС‹Р№ С‡РµРєР»РёСЃС‚
+- **РљРѕРЅС‚СѓСЂ:** РўРµСЃС‚С‹, observability, РґРѕРєСѓРјРµРЅС‚Р°С†РёСЏ, CI/CD, Р±РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ, РєР°С‡РµСЃС‚РІРѕ РєРѕРґР°, correctness
 
 ---
 
-## Фаза 14: Тестовое покрытие
+## Р¤Р°Р·Р° 14: РўРµСЃС‚РѕРІРѕРµ РїРѕРєСЂС‹С‚РёРµ
 
 ### 14.1 Workspace test strategy
 
-- [ ] `cargo nextest run --workspace --all-targets --all-features` проходит или known-failures явно задокументированы.
-- [ ] `cargo test --workspace --lib` проходит для library-level regression baseline.
-- [ ] `cargo test --workspace --doc --all-features` проходит для doc-test baseline.
-- [ ] Нет флейковых тестов, зависящих от порядка выполнения.
+- [ ] `cargo nextest run --workspace --all-targets --all-features` РїСЂРѕС…РѕРґРёС‚ РёР»Рё known-failures СЏРІРЅРѕ Р·Р°РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅС‹.
+- [ ] `cargo test --workspace --lib` РїСЂРѕС…РѕРґРёС‚ РґР»СЏ library-level regression baseline.
+- [ ] `cargo test --workspace --doc --all-features` РїСЂРѕС…РѕРґРёС‚ РґР»СЏ doc-test baseline.
+- [ ] РќРµС‚ С„Р»РµР№РєРѕРІС‹С… С‚РµСЃС‚РѕРІ, Р·Р°РІРёСЃСЏС‰РёС… РѕС‚ РїРѕСЂСЏРґРєР° РІС‹РїРѕР»РЅРµРЅРёСЏ.
 
 ### 14.2 Server integration tests
 
-**Путь:** `apps/server/tests/`
+**РџСѓС‚СЊ:** `apps/server/tests/`
 
 - [ ] `commerce_openapi_contract.rs`
 - [ ] `library_api_smoke.rs`
@@ -42,38 +42,38 @@
 - [ ] `rustok-mcp/tests/*`
 - [ ] `rustok-test-utils/tests/*`
 
-### 14.4 Property, security и benchmark проверки
+### 14.4 Property, security Рё benchmark РїСЂРѕРІРµСЂРєРё
 
-- [ ] Property-based tests по state-machine/validation сценариям остаются актуальными.
-- [ ] Security regression tests соответствуют текущему auth/RBAC/input-validation contract.
-- [ ] Bench suite в `benches/` по-прежнему собирается и соответствует текущим hot paths.
+- [ ] Property-based tests РїРѕ state-machine/validation СЃС†РµРЅР°СЂРёСЏРј РѕСЃС‚Р°СЋС‚СЃСЏ Р°РєС‚СѓР°Р»СЊРЅС‹РјРё.
+- [ ] Security regression tests СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ auth/RBAC/input-validation contract.
+- [ ] Bench suite РІ `benches/` РїРѕ-РїСЂРµР¶РЅРµРјСѓ СЃРѕР±РёСЂР°РµС‚СЃСЏ Рё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ С‚РµРєСѓС‰РёРј hot paths.
 
 ---
 
-## Фаза 15: Observability и операционная готовность
+## Р¤Р°Р·Р° 15: Observability Рё РѕРїРµСЂР°С†РёРѕРЅРЅР°СЏ РіРѕС‚РѕРІРЅРѕСЃС‚СЊ
 
 ### 15.1 Metrics, health, tracing
 
-- [ ] `/metrics` отражает текущий набор Prometheus metrics.
-- [ ] `/health`, `/health/live`, `/health/ready`, `/health/runtime`, `/health/modules` отражают текущий health contract.
-- [ ] Tracing / OTEL wiring соответствует текущему server bootstrap.
-- [ ] GraphQL observability extension и build progress subscription не расходятся с runtime.
+- [ ] `/metrics` РѕС‚СЂР°Р¶Р°РµС‚ С‚РµРєСѓС‰РёР№ РЅР°Р±РѕСЂ Prometheus metrics.
+- [ ] `/health`, `/health/live`, `/health/ready`, `/health/runtime`, `/health/modules` РѕС‚СЂР°Р¶Р°СЋС‚ С‚РµРєСѓС‰РёР№ health contract.
+- [ ] Tracing / OTEL wiring СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ С‚РµРєСѓС‰РµРјСѓ server bootstrap.
+- [ ] GraphQL observability extension Рё build progress subscription РЅРµ СЂР°СЃС…РѕРґСЏС‚СЃСЏ СЃ runtime.
 
 ### 15.2 Grafana / Prometheus / Compose
 
-- [ ] Datasource config в `grafana/` соответствует текущему стеку.
-- [ ] Dashboards не ссылаются на несуществующие datasource/uid.
-- [ ] `docker-compose.yml`, `docker-compose.full-dev.yml`, `docker-compose.observability.yml` отражают текущий dev/runtime stack.
+- [ ] Datasource config РІ `grafana/` СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ С‚РµРєСѓС‰РµРјСѓ СЃС‚РµРєСѓ.
+- [ ] Dashboards РЅРµ СЃСЃС‹Р»Р°СЋС‚СЃСЏ РЅР° РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ datasource/uid.
+- [ ] `docker-compose.yml`, `docker-compose.full-dev.yml`, `docker-compose.observability.yml` РѕС‚СЂР°Р¶Р°СЋС‚ С‚РµРєСѓС‰РёР№ dev/runtime stack.
 
 ### 15.3 Runtime operational paths
 
-- [ ] Outbox backlog / retries / failed events отражены как operational concern.
-- [ ] MCP / OAuth / build pipeline operational endpoints отражены в runbooks и verification notes.
-- [ ] Cache invalidation, Redis optionality и degraded-mode scenarios не расходятся с кодом.
+- [ ] Outbox backlog / retries / failed events РѕС‚СЂР°Р¶РµРЅС‹ РєР°Рє operational concern.
+- [ ] MCP / OAuth / build pipeline operational endpoints РѕС‚СЂР°Р¶РµРЅС‹ РІ runbooks Рё verification notes.
+- [ ] Cache invalidation, Redis optionality Рё degraded-mode scenarios РЅРµ СЂР°СЃС…РѕРґСЏС‚СЃСЏ СЃ РєРѕРґРѕРј.
 
 ---
 
-## Фаза 16: Синхронизация документации с кодом
+## Р¤Р°Р·Р° 16: РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РґРѕРєСѓРјРµРЅС‚Р°С†РёРё СЃ РєРѕРґРѕРј
 
 ### 16.1 `docs/architecture/`
 
@@ -109,23 +109,23 @@
 - [ ] `tracing.md`
 - [ ] `scheduler.md`
 
-### 16.3 `docs/modules/` и централизованные реестры
+### 16.3 `docs/modules/` Рё С†РµРЅС‚СЂР°Р»РёР·РѕРІР°РЅРЅС‹Рµ СЂРµРµСЃС‚СЂС‹
 
 - [ ] `registry.md`
 - [ ] `crates-registry.md`
 - [ ] `manifest.md`
 - [ ] `_index.md`
-- [ ] module-system / UI package документы не расходятся с текущим кодом
+- [ ] module-system / UI package РґРѕРєСѓРјРµРЅС‚С‹ РЅРµ СЂР°СЃС…РѕРґСЏС‚СЃСЏ СЃ С‚РµРєСѓС‰РёРј РєРѕРґРѕРј
 
-### 16.4 Локальная документация crate-ов и приложений
+### 16.4 Р›РѕРєР°Р»СЊРЅР°СЏ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЏ crate-РѕРІ Рё РїСЂРёР»РѕР¶РµРЅРёР№
 
 - [ ] Shared library crates: `rustok-core`, `rustok-events`, `rustok-api`, `rustok-storage`, `rustok-test-utils`
 - [ ] Core modules: `rustok-auth`, `rustok-cache`, `rustok-email`, `rustok-index`, `rustok-outbox`, `rustok-tenant`, `rustok-rbac`
 - [ ] Optional modules: `rustok-content`, `rustok-commerce`, `rustok-blog`, `rustok-forum`, `rustok-pages`, `rustok-media`, `rustok-workflow`
-- [ ] Capability / support crates: `rustok-telemetry`, `rustok-iggy`, `rustok-iggy-connector`, `alloy`, `alloy-scripting`, `rustok-mcp`, `flex`
+- [ ] Capability / support crates: `rustok-telemetry`, `rustok-iggy`, `rustok-iggy-connector`, `alloy`, `alloy`, `rustok-mcp`, `flex`
 - [ ] Apps: `apps/server`, `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`
 
-### 16.5 Root и verification docs
+### 16.5 Root Рё verification docs
 
 - [ ] `README.md`
 - [ ] `PLATFORM_INFO_RU.md`
@@ -135,111 +135,112 @@
 - [ ] `CHANGELOG.md`
 - [ ] `docs/index.md`
 - [ ] `docs/verification/README.md`
-- [ ] master/detailed verification-планы согласованы между собой
+- [ ] master/detailed verification-РїР»Р°РЅС‹ СЃРѕРіР»Р°СЃРѕРІР°РЅС‹ РјРµР¶РґСѓ СЃРѕР±РѕР№
 
 ### 16.6 ADR
 
-- [ ] Все решения в `DECISIONS/` согласованы с текущим кодом и статусами.
-- [ ] ADR по events / module bundles / auth lifecycle / Alloy / MCP / shared API layer остаются релевантными.
+- [ ] Р’СЃРµ СЂРµС€РµРЅРёСЏ РІ `DECISIONS/` СЃРѕРіР»Р°СЃРѕРІР°РЅС‹ СЃ С‚РµРєСѓС‰РёРј РєРѕРґРѕРј Рё СЃС‚Р°С‚СѓСЃР°РјРё.
+- [ ] ADR РїРѕ events / module bundles / auth lifecycle / Alloy / MCP / shared API layer РѕСЃС‚Р°СЋС‚СЃСЏ СЂРµР»РµРІР°РЅС‚РЅС‹РјРё.
 
 ---
 
-## Фаза 17: CI/CD и DevOps
+## Р¤Р°Р·Р° 17: CI/CD Рё DevOps
 
 ### 17.1 GitHub workflows
 
-- [ ] `.github/workflows/ci.yml` отражает текущие обязательные проверки.
-- [ ] `.github/workflows/dependencies.yml` не дрейфует от dependency-management стратегии.
-- [ ] `cargo-nextest` используется как основной Rust test runner в CI, а doc-tests остаются отдельной проверкой.
-- [ ] `cargo-machete` подключён как manifest-hygiene сигнал и не конфликтует с `cargo udeps`.
-- [ ] Verification docs не описывают шаги, которых больше нет в CI.
+- [ ] `.github/workflows/ci.yml` РѕС‚СЂР°Р¶Р°РµС‚ С‚РµРєСѓС‰РёРµ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїСЂРѕРІРµСЂРєРё.
+- [ ] `.github/workflows/dependencies.yml` РЅРµ РґСЂРµР№С„СѓРµС‚ РѕС‚ dependency-management СЃС‚СЂР°С‚РµРіРёРё.
+- [ ] `cargo-nextest` РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РєР°Рє РѕСЃРЅРѕРІРЅРѕР№ Rust test runner РІ CI, Р° doc-tests РѕСЃС‚Р°СЋС‚СЃСЏ РѕС‚РґРµР»СЊРЅРѕР№ РїСЂРѕРІРµСЂРєРѕР№.
+- [ ] `cargo-machete` РїРѕРґРєР»СЋС‡С‘РЅ РєР°Рє manifest-hygiene СЃРёРіРЅР°Р» Рё РЅРµ РєРѕРЅС„Р»РёРєС‚СѓРµС‚ СЃ `cargo udeps`.
+- [ ] Verification docs РЅРµ РѕРїРёСЃС‹РІР°СЋС‚ С€Р°РіРё, РєРѕС‚РѕСЂС‹С… Р±РѕР»СЊС€Рµ РЅРµС‚ РІ CI.
 
-### 17.2 Verify scripts и operational automation
+### 17.2 Verify scripts Рё operational automation
 
-- [ ] `scripts/verify/README.md` соответствует текущему набору verification-планов.
-- [ ] Скрипты в `scripts/verify/` отражают актуальные checks и не ссылаются на удалённые документы/команды.
-- [ ] Build/release helper scripts согласованы с current manifest/build flow.
+- [ ] `scripts/verify/README.md` СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ С‚РµРєСѓС‰РµРјСѓ РЅР°Р±РѕСЂСѓ verification-РїР»Р°РЅРѕРІ.
+- [ ] РЎРєСЂРёРїС‚С‹ РІ `scripts/verify/` РѕС‚СЂР°Р¶Р°СЋС‚ Р°РєС‚СѓР°Р»СЊРЅС‹Рµ checks Рё РЅРµ СЃСЃС‹Р»Р°СЋС‚СЃСЏ РЅР° СѓРґР°Р»С‘РЅРЅС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹/РєРѕРјР°РЅРґС‹.
+- [ ] Build/release helper scripts СЃРѕРіР»Р°СЃРѕРІР°РЅС‹ СЃ current manifest/build flow.
 
-### 17.3 План внедрения tooling-пакета качества
+### 17.3 РџР»Р°РЅ РІРЅРµРґСЂРµРЅРёСЏ tooling-РїР°РєРµС‚Р° РєР°С‡РµСЃС‚РІР°
 
-- [x] Установить локально инструменты текущего этапа: `cargo-nextest` и `cargo-machete`.
-- [x] Использовать `cargo-nextest` как основной Rust test runner в CI и в локальном базовом workflow.
-- [x] Оставить `cargo test --workspace --doc --all-features` как отдельный doc-test baseline, а не пытаться скрыто заменить его.
-- [x] Подключить `cargo-machete` как advisory manifest-hygiene check без замены `cargo udeps`.
-- [x] Для Windows-local `cargo nextest --workspace --all-targets --all-features` временно подменить published `iggy_common 0.9.0` через `patch.crates-io`, потому что в опубликованной crate неверный `cfg` вокруг `posix_fadvise`; после выхода upstream-релиза с фиксом вернуть зависимость обратно на crates.io и удалить локальный patch.
-- [ ] Следующий этап внедрения: `Semgrep`, `GraphQL Inspector`, `knip`.
-- [ ] Следующий после него этап: `Playwright` + `axe-core`, `GraphQL Code Generator`.
-- [ ] Отложенный этап: `testcontainers`, `cargo-mutants`, `Stryker`.
-- [ ] Инструменты локальной диагностики и performance-анализа держать вне blocking CI gate: `tokio-console`, `cargo-flamegraph`.
-- [ ] Точечные deep-check инструменты оставлять на поздний адресный rollout для критичных модулей: `loom`, `miri`, `cargo-fuzz`.
-- [ ] Не заменять на этом этапе существующие `cargo audit`, `cargo deny`, `cargo udeps`, `cargo llvm-cov`, `scripts/verify/*` и `Makefile`; новые инструменты должны усиливать текущий baseline, а не дублировать его без доказанной пользы.
+- [x] РЈСЃС‚Р°РЅРѕРІРёС‚СЊ Р»РѕРєР°Р»СЊРЅРѕ РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹ С‚РµРєСѓС‰РµРіРѕ СЌС‚Р°РїР°: `cargo-nextest` Рё `cargo-machete`.
+- [x] РСЃРїРѕР»СЊР·РѕРІР°С‚СЊ `cargo-nextest` РєР°Рє РѕСЃРЅРѕРІРЅРѕР№ Rust test runner РІ CI Рё РІ Р»РѕРєР°Р»СЊРЅРѕРј Р±Р°Р·РѕРІРѕРј workflow.
+- [x] РћСЃС‚Р°РІРёС‚СЊ `cargo test --workspace --doc --all-features` РєР°Рє РѕС‚РґРµР»СЊРЅС‹Р№ doc-test baseline, Р° РЅРµ РїС‹С‚Р°С‚СЊСЃСЏ СЃРєСЂС‹С‚Рѕ Р·Р°РјРµРЅРёС‚СЊ РµРіРѕ.
+- [x] РџРѕРґРєР»СЋС‡РёС‚СЊ `cargo-machete` РєР°Рє advisory manifest-hygiene check Р±РµР· Р·Р°РјРµРЅС‹ `cargo udeps`.
+- [x] Р”Р»СЏ Windows-local `cargo nextest --workspace --all-targets --all-features` РІСЂРµРјРµРЅРЅРѕ РїРѕРґРјРµРЅРёС‚СЊ published `iggy_common 0.9.0` С‡РµСЂРµР· `patch.crates-io`, РїРѕС‚РѕРјСѓ С‡С‚Рѕ РІ РѕРїСѓР±Р»РёРєРѕРІР°РЅРЅРѕР№ crate РЅРµРІРµСЂРЅС‹Р№ `cfg` РІРѕРєСЂСѓРі `posix_fadvise`; РїРѕСЃР»Рµ РІС‹С…РѕРґР° upstream-СЂРµР»РёР·Р° СЃ С„РёРєСЃРѕРј РІРµСЂРЅСѓС‚СЊ Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ РѕР±СЂР°С‚РЅРѕ РЅР° crates.io Рё СѓРґР°Р»РёС‚СЊ Р»РѕРєР°Р»СЊРЅС‹Р№ patch.
+- [ ] РЎР»РµРґСѓСЋС‰РёР№ СЌС‚Р°Рї РІРЅРµРґСЂРµРЅРёСЏ: `Semgrep`, `GraphQL Inspector`, `knip`.
+- [ ] РЎР»РµРґСѓСЋС‰РёР№ РїРѕСЃР»Рµ РЅРµРіРѕ СЌС‚Р°Рї: `Playwright` + `axe-core`, `GraphQL Code Generator`.
+- [ ] РћС‚Р»РѕР¶РµРЅРЅС‹Р№ СЌС‚Р°Рї: `testcontainers`, `cargo-mutants`, `Stryker`.
+- [ ] РРЅСЃС‚СЂСѓРјРµРЅС‚С‹ Р»РѕРєР°Р»СЊРЅРѕР№ РґРёР°РіРЅРѕСЃС‚РёРєРё Рё performance-Р°РЅР°Р»РёР·Р° РґРµСЂР¶Р°С‚СЊ РІРЅРµ blocking CI gate: `tokio-console`, `cargo-flamegraph`.
+- [ ] РўРѕС‡РµС‡РЅС‹Рµ deep-check РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹ РѕСЃС‚Р°РІР»СЏС‚СЊ РЅР° РїРѕР·РґРЅРёР№ Р°РґСЂРµСЃРЅС‹Р№ rollout РґР»СЏ РєСЂРёС‚РёС‡РЅС‹С… РјРѕРґСѓР»РµР№: `loom`, `miri`, `cargo-fuzz`.
+- [ ] РќРµ Р·Р°РјРµРЅСЏС‚СЊ РЅР° СЌС‚РѕРј СЌС‚Р°РїРµ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ `cargo audit`, `cargo deny`, `cargo udeps`, `cargo llvm-cov`, `scripts/verify/*` Рё `Makefile`; РЅРѕРІС‹Рµ РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹ РґРѕР»Р¶РЅС‹ СѓСЃРёР»РёРІР°С‚СЊ С‚РµРєСѓС‰РёР№ baseline, Р° РЅРµ РґСѓР±Р»РёСЂРѕРІР°С‚СЊ РµРіРѕ Р±РµР· РґРѕРєР°Р·Р°РЅРЅРѕР№ РїРѕР»СЊР·С‹.
 
 ---
 
-## Фаза 18: Безопасность
+## Р¤Р°Р·Р° 18: Р‘РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ
 
-### 18.1 Auth и session security
+### 18.1 Auth Рё session security
 
-- [ ] Rate limiting на auth endpoints соответствует текущему middleware.
-- [ ] Session revocation, password reset, verification и invite flows соответствуют текущему коду.
-- [ ] OAuth browser/session flow отражён корректно.
+- [ ] Rate limiting РЅР° auth endpoints СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ С‚РµРєСѓС‰РµРјСѓ middleware.
+- [ ] Session revocation, password reset, verification Рё invite flows СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ РєРѕРґСѓ.
+- [ ] OAuth browser/session flow РѕС‚СЂР°Р¶С‘РЅ РєРѕСЂСЂРµРєС‚РЅРѕ.
 
 ### 18.2 Authorization security
 
-- [ ] RBAC coverage соответствует текущим REST/GraphQL/capability surfaces.
-- [ ] Нет role-based bypass вместо typed permissions.
-- [ ] Flex / MCP / scripts / workflows не обходят общий authorization model.
+- [ ] RBAC coverage СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ С‚РµРєСѓС‰РёРј REST/GraphQL/capability surfaces.
+- [ ] РќРµС‚ role-based bypass РІРјРµСЃС‚Рѕ typed permissions.
+- [ ] Flex / MCP / scripts / workflows РЅРµ РѕР±С…РѕРґСЏС‚ РѕР±С‰РёР№ authorization model.
 
 ### 18.3 Tenant boundary security
 
-- [ ] Tenant isolation в data access, cache и module lifecycle соответствует текущему коду.
-- [ ] Нет public/tenant-crossing endpoints, не отражённых в документации.
+- [ ] Tenant isolation РІ data access, cache Рё module lifecycle СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ С‚РµРєСѓС‰РµРјСѓ РєРѕРґСѓ.
+- [ ] РќРµС‚ public/tenant-crossing endpoints, РЅРµ РѕС‚СЂР°Р¶С‘РЅРЅС‹С… РІ РґРѕРєСѓРјРµРЅС‚Р°С†РёРё.
 
-### 18.4 Input, dependency и secret hygiene
+### 18.4 Input, dependency Рё secret hygiene
 
-- [ ] Validation flows соответствуют текущим DTO/services.
-- [ ] Secret handling и env contract отражены честно.
-- [ ] Dependency risk checks соответствуют текущему toolchain/CI practice.
+- [ ] Validation flows СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РёРј DTO/services.
+- [ ] Secret handling Рё env contract РѕС‚СЂР°Р¶РµРЅС‹ С‡РµСЃС‚РЅРѕ.
+- [ ] Dependency risk checks СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ toolchain/CI practice.
 
 ---
 
-## Фаза 19: Антипаттерны и качество кода
+## Р¤Р°Р·Р° 19: РђРЅС‚РёРїР°С‚С‚РµСЂРЅС‹ Рё РєР°С‡РµСЃС‚РІРѕ РєРѕРґР°
 
 ### 19.1 Authorization / module / event antipatterns
 
-- [ ] Нет hardcoded role checks в server authorization path.
-- [ ] Нет publish-after-commit в доменных write-path.
-- [ ] Runtime modules публикуют permissions/dependencies через module contracts.
-- [ ] Host apps не содержат долговременные bypass-реализации вместо library/module contracts.
+- [ ] РќРµС‚ hardcoded role checks РІ server authorization path.
+- [ ] РќРµС‚ publish-after-commit РІ РґРѕРјРµРЅРЅС‹С… write-path.
+- [ ] Runtime modules РїСѓР±Р»РёРєСѓСЋС‚ permissions/dependencies С‡РµСЂРµР· module contracts.
+- [ ] Host apps РЅРµ СЃРѕРґРµСЂР¶Р°С‚ РґРѕР»РіРѕРІСЂРµРјРµРЅРЅС‹Рµ bypass-СЂРµР°Р»РёР·Р°С†РёРё РІРјРµСЃС‚Рѕ library/module contracts.
 
 ### 19.2 API / DTO / service quality
 
-- [ ] DTO validation и error mapping соответствуют current service layer.
-- [ ] GraphQL/REST parity не задокументирована там, где её фактически нет.
-- [ ] Capability crates не смешаны с platform modules в документации и коде.
+- [ ] DTO validation Рё error mapping СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ current service layer.
+- [ ] GraphQL/REST parity РЅРµ Р·Р°РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅР° С‚Р°Рј, РіРґРµ РµС‘ С„Р°РєС‚РёС‡РµСЃРєРё РЅРµС‚.
+- [ ] Capability crates РЅРµ СЃРјРµС€Р°РЅС‹ СЃ platform modules РІ РґРѕРєСѓРјРµРЅС‚Р°С†РёРё Рё РєРѕРґРµ.
 
 ### 19.3 Frontend / library quality
 
-- [ ] Module-owned UI surfaces не дублируются бессистемно в host apps.
-- [ ] Leptos/Next/shared packages документированы по фактическому public contract.
+- [ ] Module-owned UI surfaces РЅРµ РґСѓР±Р»РёСЂСѓСЋС‚СЃСЏ Р±РµСЃСЃРёСЃС‚РµРјРЅРѕ РІ host apps.
+- [ ] Leptos/Next/shared packages РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅС‹ РїРѕ С„Р°РєС‚РёС‡РµСЃРєРѕРјСѓ public contract.
 
 ---
 
-## Фаза 20: Правильность кода и correctness
+## Р¤Р°Р·Р° 20: РџСЂР°РІРёР»СЊРЅРѕСЃС‚СЊ РєРѕРґР° Рё correctness
 
 ### 20.1 Type / serialization / migration correctness
 
-- [ ] Type model и permission vocabulary соответствуют текущему коду.
-- [ ] Serialization contracts для REST/GraphQL/OAuth/MCP не расходятся с текущими DTOs.
-- [ ] Миграции соответствуют текущим entity/service ожиданиям.
+- [ ] Type model Рё permission vocabulary СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РµРјСѓ РєРѕРґСѓ.
+- [ ] Serialization contracts РґР»СЏ REST/GraphQL/OAuth/MCP РЅРµ СЂР°СЃС…РѕРґСЏС‚СЃСЏ СЃ С‚РµРєСѓС‰РёРјРё DTOs.
+- [ ] РњРёРіСЂР°С†РёРё СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‚ С‚РµРєСѓС‰РёРј entity/service РѕР¶РёРґР°РЅРёСЏРј.
 
 ### 20.2 Concurrency / retry / runtime correctness
 
-- [ ] Retry/backoff logic соответствует текущим async runtime patterns.
-- [ ] Event consumers и schedulers не содержат очевидных busy-loop / lag-handling regressions.
-- [ ] Workflow, outbox, cache invalidation и build progress flows не расходятся с runtime behavior.
+- [ ] Retry/backoff logic СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ С‚РµРєСѓС‰РёРј async runtime patterns.
+- [ ] Event consumers Рё schedulers РЅРµ СЃРѕРґРµСЂР¶Р°С‚ РѕС‡РµРІРёРґРЅС‹С… busy-loop / lag-handling regressions.
+- [ ] Workflow, outbox, cache invalidation Рё build progress flows РЅРµ СЂР°СЃС…РѕРґСЏС‚СЃСЏ СЃ runtime behavior.
 
 ### 20.3 Boundary correctness
 
-- [ ] Module registry, manifest, host apps, shared libraries и capability layers согласованы как единая система.
-- [ ] Alloy/MCP/workflow/flex boundaries задокументированы и реализованы без архитектурной путаницы.
+- [ ] Module registry, manifest, host apps, shared libraries Рё capability layers СЃРѕРіР»Р°СЃРѕРІР°РЅС‹ РєР°Рє РµРґРёРЅР°СЏ СЃРёСЃС‚РµРјР°.
+- [ ] Alloy/MCP/workflow/flex boundaries Р·Р°РґРѕРєСѓРјРµРЅС‚РёСЂРѕРІР°РЅС‹ Рё СЂРµР°Р»РёР·РѕРІР°РЅС‹ Р±РµР· Р°СЂС…РёС‚РµРєС‚СѓСЂРЅРѕР№ РїСѓС‚Р°РЅРёС†С‹.
+

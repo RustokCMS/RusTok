@@ -11,7 +11,7 @@ use uuid::Uuid;
 use rustok_content::{
     normalize_locale_code, resolve_by_locale_with_fallback, PLATFORM_FALLBACK_LOCALE,
 };
-use rustok_core::{prepare_content_payload, SecurityContext};
+use rustok_core::{prepare_content_payload, Action, Resource, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
@@ -19,8 +19,11 @@ use crate::constants::{reply_status, topic_status};
 use crate::dto::{
     CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput,
 };
-use crate::entities::{forum_reply, forum_reply_body};
+use crate::entities::{forum_reply, forum_reply_body, forum_solution};
 use crate::error::{ForumError, ForumResult};
+use crate::services::rbac::{enforce_owned_scope, enforce_scope};
+use crate::services::user_stats::UserStatsService;
+use crate::services::vote::{VoteService, VoteSummary};
 use crate::services::{CategoryService, TopicService};
 
 pub struct ReplyService {
@@ -41,6 +44,7 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyInput,
     ) -> ForumResult<ReplyResponse> {
+        enforce_scope(&security, Resource::ForumReplies, Action::Create)?;
         let locale = normalize_locale(&input.locale)?;
         let txn = self.db.begin().await?;
         let topic = TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
@@ -108,6 +112,7 @@ impl ReplyService {
 
         let topic = TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, 1).await?;
         CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1).await?;
+        UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, security.user_id, 1).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -123,17 +128,18 @@ impl ReplyService {
             .await?;
 
         txn.commit().await?;
-        self.get(tenant_id, reply_id, &locale).await
+        self.get(tenant_id, security, reply_id, &locale).await
     }
 
     #[instrument(skip(self))]
     pub async fn get(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         reply_id: Uuid,
         locale: &str,
     ) -> ForumResult<ReplyResponse> {
-        self.get_with_locale_fallback(tenant_id, reply_id, locale, None)
+        self.get_with_locale_fallback(tenant_id, security, reply_id, locale, None)
             .await
     }
 
@@ -141,17 +147,27 @@ impl ReplyService {
     pub async fn get_with_locale_fallback(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         reply_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<ReplyResponse> {
+        enforce_scope(&security, Resource::ForumReplies, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let reply = self.find_reply(tenant_id, reply_id).await?;
         let bodies = self.load_bodies(reply_id).await?;
+        let solution_reply_id = self
+            .load_solution_reply_id_for_topic(reply.topic_id)
+            .await?;
+        let vote_summary = VoteService::new(self.db.clone())
+            .reply_vote_summary(tenant_id, reply_id, security.user_id)
+            .await?;
         Ok(to_reply_response(
             reply,
             bodies,
+            vote_summary,
+            solution_reply_id,
             &locale,
             fallback_locale.as_deref(),
         ))
@@ -167,10 +183,16 @@ impl ReplyService {
     ) -> ForumResult<ReplyResponse> {
         let locale = normalize_locale(&input.locale)?;
         let existing = self.find_reply(tenant_id, reply_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::ForumReplies,
+            Action::Update,
+            existing.author_id,
+        )?;
 
         if input.content.is_none() && input.content_json.is_none() && input.content_format.is_none()
         {
-            return self.get(tenant_id, reply_id, &locale).await;
+            return self.get(tenant_id, security, reply_id, &locale).await;
         }
 
         let prepared_body = prepare_content_payload(
@@ -195,57 +217,66 @@ impl ReplyService {
         let mut active: forum_reply::ActiveModel = existing.into();
         active.updated_at = Set(Utc::now().into());
         active.update(&txn).await?;
-        let _ = security;
         txn.commit().await?;
-        self.get(tenant_id, reply_id, &locale).await
+        self.get(tenant_id, security, reply_id, &locale).await
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
         reply_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
     ) -> ForumResult<()> {
         let reply = self.find_reply(tenant_id, reply_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::ForumReplies,
+            Action::Delete,
+            reply.author_id,
+        )?;
         let txn = self.db.begin().await?;
+        let solution_removed = forum_solution::Entity::find_by_id(reply.topic_id)
+            .one(&txn)
+            .await?
+            .is_some_and(|solution| solution.reply_id == reply_id);
         forum_reply::Entity::delete_by_id(reply_id)
             .exec(&txn)
             .await?;
         let topic =
             TopicService::adjust_reply_count_in_tx(&txn, tenant_id, reply.topic_id, -1).await?;
         CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, -1).await?;
+        UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, reply.author_id, -1).await?;
+        if solution_removed {
+            UserStatsService::adjust_solution_count_in_tx(&txn, tenant_id, reply.author_id, -1)
+                .await?;
+        }
         txn.commit().await?;
         Ok(())
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn list_for_topic(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         topic_id: Uuid,
         filter: ListRepliesFilter,
     ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
-        self.list_for_topic_with_locale_fallback(
-            tenant_id,
-            SecurityContext::system(),
-            topic_id,
-            filter,
-            None,
-        )
-        .await
+        self.list_for_topic_with_locale_fallback(tenant_id, security, topic_id, filter, None)
+            .await
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn list_for_topic_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         topic_id: Uuid,
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<ReplyListItem>, u64)> {
+        enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         let locale = filter
             .locale
             .clone()
@@ -256,8 +287,12 @@ impl ReplyService {
         let (replies, total) = self
             .fetch_reply_page(tenant_id, topic_id, filter.page, filter.per_page, None)
             .await?;
+        let solution_reply_id = self.load_solution_reply_id_for_topic(topic_id).await?;
         let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
         let bodies_map = self.load_bodies_map(&reply_ids).await?;
+        let vote_summaries = VoteService::new(self.db.clone())
+            .reply_vote_summaries(tenant_id, &reply_ids, security.user_id)
+            .await?;
 
         let items = replies
             .into_iter()
@@ -277,6 +312,14 @@ impl ReplyService {
                     author_id: reply.author_id,
                     content_preview: preview,
                     status: reply.status,
+                    vote_score: vote_summaries
+                        .get(&reply.id)
+                        .map(|summary| summary.score)
+                        .unwrap_or_default(),
+                    current_user_vote: vote_summaries
+                        .get(&reply.id)
+                        .and_then(|summary| summary.current_user_vote),
+                    is_solution: Some(reply.id) == solution_reply_id,
                     parent_reply_id: reply.parent_reply_id,
                     created_at: reply.created_at.to_rfc3339(),
                 }
@@ -286,18 +329,18 @@ impl ReplyService {
         Ok((items, total))
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn list_response_for_topic_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         topic_id: Uuid,
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
         self.list_response_for_topic_by_statuses_with_locale_fallback(
             tenant_id,
-            SecurityContext::system(),
+            security,
             topic_id,
             filter,
             fallback_locale,
@@ -306,16 +349,17 @@ impl ReplyService {
         .await
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn list_response_for_topic_by_statuses_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         topic_id: Uuid,
         filter: ListRepliesFilter,
         fallback_locale: Option<&str>,
         statuses: Option<&[&str]>,
     ) -> ForumResult<(Vec<ReplyResponse>, u64)> {
+        enforce_scope(&security, Resource::ForumReplies, Action::List)?;
         let locale = filter
             .locale
             .clone()
@@ -325,8 +369,12 @@ impl ReplyService {
         let (replies, total) = self
             .fetch_reply_page(tenant_id, topic_id, filter.page, filter.per_page, statuses)
             .await?;
+        let solution_reply_id = self.load_solution_reply_id_for_topic(topic_id).await?;
         let reply_ids: Vec<Uuid> = replies.iter().map(|reply| reply.id).collect();
         let bodies_map = self.load_bodies_map(&reply_ids).await?;
+        let vote_summaries = VoteService::new(self.db.clone())
+            .reply_vote_summaries(tenant_id, &reply_ids, security.user_id)
+            .await?;
 
         let items = replies
             .into_iter()
@@ -335,6 +383,8 @@ impl ReplyService {
                 to_reply_response(
                     reply,
                     bodies_map.get(&reply_id).cloned().unwrap_or_default(),
+                    vote_summaries.get(&reply_id).copied().unwrap_or_default(),
+                    solution_reply_id,
                     &locale,
                     fallback_locale.as_deref(),
                 )
@@ -391,6 +441,13 @@ impl ReplyService {
             .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
             .all(&self.db)
             .await?)
+    }
+
+    async fn load_solution_reply_id_for_topic(&self, topic_id: Uuid) -> ForumResult<Option<Uuid>> {
+        Ok(forum_solution::Entity::find_by_id(topic_id)
+            .one(&self.db)
+            .await?
+            .map(|solution| solution.reply_id))
     }
 
     async fn fetch_reply_page(
@@ -512,6 +569,8 @@ impl ReplyService {
 fn to_reply_response(
     reply: forum_reply::Model,
     bodies: Vec<forum_reply_body::Model>,
+    vote_summary: VoteSummary,
+    solution_reply_id: Option<Uuid>,
     locale: &str,
     fallback_locale: Option<&str>,
 ) -> ReplyResponse {
@@ -541,6 +600,9 @@ fn to_reply_response(
         content_format,
         content_json,
         status: reply.status,
+        vote_score: vote_summary.score,
+        current_user_vote: vote_summary.current_user_vote,
+        is_solution: Some(reply.id) == solution_reply_id,
         parent_reply_id: reply.parent_reply_id,
         created_at: reply.created_at.to_rfc3339(),
         updated_at: reply.updated_at.to_rfc3339(),

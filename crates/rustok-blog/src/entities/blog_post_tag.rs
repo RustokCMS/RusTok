@@ -20,23 +20,11 @@ pub enum Relation {
         to = "super::blog_post::Column::Id"
     )]
     Post,
-    #[sea_orm(
-        belongs_to = "super::blog_tag::Entity",
-        from = "Column::TagId",
-        to = "super::blog_tag::Column::Id"
-    )]
-    Tag,
 }
 
 impl Related<super::blog_post::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Post.def()
-    }
-}
-
-impl Related<super::blog_tag::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::Tag.def()
     }
 }
 

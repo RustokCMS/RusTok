@@ -21,3 +21,9 @@ routes = "controllers::routes"
 leptos_crate = "rustok-commerce-admin"
 route_segment = "commerce"
 nav_label = "Commerce"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-commerce-storefront"
+slot = "home_after_catalog"
+route_segment = "commerce"
+page_title = "Commerce"

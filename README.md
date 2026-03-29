@@ -250,7 +250,7 @@ Optional modules:
 Support and capability crates sit outside the `Core` / `Optional` taxonomy:
 
 - Shared/support: `rustok-core`, `rustok-api`, `rustok-events`, `rustok-storage`, `rustok-commerce-foundation`, `rustok-test-utils`, `rustok-telemetry`
-- Capability/runtime layers: `rustok-mcp`, `alloy`, `alloy-scripting`, `flex`, `rustok-iggy`, `rustok-iggy-connector`
+- Capability/runtime layers: `rustok-mcp`, `alloy`, `alloy`, `flex`, `rustok-iggy`, `rustok-iggy-connector`
 
 Domain boundary highlights:
 
@@ -403,3 +403,4 @@ Built with open-source foundations such as:
 ## License
 
 RusToK is released under the [MIT License](LICENSE).
+

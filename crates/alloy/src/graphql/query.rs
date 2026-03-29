@@ -1,11 +1,13 @@
-use alloy_scripting::{storage::ScriptQuery, ScriptRegistry};
 use async_graphql::{Context, Object, Result};
 use rustok_api::graphql::{PageInfo, PaginationInput};
 use rustok_telemetry::metrics;
 use uuid::Uuid;
 
+use crate::{storage::ScriptQuery, ScriptRegistry};
+
 use super::{
-    require_admin, AlloyState, GqlEventType, GqlScript, GqlScriptConnection, GqlScriptStatus,
+    require_admin, runtime_from_graphql_ctx, GqlEventType, GqlScript, GqlScriptConnection,
+    GqlScriptStatus,
 };
 
 #[derive(Default)]
@@ -20,7 +22,7 @@ impl AlloyQuery {
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<GqlScriptConnection> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
+        let state = runtime_from_graphql_ctx(ctx)?;
         let requested_limit = pagination.requested_limit();
         let query = match status {
             Some(status) => ScriptQuery::ByStatus(status.into()),
@@ -56,7 +58,7 @@ impl AlloyQuery {
 
     async fn script(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<GqlScript>> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
+        let state = runtime_from_graphql_ctx(ctx)?;
 
         match state.storage.get(id).await {
             Ok(script) => Ok(Some(script.into())),
@@ -66,7 +68,7 @@ impl AlloyQuery {
 
     async fn script_by_name(&self, ctx: &Context<'_>, name: String) -> Result<Option<GqlScript>> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
+        let state = runtime_from_graphql_ctx(ctx)?;
 
         match state.storage.get_by_name(&name).await {
             Ok(script) => Ok(Some(script.into())),
@@ -82,7 +84,7 @@ impl AlloyQuery {
         limit: Option<i32>,
     ) -> Result<Vec<GqlScript>> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
+        let state = runtime_from_graphql_ctx(ctx)?;
         let requested_limit = limit.map(|value| value.max(0) as u64);
         let limit = limit.unwrap_or(50).clamp(1, 100) as u64;
         let page = state

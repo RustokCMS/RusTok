@@ -1,40 +1,40 @@
-# RusToK — Matryoshka Architecture (7-Layer Platform Model)
+# RusToK вЂ” Matryoshka Architecture (7-Layer Platform Model)
 
 > **Date:** 2026-03-01
 > **Status:** Foundational. This document describes the core architectural vision of RusToK.
-> **Authors:** Human & Claude AI — Co-Founders of the RusToK architectural concept.
+> **Authors:** Human & Claude AI вЂ” Co-Founders of the RusToK architectural concept.
 
 ---
 
 ## Overview
 
-RusToK follows a **Matryoshka Principle** — a 7-layer nested architecture where each layer builds upon the previous one, creating a complete platform ecosystem. Like the Russian nesting doll, each layer encapsulates the ones below it, adding new capabilities while maintaining the integrity of the whole.
+RusToK follows a **Matryoshka Principle** вЂ” a 7-layer nested architecture where each layer builds upon the previous one, creating a complete platform ecosystem. Like the Russian nesting doll, each layer encapsulates the ones below it, adding new capabilities while maintaining the integrity of the whole.
 
-This architecture has no direct analogue in the industry. It is the first attempt to build a universal, layered SaaS platform model in Rust — from bare metal to federation.
+This architecture has no direct analogue in the industry. It is the first attempt to build a universal, layered SaaS platform model in Rust вЂ” from bare metal to federation.
 
 ```text
-┌─────────────────────────────────────────────────────────┐
-│  Layer 7: Inter-Network (Federation / Mesh)             │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │  Layer 6: Interaction Bus (Fast Index / Event Hub)│  │
-│  │  ┌─────────────────────────────────────────────┐  │  │
-│  │  │  Layer 5: Unified UI (Technology-Agnostic)  │  │  │
-│  │  │  ┌───────────────────────────────────────┐  │  │  │
-│  │  │  │  Layer 4: Shared Capabilities         │  │  │  │
-│  │  │  │  ┌─────────────────────────────────┐  │  │  │  │
-│  │  │  │  │  Layer 3: Sub-Modules           │  │  │  │  │
-│  │  │  │  │  ┌───────────────────────────┐  │  │  │  │  │
-│  │  │  │  │  │  Layer 2: Modules         │  │  │  │  │  │
-│  │  │  │  │  │  ┌─────────────────────┐  │  │  │  │  │  │
-│  │  │  │  │  │  │  Layer 1: Core      │  │  │  │  │  │  │
-│  │  │  │  │  │  │  Platform           │  │  │  │  │  │  │
-│  │  │  │  │  │  └─────────────────────┘  │  │  │  │  │  │
-│  │  │  │  │  └───────────────────────────┘  │  │  │  │  │
-│  │  │  │  └─────────────────────────────────┘  │  │  │  │
-│  │  │  └───────────────────────────────────────┘  │  │  │
-│  │  └─────────────────────────────────────────────┘  │  │
-│  └───────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
+в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+в”‚  Layer 7: Inter-Network (Federation / Mesh)             в”‚
+в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚
+в”‚  в”‚  Layer 6: Interaction Bus (Fast Index / Event Hub)в”‚  в”‚
+в”‚  в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚  в”‚
+в”‚  в”‚  в”‚  Layer 5: Unified UI (Technology-Agnostic)  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  Layer 4: Shared Capabilities         в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  в”‚  Layer 3: Sub-Modules           в”‚  в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚  в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  Layer 2: Modules         в”‚  в”‚  в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  Layer 1: Core      в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  Platform           в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  в”‚  в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚  в”‚  в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚  в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚  в”‚  в”‚  в”‚
+в”‚  в”‚  в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚  в”‚  в”‚
+в”‚  в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚  в”‚
+в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”  в”‚
+в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
 ```
 
 ---
@@ -54,7 +54,7 @@ There is no Rust SaaS starter platform on the market. RusToK fills this gap. Lay
 - Configuration management
 - API layer (GraphQL + REST)
 
-**What it gives you:** Take this layer and build *any* SaaS on top of it. E-commerce, CMS, LMS, CRM — anything with data. This is the starter that nobody built for Rust yet.
+**What it gives you:** Take this layer and build *any* SaaS on top of it. E-commerce, CMS, LMS, CRM вЂ” anything with data. This is the starter that nobody built for Rust yet.
 
 **Implementation:** `rustok-core`, `rustok-tenant`, `rustok-rbac`, `apps/server`
 
@@ -79,7 +79,7 @@ The modular architecture means you can attach any business vertical to the core 
 | `rustok-blog` | Blogging (wraps content with post semantics) |
 | `rustok-forum` | Community discussions (wraps content with topic semantics) |
 | `rustok-pages` | Static pages, menus, blocks |
-| `alloy-scripting` | Rhai scripting engine for automation |
+| `alloy` | Rhai scripting engine for automation |
 
 **What it gives you:** Pick the modules you need. Blog? Commerce? Forum? All of them? Just add to your `modules.toml` and rebuild.
 
@@ -100,7 +100,7 @@ Sub-modules extend the base functionality of Layer 2 modules without touching th
 
 **Principle:** A sub-module depends only on its parent module and `rustok-core`. It never reaches into other domain modules.
 
-**What it gives you:** Fine-grained extensibility. You don't just add "commerce" — you configure exactly which commerce capabilities you need.
+**What it gives you:** Fine-grained extensibility. You don't just add "commerce" вЂ” you configure exactly which commerce capabilities you need.
 
 ---
 
@@ -121,7 +121,7 @@ This is the key insight that separates RusToK from other platforms. Many feature
 | Ratings/Reviews | Products, Blog posts, Forum answers |
 | Activity Feed | User actions across all modules |
 
-**What it gives you:** Write the emoji system once. It works everywhere — in chat, in blog comments, in the corporate forum, in product reviews. Same UX, same data model, same API.
+**What it gives you:** Write the emoji system once. It works everywhere вЂ” in chat, in blog comments, in the corporate forum, in product reviews. Same UX, same data model, same API.
 
 **Implementation:** Shared capability crates that integrate via `rustok-core` events and interfaces, not direct module dependencies.
 
@@ -156,19 +156,19 @@ Everything must look the same regardless of the frontend technology. The UI laye
 
 **The nervous system. Fast index. Event hub.**
 
-Modules already communicate through the EventBus. But Layer 6 extracts their common interactions into a dedicated, high-speed index — a unified communication layer that:
+Modules already communicate through the EventBus. But Layer 6 extracts their common interactions into a dedicated, high-speed index вЂ” a unified communication layer that:
 
 - Aggregates cross-module data into composite read models
 - Provides a single query interface for complex cross-domain searches
-- Eliminates N×N dependencies between modules
+- Eliminates NГ—N dependencies between modules
 - Enables real-time synchronization without direct module coupling
 - Supports backpressure control and circuit breakers
 
 ```text
-Module A ──┐                    ┌── Composite Index
-Module B ──┤── Interaction ────┤── Cross-domain Search
-Module C ──┤     Layer          ├── Activity Feeds
-Module D ──┘                    └── Analytics Aggregates
+Module A в”Ђв”Ђв”ђ                    в”Њв”Ђв”Ђ Composite Index
+Module B в”Ђв”Ђв”¤в”Ђв”Ђ Interaction в”Ђв”Ђв”Ђв”Ђв”¤в”Ђв”Ђ Cross-domain Search
+Module C в”Ђв”Ђв”¤     Layer          в”њв”Ђв”Ђ Activity Feeds
+Module D в”Ђв”Ђв”                    в””в”Ђв”Ђ Analytics Aggregates
 ```
 
 **What it gives you:** Instead of modules talking to each other directly (creating a tangled web), they all publish to and read from a unified fast index. Clean architecture at scale.
@@ -194,7 +194,7 @@ This is the layer that nobody has built for a universal SaaS platform. ActivityP
 
 **What it gives you:** Your RusToK instance is not an island. It's a node in a network. Shops can share catalogs. Blogs can syndicate content. Forums can federate discussions. The possibilities are infinite.
 
-**Implementation:** Future — `rustok-federation`, `rustok-mesh` (Graal vision)
+**Implementation:** Future вЂ” `rustok-federation`, `rustok-mesh` (Graal vision)
 
 ---
 
@@ -209,7 +209,7 @@ The Matryoshka architecture is realized through three interconnected projects:
 | **Graal** | 7 | Inter-network federation and mesh |
 
 ```text
-RusToK (Foundation)  →  Alloy (Glue & UI)  →  Graal (Network)
+RusToK (Foundation)  в†’  Alloy (Glue & UI)  в†’  Graal (Network)
    Layers 1-3              Layers 4-6            Layer 7
 ```
 
@@ -247,13 +247,14 @@ Just as the OSI model standardized network communication into 7 layers, the Matr
 
 ## See Also
 
-- [Architecture Overview](overview.md) — Technical system design
-- [Architecture Principles](principles.md) — Core tenets and patterns
-- [RUSTOK_MANIFEST.md](../../RUSTOK_MANIFEST.md) — System manifest
-- [Documentation Map](../index.md) — current documentation entry point
+- [Architecture Overview](overview.md) вЂ” Technical system design
+- [Architecture Principles](principles.md) вЂ” Core tenets and patterns
+- [RUSTOK_MANIFEST.md](../../RUSTOK_MANIFEST.md) вЂ” System manifest
+- [Documentation Map](../index.md) вЂ” current documentation entry point
 
 ---
 
 > This document captures the foundational architectural vision of RusToK.
 > The Matryoshka Principle was conceived and designed collaboratively by Human & Claude AI.
-> It represents a new approach to building SaaS platforms — one that nobody has attempted before.
+> It represents a new approach to building SaaS platforms вЂ” one that nobody has attempted before.
+

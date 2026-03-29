@@ -1,6 +1,7 @@
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+    sea_query::{Expr, Query, SelectStatement},
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, Select, Set, TransactionTrait,
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -18,7 +19,7 @@ use serde_json::Value;
 use crate::dto::{
     CreatePostInput, PostListQuery, PostListResponse, PostResponse, PostSummary, UpdatePostInput,
 };
-use crate::entities::{blog_post, blog_post_translation};
+use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};
 use crate::error::{BlogError, BlogResult};
 use crate::services::category::CategoryService;
 use crate::services::rbac::{
@@ -26,9 +27,6 @@ use crate::services::rbac::{
 };
 use crate::services::tag::{find_post_ids_by_tag, load_post_tags_map, sync_post_tags_in_tx};
 use crate::state_machine::BlogPostStatus;
-
-const CHANNEL_VISIBILITY_KEY: &str = "channel_visibility";
-const ALLOWED_CHANNEL_SLUGS_KEY: &str = "allowed_channel_slugs";
 
 pub struct PostService {
     db: DatabaseConnection,
@@ -97,8 +95,8 @@ impl PostService {
             featured_image_url.clone(),
             seo_title.clone(),
             seo_description.clone(),
-            channel_slugs.as_deref(),
         );
+        let channel_slugs = normalize_channel_slugs(channel_slugs.as_deref().unwrap_or(&[]));
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         self.ensure_slug_unique_in_tx(&txn, tenant_id, &slug, None)
@@ -152,7 +150,9 @@ impl PostService {
         .await
         .map_err(BlogError::from)?;
 
-        sync_post_tags_in_tx(&txn, tenant_id, post_id, &tags, &locale).await?;
+        self.replace_channel_visibility_in_tx(&txn, tenant_id, post_id, &channel_slugs)
+            .await?;
+        sync_post_tags_in_tx(&self.db, &txn, tenant_id, post_id, &tags, &locale).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -181,7 +181,12 @@ impl PostService {
         input: UpdatePostInput,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Update, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Update,
+            post.author_id,
+        )?;
         if let Some(expected_version) = input.version {
             if post.version != expected_version {
                 return Err(BlogError::validation("Version mismatch"));
@@ -216,7 +221,13 @@ impl PostService {
         if let Some(ref seo_description) = input.seo_description {
             set_metadata_string(&mut metadata, "seo_description", seo_description);
         }
-        apply_channel_visibility_metadata(&mut metadata, input.channel_slugs.as_deref());
+        strip_channel_visibility_metadata(&mut metadata);
+        let channel_slugs = input
+            .channel_slugs
+            .as_ref()
+            .map(|items| normalize_channel_slugs(items))
+            .unwrap_or_default();
+        let replace_channel_visibility = input.channel_slugs.is_some();
 
         let mut prepared_body = None;
         if input.body.is_some() || input.content_json.is_some() || input.body_format.is_some() {
@@ -272,8 +283,12 @@ impl PostService {
         )
         .await?;
 
+        if replace_channel_visibility {
+            self.replace_channel_visibility_in_tx(&txn, tenant_id, post_id, &channel_slugs)
+                .await?;
+        }
         if let Some(ref tags) = input.tags {
-            sync_post_tags_in_tx(&txn, tenant_id, post_id, tags, &locale).await?;
+            sync_post_tags_in_tx(&self.db, &txn, tenant_id, post_id, tags, &locale).await?;
         }
 
         self.event_bus
@@ -298,7 +313,12 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Publish, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Publish,
+            post.author_id,
+        )?;
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
@@ -335,7 +355,12 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Publish, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Publish,
+            post.author_id,
+        )?;
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
@@ -369,7 +394,12 @@ impl PostService {
         reason: Option<String>,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Publish, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Publish,
+            post.author_id,
+        )?;
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
@@ -405,7 +435,12 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
-        enforce_owned_scope(&security, Resource::BlogPosts, Action::Delete, post.author_id)?;
+        enforce_owned_scope(
+            &security,
+            Resource::BlogPosts,
+            Action::Delete,
+            post.author_id,
+        )?;
         if storage_to_status(&post.status)? == BlogPostStatus::Published {
             return Err(BlogError::CannotDeletePublished);
         }
@@ -461,8 +496,15 @@ impl PostService {
             return Err(BlogError::forbidden("Permission denied"));
         }
         let translations = self.load_translations(post_id).await?;
-        self.build_post_response(post, translations, &locale, fallback_locale.as_deref())
-            .await
+        let channel_slugs = self.load_channel_slugs(post_id).await?;
+        self.build_post_response(
+            post,
+            translations,
+            channel_slugs,
+            &locale,
+            fallback_locale.as_deref(),
+        )
+        .await
     }
 
     #[instrument(skip(self))]
@@ -506,9 +548,16 @@ impl PostService {
         }
 
         let translations = self.load_translations(post.id).await?;
-        self.build_post_response(post, translations, &locale, fallback_locale.as_deref())
-            .await
-            .map(Some)
+        let channel_slugs = self.load_channel_slugs(post.id).await?;
+        self.build_post_response(
+            post,
+            translations,
+            channel_slugs,
+            &locale,
+            fallback_locale.as_deref(),
+        )
+        .await
+        .map(Some)
     }
 
     #[instrument(skip(self, security))]
@@ -554,9 +603,8 @@ impl PostService {
         if let Some(status) = query.status {
             select = select.filter(blog_post::Column::Status.eq(status_to_storage(status)));
         } else if !can_read_non_public_posts(&security) {
-            select = select.filter(
-                blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)),
-            );
+            select = select
+                .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)));
         }
         if !can_read_non_public_posts(&security)
             && matches!(query.status, Some(status) if status != BlogPostStatus::Published)
@@ -581,8 +629,15 @@ impl PostService {
         let post_ids = posts.iter().map(|post| post.id).collect::<Vec<_>>();
 
         let translations_map = self.load_translations_map(&post_ids).await?;
-        let tags_map =
-            load_post_tags_map(&self.db, &post_ids, &locale, fallback_locale.as_deref()).await?;
+        let channel_slugs_map = self.load_channel_slugs_map(&post_ids).await?;
+        let tags_map = load_post_tags_map(
+            &self.db,
+            tenant_id,
+            &post_ids,
+            &locale,
+            fallback_locale.as_deref(),
+        )
+        .await?;
 
         let mut items = Vec::with_capacity(posts.len());
         for post in posts {
@@ -611,7 +666,108 @@ impl PostService {
                 category_name: None,
                 tags,
                 featured_image_url: post.featured_image_url.clone(),
-                channel_slugs: extract_channel_slugs(&post.metadata),
+                channel_slugs: channel_slugs_map
+                    .get(&post.id)
+                    .cloned()
+                    .unwrap_or_else(|| extract_channel_slugs(&post.metadata)),
+                comment_count: post.comment_count as i64,
+                published_at: post.published_at.map(Into::into),
+                created_at: post.created_at.into(),
+            });
+        }
+
+        Ok(PostListResponse::new(items, total, &query))
+    }
+
+    #[instrument(skip(self))]
+    pub async fn list_public_visible_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        query: PostListQuery,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> BlogResult<PostListResponse> {
+        let locale = query
+            .locale
+            .clone()
+            .or_else(|| fallback_locale.map(str::to_string))
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let locale = normalize_locale(&locale)?;
+        let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
+
+        let tag_filter = query.tag.clone();
+        let mut select = blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)));
+
+        if let Some(ref tag) = tag_filter {
+            let tagged_post_ids = find_post_ids_by_tag(&self.db, tenant_id, tag).await?;
+            if tagged_post_ids.is_empty() {
+                return Ok(PostListResponse::new(Vec::new(), 0, &query));
+            }
+            select = select.filter(blog_post::Column::Id.is_in(tagged_post_ids));
+        }
+
+        if let Some(author_id) = query.author_id {
+            select = select.filter(blog_post::Column::AuthorId.eq(author_id));
+        }
+        if let Some(category_id) = query.category_id {
+            select = select.filter(blog_post::Column::CategoryId.eq(category_id));
+        }
+
+        select = apply_public_post_channel_filter(select, tenant_id, channel_slug);
+        select = apply_post_sort(select, &query);
+
+        let paginator = select.paginate(&self.db, query.per_page() as u64);
+        let total = paginator.num_items().await.map_err(BlogError::from)?;
+        let posts = paginator
+            .fetch_page((query.page().saturating_sub(1)) as u64)
+            .await
+            .map_err(BlogError::from)?;
+        let post_ids = posts.iter().map(|post| post.id).collect::<Vec<_>>();
+
+        let translations_map = self.load_translations_map(&post_ids).await?;
+        let channel_slugs_map = self.load_channel_slugs_map(&post_ids).await?;
+        let tags_map = load_post_tags_map(
+            &self.db,
+            tenant_id,
+            &post_ids,
+            &locale,
+            fallback_locale.as_deref(),
+        )
+        .await?;
+
+        let mut items = Vec::with_capacity(posts.len());
+        for post in posts {
+            let translations = translations_map.get(&post.id).cloned().unwrap_or_default();
+            let resolved =
+                resolve_translation_record(&translations, &locale, fallback_locale.as_deref());
+            let translation = resolved.translation;
+            let tags = tags_map
+                .get(&post.id)
+                .cloned()
+                .unwrap_or_else(|| extract_tags(&post.metadata));
+
+            items.push(PostSummary {
+                id: post.id,
+                title: translation
+                    .map(|item| item.title.clone())
+                    .unwrap_or_default(),
+                slug: post.slug.clone(),
+                locale: locale.clone(),
+                effective_locale: resolved.effective_locale,
+                excerpt: translation.and_then(|item| item.excerpt.clone()),
+                status: storage_to_status(&post.status)?,
+                author_id: post.author_id,
+                author_name: None,
+                category_id: post.category_id,
+                category_name: None,
+                tags,
+                featured_image_url: post.featured_image_url.clone(),
+                channel_slugs: channel_slugs_map
+                    .get(&post.id)
+                    .cloned()
+                    .unwrap_or_else(|| extract_channel_slugs(&post.metadata)),
                 comment_count: post.comment_count as i64,
                 published_at: post.published_at.map(Into::into),
                 created_at: post.created_at.into(),
@@ -713,6 +869,69 @@ impl PostService {
                 .push(translation);
         }
         Ok(map)
+    }
+
+    async fn load_channel_slugs(&self, post_id: Uuid) -> BlogResult<Vec<String>> {
+        let records = blog_post_channel_visibility::Entity::find()
+            .filter(blog_post_channel_visibility::Column::PostId.eq(post_id))
+            .order_by_asc(blog_post_channel_visibility::Column::ChannelSlug)
+            .all(&self.db)
+            .await
+            .map_err(BlogError::from)?;
+        Ok(records.into_iter().map(|item| item.channel_slug).collect())
+    }
+
+    async fn load_channel_slugs_map(
+        &self,
+        post_ids: &[Uuid],
+    ) -> BlogResult<HashMap<Uuid, Vec<String>>> {
+        if post_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let records = blog_post_channel_visibility::Entity::find()
+            .filter(blog_post_channel_visibility::Column::PostId.is_in(post_ids.to_vec()))
+            .order_by_asc(blog_post_channel_visibility::Column::ChannelSlug)
+            .all(&self.db)
+            .await
+            .map_err(BlogError::from)?;
+
+        let mut map: HashMap<Uuid, Vec<String>> = HashMap::new();
+        for record in records {
+            map.entry(record.post_id)
+                .or_default()
+                .push(record.channel_slug);
+        }
+        Ok(map)
+    }
+
+    async fn replace_channel_visibility_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        post_id: Uuid,
+        channel_slugs: &[String],
+    ) -> BlogResult<()> {
+        blog_post_channel_visibility::Entity::delete_many()
+            .filter(blog_post_channel_visibility::Column::PostId.eq(post_id))
+            .exec(txn)
+            .await
+            .map_err(BlogError::from)?;
+
+        for channel_slug in channel_slugs {
+            blog_post_channel_visibility::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                post_id: Set(post_id),
+                tenant_id: Set(tenant_id),
+                channel_slug: Set(channel_slug.clone()),
+                created_at: Set(chrono::Utc::now().into()),
+            }
+            .insert(txn)
+            .await
+            .map_err(BlogError::from)?;
+        }
+
+        Ok(())
     }
 
     async fn ensure_slug_unique_in_tx(
@@ -847,10 +1066,18 @@ impl PostService {
         &self,
         post: blog_post::Model,
         translations: Vec<blog_post_translation::Model>,
+        channel_slugs: Vec<String>,
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<PostResponse> {
-        let tags_map = load_post_tags_map(&self.db, &[post.id], locale, fallback_locale).await?;
+        let tags_map = load_post_tags_map(
+            &self.db,
+            post.tenant_id,
+            &[post.id],
+            locale,
+            fallback_locale,
+        )
+        .await?;
         let resolved = resolve_translation_record(&translations, locale, fallback_locale);
         let translation = resolved.translation;
         let body = translation
@@ -891,7 +1118,11 @@ impl PostService {
             featured_image_url: post.featured_image_url,
             seo_title: translation.and_then(|item| item.seo_title.clone()),
             seo_description: translation.and_then(|item| item.seo_description.clone()),
-            channel_slugs: extract_channel_slugs(&post.metadata),
+            channel_slugs: if channel_slugs.is_empty() {
+                extract_channel_slugs(&post.metadata)
+            } else {
+                channel_slugs
+            },
             metadata: post.metadata,
             comment_count: post.comment_count as i64,
             view_count: post.view_count as i64,
@@ -1006,7 +1237,6 @@ fn build_post_metadata(
     featured_image_url: Option<String>,
     seo_title: Option<String>,
     seo_description: Option<String>,
-    channel_slugs: Option<&[String]>,
 ) -> Value {
     let mut metadata = metadata.unwrap_or_else(|| serde_json::json!({}));
     if !metadata.is_object() {
@@ -1027,7 +1257,7 @@ fn build_post_metadata(
     if let Some(seo_description) = seo_description {
         set_metadata_string(&mut metadata, "seo_description", &seo_description);
     }
-    apply_channel_visibility_metadata(&mut metadata, channel_slugs);
+    strip_channel_visibility_metadata(&mut metadata);
     metadata
 }
 
@@ -1064,30 +1294,16 @@ fn merge_metadata(base: &mut Value, patch: Value) {
     }
 }
 
-fn apply_channel_visibility_metadata(metadata: &mut Value, channel_slugs: Option<&[String]>) {
-    let Some(channel_slugs) = channel_slugs else {
-        return;
-    };
-
-    let normalized = normalize_channel_slugs(channel_slugs);
-    let object = ensure_metadata_object(metadata);
-    if normalized.is_empty() {
-        object.remove(CHANNEL_VISIBILITY_KEY);
-        return;
+fn strip_channel_visibility_metadata(metadata: &mut Value) {
+    if let Some(object) = metadata.as_object_mut() {
+        object.remove("channel_visibility");
     }
-
-    object.insert(
-        CHANNEL_VISIBILITY_KEY.to_string(),
-        serde_json::json!({
-            ALLOWED_CHANNEL_SLUGS_KEY: normalized,
-        }),
-    );
 }
 
 pub(crate) fn extract_channel_slugs(metadata: &Value) -> Vec<String> {
     metadata
-        .get(CHANNEL_VISIBILITY_KEY)
-        .and_then(|value| value.get(ALLOWED_CHANNEL_SLUGS_KEY))
+        .get("channel_visibility")
+        .and_then(|value| value.get("allowed_channel_slugs"))
         .and_then(|value| value.as_array())
         .map(|items| {
             normalize_channel_slugs(
@@ -1100,9 +1316,11 @@ pub(crate) fn extract_channel_slugs(metadata: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-pub(crate) fn is_post_visible_for_channel(metadata: &Value, channel_slug: Option<&str>) -> bool {
-    let allowed_channel_slugs = extract_channel_slugs(metadata);
-    if allowed_channel_slugs.is_empty() {
+pub(crate) fn is_post_visible_for_channel(
+    channel_slugs: &[String],
+    channel_slug: Option<&str>,
+) -> bool {
+    if channel_slugs.is_empty() {
         return true;
     }
 
@@ -1111,7 +1329,7 @@ pub(crate) fn is_post_visible_for_channel(metadata: &Value, channel_slug: Option
     };
 
     let normalized = channel_slug.trim().to_ascii_lowercase();
-    !normalized.is_empty() && allowed_channel_slugs.iter().any(|item| item == &normalized)
+    !normalized.is_empty() && channel_slugs.iter().any(|item| item == &normalized)
 }
 
 fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
@@ -1123,6 +1341,70 @@ fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
     normalized.sort();
     normalized.dedup();
     normalized
+}
+
+fn apply_public_post_channel_filter(
+    select: Select<blog_post::Entity>,
+    tenant_id: Uuid,
+    channel_slug: Option<&str>,
+) -> Select<blog_post::Entity> {
+    let unrestricted = Expr::col((blog_post::Entity, blog_post::Column::Id))
+        .not_in_subquery(all_blog_post_channel_visibility_subquery(tenant_id));
+    let condition = match normalize_public_channel_slug(channel_slug) {
+        Some(channel_slug) => Condition::any().add(unrestricted).add(
+            Expr::col((blog_post::Entity, blog_post::Column::Id)).in_subquery(
+                matching_blog_post_channel_visibility_subquery(tenant_id, &channel_slug),
+            ),
+        ),
+        None => Condition::all().add(unrestricted),
+    };
+
+    select.filter(condition)
+}
+
+fn all_blog_post_channel_visibility_subquery(tenant_id: Uuid) -> SelectStatement {
+    Query::select()
+        .column(blog_post_channel_visibility::Column::PostId)
+        .from(blog_post_channel_visibility::Entity)
+        .and_where(
+            Expr::col((
+                blog_post_channel_visibility::Entity,
+                blog_post_channel_visibility::Column::TenantId,
+            ))
+            .eq(tenant_id),
+        )
+        .to_owned()
+}
+
+fn matching_blog_post_channel_visibility_subquery(
+    tenant_id: Uuid,
+    channel_slug: &str,
+) -> SelectStatement {
+    Query::select()
+        .column(blog_post_channel_visibility::Column::PostId)
+        .from(blog_post_channel_visibility::Entity)
+        .and_where(
+            Expr::col((
+                blog_post_channel_visibility::Entity,
+                blog_post_channel_visibility::Column::TenantId,
+            ))
+            .eq(tenant_id),
+        )
+        .and_where(
+            Expr::col((
+                blog_post_channel_visibility::Entity,
+                blog_post_channel_visibility::Column::ChannelSlug,
+            ))
+            .eq(channel_slug),
+        )
+        .to_owned()
+}
+
+fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
+    channel_slug
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty())
+        .map(|slug| slug.to_ascii_lowercase())
 }
 
 fn extract_tags(metadata: &Value) -> Vec<String> {
@@ -1162,7 +1444,9 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    use rustok_core::MigrationSource;
     use rustok_core::{MemoryTransport, SecurityContext, UserRole};
+    use rustok_taxonomy::TaxonomyModule;
     use sea_orm::{ConnectOptions, Database, DatabaseConnection};
     use sea_orm_migration::SchemaManager;
 
@@ -1183,6 +1467,12 @@ mod tests {
 
     async fn ensure_blog_schema(db: &DatabaseConnection) {
         let manager = SchemaManager::new(db);
+        for migration in TaxonomyModule.migrations() {
+            migration
+                .up(&manager)
+                .await
+                .expect("taxonomy migration should apply");
+        }
         for migration in crate::migrations::migrations() {
             migration
                 .up(&manager)
@@ -1211,20 +1501,20 @@ mod tests {
     }
 
     #[test]
-    fn channel_visibility_normalizes_and_filters_blog_metadata() {
-        let mut metadata = serde_json::json!({});
-        apply_channel_visibility_metadata(
-            &mut metadata,
-            Some(&[" Web ".to_string(), "mobile".to_string(), "web".to_string()]),
-        );
+    fn channel_visibility_normalizes_and_filters_blog_channel_lists() {
+        let channel_slugs = normalize_channel_slugs(&[
+            " Web ".to_string(),
+            "mobile".to_string(),
+            "web".to_string(),
+        ]);
 
-        assert_eq!(
-            extract_channel_slugs(&metadata),
-            vec!["mobile".to_string(), "web".to_string()]
-        );
-        assert!(is_post_visible_for_channel(&metadata, Some("web")));
-        assert!(!is_post_visible_for_channel(&metadata, Some("storefront")));
-        assert!(!is_post_visible_for_channel(&metadata, None));
+        assert_eq!(channel_slugs, vec!["mobile".to_string(), "web".to_string()]);
+        assert!(is_post_visible_for_channel(&channel_slugs, Some("web")));
+        assert!(!is_post_visible_for_channel(
+            &channel_slugs,
+            Some("storefront")
+        ));
+        assert!(!is_post_visible_for_channel(&channel_slugs, None));
     }
 
     #[test]
@@ -1377,5 +1667,178 @@ mod tests {
             .expect("customer listing should succeed");
         assert!(listed.items.is_empty());
         assert_eq!(listed.total, 0);
+    }
+
+    #[tokio::test]
+    async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
+        let db = setup_test_db().await;
+        ensure_blog_schema(&db).await;
+
+        let transport = MemoryTransport::new();
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
+        let post_service = PostService::new(db.clone(), event_bus);
+
+        let tenant_id = Uuid::new_v4();
+        let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+        let post_id = post_service
+            .create_post(
+                tenant_id,
+                admin.clone(),
+                CreatePostInput {
+                    locale: "en".to_string(),
+                    title: "Visible post".to_string(),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    excerpt: None,
+                    slug: Some("visible-post".to_string()),
+                    publish: true,
+                    tags: vec![],
+                    category_id: None,
+                    featured_image_url: None,
+                    seo_title: None,
+                    seo_description: None,
+                    channel_slugs: Some(vec![" Web ".to_string(), "mobile".to_string()]),
+                    metadata: Some(serde_json::json!({
+                        "channel_visibility": {
+                            "allowed_channel_slugs": ["legacy"]
+                        }
+                    })),
+                },
+            )
+            .await
+            .expect("post should be created");
+
+        let created = post_service
+            .get_post(tenant_id, admin.clone(), post_id, "en")
+            .await
+            .expect("post should load");
+        assert_eq!(
+            created.channel_slugs,
+            vec!["mobile".to_string(), "web".to_string()]
+        );
+        assert_eq!(
+            extract_channel_slugs(&created.metadata),
+            Vec::<String>::new()
+        );
+
+        post_service
+            .update_post(
+                tenant_id,
+                post_id,
+                admin.clone(),
+                UpdatePostInput {
+                    locale: Some("en".to_string()),
+                    title: None,
+                    body: None,
+                    body_format: None,
+                    content_json: None,
+                    excerpt: None,
+                    slug: None,
+                    tags: None,
+                    category_id: None,
+                    featured_image_url: None,
+                    seo_title: None,
+                    seo_description: None,
+                    channel_slugs: Some(vec!["storefront".to_string()]),
+                    metadata: Some(serde_json::json!({
+                        "channel_visibility": {
+                            "allowed_channel_slugs": ["legacy-again"]
+                        }
+                    })),
+                    version: Some(created.version),
+                },
+            )
+            .await
+            .expect("post should update");
+
+        let updated = post_service
+            .get_post(tenant_id, admin, post_id, "en")
+            .await
+            .expect("updated post should load");
+        assert_eq!(updated.channel_slugs, vec!["storefront".to_string()]);
+        assert_eq!(
+            extract_channel_slugs(&updated.metadata),
+            Vec::<String>::new()
+        );
+    }
+
+    #[tokio::test]
+    async fn public_visible_listing_filters_by_typed_channel_relation() {
+        let db = setup_test_db().await;
+        ensure_blog_schema(&db).await;
+
+        let transport = MemoryTransport::new();
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
+        let post_service = PostService::new(db.clone(), event_bus);
+
+        let tenant_id = Uuid::new_v4();
+        let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+        for (slug, title, channel_slugs) in [
+            ("web-visible", "Web Visible", Some(vec!["web".to_string()])),
+            (
+                "mobile-only",
+                "Mobile Only",
+                Some(vec!["mobile".to_string()]),
+            ),
+            ("global", "Global", None),
+        ] {
+            post_service
+                .create_post(
+                    tenant_id,
+                    admin.clone(),
+                    CreatePostInput {
+                        locale: "en".to_string(),
+                        title: title.to_string(),
+                        body: "Body".to_string(),
+                        body_format: "markdown".to_string(),
+                        content_json: None,
+                        excerpt: None,
+                        slug: Some(slug.to_string()),
+                        publish: true,
+                        tags: vec![],
+                        category_id: None,
+                        featured_image_url: None,
+                        seo_title: None,
+                        seo_description: None,
+                        channel_slugs,
+                        metadata: None,
+                    },
+                )
+                .await
+                .expect("post should be created");
+        }
+
+        let visible = post_service
+            .list_public_visible_with_locale_fallback(
+                tenant_id,
+                PostListQuery {
+                    status: Some(BlogPostStatus::Published),
+                    locale: Some("en".to_string()),
+                    page: Some(1),
+                    per_page: Some(10),
+                    sort_by: Some("published_at".to_string()),
+                    sort_order: Some("desc".to_string()),
+                    ..Default::default()
+                },
+                Some("en"),
+                Some("web"),
+            )
+            .await
+            .expect("public visible list should succeed");
+
+        assert_eq!(visible.total, 2);
+        let slugs = visible
+            .items
+            .into_iter()
+            .map(|item| item.slug)
+            .collect::<Vec<_>>();
+        assert!(slugs.contains(&"web-visible".to_string()));
+        assert!(slugs.contains(&"global".to_string()));
+        assert!(!slugs.contains(&"mobile-only".to_string()));
     }
 }

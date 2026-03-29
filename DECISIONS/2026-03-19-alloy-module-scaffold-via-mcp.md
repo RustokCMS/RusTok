@@ -9,7 +9,7 @@ Accepted
 RusToK already had:
 
 - `rustok-mcp` as an MCP transport/tool adapter over `rmcp`;
-- `alloy-scripting` as the Alloy runtime/engine capability;
+- `alloy` as the Alloy runtime/engine capability;
 - `rustok-alloy` as GraphQL/REST transport for Alloy runtime management.
 
 But this stack still looked like foundation without a clear first vertical product slice. We needed a
@@ -55,3 +55,4 @@ Constraints:
 1. Add review/apply boundaries above scaffolded code.
 2. Extend generated output with richer RusToK hints and capability metadata.
 3. Move from draft scaffolding toward a broader Alloy codegen pipeline.
+

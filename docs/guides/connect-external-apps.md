@@ -41,7 +41,7 @@ You can manage manual OAuth apps from both admin UIs:
 1. Open **App Connections**.
 2. Click **Create New App**.
 3. Choose `ThirdParty`, `Mobile`, or `Service`.
-4. Fill in `redirectUris`, `scopes`, and `grantTypes`.
+4. Fill in `redirectUris`, `scopes`, `grantTypes`, and `grantedPermissions` when the app uses `client_credentials`.
 5. Save the displayed `clientSecret` immediately. It is shown only once.
 
 The same operations are available via GraphQL:
@@ -99,6 +99,12 @@ Use `POST /api/oauth/token` for machine/API steps:
 - `refresh_token`
 - `client_credentials`
 
+For `client_credentials`:
+
+- OAuth `scopes` still gate transport/API intent.
+- RusToK domain access is resolved separately from `oauth_apps.granted_permissions`.
+- The server reads `granted_permissions` live on every service-token request, so app deactivation or permission edits apply immediately.
+
 Related endpoints:
 
 - `POST /api/oauth/revoke`
@@ -110,6 +116,7 @@ Related endpoints:
 
 - `authorization_code` apps must have at least one `redirect_uri`.
 - `service` apps cannot use `authorization_code`.
+- apps using `client_credentials` must declare at least one `granted_permission`.
 - `first_party` and `embedded` apps are not created manually.
 - both admin UIs display whether an app is manual or `managed by config/manifest`.
 

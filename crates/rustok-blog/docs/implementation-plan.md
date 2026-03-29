@@ -21,24 +21,31 @@ compatibility with platform-level contracts.
 ## Split track — target blog-owned persistence
 
 The current implementation already uses module-owned storage for blog posts,
-categories, tags, and `rustok-comments` for blog comments. Remaining
-`rustok-content` usage is limited to shared content helpers and orchestration.
+categories, blog-owned post-term relations, and `rustok-comments` for blog
+comments. Canonical tag vocabulary now lives in shared `rustok-taxonomy`,
+while `rustok-content` usage is limited to shared content helpers and
+orchestration.
+The storage split itself is complete; Phase 3 below now tracks post-split
+production backlog rather than split blockers.
 
 Target blog-owned tables after the split:
 
 - `blog_posts`
 - `blog_post_translations`
+- `blog_post_channel_visibility`
 - `blog_categories`
 - `blog_category_translations`
-- `blog_tags`
-- `blog_tag_translations`
 - `blog_post_tags`
+- shared `taxonomy_terms`
+- shared `taxonomy_term_translations`
+- shared `taxonomy_term_aliases`
 
 Target invariants:
 
 - `comment_count` is a typed column on `blog_posts`;
-- category/tag relations are normalized instead of being filtered through
-  metadata;
+- category relations are normalized instead of being filtered through metadata;
+- canonical tag identity is owned by `rustok-taxonomy`, while attach/detach
+  stays in typed `blog_post_tags`;
 - blog comments now use `rustok-comments`; this crate keeps the blog-facing
   transport/domain facade only;
 - `rustok-content` stops being the canonical CRUD/storage backend for blog.
@@ -50,8 +57,7 @@ Target invariants:
 - [x] Core compile-time integration with the workspace is available.
 - [x] Module metadata (slug, name, description, version).
 - [x] Blog-owned migrations are in place for `blog_posts`, `blog_post_translations`,
-  `blog_categories`, `blog_category_translations`, `blog_tags`,
-  `blog_tag_translations`, and `blog_post_tags`.
+  `blog_categories`, `blog_category_translations`, and `blog_post_tags`.
 
 ### Phase 1 — Contract hardening ✅ DONE
 
@@ -113,18 +119,20 @@ Target invariants:
   - [x] `CreatePostInput` includes SEO and featured_image fields
 - [x] Swagger updated with all new types
 
-### Phase 3 — Productionization (in progress)
+### Phase 3 — Productionization / post-split backlog (in progress)
 
 - [x] CommentService implementation
 - [x] Blog comments moved to `rustok-comments`
 - [x] Blog posts moved off `rustok-content::NodeService`
 - [x] CategoryService implementation (`services/category.rs` — full CRUD, tenant isolation, slug auto-generation)
-- [x] TagService implementation (`services/tag.rs` — full CRUD, slug normalization)
+- [x] TagService implementation (`services/tag.rs` — taxonomy-backed CRUD, slug normalization)
 - [x] Integration tests with test database (all 5 post lifecycle tests + 2 new category/tag tests now green)
 - [x] Blog category/tag storage moved off `rustok-content`
+- [x] Blog tag vocabulary moved off blog-local tables onto shared `rustok-taxonomy`
 - [x] `PostService::list_posts` now filters by normalized tag relations instead of metadata scans
 - [x] Channel-aware pilot on public read-path via `rustok-channel` module bindings
-- [x] Extend the pilot to publication-level metadata-based `channelSlugs` allowlists on published public read-paths
+- [x] Extend the pilot to publication-level `channelSlugs` allowlists on published public read-paths
+- [x] Move blog post channel visibility off metadata into typed relation storage
 - [x] RBAC enforcement: service layer now re-validates `blog_posts:*`,
   `categories:*`, and `tags:*`, and customer read paths no longer expose
   non-public posts
@@ -146,11 +154,11 @@ Target invariants:
 | `services/post.rs` | ✅ Complete | Full CRUD + i18n + events |
 | `services/comment.rs` | ✅ Complete | CRUD + locale fallback + threaded comments |
 | `services/category.rs` | ✅ Complete | CRUD + tenant isolation + slug auto-generation |
-| `services/tag.rs` | ✅ Complete | CRUD + slug normalization |
+| `services/tag.rs` | ✅ Complete | Taxonomy-backed CRUD + slug normalization |
 | `dto/post.rs` | ✅ Complete | All fields, i18n, SEO, pagination |
 | `entities/` | ✅ Complete | Blog-owned entities and relations |
 | Tests (unit) | ✅ Complete | State machine, DTOs, errors, locale, service |
-| Channel pilot | ✅ Complete | Public GraphQL read-path honors `channel_module_bindings` and metadata-based `channelSlugs` allowlists for `blog` |
+| Channel pilot | ✅ Complete | Public GraphQL read-path honors `channel_module_bindings` and typed `blog_post_channel_visibility` behind the `channelSlugs` contract |
 | Tests (integration) | ✅ Complete | All lifecycle and category/tag tests green; 18 integration tests pass |
 | Documentation | ✅ Complete | README, CRATE_API, docs |
 
@@ -193,20 +201,20 @@ Target invariants:
 - Add API surface for tag discovery/management.
 
 **Dependencies (data/migrations/API)**
-- Data: canonical tag storage is `blog_tags` + `blog_tag_translations` + `blog_post_tags`.
-- Migrations: owned blog migration already added; future changes should extend the blog-owned taxonomy chain.
+- Data: canonical tag identity is `taxonomy_terms` + `taxonomy_term_translations` + `taxonomy_term_aliases`; blog attachment stays in `blog_post_tags`.
+- Migrations: blog owns only `blog_post_tags`; shared tag dictionary storage belongs to `rustok-taxonomy`.
 - API: REST and GraphQL query/mutation additions for tags; docs + OpenAPI sync.
 
 **Definition of Done**
 - `TagService` implemented and exported.
 - Tag lifecycle covered by tenant-aware validation and deterministic normalization.
-- Post flows either validate-only or upsert tags according to approved policy.
+- Post flows auto-create blog-scoped terms and reuse matching global terms via `rustok-taxonomy`.
 - API + docs fully synchronized.
 
 **Test scenarios**
 - Unit: create/list/update/delete tags, normalization, duplicate prevention.
 - Unit: tenant isolation and `TagNotFound` mapping.
-- Integration: filter posts by tag with persisted tag entities.
+- Integration: filter posts by tag with taxonomy-backed persisted tag entities.
 
 **Key implementation references (current related code)**
 - Tag-related errors already defined: [`src/error.rs`](../src/error.rs).
@@ -307,7 +315,7 @@ or observability expectations:
 
 ## Last Updated
 
-2026-03-17 — Phase 3: CategoryService, TagService implemented; all integration tests green; tag/category kinds registered in content validation and RBAC
+2026-03-29 — Blog tags moved to shared `rustok-taxonomy`; `blog_post_tags` remains module-owned and integration coverage now includes global-term reuse.
 
 
 ### Rich-text admin integration (update)
@@ -320,5 +328,5 @@ or observability expectations:
 
 - [x] контрактные тесты покрывают все публичные use-case.
 - [x] `blog` стал вторым pilot consumer для `rustok-channel` через public read-path gating.
-- [x] `blog` расширен до второго publication-level proof point через metadata-based `channelSlugs` allowlist.
+- [x] `blog` расширен до второго publication-level proof point через typed `channelSlugs` allowlist persistence.
 

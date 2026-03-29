@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+use utoipa::ToSchema;
 
 use crate::error::{Error as ServerError, Result as ServerResult};
 
@@ -126,7 +127,11 @@ pub struct ManifestModuleSpec {
     #[serde(rename = "crate")]
     pub crate_name: String,
     #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
     pub version: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
     #[serde(default)]
     pub git: Option<String>,
     #[serde(default)]
@@ -167,7 +172,7 @@ pub struct ManifestModuleSpec {
     pub settings_schema: HashMap<String, ModuleSettingSpec>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct ModuleSettingSpec {
     #[serde(rename = "type", default)]
     pub value_type: String,
@@ -201,7 +206,9 @@ pub struct CatalogManifestModule {
     pub slug: String,
     pub source: String,
     pub crate_name: String,
+    pub name: Option<String>,
     pub version: Option<String>,
+    pub description: Option<String>,
     pub git: Option<String>,
     pub rev: Option<String>,
     pub path: Option<String>,
@@ -618,6 +625,22 @@ fn merge_module_package_manifest(
         .filter(|value| !value.is_empty())
     {
         spec.version = Some(version.to_string());
+    }
+    if let Some(name) = metadata
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        spec.name = Some(name.to_string());
+    }
+    if let Some(description) = metadata
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        spec.description = Some(description.to_string());
     }
 
     if !metadata.ownership.trim().is_empty() {
@@ -1592,7 +1615,9 @@ impl ManifestManager {
                     slug: slug.to_string(),
                     source: spec.source,
                     crate_name: spec.crate_name,
+                    name: spec.name,
                     version: spec.version,
+                    description: spec.description,
                     git: spec.git,
                     rev: spec.rev,
                     path: spec.path,
@@ -1980,6 +2005,12 @@ impl ManifestManager {
         let missing_in_registry: Vec<String> = manifest
             .modules
             .iter()
+            .filter(|(slug, _)| {
+                resolved_specs
+                    .get(*slug)
+                    .and_then(|spec| spec.entry_type.as_ref())
+                    .is_some()
+            })
             .map(|(slug, _)| slug)
             .filter(|slug| !registry.contains(slug))
             .cloned()
@@ -2884,14 +2915,7 @@ trust_level = "verified"
         );
 
         let mut manifest = manifest_with_modules(&[
-            "index",
-            "outbox",
-            "content",
-            "comments",
-            "blog",
-            "forum",
-            "tenant",
-            "rbac",
+            "index", "outbox", "content", "comments", "blog", "forum", "tenant", "rbac",
         ]);
         manifest.modules.get_mut("blog").unwrap().path = Some("crates/rustok-blog".to_string());
         manifest.modules.get_mut("forum").unwrap().path = Some("crates/rustok-forum".to_string());

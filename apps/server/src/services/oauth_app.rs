@@ -1,6 +1,7 @@
 //! OAuth App Service — CRUD operations and credential management
 
 use crate::auth::{self, AuthConfig};
+use crate::context::infer_user_role_from_permissions;
 use crate::error::{Error, Result};
 use crate::models::oauth_apps::{self, ActiveModel as OAuthAppActiveModel, Entity as OAuthApps};
 use crate::models::oauth_authorization_codes::{
@@ -14,7 +15,9 @@ use crate::models::tenants;
 use chrono::Utc;
 use reqwest::Url;
 use rustok_api::context::scope_matches;
+use rustok_core::{Permission, Rbac, UserRole};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use std::str::FromStr;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
@@ -29,6 +32,7 @@ pub struct CreateOAuthAppInput {
     pub redirect_uris: Vec<String>,
     pub scopes: Vec<String>,
     pub grant_types: Vec<String>,
+    pub granted_permissions: Vec<String>,
 }
 
 /// Input for updating a manual OAuth app
@@ -40,6 +44,7 @@ pub struct UpdateOAuthAppInput {
     pub redirect_uris: Vec<String>,
     pub scopes: Vec<String>,
     pub grant_types: Vec<String>,
+    pub granted_permissions: Vec<String>,
 }
 
 /// Result of creating an OAuth app — includes the plaintext secret shown once
@@ -65,11 +70,13 @@ impl OAuthAppService {
         tenant_id: Uuid,
         input: CreateOAuthAppInput,
     ) -> Result<CreateOAuthAppResult> {
+        let granted_permissions = validate_granted_permissions(input.granted_permissions)?;
         validate_manual_app_configuration(
             &input.app_type,
             &input.redirect_uris,
             &input.scopes,
             &input.grant_types,
+            &granted_permissions,
         )?;
 
         let client_id = Uuid::new_v4();
@@ -94,6 +101,7 @@ impl OAuthAppService {
             grant_types: Set(
                 serde_json::to_value(&input.grant_types).map_err(|_| Error::InternalServerError)?
             ),
+            granted_permissions: Set(to_json_array(&granted_permissions)?),
             manifest_ref: Set(None),
             auto_created: Set(false),
             is_active: Set(true),
@@ -120,6 +128,7 @@ impl OAuthAppService {
         app_id: Uuid,
         input: UpdateOAuthAppInput,
     ) -> Result<oauth_apps::Model> {
+        let granted_permissions = validate_granted_permissions(input.granted_permissions)?;
         let app = OAuthApps::find_by_id(app_id)
             .one(db)
             .await
@@ -142,6 +151,7 @@ impl OAuthAppService {
             &input.redirect_uris,
             &input.scopes,
             &input.grant_types,
+            &granted_permissions,
         )?;
 
         let mut active: OAuthAppActiveModel = app.into();
@@ -155,6 +165,7 @@ impl OAuthAppService {
             Set(serde_json::to_value(&input.scopes).map_err(|_| Error::InternalServerError)?);
         active.grant_types =
             Set(serde_json::to_value(&input.grant_types).map_err(|_| Error::InternalServerError)?);
+        active.granted_permissions = Set(to_json_array(&granted_permissions)?);
         active.updated_at = Set(Utc::now().into());
 
         active
@@ -290,11 +301,16 @@ impl OAuthAppService {
 
         // Service tokens get 1 hour TTL
         let expires_in = 3600u64;
+        let granted_permissions = app
+            .parsed_granted_permissions()
+            .map_err(Error::BadRequest)?;
+        let inferred_role = infer_user_role_from_permissions(&granted_permissions);
 
         let token = auth::encode_oauth_access_token(
             auth_config,
             app.id,
             app.tenant_id,
+            inferred_role,
             app.client_id,
             &granted_scopes,
             "client_credentials",
@@ -456,6 +472,15 @@ impl OAuthAppService {
             auth_config,
             user_id,
             app.tenant_id,
+            crate::context::infer_user_role_from_permissions(
+                &crate::services::rbac_service::RbacService::get_user_permissions(
+                    db,
+                    &app.tenant_id,
+                    &user_id,
+                )
+                .await
+                .map_err(|_| Error::InternalServerError)?,
+            ),
             app.client_id,
             granted_scopes,
             "authorization_code",
@@ -716,6 +741,7 @@ pub async fn sync_app_connections(
                 &sf.redirect_uris,
                 &["storefront:*"],
                 &["authorization_code", "client_credentials"],
+                &role_permissions(UserRole::Customer),
             )
             .await?;
             active_slugs.insert(sf.id.clone());
@@ -734,6 +760,7 @@ pub async fn sync_app_connections(
             &manifest.build.admin.redirect_uris,
             &["admin:*"],
             &["authorization_code", "client_credentials"],
+            &role_permissions(UserRole::Admin),
         )
         .await?;
         active_slugs.insert(slug);
@@ -812,6 +839,7 @@ async fn upsert_embedded_app(
             redirect_uris: Set(serde_json::json!([])),
             scopes: Set(serde_json::to_value(&scopes_vec).map_err(|_| Error::InternalServerError)?),
             grant_types: Set(serde_json::json!([])),
+            granted_permissions: Set(serde_json::json!([])),
             manifest_ref: Set(Some(slug.to_string())),
             auto_created: Set(true),
             is_active: Set(true),
@@ -839,14 +867,17 @@ async fn upsert_first_party_app(
     redirect_uris: &[String],
     scopes: &[&str],
     grant_types: &[&str],
+    granted_permissions: &[String],
 ) -> Result<()> {
     let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
     let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
+    let granted_permissions_vec = validate_granted_permissions(granted_permissions.to_vec())?;
     validate_managed_app_configuration(
         "first_party",
         redirect_uris,
         &scopes_vec,
         &grant_types_vec,
+        &granted_permissions_vec,
     )?;
 
     let existing = OAuthApps::find()
@@ -870,6 +901,7 @@ async fn upsert_first_party_app(
             Set(serde_json::to_value(&scopes_vec).map_err(|_| Error::InternalServerError)?);
         active.grant_types =
             Set(serde_json::to_value(&grant_types_vec).map_err(|_| Error::InternalServerError)?);
+        active.granted_permissions = Set(to_json_array(&granted_permissions_vec)?);
         active.redirect_uris =
             Set(serde_json::to_value(redirect_uris).map_err(|_| Error::InternalServerError)?);
         active.metadata = Set(build_manifest_managed_metadata(public_url));
@@ -901,6 +933,7 @@ async fn upsert_first_party_app(
             grant_types: Set(
                 serde_json::to_value(&grant_types_vec).map_err(|_| Error::InternalServerError)?
             ),
+            granted_permissions: Set(to_json_array(&granted_permissions_vec)?),
             manifest_ref: Set(Some(slug.to_string())),
             auto_created: Set(true),
             is_active: Set(true),
@@ -942,6 +975,7 @@ fn validate_manual_app_configuration(
     redirect_uris: &[String],
     scopes: &[String],
     grant_types: &[String],
+    granted_permissions: &[String],
 ) -> Result<()> {
     if !matches!(app_type, "third_party" | "mobile" | "service") {
         return Err(Error::BadRequest(
@@ -950,7 +984,13 @@ fn validate_manual_app_configuration(
         ));
     }
 
-    validate_app_configuration(app_type, redirect_uris, scopes, grant_types)
+    validate_app_configuration(
+        app_type,
+        redirect_uris,
+        scopes,
+        grant_types,
+        granted_permissions,
+    )
 }
 
 fn validate_managed_app_configuration(
@@ -958,8 +998,15 @@ fn validate_managed_app_configuration(
     redirect_uris: &[String],
     scopes: &[String],
     grant_types: &[String],
+    granted_permissions: &[String],
 ) -> Result<()> {
-    validate_app_configuration(app_type, redirect_uris, scopes, grant_types)
+    validate_app_configuration(
+        app_type,
+        redirect_uris,
+        scopes,
+        grant_types,
+        granted_permissions,
+    )
 }
 
 fn validate_app_configuration(
@@ -967,6 +1014,7 @@ fn validate_app_configuration(
     redirect_uris: &[String],
     scopes: &[String],
     grant_types: &[String],
+    granted_permissions: &[String],
 ) -> Result<()> {
     if scopes.is_empty() {
         return Err(Error::BadRequest(
@@ -1004,6 +1052,14 @@ fn validate_app_configuration(
         ));
     }
 
+    if grant_types.iter().any(|item| item == "client_credentials") && granted_permissions.is_empty()
+    {
+        return Err(Error::BadRequest(
+            "Apps using client_credentials grant must declare at least one granted permission"
+                .to_string(),
+        ));
+    }
+
     for redirect_uri in redirect_uris {
         Url::parse(redirect_uri).map_err(|error| {
             Error::BadRequest(format!("Invalid redirect URI '{redirect_uri}': {error}"))
@@ -1022,6 +1078,35 @@ fn build_manifest_managed_metadata(public_url: &str) -> serde_json::Value {
         );
     }
     serde_json::Value::Object(metadata)
+}
+
+fn to_json_array(values: &[String]) -> Result<serde_json::Value> {
+    serde_json::to_value(values).map_err(|_| Error::InternalServerError)
+}
+
+fn validate_granted_permissions(values: Vec<String>) -> Result<Vec<String>> {
+    let mut values = values
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+
+    for value in &values {
+        Permission::from_str(value).map_err(|error| {
+            Error::BadRequest(format!("Invalid OAuth app permission '{value}': {error}"))
+        })?;
+    }
+
+    Ok(values)
+}
+
+fn role_permissions(role: UserRole) -> Vec<String> {
+    Rbac::permissions_for_role(&role)
+        .iter()
+        .map(ToString::to_string)
+        .collect()
 }
 
 #[cfg(test)]
@@ -1223,6 +1308,7 @@ mod tests {
             &["http://localhost:3000/auth/callback".to_string()],
             &["profile".to_string()],
             &["authorization_code".to_string()],
+            &[],
         );
 
         assert!(result.is_err());
@@ -1235,6 +1321,20 @@ mod tests {
             &[],
             &["profile".to_string()],
             &["authorization_code".to_string()],
+            &[],
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn client_credentials_requires_granted_permissions() {
+        let result = validate_manual_app_configuration(
+            "service",
+            &[],
+            &["forum:*".to_string()],
+            &["client_credentials".to_string()],
+            &[],
         );
 
         assert!(result.is_err());
@@ -1684,6 +1784,46 @@ mod tests {
     }
 
     #[test]
+    fn client_credentials_token_claim_uses_role_inferred_from_granted_permissions() {
+        let auth_config = AuthConfig::new("oauth-app-test-secret-with-sufficient-length".into())
+            .with_expiration(3600, 3600)
+            .with_issuer("rustok")
+            .with_audience("rustok-admin");
+        let app = oauth_apps::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            name: "Admin bot".to_string(),
+            slug: "admin-bot".to_string(),
+            description: None,
+            app_type: "service".to_string(),
+            icon_url: None,
+            client_id: Uuid::new_v4(),
+            client_secret_hash: Some("hash".to_string()),
+            redirect_uris: serde_json::json!([]),
+            scopes: serde_json::json!(["admin:*"]),
+            grant_types: serde_json::json!(["client_credentials"]),
+            granted_permissions: serde_json::to_value(role_permissions(UserRole::Admin))
+                .expect("serialize admin permissions"),
+            manifest_ref: None,
+            auto_created: false,
+            is_active: true,
+            revoked_at: None,
+            last_used_at: None,
+            metadata: serde_json::json!({}),
+            created_at: Utc::now().into(),
+            updated_at: Utc::now().into(),
+        };
+
+        let (token, expires_in) =
+            OAuthAppService::issue_client_credentials_token(&app, &auth_config, &[])
+                .expect("issue token");
+        let claims = crate::auth::decode_access_token(&auth_config, &token).expect("decode token");
+
+        assert_eq!(expires_in, 3600);
+        assert_eq!(claims.role, UserRole::Admin);
+    }
+
+    #[test]
     fn rfc6749_authorization_code_ttl() {
         // Our implementation issues 15-minute tokens for authorization_code
         let expires_in = 900u64;
@@ -1732,6 +1872,7 @@ mod tests {
                     "authorization_code".to_string(),
                     "refresh_token".to_string(),
                 ],
+                granted_permissions: vec![],
             },
         )
         .await
@@ -1760,6 +1901,7 @@ mod tests {
                     "authorization_code".to_string(),
                     "refresh_token".to_string(),
                 ],
+                granted_permissions: vec![],
             },
         )
         .await
@@ -1843,6 +1985,7 @@ mod tests {
                 "authorization_code",
                 "client_credentials"
             ])),
+            granted_permissions: Set(serde_json::json!(["modules:manage"])),
             manifest_ref: Set(Some("next-admin".to_string())),
             auto_created: Set(true),
             is_active: Set(true),
@@ -1867,6 +2010,7 @@ mod tests {
                 redirect_uris: vec!["https://evil.example.com/callback".to_string()],
                 scopes: vec!["admin:*".to_string()],
                 grant_types: vec!["authorization_code".to_string()],
+                granted_permissions: vec![],
             },
         )
         .await;
@@ -1910,6 +2054,7 @@ mod tests {
                 "authorization_code",
                 "client_credentials"
             ])),
+            granted_permissions: Set(serde_json::json!(["posts:read"])),
             manifest_ref: Set(Some("old-storefront".to_string())),
             auto_created: Set(true),
             is_active: Set(true),

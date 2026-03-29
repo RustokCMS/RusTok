@@ -12,6 +12,10 @@ All significant architectural choices should be recorded as ADRs.
 
 | ADR | Title | Status |
 |-----|-------|--------|
+| [2026-03-29](./2026-03-29-taxonomy-module-scope-aware-terms.md) | `rustok-taxonomy` as a shared scope-aware vocabulary module | Accepted |
+| [2026-03-29](./2026-03-29-forum-slug-locale-contract.md) | Forum slug/locale contract after content split | Accepted |
+| [2026-03-29](./2026-03-29-index-search-boundary.md) | Граница между `rustok-index` и `rustok-search` | Accepted |
+| [2026-03-29](./2026-03-29-pages-comments-no-default-integration.md) | `rustok-pages` не получает default-интеграцию с `rustok-comments` | Accepted |
 | [2026-03-28](./2026-03-28-content-orchestration-port-boundary.md) | Портовая граница для `rustok-content` orchestration | Accepted |
 | [2026-03-28](./2026-03-28-multilingual-content-contract.md) | Multilingual content contract for `blog` / `pages` / `comments` | Accepted |
 | [2026-03-28](./2026-03-28-content-domain-split-and-comments-module.md) | Разведение `content`-storage, введение `rustok-comments` и новая роль `rustok-content` | Accepted |

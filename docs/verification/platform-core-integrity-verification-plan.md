@@ -1,330 +1,330 @@
-# План rolling-верификации целостности ядра платформы
+# РџР»Р°РЅ rolling-РІРµСЂРёС„РёРєР°С†РёРё С†РµР»РѕСЃС‚РЅРѕСЃС‚Рё СЏРґСЂР° РїР»Р°С‚С„РѕСЂРјС‹
 
-- **Статус:** Актуализированный rolling-чеклист
-- **Режим:** Повторяемая точечная верификация
-- **Частота:** После любых изменений в ядре, admin-панелях, core модулях, i18n или конфигурации module registry
-- **Цель:** Убедиться, что server + обе admin-панели + core crates образуют самодостаточное ядро, которое работает полностью независимо от опциональных доменных модулей, предоставляет полноценный интерфейс и поддерживает многоязычность
-- **Companion-план:** [Главный план верификации платформы](./PLATFORM_VERIFICATION_PLAN.md)
+- **РЎС‚Р°С‚СѓСЃ:** РђРєС‚СѓР°Р»РёР·РёСЂРѕРІР°РЅРЅС‹Р№ rolling-С‡РµРєР»РёСЃС‚
+- **Р РµР¶РёРј:** РџРѕРІС‚РѕСЂСЏРµРјР°СЏ С‚РѕС‡РµС‡РЅР°СЏ РІРµСЂРёС„РёРєР°С†РёСЏ
+- **Р§Р°СЃС‚РѕС‚Р°:** РџРѕСЃР»Рµ Р»СЋР±С‹С… РёР·РјРµРЅРµРЅРёР№ РІ СЏРґСЂРµ, admin-РїР°РЅРµР»СЏС…, core РјРѕРґСѓР»СЏС…, i18n РёР»Рё РєРѕРЅС„РёРіСѓСЂР°С†РёРё module registry
+- **Р¦РµР»СЊ:** РЈР±РµРґРёС‚СЊСЃСЏ, С‡С‚Рѕ server + РѕР±Рµ admin-РїР°РЅРµР»Рё + core crates РѕР±СЂР°Р·СѓСЋС‚ СЃР°РјРѕРґРѕСЃС‚Р°С‚РѕС‡РЅРѕРµ СЏРґСЂРѕ, РєРѕС‚РѕСЂРѕРµ СЂР°Р±РѕС‚Р°РµС‚ РїРѕР»РЅРѕСЃС‚СЊСЋ РЅРµР·Р°РІРёСЃРёРјРѕ РѕС‚ РѕРїС†РёРѕРЅР°Р»СЊРЅС‹С… РґРѕРјРµРЅРЅС‹С… РјРѕРґСѓР»РµР№, РїСЂРµРґРѕСЃС‚Р°РІР»СЏРµС‚ РїРѕР»РЅРѕС†РµРЅРЅС‹Р№ РёРЅС‚РµСЂС„РµР№СЃ Рё РїРѕРґРґРµСЂР¶РёРІР°РµС‚ РјРЅРѕРіРѕСЏР·С‹С‡РЅРѕСЃС‚СЊ
+- **Companion-РїР»Р°РЅ:** [Р“Р»Р°РІРЅС‹Р№ РїР»Р°РЅ РІРµСЂРёС„РёРєР°С†РёРё РїР»Р°С‚С„РѕСЂРјС‹](./PLATFORM_VERIFICATION_PLAN.md)
 
-**Принцип работы с планом:**
-При прогоне — **устранять найденные проблемы сразу**, в той же сессии. Найденная проблема не закрывается до момента исправления. Нерешённые блокеры фиксируются в артефакте прогона как open blocker. После исправления — перепроверить соответствующую фазу.
+**РџСЂРёРЅС†РёРї СЂР°Р±РѕС‚С‹ СЃ РїР»Р°РЅРѕРј:**
+РџСЂРё РїСЂРѕРіРѕРЅРµ вЂ” **СѓСЃС‚СЂР°РЅСЏС‚СЊ РЅР°Р№РґРµРЅРЅС‹Рµ РїСЂРѕР±Р»РµРјС‹ СЃСЂР°Р·Сѓ**, РІ С‚РѕР№ Р¶Рµ СЃРµСЃСЃРёРё. РќР°Р№РґРµРЅРЅР°СЏ РїСЂРѕР±Р»РµРјР° РЅРµ Р·Р°РєСЂС‹РІР°РµС‚СЃСЏ РґРѕ РјРѕРјРµРЅС‚Р° РёСЃРїСЂР°РІР»РµРЅРёСЏ. РќРµСЂРµС€С‘РЅРЅС‹Рµ Р±Р»РѕРєРµСЂС‹ С„РёРєСЃРёСЂСѓСЋС‚СЃСЏ РІ Р°СЂС‚РµС„Р°РєС‚Рµ РїСЂРѕРіРѕРЅР° РєР°Рє open blocker. РџРѕСЃР»Рµ РёСЃРїСЂР°РІР»РµРЅРёСЏ вЂ” РїРµСЂРµРїСЂРѕРІРµСЂРёС‚СЊ СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰СѓСЋ С„Р°Р·Сѓ.
 
-**Легенда режимов:**
-- `🔧 Static` — выполнимо без запущенной инфраструктуры (cargo build/check/test, npm build/lint, git grep)
-- `🌐 Runtime` — требует запущенных PostgreSQL + server (и опционально Iggy)
-
----
-
-## 0. Предварительные условия
-
-> Если среда не поддерживает запуск инфраструктуры — `🌐 Runtime`-проверки пропускаются, выполняются только `🔧 Static`.
-
-- `🔧` `docker compose config` проходит без ошибок.
-- `🔧` `.env` или `.env.dev` содержит корректные переменные для соединения с DB и Iggy.
-- `🌐` PostgreSQL запущен и доступен (порт 5432) — `docker compose up -d db`
-- `🌐` Iggy event broker запущен (TCP порт 8090) — `docker compose up -d iggy` — **если сконфигурирован Iggy-транспорт** (`rustok-iggy` / `rustok-iggy-connector`). `rustok-outbox` transport-agnostic: при использовании другого транспорта или DB-режима Iggy не обязателен.
+**Р›РµРіРµРЅРґР° СЂРµР¶РёРјРѕРІ:**
+- `рџ”§ Static` вЂ” РІС‹РїРѕР»РЅРёРјРѕ Р±РµР· Р·Р°РїСѓС‰РµРЅРЅРѕР№ РёРЅС„СЂР°СЃС‚СЂСѓРєС‚СѓСЂС‹ (cargo build/check/test, npm build/lint, git grep)
+- `рџЊђ Runtime` вЂ” С‚СЂРµР±СѓРµС‚ Р·Р°РїСѓС‰РµРЅРЅС‹С… PostgreSQL + server (Рё РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ Iggy)
 
 ---
 
-## 1. Состав ядра платформы
+## 0. РџСЂРµРґРІР°СЂРёС‚РµР»СЊРЅС‹Рµ СѓСЃР»РѕРІРёСЏ
 
-Этот план верифицирует только следующие компоненты как единое целое:
+> Р•СЃР»Рё СЃСЂРµРґР° РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ Р·Р°РїСѓСЃРє РёРЅС„СЂР°СЃС‚СЂСѓРєС‚СѓСЂС‹ вЂ” `рџЊђ Runtime`-РїСЂРѕРІРµСЂРєРё РїСЂРѕРїСѓСЃРєР°СЋС‚СЃСЏ, РІС‹РїРѕР»РЅСЏСЋС‚СЃСЏ С‚РѕР»СЊРєРѕ `рџ”§ Static`.
 
-### 1.1 Приложения
+- `рџ”§` `docker compose config` РїСЂРѕС…РѕРґРёС‚ Р±РµР· РѕС€РёР±РѕРє.
+- `рџ”§` `.env` РёР»Рё `.env.dev` СЃРѕРґРµСЂР¶РёС‚ РєРѕСЂСЂРµРєС‚РЅС‹Рµ РїРµСЂРµРјРµРЅРЅС‹Рµ РґР»СЏ СЃРѕРµРґРёРЅРµРЅРёСЏ СЃ DB Рё Iggy.
+- `рџЊђ` PostgreSQL Р·Р°РїСѓС‰РµРЅ Рё РґРѕСЃС‚СѓРїРµРЅ (РїРѕСЂС‚ 5432) вЂ” `docker compose up -d db`
+- `рџЊђ` Iggy event broker Р·Р°РїСѓС‰РµРЅ (TCP РїРѕСЂС‚ 8090) вЂ” `docker compose up -d iggy` вЂ” **РµСЃР»Рё СЃРєРѕРЅС„РёРіСѓСЂРёСЂРѕРІР°РЅ Iggy-С‚СЂР°РЅСЃРїРѕСЂС‚** (`rustok-iggy` / `rustok-iggy-connector`). `rustok-outbox` transport-agnostic: РїСЂРё РёСЃРїРѕР»СЊР·РѕРІР°РЅРёРё РґСЂСѓРіРѕРіРѕ С‚СЂР°РЅСЃРїРѕСЂС‚Р° РёР»Рё DB-СЂРµР¶РёРјР° Iggy РЅРµ РѕР±СЏР·Р°С‚РµР»РµРЅ.
+
+---
+
+## 1. РЎРѕСЃС‚Р°РІ СЏРґСЂР° РїР»Р°С‚С„РѕСЂРјС‹
+
+Р­С‚РѕС‚ РїР»Р°РЅ РІРµСЂРёС„РёС†РёСЂСѓРµС‚ С‚РѕР»СЊРєРѕ СЃР»РµРґСѓСЋС‰РёРµ РєРѕРјРїРѕРЅРµРЅС‚С‹ РєР°Рє РµРґРёРЅРѕРµ С†РµР»РѕРµ:
+
+### 1.1 РџСЂРёР»РѕР¶РµРЅРёСЏ
 
 - **Server:** `apps/server`
-- **Admin панель #1:** `apps/admin` (Leptos CSR)
-- **Admin панель #2:** `apps/next-admin` (Next.js 16 + React 19)
+- **Admin РїР°РЅРµР»СЊ #1:** `apps/admin` (Leptos CSR)
+- **Admin РїР°РЅРµР»СЊ #2:** `apps/next-admin` (Next.js 16 + React 19)
 
 ### 1.2 Core crates
 
-- `rustok-core` — инфраструктурные контракты, типы ошибок, cache abstractions
-- `rustok-auth` — жизненный цикл аутентификации, JWT, OAuth2 AS
-- `rustok-rbac` — ролевая модель доступа, typed permissions
-- `rustok-cache` — абстракция кэша (in-memory / Redis)
-- `rustok-tenant` — multi-tenancy: резолюция, изоляция, cache
-- `rustok-events` — domain event definitions и contracts
-- `rustok-outbox` — transactional outbox, transport-agnostic event relay; конкретный транспорт (Iggy и др.) подключается опционально через `rustok-iggy` / `rustok-iggy-connector`
-- `rustok-search` — поисковый движок, PgSearch / индекс
-- `rustok-index` — CQRS read models, денормализация
-- `rustok-telemetry` — OpenTelemetry, tracing, Prometheus
-- `rustok-api` — shared host/API layer: TenantContext, AuthContext
-- `rustok-email` — email service abstraction
+- `rustok-core` вЂ” РёРЅС„СЂР°СЃС‚СЂСѓРєС‚СѓСЂРЅС‹Рµ РєРѕРЅС‚СЂР°РєС‚С‹, С‚РёРїС‹ РѕС€РёР±РѕРє, cache abstractions
+- `rustok-auth` вЂ” Р¶РёР·РЅРµРЅРЅС‹Р№ С†РёРєР» Р°СѓС‚РµРЅС‚РёС„РёРєР°С†РёРё, JWT, OAuth2 AS
+- `rustok-rbac` вЂ” СЂРѕР»РµРІР°СЏ РјРѕРґРµР»СЊ РґРѕСЃС‚СѓРїР°, typed permissions
+- `rustok-cache` вЂ” Р°Р±СЃС‚СЂР°РєС†РёСЏ РєСЌС€Р° (in-memory / Redis)
+- `rustok-tenant` вЂ” multi-tenancy: СЂРµР·РѕР»СЋС†РёСЏ, РёР·РѕР»СЏС†РёСЏ, cache
+- `rustok-events` вЂ” domain event definitions Рё contracts
+- `rustok-outbox` вЂ” transactional outbox, transport-agnostic event relay; РєРѕРЅРєСЂРµС‚РЅС‹Р№ С‚СЂР°РЅСЃРїРѕСЂС‚ (Iggy Рё РґСЂ.) РїРѕРґРєР»СЋС‡Р°РµС‚СЃСЏ РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ С‡РµСЂРµР· `rustok-iggy` / `rustok-iggy-connector`
+- `rustok-search` вЂ” РїРѕРёСЃРєРѕРІС‹Р№ РґРІРёР¶РѕРє, PgSearch / РёРЅРґРµРєСЃ
+- `rustok-index` вЂ” CQRS read models, РґРµРЅРѕСЂРјР°Р»РёР·Р°С†РёСЏ
+- `rustok-telemetry` вЂ” OpenTelemetry, tracing, Prometheus
+- `rustok-api` вЂ” shared host/API layer: TenantContext, AuthContext
+- `rustok-email` вЂ” email service abstraction
 
-### 1.3 Граница
+### 1.3 Р“СЂР°РЅРёС†Р°
 
-Следующие компоненты **не входят** в область этого плана:
+РЎР»РµРґСѓСЋС‰РёРµ РєРѕРјРїРѕРЅРµРЅС‚С‹ **РЅРµ РІС…РѕРґСЏС‚** РІ РѕР±Р»Р°СЃС‚СЊ СЌС‚РѕРіРѕ РїР»Р°РЅР°:
 
-- Опциональные доменные модули: `rustok-content`, `rustok-commerce`, `rustok-blog`, `rustok-forum`, `rustok-pages`, `rustok-media`, `rustok-workflow`
-- Capability-слои: `flex`, `alloy`, `alloy-scripting`, `rustok-mcp`
-- Их UI, тесты и интеграции верифицируются в профильных планах
-
----
-
-## 2. Инварианты ядра
-
-- `🔧` Core crates не импортируют опциональные доменные crates (content, commerce, blog, forum, pages, media, workflow).
-- `🔧` `rustok-core` не содержит доменных таблиц — только инфраструктурные контракты.
-- `🔧` Модули с `ModuleKind::Core` помечены `required = true` в `modules.toml`.
-- `🔧` `registry.is_core()` запрещает отключение core модулей через tenant API.
-- `🔧` `rustok-outbox` является `Core` модулем без tenant-toggle semantics.
-- `🔧` В `build_registry()` отсутствуют циклические зависимости между core crates.
+- РћРїС†РёРѕРЅР°Р»СЊРЅС‹Рµ РґРѕРјРµРЅРЅС‹Рµ РјРѕРґСѓР»Рё: `rustok-content`, `rustok-commerce`, `rustok-blog`, `rustok-forum`, `rustok-pages`, `rustok-media`, `rustok-workflow`
+- Capability-СЃР»РѕРё: `flex`, `alloy`, `alloy`, `rustok-mcp`
+- РС… UI, С‚РµСЃС‚С‹ Рё РёРЅС‚РµРіСЂР°С†РёРё РІРµСЂРёС„РёС†РёСЂСѓСЋС‚СЃСЏ РІ РїСЂРѕС„РёР»СЊРЅС‹С… РїР»Р°РЅР°С…
 
 ---
 
-## 3. Boot без опциональных модулей
+## 2. РРЅРІР°СЂРёР°РЅС‚С‹ СЏРґСЂР°
 
-**Файлы:**
+- `рџ”§` Core crates РЅРµ РёРјРїРѕСЂС‚РёСЂСѓСЋС‚ РѕРїС†РёРѕРЅР°Р»СЊРЅС‹Рµ РґРѕРјРµРЅРЅС‹Рµ crates (content, commerce, blog, forum, pages, media, workflow).
+- `рџ”§` `rustok-core` РЅРµ СЃРѕРґРµСЂР¶РёС‚ РґРѕРјРµРЅРЅС‹С… С‚Р°Р±Р»РёС† вЂ” С‚РѕР»СЊРєРѕ РёРЅС„СЂР°СЃС‚СЂСѓРєС‚СѓСЂРЅС‹Рµ РєРѕРЅС‚СЂР°РєС‚С‹.
+- `рџ”§` РњРѕРґСѓР»Рё СЃ `ModuleKind::Core` РїРѕРјРµС‡РµРЅС‹ `required = true` РІ `modules.toml`.
+- `рџ”§` `registry.is_core()` Р·Р°РїСЂРµС‰Р°РµС‚ РѕС‚РєР»СЋС‡РµРЅРёРµ core РјРѕРґСѓР»РµР№ С‡РµСЂРµР· tenant API.
+- `рџ”§` `rustok-outbox` СЏРІР»СЏРµС‚СЃСЏ `Core` РјРѕРґСѓР»РµРј Р±РµР· tenant-toggle semantics.
+- `рџ”§` Р’ `build_registry()` РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‚ С†РёРєР»РёС‡РµСЃРєРёРµ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РјРµР¶РґСѓ core crates.
+
+---
+
+## 3. Boot Р±РµР· РѕРїС†РёРѕРЅР°Р»СЊРЅС‹С… РјРѕРґСѓР»РµР№
+
+**Р¤Р°Р№Р»С‹:**
 - `apps/server/src/app.rs`
 - `apps/server/src/modules/mod.rs`
 - `apps/server/src/modules/manifest.rs`
 - `modules.toml`
 
-- `🔧` `cargo build -p rustok-server` проходит.
-- `🌐` Server стартует с включёнными только core модулями.
-- `🌐` `validate_registry_vs_manifest()` вызывается при старте и проходит без ошибок.
-- `🌐` Миграции (`cargo loco db migrate`) проходят без доменных модульных миграций.
-- `🌐` Server завершает bootstrap без `unwrap()` паник, связанных с отсутствием domain модулей.
-- `🌐` `/api/health` возвращает HTTP 200.
+- `рџ”§` `cargo build -p rustok-server` РїСЂРѕС…РѕРґРёС‚.
+- `рџЊђ` Server СЃС‚Р°СЂС‚СѓРµС‚ СЃ РІРєР»СЋС‡С‘РЅРЅС‹РјРё С‚РѕР»СЊРєРѕ core РјРѕРґСѓР»СЏРјРё.
+- `рџЊђ` `validate_registry_vs_manifest()` РІС‹Р·С‹РІР°РµС‚СЃСЏ РїСЂРё СЃС‚Р°СЂС‚Рµ Рё РїСЂРѕС…РѕРґРёС‚ Р±РµР· РѕС€РёР±РѕРє.
+- `рџЊђ` РњРёРіСЂР°С†РёРё (`cargo loco db migrate`) РїСЂРѕС…РѕРґСЏС‚ Р±РµР· РґРѕРјРµРЅРЅС‹С… РјРѕРґСѓР»СЊРЅС‹С… РјРёРіСЂР°С†РёР№.
+- `рџЊђ` Server Р·Р°РІРµСЂС€Р°РµС‚ bootstrap Р±РµР· `unwrap()` РїР°РЅРёРє, СЃРІСЏР·Р°РЅРЅС‹С… СЃ РѕС‚СЃСѓС‚СЃС‚РІРёРµРј domain РјРѕРґСѓР»РµР№.
+- `рџЊђ` `/api/health` РІРѕР·РІСЂР°С‰Р°РµС‚ HTTP 200.
 
 ---
 
-## 4. Auth в изоляции
+## 4. Auth РІ РёР·РѕР»СЏС†РёРё
 
-**Файлы:**
+**Р¤Р°Р№Р»С‹:**
 - `crates/rustok-auth/`
 - `apps/server/src/controllers/auth.rs`
 - `apps/server/src/controllers/oauth.rs`
 - `apps/server/src/services/auth_lifecycle.rs`
 
-> Полный auth/RBAC-аудит (JWT-контракт, permission enforcement, hardcoded roles) — в [platform-foundation-verification-plan.md](./platform-foundation-verification-plan.md).
+> РџРѕР»РЅС‹Р№ auth/RBAC-Р°СѓРґРёС‚ (JWT-РєРѕРЅС‚СЂР°РєС‚, permission enforcement, hardcoded roles) вЂ” РІ [platform-foundation-verification-plan.md](./platform-foundation-verification-plan.md).
 
-- `🌐` Sign up работает без опционального модуля.
-- `🌐` Sign in (email + password) работает без опционального модуля.
-- `🌐` Token refresh работает.
-- `🌐` Logout и session invalidation работают.
-- `🌐` Password reset flow работает.
-- `🌐` OAuth2 Authorization Server (PKCE flow, client credentials) работает как часть ядра.
+- `рџЊђ` Sign up СЂР°Р±РѕС‚Р°РµС‚ Р±РµР· РѕРїС†РёРѕРЅР°Р»СЊРЅРѕРіРѕ РјРѕРґСѓР»СЏ.
+- `рџЊђ` Sign in (email + password) СЂР°Р±РѕС‚Р°РµС‚ Р±РµР· РѕРїС†РёРѕРЅР°Р»СЊРЅРѕРіРѕ РјРѕРґСѓР»СЏ.
+- `рџЊђ` Token refresh СЂР°Р±РѕС‚Р°РµС‚.
+- `рџЊђ` Logout Рё session invalidation СЂР°Р±РѕС‚Р°СЋС‚.
+- `рџЊђ` Password reset flow СЂР°Р±РѕС‚Р°РµС‚.
+- `рџЊђ` OAuth2 Authorization Server (PKCE flow, client credentials) СЂР°Р±РѕС‚Р°РµС‚ РєР°Рє С‡Р°СЃС‚СЊ СЏРґСЂР°.
 
 ---
 
 ## 5. Multi-tenancy core
 
-**Файлы:**
+**Р¤Р°Р№Р»С‹:**
 - `crates/rustok-tenant/`
 - `apps/server/src/middleware/tenant.rs`
 
-> Полный tenancy-аудит (cache, stampede, Redis invalidation) — в [platform-foundation-verification-plan.md](./platform-foundation-verification-plan.md).
+> РџРѕР»РЅС‹Р№ tenancy-Р°СѓРґРёС‚ (cache, stampede, Redis invalidation) вЂ” РІ [platform-foundation-verification-plan.md](./platform-foundation-verification-plan.md).
 
-- `🌐` Tenant resolution (hostname/header-based) работает при чистом старте.
-- `🌐` Core модули всегда включены — попытка disable через API возвращает ошибку.
-- `🔧` `tenant_modules` корректно отражает core модули как не-toggleable.
+- `рџЊђ` Tenant resolution (hostname/header-based) СЂР°Р±РѕС‚Р°РµС‚ РїСЂРё С‡РёСЃС‚РѕРј СЃС‚Р°СЂС‚Рµ.
+- `рџЊђ` Core РјРѕРґСѓР»Рё РІСЃРµРіРґР° РІРєР»СЋС‡РµРЅС‹ вЂ” РїРѕРїС‹С‚РєР° disable С‡РµСЂРµР· API РІРѕР·РІСЂР°С‰Р°РµС‚ РѕС€РёР±РєСѓ.
+- `рџ”§` `tenant_modules` РєРѕСЂСЂРµРєС‚РЅРѕ РѕС‚СЂР°Р¶Р°РµС‚ core РјРѕРґСѓР»Рё РєР°Рє РЅРµ-toggleable.
 
 ---
 
-## 6. Обе admin-панели — функциональная полнота
+## 6. РћР±Рµ admin-РїР°РЅРµР»Рё вЂ” С„СѓРЅРєС†РёРѕРЅР°Р»СЊРЅР°СЏ РїРѕР»РЅРѕС‚Р°
 
-Admin-панели предоставляют **полноценный интерфейс** управления ядром платформы, а не голый дашборд. Каждый пункт меню — это UI, предоставляемый конкретным core модулем.
+Admin-РїР°РЅРµР»Рё РїСЂРµРґРѕСЃС‚Р°РІР»СЏСЋС‚ **РїРѕР»РЅРѕС†РµРЅРЅС‹Р№ РёРЅС‚РµСЂС„РµР№СЃ** СѓРїСЂР°РІР»РµРЅРёСЏ СЏРґСЂРѕРј РїР»Р°С‚С„РѕСЂРјС‹, Р° РЅРµ РіРѕР»С‹Р№ РґР°С€Р±РѕСЂРґ. РљР°Р¶РґС‹Р№ РїСѓРЅРєС‚ РјРµРЅСЋ вЂ” СЌС‚Рѕ UI, РїСЂРµРґРѕСЃС‚Р°РІР»СЏРµРјС‹Р№ РєРѕРЅРєСЂРµС‚РЅС‹Рј core РјРѕРґСѓР»РµРј.
 
-### 6.1 Функциональные разделы
+### 6.1 Р¤СѓРЅРєС†РёРѕРЅР°Р»СЊРЅС‹Рµ СЂР°Р·РґРµР»С‹
 
-| Пункт меню | Core модуль — источник UI |
+| РџСѓРЅРєС‚ РјРµРЅСЋ | Core РјРѕРґСѓР»СЊ вЂ” РёСЃС‚РѕС‡РЅРёРє UI |
 |------------|---------------------------|
-| Пользователи (Users) | `rustok-auth` |
-| Сессии (Sessions) | `rustok-auth` |
-| Роли и разрешения (Roles & Permissions) | `rustok-rbac` |
-| Tenant-ы / Организации | `rustok-tenant` |
-| Управление модулями | server / module registry |
-| Email-настройки | `rustok-email` |
-| Кэш (Cache management) | `rustok-cache` |
-| OAuth приложения | `rustok-auth` (OAuth2 AS) |
-| Настройки платформы (Settings) | `rustok-core` |
-| Локализация / Многоязычность | i18n layer (см. фазу 7) |
+| РџРѕР»СЊР·РѕРІР°С‚РµР»Рё (Users) | `rustok-auth` |
+| РЎРµСЃСЃРёРё (Sessions) | `rustok-auth` |
+| Р РѕР»Рё Рё СЂР°Р·СЂРµС€РµРЅРёСЏ (Roles & Permissions) | `rustok-rbac` |
+| Tenant-С‹ / РћСЂРіР°РЅРёР·Р°С†РёРё | `rustok-tenant` |
+| РЈРїСЂР°РІР»РµРЅРёРµ РјРѕРґСѓР»СЏРјРё | server / module registry |
+| Email-РЅР°СЃС‚СЂРѕР№РєРё | `rustok-email` |
+| РљСЌС€ (Cache management) | `rustok-cache` |
+| OAuth РїСЂРёР»РѕР¶РµРЅРёСЏ | `rustok-auth` (OAuth2 AS) |
+| РќР°СЃС‚СЂРѕР№РєРё РїР»Р°С‚С„РѕСЂРјС‹ (Settings) | `rustok-core` |
+| Р›РѕРєР°Р»РёР·Р°С†РёСЏ / РњРЅРѕРіРѕСЏР·С‹С‡РЅРѕСЃС‚СЊ | i18n layer (СЃРј. С„Р°Р·Сѓ 7) |
 
 ### 6.2 Leptos Admin (`apps/admin`)
 
-- `🔧` `cargo build -p rustok-admin` проходит.
-- `🌐` Приложение запускается и устанавливает соединение с server.
-- `🌐` Аутентификация работает через GraphQL auth flow.
-- `🌐` Dashboard загружается после успешного входа.
-- `🌐` Все функциональные разделы из таблицы 6.1 присутствуют в навигации.
-- `🌐` Каждый раздел, чей backend-модуль включён, отображает рабочий интерфейс.
-- `🌐` Разделы без включённого backend-модуля деградируют корректно (нет краша, нет 500).
-- `🔧` Module-owned routing (`/modules/:module_slug/*`) зарегистрирован для core модулей.
+- `рџ”§` `cargo build -p rustok-admin` РїСЂРѕС…РѕРґРёС‚.
+- `рџЊђ` РџСЂРёР»РѕР¶РµРЅРёРµ Р·Р°РїСѓСЃРєР°РµС‚СЃСЏ Рё СѓСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ СЃРѕРµРґРёРЅРµРЅРёРµ СЃ server.
+- `рџЊђ` РђСѓС‚РµРЅС‚РёС„РёРєР°С†РёСЏ СЂР°Р±РѕС‚Р°РµС‚ С‡РµСЂРµР· GraphQL auth flow.
+- `рџЊђ` Dashboard Р·Р°РіСЂСѓР¶Р°РµС‚СЃСЏ РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕРіРѕ РІС…РѕРґР°.
+- `рџЊђ` Р’СЃРµ С„СѓРЅРєС†РёРѕРЅР°Р»СЊРЅС‹Рµ СЂР°Р·РґРµР»С‹ РёР· С‚Р°Р±Р»РёС†С‹ 6.1 РїСЂРёСЃСѓС‚СЃС‚РІСѓСЋС‚ РІ РЅР°РІРёРіР°С†РёРё.
+- `рџЊђ` РљР°Р¶РґС‹Р№ СЂР°Р·РґРµР», С‡РµР№ backend-РјРѕРґСѓР»СЊ РІРєР»СЋС‡С‘РЅ, РѕС‚РѕР±СЂР°Р¶Р°РµС‚ СЂР°Р±РѕС‡РёР№ РёРЅС‚РµСЂС„РµР№СЃ.
+- `рџЊђ` Р Р°Р·РґРµР»С‹ Р±РµР· РІРєР»СЋС‡С‘РЅРЅРѕРіРѕ backend-РјРѕРґСѓР»СЏ РґРµРіСЂР°РґРёСЂСѓСЋС‚ РєРѕСЂСЂРµРєС‚РЅРѕ (РЅРµС‚ РєСЂР°С€Р°, РЅРµС‚ 500).
+- `рџ”§` Module-owned routing (`/modules/:module_slug/*`) Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°РЅ РґР»СЏ core РјРѕРґСѓР»РµР№.
 
 ### 6.3 Next.js Admin (`apps/next-admin`)
 
-- `🔧` `npm run build` проходит.
-- `🔧` `npm run lint` проходит.
-- `🔧` `npm run typecheck` проходит.
-- `🌐` Приложение запускается и устанавливает соединение с server.
-- `🌐` Аутентификация работает через NextAuth credentials flow.
-- `🌐` Dashboard загружается после успешного входа.
-- `🌐` Все функциональные разделы из таблицы 6.1 присутствуют в навигации.
-- `🌐` Каждый раздел, чей backend-модуль включён, отображает рабочий интерфейс.
-- `🌐` Разделы без включённого backend-модуля деградируют корректно (нет краша, нет 500).
+- `рџ”§` `npm run build` РїСЂРѕС…РѕРґРёС‚.
+- `рџ”§` `npm run lint` РїСЂРѕС…РѕРґРёС‚.
+- `рџ”§` `npm run typecheck` РїСЂРѕС…РѕРґРёС‚.
+- `рџЊђ` РџСЂРёР»РѕР¶РµРЅРёРµ Р·Р°РїСѓСЃРєР°РµС‚СЃСЏ Рё СѓСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ СЃРѕРµРґРёРЅРµРЅРёРµ СЃ server.
+- `рџЊђ` РђСѓС‚РµРЅС‚РёС„РёРєР°С†РёСЏ СЂР°Р±РѕС‚Р°РµС‚ С‡РµСЂРµР· NextAuth credentials flow.
+- `рџЊђ` Dashboard Р·Р°РіСЂСѓР¶Р°РµС‚СЃСЏ РїРѕСЃР»Рµ СѓСЃРїРµС€РЅРѕРіРѕ РІС…РѕРґР°.
+- `рџЊђ` Р’СЃРµ С„СѓРЅРєС†РёРѕРЅР°Р»СЊРЅС‹Рµ СЂР°Р·РґРµР»С‹ РёР· С‚Р°Р±Р»РёС†С‹ 6.1 РїСЂРёСЃСѓС‚СЃС‚РІСѓСЋС‚ РІ РЅР°РІРёРіР°С†РёРё.
+- `рџЊђ` РљР°Р¶РґС‹Р№ СЂР°Р·РґРµР», С‡РµР№ backend-РјРѕРґСѓР»СЊ РІРєР»СЋС‡С‘РЅ, РѕС‚РѕР±СЂР°Р¶Р°РµС‚ СЂР°Р±РѕС‡РёР№ РёРЅС‚РµСЂС„РµР№СЃ.
+- `рџЊђ` Р Р°Р·РґРµР»С‹ Р±РµР· РІРєР»СЋС‡С‘РЅРЅРѕРіРѕ backend-РјРѕРґСѓР»СЏ РґРµРіСЂР°РґРёСЂСѓСЋС‚ РєРѕСЂСЂРµРєС‚РЅРѕ (РЅРµС‚ РєСЂР°С€Р°, РЅРµС‚ 500).
 
 ---
 
-## 7. Многоязычность (i18n) как часть ядра
+## 7. РњРЅРѕРіРѕСЏР·С‹С‡РЅРѕСЃС‚СЊ (i18n) РєР°Рє С‡Р°СЃС‚СЊ СЏРґСЂР°
 
-Поддержка многоязычности — платформенная функция, а не доменный модуль.
+РџРѕРґРґРµСЂР¶РєР° РјРЅРѕРіРѕСЏР·С‹С‡РЅРѕСЃС‚Рё вЂ” РїР»Р°С‚С„РѕСЂРјРµРЅРЅР°СЏ С„СѓРЅРєС†РёСЏ, Р° РЅРµ РґРѕРјРµРЅРЅС‹Р№ РјРѕРґСѓР»СЊ.
 
 ### 7.1 Server / API
 
-- `🌐` API возвращает локализованные сообщения об ошибках при запросе с заголовком `Accept-Language`.
-- `🌐` Auth messages (ошибки валидации, email-тексты) локализованы.
-- `🌐` GraphQL API поддерживает передачу locale через параметр или заголовок.
+- `рџЊђ` API РІРѕР·РІСЂР°С‰Р°РµС‚ Р»РѕРєР°Р»РёР·РѕРІР°РЅРЅС‹Рµ СЃРѕРѕР±С‰РµРЅРёСЏ РѕР± РѕС€РёР±РєР°С… РїСЂРё Р·Р°РїСЂРѕСЃРµ СЃ Р·Р°РіРѕР»РѕРІРєРѕРј `Accept-Language`.
+- `рџЊђ` Auth messages (РѕС€РёР±РєРё РІР°Р»РёРґР°С†РёРё, email-С‚РµРєСЃС‚С‹) Р»РѕРєР°Р»РёР·РѕРІР°РЅС‹.
+- `рџЊђ` GraphQL API РїРѕРґРґРµСЂР¶РёРІР°РµС‚ РїРµСЂРµРґР°С‡Сѓ locale С‡РµСЂРµР· РїР°СЂР°РјРµС‚СЂ РёР»Рё Р·Р°РіРѕР»РѕРІРѕРє.
 
-### 7.2 Leptos Admin — покрытие locale-ключами
+### 7.2 Leptos Admin вЂ” РїРѕРєСЂС‹С‚РёРµ locale-РєР»СЋС‡Р°РјРё
 
-Locale-файлы: `apps/admin/locales/en.json` и `apps/admin/locales/ru.json`.
+Locale-С„Р°Р№Р»С‹: `apps/admin/locales/en.json` Рё `apps/admin/locales/ru.json`.
 
-**Синхронность файлов:**
+**РЎРёРЅС…СЂРѕРЅРЅРѕСЃС‚СЊ С„Р°Р№Р»РѕРІ:**
 
-- `🔧` EN и RU файлы содержат одинаковые top-level namespace-ключи:
+- `рџ”§` EN Рё RU С„Р°Р№Р»С‹ СЃРѕРґРµСЂР¶Р°С‚ РѕРґРёРЅР°РєРѕРІС‹Рµ top-level namespace-РєР»СЋС‡Рё:
   ```
   git diff --no-index \
     <(jq 'keys' apps/admin/locales/en.json) \
     <(jq 'keys' apps/admin/locales/ru.json)
   ```
-  Ожидаемый результат: diff пустой.
+  РћР¶РёРґР°РµРјС‹Р№ СЂРµР·СѓР»СЊС‚Р°С‚: diff РїСѓСЃС‚РѕР№.
 
-**Покрытие страниц** (каждая страница должна использовать `use_i18n()` и `t_string!()`):
+**РџРѕРєСЂС‹С‚РёРµ СЃС‚СЂР°РЅРёС†** (РєР°Р¶РґР°СЏ СЃС‚СЂР°РЅРёС†Р° РґРѕР»Р¶РЅР° РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ `use_i18n()` Рё `t_string!()`):
 
-- `🔧` `pages/dashboard.rs` — namespace `app.dashboard.*` ✓
-- `🔧` `pages/login.rs` — namespace `auth.*` ✓
-- `🔧` `pages/register.rs` — namespace `register.*` ✓
-- `🔧` `pages/reset.rs` — namespace `reset.*` ✓
-- `🔧` `pages/profile.rs` — namespace `profile.*` ✓
-- `🔧` `pages/security.rs` — namespace `security.*` ✓
-- `🔧` `pages/users.rs` — namespace `users.*` ✓
-- `🔧` `pages/user_details.rs` — namespace `users.*` ✓
-- `🔧` `pages/modules.rs` — namespace `modules.*` ✓
-- `🔧` `pages/module_admin.rs` — namespace `modules.moduleDisabled`, `modules.moduleNotFound` ✓
-- `🔧` `pages/cache.rs` — namespace `cache.*` ✓
-- `🔧` `pages/email_settings.rs` — namespace `email.*` ✓
-- `🔧` `pages/roles.rs` — namespace `roles.*` ✓
-- `🔧` `pages/oauth_apps.rs` — namespace `oauthApps.*` ✓
-- `🔧` `pages/events.rs` — namespace `events.*` ✓
-- `🔧` `pages/workflows.rs` — namespace `workflows.*` ✓
-- `🔧` `pages/workflow_detail.rs` — namespace `workflows.*` ✓
-- `🔧` `pages/not_found.rs` — namespace `app.notFound.*` ✓
+- `рџ”§` `pages/dashboard.rs` вЂ” namespace `app.dashboard.*` вњ“
+- `рџ”§` `pages/login.rs` вЂ” namespace `auth.*` вњ“
+- `рџ”§` `pages/register.rs` вЂ” namespace `register.*` вњ“
+- `рџ”§` `pages/reset.rs` вЂ” namespace `reset.*` вњ“
+- `рџ”§` `pages/profile.rs` вЂ” namespace `profile.*` вњ“
+- `рџ”§` `pages/security.rs` вЂ” namespace `security.*` вњ“
+- `рџ”§` `pages/users.rs` вЂ” namespace `users.*` вњ“
+- `рџ”§` `pages/user_details.rs` вЂ” namespace `users.*` вњ“
+- `рџ”§` `pages/modules.rs` вЂ” namespace `modules.*` вњ“
+- `рџ”§` `pages/module_admin.rs` вЂ” namespace `modules.moduleDisabled`, `modules.moduleNotFound` вњ“
+- `рџ”§` `pages/cache.rs` вЂ” namespace `cache.*` вњ“
+- `рџ”§` `pages/email_settings.rs` вЂ” namespace `email.*` вњ“
+- `рџ”§` `pages/roles.rs` вЂ” namespace `roles.*` вњ“
+- `рџ”§` `pages/oauth_apps.rs` вЂ” namespace `oauthApps.*` вњ“
+- `рџ”§` `pages/events.rs` вЂ” namespace `events.*` вњ“
+- `рџ”§` `pages/workflows.rs` вЂ” namespace `workflows.*` вњ“
+- `рџ”§` `pages/workflow_detail.rs` вЂ” namespace `workflows.*` вњ“
+- `рџ”§` `pages/not_found.rs` вЂ” namespace `app.notFound.*` вњ“
 
-**Проверка отсутствия хардкодных строк** (ни одна страница не должна содержать непереведённые английские/русские строки в view! macro):
+**РџСЂРѕРІРµСЂРєР° РѕС‚СЃСѓС‚СЃС‚РІРёСЏ С…Р°СЂРґРєРѕРґРЅС‹С… СЃС‚СЂРѕРє** (РЅРё РѕРґРЅР° СЃС‚СЂР°РЅРёС†Р° РЅРµ РґРѕР»Р¶РЅР° СЃРѕРґРµСЂР¶Р°С‚СЊ РЅРµРїРµСЂРµРІРµРґС‘РЅРЅС‹Рµ Р°РЅРіР»РёР№СЃРєРёРµ/СЂСѓСЃСЃРєРёРµ СЃС‚СЂРѕРєРё РІ view! macro):
 
 ```bash
-# Поиск потенциально непереведённых строк в .rs страницах
+# РџРѕРёСЃРє РїРѕС‚РµРЅС†РёР°Р»СЊРЅРѕ РЅРµРїРµСЂРµРІРµРґС‘РЅРЅС‹С… СЃС‚СЂРѕРє РІ .rs СЃС‚СЂР°РЅРёС†Р°С…
 grep -rn '"[A-Z][a-z]' apps/admin/src/pages/ | grep -v '//' | grep -v 'placeholder' | grep -v 'class=' | grep -v 'href='
 ```
 
-**Обязательные locale namespaces в en.json:**
+**РћР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ locale namespaces РІ en.json:**
 
 ```bash
 jq 'keys' apps/admin/locales/en.json
-# Ожидается: ["app","auth","cache","email","errors","events","modules","oauthApps","profile","register","reset","roles","security","users","workflows"]
+# РћР¶РёРґР°РµС‚СЃСЏ: ["app","auth","cache","email","errors","events","modules","oauthApps","profile","register","reset","roles","security","users","workflows"]
 ```
 
-### 7.3 Leptos Admin — runtime переключение
+### 7.3 Leptos Admin вЂ” runtime РїРµСЂРµРєР»СЋС‡РµРЅРёРµ
 
-- `🌐` Раздел управления языками / переводами присутствует в навигации.
-- `🌐` UI корректно переключается между языками (минимум: RU, EN).
-- `🌐` Форматирование дат и чисел соответствует активному locale.
+- `рџЊђ` Р Р°Р·РґРµР» СѓРїСЂР°РІР»РµРЅРёСЏ СЏР·С‹РєР°РјРё / РїРµСЂРµРІРѕРґР°РјРё РїСЂРёСЃСѓС‚СЃС‚РІСѓРµС‚ РІ РЅР°РІРёРіР°С†РёРё.
+- `рџЊђ` UI РєРѕСЂСЂРµРєС‚РЅРѕ РїРµСЂРµРєР»СЋС‡Р°РµС‚СЃСЏ РјРµР¶РґСѓ СЏР·С‹РєР°РјРё (РјРёРЅРёРјСѓРј: RU, EN).
+- `рџЊђ` Р¤РѕСЂРјР°С‚РёСЂРѕРІР°РЅРёРµ РґР°С‚ Рё С‡РёСЃРµР» СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ Р°РєС‚РёРІРЅРѕРјСѓ locale.
 
-### 7.4 Next.js Admin — покрытие locale-ключами
+### 7.4 Next.js Admin вЂ” РїРѕРєСЂС‹С‚РёРµ locale-РєР»СЋС‡Р°РјРё
 
-Locale-файлы: `apps/next-admin/messages/en.json` и `apps/next-admin/messages/ru.json`.
+Locale-С„Р°Р№Р»С‹: `apps/next-admin/messages/en.json` Рё `apps/next-admin/messages/ru.json`.
 
-**Синхронность файлов:**
+**РЎРёРЅС…СЂРѕРЅРЅРѕСЃС‚СЊ С„Р°Р№Р»РѕРІ:**
 
-- `🔧` EN и RU файлы содержат одинаковые top-level namespace-ключи:
+- `рџ”§` EN Рё RU С„Р°Р№Р»С‹ СЃРѕРґРµСЂР¶Р°С‚ РѕРґРёРЅР°РєРѕРІС‹Рµ top-level namespace-РєР»СЋС‡Рё:
   ```bash
   git diff --no-index \
     <(jq 'keys' apps/next-admin/messages/en.json) \
     <(jq 'keys' apps/next-admin/messages/ru.json)
   ```
 
-**Покрытие компонентов** (client components должны использовать `useTranslations()`):
+**РџРѕРєСЂС‹С‚РёРµ РєРѕРјРїРѕРЅРµРЅС‚РѕРІ** (client components РґРѕР»Р¶РЅС‹ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ `useTranslations()`):
 
-- `🔧` `features/cache/components/cache-status.tsx` — namespace `cache.*` ✓
-- `🔧` `features/email/components/email-settings-form.tsx` — namespace `email.*` ✓
-- `🔧` `features/rbac/components/roles-table.tsx` — namespace `roles.*` ✓
-- `🔧` `features/events/components/events-form.tsx` — namespace `events.*` ✓
-- `🔧` `features/modules/components/modules-list.tsx` — namespace `modules.*` ✓
+- `рџ”§` `features/cache/components/cache-status.tsx` вЂ” namespace `cache.*` вњ“
+- `рџ”§` `features/email/components/email-settings-form.tsx` вЂ” namespace `email.*` вњ“
+- `рџ”§` `features/rbac/components/roles-table.tsx` вЂ” namespace `roles.*` вњ“
+- `рџ”§` `features/events/components/events-form.tsx` вЂ” namespace `events.*` вњ“
+- `рџ”§` `features/modules/components/modules-list.tsx` вЂ” namespace `modules.*` вњ“
 
-**Обязательные locale namespaces в messages/en.json:**
+**РћР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ locale namespaces РІ messages/en.json:**
 
 ```bash
 jq 'keys' apps/next-admin/messages/en.json
-# Ожидается: ["app","auth","cache","email","errors","events","modules","profile","register","reset","roles","security","users","workflows"]
+# РћР¶РёРґР°РµС‚СЃСЏ: ["app","auth","cache","email","errors","events","modules","profile","register","reset","roles","security","users","workflows"]
 ```
 
-### 7.5 Next.js Admin — runtime переключение
+### 7.5 Next.js Admin вЂ” runtime РїРµСЂРµРєР»СЋС‡РµРЅРёРµ
 
-- `🔧` `next-intl` настроен и подключён (`apps/next-admin/`).
-- `🌐` Роутинг с locale-префиксом работает корректно.
-- `🌐` Раздел управления языками / переводами присутствует в навигации.
-- `🌐` UI корректно переключается между языками (минимум: RU, EN).
-
----
-
-## 8. UI core модулей (наличие и сборка)
-
-> ⚠️ **В разработке:** UI-компоненты core модулей находятся в активной разработке и могут частично отсутствовать. Эта пометка будет снята по готовности UI.
-
-> **Область действия:** Этот план верифицирует **только UI core модулей** (rustok-auth, rustok-rbac, rustok-tenant, rustok-email, rustok-cache, rustok-core). UI доменных опциональных модулей и capability-слоёв (flex, rustok-mcp, alloy) верифицируются в профильных планах.
-
-### 8.1 Leptos UI компоненты core модулей
-
-- `🔧` `rustok-auth` — наличие admin-UI Leptos (users, sessions, OAuth apps).
-- `🔧` `rustok-rbac` — наличие admin-UI Leptos (roles, permissions).
-- `🔧` `rustok-tenant` — наличие admin-UI Leptos (tenant management).
-- `🔧` `rustok-email` — наличие admin-UI Leptos (email settings).
-- `🔧` `rustok-cache` — наличие admin-UI Leptos (если предусмотрен).
-- `🔧` Сборка всех найденных Leptos UI пакетов core модулей проходит (`cargo build`).
-
-### 8.2 Next.js UI пакеты core модулей
-
-- `🔧` Наличие Next.js пакетов для управления пользователями/ролями/tenant-ами в `apps/next-admin/packages/`.
-- `🔧` Сборка пакетов проходит (`npm run build`).
-- `🔧` Lint проходит (`npm run lint`).
-
-### 8.3 Интеграция UI в admin-панели
-
-- `🔧` Leptos Admin регистрирует UI core модулей через module-owned routing.
-- `🔧` Next.js Admin импортирует пакеты core модулей корректно и без циклических зависимостей.
-- `🔧` Отсутствующие (в разработке) UI не блокируют сборку и запуск admin-панелей.
+- `рџ”§` `next-intl` РЅР°СЃС‚СЂРѕРµРЅ Рё РїРѕРґРєР»СЋС‡С‘РЅ (`apps/next-admin/`).
+- `рџЊђ` Р РѕСѓС‚РёРЅРі СЃ locale-РїСЂРµС„РёРєСЃРѕРј СЂР°Р±РѕС‚Р°РµС‚ РєРѕСЂСЂРµРєС‚РЅРѕ.
+- `рџЊђ` Р Р°Р·РґРµР» СѓРїСЂР°РІР»РµРЅРёСЏ СЏР·С‹РєР°РјРё / РїРµСЂРµРІРѕРґР°РјРё РїСЂРёСЃСѓС‚СЃС‚РІСѓРµС‚ РІ РЅР°РІРёРіР°С†РёРё.
+- `рџЊђ` UI РєРѕСЂСЂРµРєС‚РЅРѕ РїРµСЂРµРєР»СЋС‡Р°РµС‚СЃСЏ РјРµР¶РґСѓ СЏР·С‹РєР°РјРё (РјРёРЅРёРјСѓРј: RU, EN).
 
 ---
 
-## 9. GraphQL schema без опциональных модулей
+## 8. UI core РјРѕРґСѓР»РµР№ (РЅР°Р»РёС‡РёРµ Рё СЃР±РѕСЂРєР°)
 
-**Файлы:**
+> вљ пёЏ **Р’ СЂР°Р·СЂР°Р±РѕС‚РєРµ:** UI-РєРѕРјРїРѕРЅРµРЅС‚С‹ core РјРѕРґСѓР»РµР№ РЅР°С…РѕРґСЏС‚СЃСЏ РІ Р°РєС‚РёРІРЅРѕР№ СЂР°Р·СЂР°Р±РѕС‚РєРµ Рё РјРѕРіСѓС‚ С‡Р°СЃС‚РёС‡РЅРѕ РѕС‚СЃСѓС‚СЃС‚РІРѕРІР°С‚СЊ. Р­С‚Р° РїРѕРјРµС‚РєР° Р±СѓРґРµС‚ СЃРЅСЏС‚Р° РїРѕ РіРѕС‚РѕРІРЅРѕСЃС‚Рё UI.
+
+> **РћР±Р»Р°СЃС‚СЊ РґРµР№СЃС‚РІРёСЏ:** Р­С‚РѕС‚ РїР»Р°РЅ РІРµСЂРёС„РёС†РёСЂСѓРµС‚ **С‚РѕР»СЊРєРѕ UI core РјРѕРґСѓР»РµР№** (rustok-auth, rustok-rbac, rustok-tenant, rustok-email, rustok-cache, rustok-core). UI РґРѕРјРµРЅРЅС‹С… РѕРїС†РёРѕРЅР°Р»СЊРЅС‹С… РјРѕРґСѓР»РµР№ Рё capability-СЃР»РѕС‘РІ (flex, rustok-mcp, alloy) РІРµСЂРёС„РёС†РёСЂСѓСЋС‚СЃСЏ РІ РїСЂРѕС„РёР»СЊРЅС‹С… РїР»Р°РЅР°С….
+
+### 8.1 Leptos UI РєРѕРјРїРѕРЅРµРЅС‚С‹ core РјРѕРґСѓР»РµР№
+
+- `рџ”§` `rustok-auth` вЂ” РЅР°Р»РёС‡РёРµ admin-UI Leptos (users, sessions, OAuth apps).
+- `рџ”§` `rustok-rbac` вЂ” РЅР°Р»РёС‡РёРµ admin-UI Leptos (roles, permissions).
+- `рџ”§` `rustok-tenant` вЂ” РЅР°Р»РёС‡РёРµ admin-UI Leptos (tenant management).
+- `рџ”§` `rustok-email` вЂ” РЅР°Р»РёС‡РёРµ admin-UI Leptos (email settings).
+- `рџ”§` `rustok-cache` вЂ” РЅР°Р»РёС‡РёРµ admin-UI Leptos (РµСЃР»Рё РїСЂРµРґСѓСЃРјРѕС‚СЂРµРЅ).
+- `рџ”§` РЎР±РѕСЂРєР° РІСЃРµС… РЅР°Р№РґРµРЅРЅС‹С… Leptos UI РїР°РєРµС‚РѕРІ core РјРѕРґСѓР»РµР№ РїСЂРѕС…РѕРґРёС‚ (`cargo build`).
+
+### 8.2 Next.js UI РїР°РєРµС‚С‹ core РјРѕРґСѓР»РµР№
+
+- `рџ”§` РќР°Р»РёС‡РёРµ Next.js РїР°РєРµС‚РѕРІ РґР»СЏ СѓРїСЂР°РІР»РµРЅРёСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏРјРё/СЂРѕР»СЏРјРё/tenant-Р°РјРё РІ `apps/next-admin/packages/`.
+- `рџ”§` РЎР±РѕСЂРєР° РїР°РєРµС‚РѕРІ РїСЂРѕС…РѕРґРёС‚ (`npm run build`).
+- `рџ”§` Lint РїСЂРѕС…РѕРґРёС‚ (`npm run lint`).
+
+### 8.3 РРЅС‚РµРіСЂР°С†РёСЏ UI РІ admin-РїР°РЅРµР»Рё
+
+- `рџ”§` Leptos Admin СЂРµРіРёСЃС‚СЂРёСЂСѓРµС‚ UI core РјРѕРґСѓР»РµР№ С‡РµСЂРµР· module-owned routing.
+- `рџ”§` Next.js Admin РёРјРїРѕСЂС‚РёСЂСѓРµС‚ РїР°РєРµС‚С‹ core РјРѕРґСѓР»РµР№ РєРѕСЂСЂРµРєС‚РЅРѕ Рё Р±РµР· С†РёРєР»РёС‡РµСЃРєРёС… Р·Р°РІРёСЃРёРјРѕСЃС‚РµР№.
+- `рџ”§` РћС‚СЃСѓС‚СЃС‚РІСѓСЋС‰РёРµ (РІ СЂР°Р·СЂР°Р±РѕС‚РєРµ) UI РЅРµ Р±Р»РѕРєРёСЂСѓСЋС‚ СЃР±РѕСЂРєСѓ Рё Р·Р°РїСѓСЃРє admin-РїР°РЅРµР»РµР№.
+
+---
+
+## 9. GraphQL schema Р±РµР· РѕРїС†РёРѕРЅР°Р»СЊРЅС‹С… РјРѕРґСѓР»РµР№
+
+**Р¤Р°Р№Р»С‹:**
 - `apps/server/src/graphql/schema.rs`
 - `apps/server/src/graphql/queries.rs`
 - `apps/server/src/graphql/mutations.rs`
 
-> Полный GraphQL-аудит — в [platform-api-surfaces-verification-plan.md](./platform-api-surfaces-verification-plan.md).
+> РџРѕР»РЅС‹Р№ GraphQL-Р°СѓРґРёС‚ вЂ” РІ [platform-api-surfaces-verification-plan.md](./platform-api-surfaces-verification-plan.md).
 
-- `🔧` GraphQL schema компилируется без паники при отсутствии domain resolver-ов.
-- `🌐` Queries для auth, users, tenant-ов, settings резолвятся.
-- `🌐` Mutations для управления пользователями, ролями, tenant-ами работают.
+- `рџ”§` GraphQL schema РєРѕРјРїРёР»РёСЂСѓРµС‚СЃСЏ Р±РµР· РїР°РЅРёРєРё РїСЂРё РѕС‚СЃСѓС‚СЃС‚РІРёРё domain resolver-РѕРІ.
+- `рџЊђ` Queries РґР»СЏ auth, users, tenant-РѕРІ, settings СЂРµР·РѕР»РІСЏС‚СЃСЏ.
+- `рџЊђ` Mutations РґР»СЏ СѓРїСЂР°РІР»РµРЅРёСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏРјРё, СЂРѕР»СЏРјРё, tenant-Р°РјРё СЂР°Р±РѕС‚Р°СЋС‚.
 
 ---
 
-## 10. Команды
+## 10. РљРѕРјР°РЅРґС‹
 
-### 10.1 Сборка
+### 10.1 РЎР±РѕСЂРєР°
 
 ```sh
 # Server
-# Примечание: дефолтные features включают embed-admin (RustEmbed из apps/admin/dist).
-# Если apps/admin/dist не собран, используй вариант без embed:
+# РџСЂРёРјРµС‡Р°РЅРёРµ: РґРµС„РѕР»С‚РЅС‹Рµ features РІРєР»СЋС‡Р°СЋС‚ embed-admin (RustEmbed РёР· apps/admin/dist).
+# Р•СЃР»Рё apps/admin/dist РЅРµ СЃРѕР±СЂР°РЅ, РёСЃРїРѕР»СЊР·СѓР№ РІР°СЂРёР°РЅС‚ Р±РµР· embed:
 cargo build -p rustok-server --no-default-features \
   --features "redis-cache,mod-product,mod-pricing,mod-inventory,mod-cart,\
 mod-customer,mod-order,mod-payment,mod-fulfillment,mod-commerce,mod-content,\
 mod-blog,mod-forum,mod-pages,mod-alloy,mod-media,mod-workflow"
-# Либо предварительно собери Leptos admin: cd apps/admin && trunk build
+# Р›РёР±Рѕ РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅРѕ СЃРѕР±РµСЂРё Leptos admin: cd apps/admin && trunk build
 
 # Leptos admin
 cargo build -p rustok-admin
@@ -335,11 +335,11 @@ cargo check --workspace
 # Next.js Admin
 cd apps/next-admin && npm run build
 cd apps/next-admin && npm run lint
-# Примечание: скрипт typecheck в apps/next-admin не определён; используй tsc напрямую:
+# РџСЂРёРјРµС‡Р°РЅРёРµ: СЃРєСЂРёРїС‚ typecheck РІ apps/next-admin РЅРµ РѕРїСЂРµРґРµР»С‘РЅ; РёСЃРїРѕР»СЊР·СѓР№ tsc РЅР°РїСЂСЏРјСѓСЋ:
 # cd apps/next-admin && npx tsc --noEmit
 ```
 
-### 10.2 Тесты core
+### 10.2 РўРµСЃС‚С‹ core
 
 ```sh
 cargo test -p rustok-core --lib
@@ -350,7 +350,7 @@ cargo test -p rustok-outbox --lib
 cargo test -p rustok-server --lib
 ```
 
-### 10.3 Изоляция: поиск нежелательных зависимостей
+### 10.3 РР·РѕР»СЏС†РёСЏ: РїРѕРёСЃРє РЅРµР¶РµР»Р°С‚РµР»СЊРЅС‹С… Р·Р°РІРёСЃРёРјРѕСЃС‚РµР№
 
 ```sh
 git grep -rn "rustok-content\|rustok-commerce\|rustok-blog\|rustok-forum\|rustok-pages\|rustok-media\|rustok-workflow" \
@@ -374,43 +374,44 @@ docker compose up -d db
 
 ---
 
-## 11. Stop-the-line условия
+## 11. Stop-the-line СѓСЃР»РѕРІРёСЏ
 
-При обнаружении любого из нижеперечисленных случаев — **остановить прогон, исправить, перепроверить фазу, только затем продолжать**. Не оставлять в артефакте как «known issue».
+РџСЂРё РѕР±РЅР°СЂСѓР¶РµРЅРёРё Р»СЋР±РѕРіРѕ РёР· РЅРёР¶РµРїРµСЂРµС‡РёСЃР»РµРЅРЅС‹С… СЃР»СѓС‡Р°РµРІ вЂ” **РѕСЃС‚Р°РЅРѕРІРёС‚СЊ РїСЂРѕРіРѕРЅ, РёСЃРїСЂР°РІРёС‚СЊ, РїРµСЂРµРїСЂРѕРІРµСЂРёС‚СЊ С„Р°Р·Сѓ, С‚РѕР»СЊРєРѕ Р·Р°С‚РµРј РїСЂРѕРґРѕР»Р¶Р°С‚СЊ**. РќРµ РѕСЃС‚Р°РІР»СЏС‚СЊ РІ Р°СЂС‚РµС„Р°РєС‚Рµ РєР°Рє В«known issueВ».
 
-Считать блокирующим drift любой из следующих случаев:
+РЎС‡РёС‚Р°С‚СЊ Р±Р»РѕРєРёСЂСѓСЋС‰РёРј drift Р»СЋР±РѕР№ РёР· СЃР»РµРґСѓСЋС‰РёС… СЃР»СѓС‡Р°РµРІ:
 
-- `cargo build -p rustok-server` или `cargo build -p rustok-admin` не компилируются.
-- Core crate импортирует опциональный доменный crate (content, commerce, blog, forum, pages, media, workflow).
-- Server не стартует при включённых только core модулях.
-- `/api/health` возвращает не 200 при чистом старте.
-- GraphQL schema паникует при сборке без domain resolver-ов.
-- Core модуль успешно отключается через tenant API (ожидается ошибка).
-- Любая admin-панель крашится при попытке открыть auth/dashboard с только core.
-- В любой admin-панели отсутствует навигация по core функциям (auth, rbac, tenants, modules).
+- `cargo build -p rustok-server` РёР»Рё `cargo build -p rustok-admin` РЅРµ РєРѕРјРїРёР»РёСЂСѓСЋС‚СЃСЏ.
+- Core crate РёРјРїРѕСЂС‚РёСЂСѓРµС‚ РѕРїС†РёРѕРЅР°Р»СЊРЅС‹Р№ РґРѕРјРµРЅРЅС‹Р№ crate (content, commerce, blog, forum, pages, media, workflow).
+- Server РЅРµ СЃС‚Р°СЂС‚СѓРµС‚ РїСЂРё РІРєР»СЋС‡С‘РЅРЅС‹С… С‚РѕР»СЊРєРѕ core РјРѕРґСѓР»СЏС….
+- `/api/health` РІРѕР·РІСЂР°С‰Р°РµС‚ РЅРµ 200 РїСЂРё С‡РёСЃС‚РѕРј СЃС‚Р°СЂС‚Рµ.
+- GraphQL schema РїР°РЅРёРєСѓРµС‚ РїСЂРё СЃР±РѕСЂРєРµ Р±РµР· domain resolver-РѕРІ.
+- Core РјРѕРґСѓР»СЊ СѓСЃРїРµС€РЅРѕ РѕС‚РєР»СЋС‡Р°РµС‚СЃСЏ С‡РµСЂРµР· tenant API (РѕР¶РёРґР°РµС‚СЃСЏ РѕС€РёР±РєР°).
+- Р›СЋР±Р°СЏ admin-РїР°РЅРµР»СЊ РєСЂР°С€РёС‚СЃСЏ РїСЂРё РїРѕРїС‹С‚РєРµ РѕС‚РєСЂС‹С‚СЊ auth/dashboard СЃ С‚РѕР»СЊРєРѕ core.
+- Р’ Р»СЋР±РѕР№ admin-РїР°РЅРµР»Рё РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ РЅР°РІРёРіР°С†РёСЏ РїРѕ core С„СѓРЅРєС†РёСЏРј (auth, rbac, tenants, modules).
 
 ---
 
-## 12. Артефакты
+## 12. РђСЂС‚РµС„Р°РєС‚С‹
 
-Каждый прогон должен оставлять короткий evidence bundle:
+РљР°Р¶РґС‹Р№ РїСЂРѕРіРѕРЅ РґРѕР»Р¶РµРЅ РѕСЃС‚Р°РІР»СЏС‚СЊ РєРѕСЂРѕС‚РєРёР№ evidence bundle:
 
-- дата
+- РґР°С‚Р°
 - branch / commit
-- выполненные команды
-- pass/fail по каждой фазе
-- список UI-компонентов core модулей, которые отсутствуют (в разработке)
-- список выявленных проблем
-- оставшиеся блокеры
+- РІС‹РїРѕР»РЅРµРЅРЅС‹Рµ РєРѕРјР°РЅРґС‹
+- pass/fail РїРѕ РєР°Р¶РґРѕР№ С„Р°Р·Рµ
+- СЃРїРёСЃРѕРє UI-РєРѕРјРїРѕРЅРµРЅС‚РѕРІ core РјРѕРґСѓР»РµР№, РєРѕС‚РѕСЂС‹Рµ РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‚ (РІ СЂР°Р·СЂР°Р±РѕС‚РєРµ)
+- СЃРїРёСЃРѕРє РІС‹СЏРІР»РµРЅРЅС‹С… РїСЂРѕР±Р»РµРј
+- РѕСЃС‚Р°РІС€РёРµСЃСЏ Р±Р»РѕРєРµСЂС‹
 
-**Место хранения:** `artifacts/verification/platform-core-integrity/<yyyy-mm-dd>.md`
+**РњРµСЃС‚Рѕ С…СЂР°РЅРµРЅРёСЏ:** `artifacts/verification/platform-core-integrity/<yyyy-mm-dd>.md`
 
 ---
 
-## Связанные документы
+## РЎРІСЏР·Р°РЅРЅС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹
 
-- [Главный план верификации платформы](./PLATFORM_VERIFICATION_PLAN.md)
-- [План foundation-верификации](./platform-foundation-verification-plan.md) — полный auth/RBAC/tenancy/registry аудит
-- [План верификации API-поверхностей](./platform-api-surfaces-verification-plan.md) — полный GraphQL/REST аудит
-- [План rolling-верификации RBAC для server и runtime-модулей](./rbac-server-modules-verification-plan.md)
-- [README каталога verification](./README.md)
+- [Р“Р»Р°РІРЅС‹Р№ РїР»Р°РЅ РІРµСЂРёС„РёРєР°С†РёРё РїР»Р°С‚С„РѕСЂРјС‹](./PLATFORM_VERIFICATION_PLAN.md)
+- [РџР»Р°РЅ foundation-РІРµСЂРёС„РёРєР°С†РёРё](./platform-foundation-verification-plan.md) вЂ” РїРѕР»РЅС‹Р№ auth/RBAC/tenancy/registry Р°СѓРґРёС‚
+- [РџР»Р°РЅ РІРµСЂРёС„РёРєР°С†РёРё API-РїРѕРІРµСЂС…РЅРѕСЃС‚РµР№](./platform-api-surfaces-verification-plan.md) вЂ” РїРѕР»РЅС‹Р№ GraphQL/REST Р°СѓРґРёС‚
+- [РџР»Р°РЅ rolling-РІРµСЂРёС„РёРєР°С†РёРё RBAC РґР»СЏ server Рё runtime-РјРѕРґСѓР»РµР№](./rbac-server-modules-verification-plan.md)
+- [README РєР°С‚Р°Р»РѕРіР° verification](./README.md)
+

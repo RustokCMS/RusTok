@@ -17,8 +17,11 @@ contracts.
 - `BlockService` no longer uses shared node storage for page-block CRUD.
 - `MenuService` now uses module-owned `menus`, `menu_translations`,
   `menu_items`, and `menu_item_translations`.
-- Channel visibility is still metadata-based for v0 and can move to typed
-  relations later if the product model stabilizes.
+- Channel visibility now uses module-owned typed relation
+  `page_channel_visibility` instead of metadata.
+- The storage split for `rustok-pages` is complete; any remaining rollout work
+  belongs to page-builder/admin rollout plans rather than shared-storage
+  cutover.
 
 ## Delivery phases
 
@@ -34,24 +37,23 @@ contracts.
 - [x] Align error and validation conventions with platform guidance.
 - [x] Expand automated tests around core invariants and boundary behavior.
 
-### Phase 2 - Storage split (in progress)
+### Phase 2 - Storage split (done)
 
 - [x] Implement the first module-owned persistence slice for pages and blocks.
 - [x] Keep GraphQL and REST page CRUD on top of page-owned storage.
 - [x] Keep block CRUD and reorder flows on top of page-owned storage.
 - [x] Move menu storage and menu transport off shared `NodeService`.
-- [ ] Replace metadata-based visibility with typed relations if the product
-  model still requires it after the broader split.
+- [x] Replace metadata-based visibility with typed relations.
 
-### Phase 3 - Page builder hardening (planned)
+### Phase 3 - Page builder hardening (done)
 
-- [ ] Promote `body.format = "grapesjs_v1"` as the canonical visual
+- [x] Promote `body.format = "grapesjs_v1"` as the canonical visual
   page-builder contract while keeping legacy block APIs migration-compatible.
-- [ ] Add explicit round-trip tests for GrapesJS `projectData`.
-- [ ] Lock down compatibility rules for legacy pages that still depend on block
+- [x] Add explicit round-trip tests for GrapesJS `projectData`.
+- [x] Lock down compatibility rules for legacy pages that still depend on block
   payloads.
 
-### Phase 4 - Productionization (planned)
+### Phase 4 - Productionization (done)
 
 - [x] Finalize rollout and migration strategy for the menu slice.
 - [x] Complete security, tenancy, and RBAC checks relevant to the module.
@@ -60,7 +62,7 @@ contracts.
   - [x] `publish` can no longer be bypassed through `create` / `update`.
   - [x] Customer read paths no longer expose draft/private pages through
     service-level `get` / `list`.
-- [ ] Validate observability, runbooks, and operational readiness.
+- [x] Validate observability, runbooks, and operational readiness.
 
 ## Notes
 
@@ -69,6 +71,9 @@ contracts.
   `grapesjs_v1`.
 - Block endpoints remain a supported migration surface for now; they are not the
   long-term canonical page-builder model.
+- Body and block payloads are intentionally independent: legacy block-driven
+  pages can stay body-less, and `body` writes do not auto-convert or delete
+  stored blocks.
 
 ## Test plan
 
@@ -80,6 +85,8 @@ contracts.
   - create, update, get, publish, and delete a page through module-owned
     storage;
   - create, update, reorder, and delete blocks through module-owned storage;
+  - keep legacy block-driven pages readable without synthesized `body`;
+  - keep legacy `blocks` intact when a `grapesjs_v1` body is added later;
   - keep GraphQL and REST behavior aligned with the services.
 - Integration:
   - create and get nested menus through module-owned storage.
@@ -108,7 +115,7 @@ routing, or observability expectations:
 
 - [x] Contract tests cover the public pages use-cases that are already shipped.
 - [x] `pages` remains the first `rustok-channel` pilot on the public read path.
-- [x] `pages` keeps the first publication-level pilot through metadata-based
-  `channelSlugs` allowlists.
+- [x] `pages` keeps page-level publication visibility through typed
+  `channelSlugs` relations.
 - [x] Pages and blocks already run on module-owned storage.
 - [x] Menus now run on module-owned storage.

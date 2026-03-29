@@ -1,5 +1,3 @@
-#[cfg(feature = "mod-alloy")]
-pub mod alloy;
 pub mod auth;
 #[cfg(feature = "mod-blog")]
 pub mod blog;

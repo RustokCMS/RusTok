@@ -5,7 +5,7 @@
 
 ## Основные публичные типы и сигнатуры
 - `pub struct ForumModule`
-- `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`
+- `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`, `SubscriptionService`, `UserStatsService`, `VoteService`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
 - Публичные DTO/константы из `dto::*` и `constants::*`
@@ -13,12 +13,16 @@
 - `pub mod locale` — хелперы `resolve_translation`, `resolve_body`, `available_locales`
 
 ## DTO изменения (актуально)
-### TopicResponse / TopicListItem
-- Добавлены: `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`
+### TopicResponse
+- Добавлены: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
+### TopicListItem
+- Добавлены: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
 ### ReplyResponse / ReplyListItem
-- Добавлены: `effective_locale: String`, `author_id: Option<Uuid>`, `parent_reply_id: Option<Uuid>` (в ListItem)
-### CategoryResponse / CategoryListItem
-- Добавлены: `effective_locale: String`, `available_locales: Vec<String>`
+- Добавлены: `effective_locale: String`, `author_id: Option<Uuid>`, `parent_reply_id: Option<Uuid>` (в ListItem), `vote_score: i32`, `current_user_vote: Option<i32>`, `is_solution: bool`
+### CategoryResponse
+- Добавлены: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
+### CategoryListItem
+- Добавлены: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
 ### CreateTopicInput
 - Добавлено: `slug: Option<String>`
 ### ListRepliesFilter (новый)
@@ -26,10 +30,31 @@
 ### ModerationService
 - Сигнатуры `approve_reply`, `reject_reply`, `hide_reply`, `pin_topic`, `unpin_topic` теперь принимают `tenant_id: Uuid`
 - `close_topic`, `archive_topic` теперь принимают `tenant_id: Uuid`
+- Добавлены `mark_solution(tenant_id, topic_id, reply_id, security)` и `clear_solution(tenant_id, topic_id, security)`
+### VoteService
+- Добавлены `set_topic_vote(tenant_id, topic_id, security, value)` и `clear_topic_vote(tenant_id, topic_id, security)`
+- Добавлены `set_reply_vote(tenant_id, reply_id, security, value)` и `clear_reply_vote(tenant_id, reply_id, security)`
+### SubscriptionService
+- Добавлены `set_category_subscription(tenant_id, category_id, security)` и `clear_category_subscription(tenant_id, category_id, security)`
+- Добавлены `set_topic_subscription(tenant_id, topic_id, security)` и `clear_topic_subscription(tenant_id, topic_id, security)`
+### UserStatsService
+- Добавлен `get(tenant_id, security, user_id)` для tenant-scoped forum statistics read-path
+- Внутренние write-path helper-ы синхронизируют `topic_count`, `reply_count`, `solution_count`
 
 ## Locale fallback chain
-Порядок поиска перевода: `requested → "en" → первый доступный`.
+Порядок поиска перевода: `requested → explicit fallback → "en" → первый доступный`.
 Поле `effective_locale` сообщает, какой locale реально вернули.
+
+## Slug contract
+- `CategoryResponse` / `CategoryListItem` возвращают locale-aware slug на уровне
+  `forum_category_translation`; slug следует за тем же resolved translation, что
+  и `name` / `description`.
+- `TopicResponse` / `TopicListItem` возвращают стабильный topic slug. При
+  создании новой topic translation slug копируется из seed-translation, если
+  отдельный topic-level slug workflow не вводится явно.
+- Текущий public contract форума остаётся ID-based: forum API не обещает lookup
+  по slug. Если такой read-path будет добавлен позже, он обязан использовать тот
+  же locale fallback contract, что и остальной forum read-path.
 
 ## События
 Публикует форумные доменные события через outbox pipeline:

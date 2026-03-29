@@ -372,10 +372,12 @@ fn marketplace_module_from_catalog_entry(
         slug: entry.slug.clone(),
         name: runtime_module
             .map(|module| module.name().to_string())
+            .or_else(|| entry.name.clone())
             .unwrap_or_else(|| humanize_slug(&entry.slug)),
         latest_version: latest_version.clone(),
         description: runtime_module
             .map(|module| module.description().to_string())
+            .or_else(|| entry.description.clone())
             .unwrap_or_else(|| {
                 format!(
                     "{} module from {} source",
@@ -1213,10 +1215,12 @@ impl RootQuery {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_catalog_module_compatible, normalize_version_req, source_matches, trust_level_matches,
+        is_catalog_module_compatible, marketplace_module_from_catalog_entry, normalize_version_req,
+        source_matches, trust_level_matches,
     };
     use crate::graphql::types::MarketplaceModule;
-    use crate::modules::CatalogManifestModule;
+    use crate::modules::{CatalogManifestModule, InstalledManifestModule};
+    use rustok_core::ModuleRegistry;
     use std::collections::HashMap;
 
     fn catalog_module(min: Option<&str>, max: Option<&str>) -> CatalogManifestModule {
@@ -1224,7 +1228,9 @@ mod tests {
             slug: "seo".to_string(),
             source: "registry".to_string(),
             crate_name: "rustok-seo".to_string(),
+            name: None,
             version: Some("1.2.0".to_string()),
+            description: None,
             git: None,
             rev: None,
             path: None,
@@ -1328,5 +1334,21 @@ mod tests {
 
         assert!(source_matches(&module, Some("REGISTRY")));
         assert!(!source_matches(&module, Some("path")));
+    }
+
+    #[test]
+    fn marketplace_mapping_uses_catalog_name_and_description_without_runtime_module() {
+        let mut entry = catalog_module(None, None);
+        entry.name = Some("SEO Toolkit".to_string());
+        entry.description = Some("Search optimization bundle".to_string());
+
+        let module = marketplace_module_from_catalog_entry(
+            entry,
+            &ModuleRegistry::new(),
+            &Vec::<InstalledManifestModule>::new(),
+        );
+
+        assert_eq!(module.name, "SEO Toolkit");
+        assert_eq!(module.description, "Search optimization bundle");
     }
 }

@@ -1,15 +1,22 @@
-﻿# alloy docs
+# alloy docs
 
-`alloy` вЂ” transport-shell РґР»СЏ module-agnostic capability Alloy.
+Документация capability-crate `crates/alloy`.
 
-РћРЅ РґРµСЂР¶РёС‚:
+## Содержание
 
-- GraphQL query/mutation/type-СЃР»РѕР№ РґР»СЏ script CRUD Рё manual execution;
-- REST entry point `controllers::router`, РєРѕС‚РѕСЂС‹Р№ РґРµР»РµРіРёСЂСѓРµС‚ РІ `alloy-scripting`;
-- `AlloyState` РєР°Рє РѕР±С‰РёР№ runtime-РєРѕРЅС‚СЂР°РєС‚ РјРµР¶РґСѓ `apps/server` Рё GraphQL-СЃР»РѕРµРј Alloy.
+- [Alloy Concept](../../../docs/alloy-concept.md) — стратегическое видение Alloy
+- [implementation-plan.md](./implementation-plan.md) — архитектура runtime, execution flow и дальнейшие шаги
 
-`alloy-scripting` РїСЂРё СЌС‚РѕРј РѕСЃС‚Р°С‘С‚СЃСЏ runtime/engine crate Р±РµР· Р·Р°РІРёСЃРёРјРѕСЃС‚Рё РЅР° `rustok-api`, С‡С‚Рѕ
-РёР·Р±РµРіР°РµС‚ С†РёРєР»РёС‡РµСЃРєРѕР№ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё С‡РµСЂРµР· `rustok-core`.
+## Краткий обзор
 
-РЎР°Рј Alloy РЅРµ РІС…РѕРґРёС‚ РІ tenant module registry Рё РЅРµ С‚СЂРµР±СѓРµС‚ `tenant_modules.is_enabled("alloy")`.
+`alloy` — единый runtime/capability crate для Alloy на базе Rhai.
 
+Он держит:
+
+- storage, execution log и migrations для скриптов;
+- `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` и bridge/helper слой;
+- GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::routes`);
+- интеграционные контракты `ScriptableEntity` / `HookExecutor` для host-модулей.
+
+Публичный модуль Alloy не входит в tenant module registry и не требует `tenant_modules.is_enabled("alloy")`.
+Transport-адаптеры GraphQL/HTTP живут в самом `alloy`, а `apps/server` подключает их через generated module wiring из `modules.toml` и `rustok-module.toml`.

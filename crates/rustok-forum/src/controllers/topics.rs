@@ -16,8 +16,8 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse, TopicService,
-    UpdateTopicInput,
+    CreateTopicInput, ListTopicsFilter, ModerationService, SubscriptionService, TopicListItem,
+    TopicResponse, TopicService, UpdateTopicInput, VoteService,
 };
 
 #[derive(Debug, Clone, Copy, Deserialize, IntoParams, ToSchema)]
@@ -168,7 +168,13 @@ pub async fn get_topic(
         .unwrap_or_else(|| request_context.locale.clone());
     let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let topic = service
-        .get_with_locale_fallback(tenant.id, id, &locale, Some(tenant.default_locale.as_str()))
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            id,
+            &locale,
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(topic))
@@ -270,6 +276,280 @@ pub async fn delete_topic(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/forum/topics/{topic_id}/solution/{reply_id}",
+    tag = "forum",
+    params(
+        ("topic_id" = Uuid, Path, description = "Topic ID"),
+        ("reply_id" = Uuid, Path, description = "Reply ID")
+    ),
+    responses(
+        (status = 200, description = "Topic solution marked", body = TopicResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn mark_topic_solution(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path((topic_id, reply_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<TopicResponse>> {
+    ensure_forum_permission(
+        &auth,
+        &[
+            Permission::FORUM_TOPICS_UPDATE,
+            Permission::FORUM_TOPICS_MODERATE,
+        ],
+        "Permission denied: forum_topics:update or forum_topics:moderate required",
+    )?;
+
+    let event_bus = transactional_event_bus_from_context(&ctx);
+    let moderation = ModerationService::new(ctx.db.clone(), event_bus.clone());
+    moderation
+        .mark_solution(tenant.id, topic_id, reply_id, auth.security_context())
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let service = TopicService::new(ctx.db.clone(), event_bus);
+    let topic = service
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            topic_id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(topic))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/forum/topics/{topic_id}/solution",
+    tag = "forum",
+    params(("topic_id" = Uuid, Path, description = "Topic ID")),
+    responses(
+        (status = 200, description = "Topic solution cleared", body = TopicResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn clear_topic_solution(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(topic_id): Path<Uuid>,
+) -> Result<Json<TopicResponse>> {
+    ensure_forum_permission(
+        &auth,
+        &[
+            Permission::FORUM_TOPICS_UPDATE,
+            Permission::FORUM_TOPICS_MODERATE,
+        ],
+        "Permission denied: forum_topics:update or forum_topics:moderate required",
+    )?;
+
+    let event_bus = transactional_event_bus_from_context(&ctx);
+    let moderation = ModerationService::new(ctx.db.clone(), event_bus.clone());
+    moderation
+        .clear_solution(tenant.id, topic_id, auth.security_context())
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let service = TopicService::new(ctx.db.clone(), event_bus);
+    let topic = service
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            topic_id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(topic))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/forum/topics/{topic_id}/vote/{value}",
+    tag = "forum",
+    params(
+        ("topic_id" = Uuid, Path, description = "Topic ID"),
+        ("value" = i32, Path, description = "Vote value (-1 or 1)")
+    ),
+    responses(
+        (status = 200, description = "Topic vote updated", body = TopicResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn set_topic_vote(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path((topic_id, value)): Path<(Uuid, i32)>,
+) -> Result<Json<TopicResponse>> {
+    ensure_forum_permission(
+        &auth,
+        &[Permission::FORUM_TOPICS_READ],
+        "Permission denied: forum_topics:read required",
+    )?;
+
+    VoteService::new(ctx.db.clone())
+        .set_topic_vote(tenant.id, topic_id, auth.security_context(), value)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let topic = service
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            topic_id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(topic))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/forum/topics/{topic_id}/vote",
+    tag = "forum",
+    params(("topic_id" = Uuid, Path, description = "Topic ID")),
+    responses(
+        (status = 200, description = "Topic vote cleared", body = TopicResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn clear_topic_vote(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(topic_id): Path<Uuid>,
+) -> Result<Json<TopicResponse>> {
+    ensure_forum_permission(
+        &auth,
+        &[Permission::FORUM_TOPICS_READ],
+        "Permission denied: forum_topics:read required",
+    )?;
+
+    VoteService::new(ctx.db.clone())
+        .clear_topic_vote(tenant.id, topic_id, auth.security_context())
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let topic = service
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            topic_id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(topic))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/forum/topics/{topic_id}/subscription",
+    tag = "forum",
+    params(("topic_id" = Uuid, Path, description = "Topic ID")),
+    responses(
+        (status = 200, description = "Topic subscription updated", body = TopicResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn subscribe_topic(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(topic_id): Path<Uuid>,
+) -> Result<Json<TopicResponse>> {
+    ensure_forum_permission(
+        &auth,
+        &[Permission::FORUM_TOPICS_READ],
+        "Permission denied: forum_topics:read required",
+    )?;
+
+    SubscriptionService::new(ctx.db.clone())
+        .set_topic_subscription(tenant.id, topic_id, auth.security_context())
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let topic = service
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            topic_id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(topic))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/forum/topics/{topic_id}/subscription",
+    tag = "forum",
+    params(("topic_id" = Uuid, Path, description = "Topic ID")),
+    responses(
+        (status = 200, description = "Topic subscription cleared", body = TopicResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn unsubscribe_topic(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(topic_id): Path<Uuid>,
+) -> Result<Json<TopicResponse>> {
+    ensure_forum_permission(
+        &auth,
+        &[Permission::FORUM_TOPICS_READ],
+        "Permission denied: forum_topics:read required",
+    )?;
+
+    SubscriptionService::new(ctx.db.clone())
+        .clear_topic_subscription(tenant.id, topic_id, auth.security_context())
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let service = TopicService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let topic = service
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            topic_id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(topic))
 }
 
 fn ensure_forum_permission(

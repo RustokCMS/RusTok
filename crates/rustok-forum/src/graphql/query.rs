@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::{
     CategoryListItem, CategoryService, ForumError, ForumResult, ReplyResponse, ReplyService,
-    TopicListItem, TopicResponse, TopicService,
+    TopicListItem, TopicResponse, TopicService, UserStatsService,
 };
 
 use super::types::*;
@@ -189,8 +189,8 @@ impl ForumQuery {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_forum_permission(
             ctx,
-            &[Permission::FORUM_REPLIES_READ],
-            "Permission denied: forum_replies:read required",
+            &[Permission::FORUM_REPLIES_LIST],
+            "Permission denied: forum_replies:list required",
         )?;
 
         let tenant = ctx.data::<TenantContext>()?;
@@ -255,6 +255,33 @@ impl ForumQuery {
             offset,
             limit,
         ))
+    }
+
+    async fn forum_user_stats(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<GqlForumUserStats> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_READ],
+            "Permission denied: forum_topics:read required",
+        )?;
+
+        let stats = UserStatsService::new(db.clone())
+            .get(tenant_id, auth.security_context(), user_id)
+            .await?;
+
+        Ok(GqlForumUserStats {
+            user_id: stats.user_id,
+            topic_count: stats.topic_count,
+            reply_count: stats.reply_count,
+            solution_count: stats.solution_count,
+            updated_at: stats.updated_at,
+        })
     }
 
     async fn forum_storefront_categories(
@@ -416,6 +443,7 @@ impl ForumQuery {
         let topic = match service
             .get_with_locale_fallback(
                 resolved_tenant_id,
+                forum_security_or_system(ctx),
                 id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
@@ -476,6 +504,7 @@ impl ForumQuery {
         let topic = match topic_service
             .get_with_locale_fallback(
                 resolved_tenant_id,
+                forum_security_or_system(ctx),
                 topic_id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
@@ -586,9 +615,10 @@ fn forum_security_or_system(ctx: &Context<'_>) -> SecurityContext {
 fn map_category_list_item(category: CategoryListItem) -> GqlForumCategory {
     GqlForumCategory {
         id: category.id,
-        requested_locale: category.locale.clone(),
+        requested_locale: category.requested_locale,
         locale: category.locale,
         effective_locale: category.effective_locale,
+        available_locales: category.available_locales,
         name: category.name,
         slug: category.slug,
         description: category.description,
@@ -596,6 +626,7 @@ fn map_category_list_item(category: CategoryListItem) -> GqlForumCategory {
         color: category.color,
         topic_count: category.topic_count,
         reply_count: category.reply_count,
+        is_subscribed: category.is_subscribed,
     }
 }
 
@@ -605,10 +636,10 @@ fn map_topic_list_item(
 ) -> GqlForumTopic {
     GqlForumTopic {
         id: topic.id,
-        requested_locale: topic.locale.clone(),
+        requested_locale: topic.requested_locale,
         locale: topic.locale,
-        effective_locale: topic.effective_locale.clone(),
-        available_locales: vec![topic.effective_locale],
+        effective_locale: topic.effective_locale,
+        available_locales: topic.available_locales,
         category_id: topic.category_id,
         author_id: topic.author_id,
         author_profile,
@@ -619,6 +650,10 @@ fn map_topic_list_item(
         status: topic.status,
         tags: Vec::new(),
         channel_slugs: topic.channel_slugs,
+        vote_score: topic.vote_score,
+        current_user_vote: topic.current_user_vote,
+        is_subscribed: topic.is_subscribed,
+        solution_reply_id: topic.solution_reply_id,
         is_pinned: topic.is_pinned,
         is_locked: topic.is_locked,
         reply_count: topic.reply_count,
@@ -647,6 +682,10 @@ fn map_topic_response(
         status: topic.status,
         tags: topic.tags,
         channel_slugs: topic.channel_slugs,
+        vote_score: topic.vote_score,
+        current_user_vote: topic.current_user_vote,
+        is_subscribed: topic.is_subscribed,
+        solution_reply_id: topic.solution_reply_id,
         is_pinned: topic.is_pinned,
         is_locked: topic.is_locked,
         reply_count: topic.reply_count,
@@ -670,6 +709,9 @@ fn map_reply_response(
         content: reply.content,
         content_format: reply.content_format,
         status: reply.status,
+        vote_score: reply.vote_score,
+        current_user_vote: reply.current_user_vote,
+        is_solution: reply.is_solution,
         parent_reply_id: reply.parent_reply_id,
         created_at: reply.created_at,
         updated_at: reply.updated_at,
@@ -816,53 +858,18 @@ async fn list_public_storefront_topics(
     base_filter: crate::ListTopicsFilter,
     fallback_locale: Option<&str>,
     channel_slug: Option<String>,
-    offset: usize,
-    limit: usize,
+    _offset: usize,
+    _limit: usize,
 ) -> ForumResult<(Vec<TopicListItem>, u64)> {
-    let mut page = 1u64;
-    let mut raw_seen = 0u64;
-    let mut visible_total = 0u64;
-    let mut window = Vec::with_capacity(limit);
-
-    loop {
-        let mut filter = base_filter.clone();
-        filter.page = page;
-
-        let (topics, total) = service
-            .list_with_locale_fallback(tenant_id, security.clone(), filter.clone(), fallback_locale)
-            .await?;
-
-        if topics.is_empty() {
-            break;
-        }
-
-        let fetched_count = topics.len();
-        raw_seen += fetched_count as u64;
-
-        for topic in topics {
-            if !is_storefront_topic_visible(
-                &topic.status,
-                &topic.channel_slugs,
-                channel_slug.as_deref(),
-            ) {
-                continue;
-            }
-
-            if visible_total >= offset as u64 && window.len() < limit {
-                window.push(topic);
-            }
-            visible_total += 1;
-        }
-
-        let source_exhausted = raw_seen >= total || fetched_count < filter.per_page as usize;
-        if source_exhausted {
-            break;
-        }
-
-        page += 1;
-    }
-
-    Ok((window, visible_total))
+    service
+        .list_storefront_visible_with_locale_fallback(
+            tenant_id,
+            security,
+            base_filter,
+            fallback_locale,
+            channel_slug.as_deref(),
+        )
+        .await
 }
 
 #[cfg(test)]

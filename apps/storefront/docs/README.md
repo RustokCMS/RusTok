@@ -19,7 +19,7 @@
 
 - `apps/storefront/build.rs` читает `modules.toml` и модульные `rustok-module.toml`, затем генерирует registry wiring в `OUT_DIR`.
 - Publishable storefront UI по-прежнему подключается через `[provides.storefront_ui].leptos_crate`.
-- Live generic route `/modules/{route_segment}` остаётся точкой входа для blog, forum, pages, commerce и других publishable storefront packages.
+- Live generic route `/modules/{route_segment}` остаётся точкой входа для `blog`, `commerce`, `forum`, `pages`, `search` и других publishable storefront packages.
 
 ## Canonical routing
 
@@ -31,6 +31,14 @@
 
 - Nested storefront routing и более богатые page-layouts для модулей остаются отдельным слоем поверх текущего generic root-page contract.
 - Для внешних crate-ов вне workspace всё ещё нужен publishable storefront package плюс явная server-side install story.
+
+## Рабочие exemplar-ы
+
+- `rustok-blog-storefront` — content read-path с generic module page и data-driven публикациями.
+- `rustok-pages-storefront` — page-driven surface поверх того же host contract.
+- `rustok-forum-storefront` — forum read-path без storefront-specific логики в host.
+- `rustok-commerce-storefront` — public catalog read-path, теперь подключённый через `[provides.storefront_ui]`.
+- `rustok-search-storefront` — storefront slot/page exemplar с manifest-driven route и search-specific UX внутри пакета модуля.
 
 ## Связанные документы
 

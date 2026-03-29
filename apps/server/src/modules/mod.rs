@@ -66,6 +66,7 @@ mod contract_tests {
     const FORUM_README: &str = include_str!("../../../../crates/rustok-forum/README.md");
     const MEDIA_README: &str = include_str!("../../../../crates/rustok-media/README.md");
     const PAGES_README: &str = include_str!("../../../../crates/rustok-pages/README.md");
+    const TAXONOMY_README: &str = include_str!("../../../../crates/rustok-taxonomy/README.md");
     const WORKFLOW_README: &str = include_str!("../../../../crates/rustok-workflow/README.md");
     const FLEX_MUTATION: &str = include_str!("../graphql/flex/mutation.rs");
 
@@ -94,6 +95,7 @@ mod contract_tests {
             ("forum", FORUM_README),
             ("media", MEDIA_README),
             ("pages", PAGES_README),
+            ("taxonomy", TAXONOMY_README),
             ("workflow", WORKFLOW_README),
         ] {
             assert!(
@@ -121,6 +123,7 @@ mod contract_tests {
         let region = registry.get("region").expect("region module");
         let fulfillment = registry.get("fulfillment").expect("fulfillment module");
         let pages = registry.get("pages").expect("pages module");
+        let taxonomy = registry.get("taxonomy").expect("taxonomy module");
         let workflow = registry.get("workflow").expect("workflow module");
 
         assert!(auth.permissions().contains(&Permission::USERS_MANAGE));
@@ -150,6 +153,9 @@ mod contract_tests {
             .permissions()
             .contains(&Permission::new(Resource::Media, Action::Manage)));
         assert!(pages.permissions().contains(&Permission::PAGES_MANAGE));
+        assert!(taxonomy
+            .permissions()
+            .contains(&Permission::TAXONOMY_MANAGE));
         assert!(workflow
             .permissions()
             .contains(&Permission::WORKFLOWS_MANAGE));
@@ -167,7 +173,9 @@ mod contract_tests {
         let fulfillment = registry.get("fulfillment").expect("fulfillment module");
         let commerce = registry.get("commerce").expect("commerce module");
         let outbox = registry.get("outbox").expect("outbox module");
+        let forum = registry.get("forum").expect("forum module");
         let pages = registry.get("pages").expect("pages module");
+        let taxonomy = registry.get("taxonomy").expect("taxonomy module");
         let workflow = registry.get("workflow").expect("workflow module");
 
         assert!(registry.is_core("channel"));
@@ -194,7 +202,9 @@ mod contract_tests {
                 "fulfillment"
             ]
         );
+        assert_eq!(forum.dependencies(), &["content", "taxonomy"]);
         assert_eq!(pages.dependencies(), &["content"]);
+        assert_eq!(taxonomy.dependencies(), &["content"]);
         assert!(workflow.dependencies().is_empty());
     }
 

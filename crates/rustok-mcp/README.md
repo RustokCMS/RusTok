@@ -82,7 +82,7 @@ separated into `alloy_apply_module_scaffold` with explicit confirmation.
   GraphQL: `mcpClients`, `mcpClient`, `mcpAuditEvents`, `createMcpClient`, `rotateMcpClientToken`, `updateMcpClientPolicy`, `revokeMcpToken`, `deactivateMcpClient`
   REST: `/api/mcp/*`
 - DB-backed runtime bridge in `apps/server` (`DbBackedMcpRuntimeBridge`) that resolves persisted tokens into `McpAccessContext`, writes runtime tool-call audit, and can back Alloy scaffold draft tools from the persisted server-side control plane
-- optional Alloy tool surface layered on top of `alloy-scripting`
+- optional Alloy tool surface layered on top of `alloy`
 - staged RusToK module scaffolding through `alloy_scaffold_module`
 - explicit review/apply boundary for generated drafts through `alloy_review_module_scaffold` and `alloy_apply_module_scaffold`
 - persisted Alloy scaffold draft control plane in `apps/server` through REST `/api/mcp/scaffold-drafts*` and GraphQL `mcpModuleScaffoldDraft*`
@@ -131,7 +131,7 @@ To enable Alloy scripting tools, construct the server with `with_alloy`:
 ```rust
 use std::sync::Arc;
 
-use alloy_scripting::{create_default_engine, InMemoryStorage, ScriptOrchestrator};
+use alloy::{create_default_engine, InMemoryStorage, ScriptOrchestrator};
 use rustok_core::registry::ModuleRegistry;
 use rustok_mcp::{AlloyMcpState, RusToKMcpServer};
 
@@ -187,7 +187,7 @@ persisted drafts from `apps/server` instead of process-local in-memory state.
 - embedded binary target `rustok-mcp-server`
 - `crates/rustok-core` for registry/services
 - domain and capability crates through their service layers
-- `alloy-scripting` when Alloy tools are enabled
+- `alloy` when Alloy tools are enabled
 - `apps/server` for persisted MCP clients/tokens/policies/audit and runtime bridge wiring
 
 ## Documentation
@@ -196,3 +196,4 @@ persisted drafts from `apps/server` instead of process-local in-memory state.
 - RusToK MCP implementation plan: [`./docs/implementation-plan.md`](./docs/implementation-plan.md)
 - Central MCP reference index: [`../../docs/references/mcp/README.md`](../../docs/references/mcp/README.md)
 - Platform docs map: [`../../docs/index.md`](../../docs/index.md)
+

@@ -18,7 +18,7 @@
 ## Interactions
 
 - Depends on `rustok-content` for shared content helpers only.
-- Depends on `rustok-channel` for the first public channel-aware gating proof point on pages read paths and the first page-level publication proof point via `channelSlugs`.
+- Depends on `rustok-channel` for the first public channel-aware gating proof point on pages read paths and typed page-level channel visibility via `channelSlugs`.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.
 - Depends on `rustok-api` for shared tenant/auth/request/GraphQL helper contracts.
 - Used by `apps/server` as a composition-root dependency; server now re-exports module-owned pages GraphQL and REST entry points.
@@ -29,9 +29,15 @@
   screens can resolve locale/query-based state without teaching the host about pages specifics.
 - Public pages read paths can now honor `channel_module_bindings` when a request carries an active
   channel through `RequestContext`; authenticated/admin flows intentionally bypass that pilot gate.
-- Public pages read paths also honor page-level `channelSlugs` allowlists stored in metadata for
-  unauthenticated published requests; empty allowlists stay globally visible, while authenticated/admin
-  flows intentionally bypass this experimental publication gate.
+- Public pages read paths also honor page-level `channelSlugs` visibility stored in
+  module-owned `page_channel_visibility`; empty allowlists stay globally visible, while
+  authenticated/admin flows intentionally bypass this publication gate.
+- `rustok-pages` deliberately has no default integration with `rustok-comments`; commentable
+  page-like surfaces, if needed later, must be explicit opt-in product slices.
+- Page builder compatibility is explicit: `body.format = "grapesjs_v1"` is the canonical
+  visual-builder payload, while legacy `blocks` remain an independent migration surface.
+- Pages may legitimately exist with legacy blocks and no `body`; adding or updating a body does
+  not auto-convert, overwrite, or delete existing blocks.
 - Page CRUD and block CRUD now run on module-owned tables: `pages`, `page_translations`,
   `page_bodies`, and `page_blocks`.
 - Menu CRUD now runs on module-owned tables: `menus`, `menu_translations`,

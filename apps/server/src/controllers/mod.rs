@@ -1,5 +1,4 @@
 pub mod admin_events;
-pub mod alloy;
 pub mod auth;
 pub mod blog;
 pub mod channel;
@@ -7,6 +6,7 @@ pub mod commerce;
 pub mod forum;
 pub mod graphql;
 pub mod health;
+pub mod marketplace_registry;
 pub mod mcp;
 #[cfg(feature = "mod-media")]
 pub mod media;

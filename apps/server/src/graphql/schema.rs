@@ -16,12 +16,6 @@ mod schema_codegen {
     include!(concat!(env!("OUT_DIR"), "/graphql_schema_codegen.rs"));
 }
 
-#[cfg(feature = "mod-alloy")]
-use super::alloy::{AlloyMutation, AlloyQuery, AlloyState};
-#[cfg(not(feature = "mod-alloy"))]
-#[derive(Clone, Default)]
-pub struct AlloyState;
-
 use super::auth::{AuthMutation, AuthQuery};
 use super::flex::{FlexMutation, FlexQuery};
 use super::loaders::{NodeBodyLoader, NodeLoader, NodeTranslationLoader, TenantNameLoader};
@@ -62,7 +56,6 @@ pub struct Query(
     SystemQuery,
     FlexQuery,
     schema_codegen::OptionalModuleQuery,
-    #[cfg(feature = "mod-alloy")] AlloyQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -76,7 +69,6 @@ pub struct Mutation(
     SettingsMutation,
     FlexMutation,
     schema_codegen::OptionalModuleMutation,
-    #[cfg(feature = "mod-alloy")] AlloyMutation,
 );
 
 #[derive(MergedSubscription, Default)]
@@ -93,7 +85,6 @@ pub fn build_schema(
     transactional_event_bus: TransactionalEventBus,
     build_event_hub: Arc<BuildEventHub>,
     field_definition_cache: FieldDefinitionCache,
-    alloy_state: AlloyState,
     #[cfg(feature = "mod-media")] storage: StorageService,
 ) -> AppSchema {
     let builder = Schema::build(
@@ -133,11 +124,6 @@ pub fn build_schema(
         .data(build_event_hub)
         .data(build_field_def_registry())
         .data(field_definition_cache);
-
-    #[cfg(feature = "mod-alloy")]
-    let builder = builder.data(alloy_state);
-    #[cfg(not(feature = "mod-alloy"))]
-    let _ = alloy_state;
 
     #[cfg(feature = "mod-media")]
     let builder = builder.data(storage);

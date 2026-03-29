@@ -1155,6 +1155,7 @@ mod tests {
             redirect_uris: serde_json::json!(["https://client.example.com/callback"]),
             scopes: serde_json::json!(["profile", "catalog:read"]),
             grant_types: serde_json::json!(["authorization_code", "refresh_token"]),
+            granted_permissions: serde_json::json!([]),
             manifest_ref: None,
             auto_created: false,
             is_active: true,

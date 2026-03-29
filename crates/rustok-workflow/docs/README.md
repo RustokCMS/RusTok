@@ -1,131 +1,132 @@
-# rustok-workflow — документация модуля
+# rustok-workflow вЂ” РґРѕРєСѓРјРµРЅС‚Р°С†РёСЏ РјРѕРґСѓР»СЏ
 
-Визуальная автоматизация на платформенной очереди.
+Р’РёР·СѓР°Р»СЊРЅР°СЏ Р°РІС‚РѕРјР°С‚РёР·Р°С†РёСЏ РЅР° РїР»Р°С‚С„РѕСЂРјРµРЅРЅРѕР№ РѕС‡РµСЂРµРґРё.
 
-Каноническая модульная документация workflow живёт в этом файле.
+РљР°РЅРѕРЅРёС‡РµСЃРєР°СЏ РјРѕРґСѓР»СЊРЅР°СЏ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЏ workflow Р¶РёРІС‘С‚ РІ СЌС‚РѕРј С„Р°Р№Р»Рµ.
 
-## Назначение
+## РќР°Р·РЅР°С‡РµРЅРёРµ
 
-`rustok-workflow` предоставляет визуальный конструктор автоматизаций (аналог n8n / Directus Flows),
-встроенный в событийную инфраструктуру платформы. Модуль оркестрирует взаимодействие между
-доменными модулями через события, не создавая собственный event loop.
+`rustok-workflow` РїСЂРµРґРѕСЃС‚Р°РІР»СЏРµС‚ РІРёР·СѓР°Р»СЊРЅС‹Р№ РєРѕРЅСЃС‚СЂСѓРєС‚РѕСЂ Р°РІС‚РѕРјР°С‚РёР·Р°С†РёР№ (Р°РЅР°Р»РѕРі n8n / Directus Flows),
+РІСЃС‚СЂРѕРµРЅРЅС‹Р№ РІ СЃРѕР±С‹С‚РёР№РЅСѓСЋ РёРЅС„СЂР°СЃС‚СЂСѓРєС‚СѓСЂСѓ РїР»Р°С‚С„РѕСЂРјС‹. РњРѕРґСѓР»СЊ РѕСЂРєРµСЃС‚СЂРёСЂСѓРµС‚ РІР·Р°РёРјРѕРґРµР№СЃС‚РІРёРµ РјРµР¶РґСѓ
+РґРѕРјРµРЅРЅС‹РјРё РјРѕРґСѓР»СЏРјРё С‡РµСЂРµР· СЃРѕР±С‹С‚РёСЏ, РЅРµ СЃРѕР·РґР°РІР°СЏ СЃРѕР±СЃС‚РІРµРЅРЅС‹Р№ event loop.
 
-## Архитектура
+## РђСЂС…РёС‚РµРєС‚СѓСЂР°
 
 ```
 DomainEvent (blog.published, order.paid, ...)
-       ↓
-  EventBus (outbox → EventTransport)
-       ↓
-  WorkflowTriggerHandler     ← подписан на события платформы
-       ↓
-  WorkflowEngine             ← находит matching workflows по tenant + trigger
-       ↓
-  Step 1 → Step 2 → Step 3  ← линейная цепочка шагов
-       ↓         ↓
-  каждый шаг может публиковать DomainEvent обратно в outbox
+       в†“
+  EventBus (outbox в†’ EventTransport)
+       в†“
+  WorkflowTriggerHandler     в†ђ РїРѕРґРїРёСЃР°РЅ РЅР° СЃРѕР±С‹С‚РёСЏ РїР»Р°С‚С„РѕСЂРјС‹
+       в†“
+  WorkflowEngine             в†ђ РЅР°С…РѕРґРёС‚ matching workflows РїРѕ tenant + trigger
+       в†“
+  Step 1 в†’ Step 2 в†’ Step 3  в†ђ Р»РёРЅРµР№РЅР°СЏ С†РµРїРѕС‡РєР° С€Р°РіРѕРІ
+       в†“         в†“
+  РєР°Р¶РґС‹Р№ С€Р°Рі РјРѕР¶РµС‚ РїСѓР±Р»РёРєРѕРІР°С‚СЊ DomainEvent РѕР±СЂР°С‚РЅРѕ РІ outbox
 ```
 
-Workflow **не владеет** транспортом событий — он работает через абстракции
-`EventBus` / `EventTransport` из `rustok-core`. Конкретный транспорт (Iggy, RabbitMQ,
-базовый Outbox) не имеет значения для модуля.
+Workflow **РЅРµ РІР»Р°РґРµРµС‚** С‚СЂР°РЅСЃРїРѕСЂС‚РѕРј СЃРѕР±С‹С‚РёР№ вЂ” РѕРЅ СЂР°Р±РѕС‚Р°РµС‚ С‡РµСЂРµР· Р°Р±СЃС‚СЂР°РєС†РёРё
+`EventBus` / `EventTransport` РёР· `rustok-core`. РљРѕРЅРєСЂРµС‚РЅС‹Р№ С‚СЂР°РЅСЃРїРѕСЂС‚ (Iggy, RabbitMQ,
+Р±Р°Р·РѕРІС‹Р№ Outbox) РЅРµ РёРјРµРµС‚ Р·РЅР°С‡РµРЅРёСЏ РґР»СЏ РјРѕРґСѓР»СЏ.
 
-## Модель данных
+## РњРѕРґРµР»СЊ РґР°РЅРЅС‹С…
 
-| Таблица | Назначение |
+| РўР°Р±Р»РёС†Р° | РќР°Р·РЅР°С‡РµРЅРёРµ |
 |---------|-----------|
-| `workflows` | Определение workflow: триггер, статус, tenant |
-| `workflow_versions` | Версионирование: снэпшот steps + config каждой версии |
-| `workflow_steps` | Шаги workflow: тип, конфиг, порядок, обработка ошибок |
-| `workflow_executions` | Журнал запусков: статус, контекст, ошибка |
-| `workflow_step_executions` | Журнал выполнения каждого шага в рамках запуска |
+| `workflows` | РћРїСЂРµРґРµР»РµРЅРёРµ workflow: С‚СЂРёРіРіРµСЂ, СЃС‚Р°С‚СѓСЃ, tenant |
+| `workflow_versions` | Р’РµСЂСЃРёРѕРЅРёСЂРѕРІР°РЅРёРµ: СЃРЅСЌРїС€РѕС‚ steps + config РєР°Р¶РґРѕР№ РІРµСЂСЃРёРё |
+| `workflow_steps` | РЁР°РіРё workflow: С‚РёРї, РєРѕРЅС„РёРі, РїРѕСЂСЏРґРѕРє, РѕР±СЂР°Р±РѕС‚РєР° РѕС€РёР±РѕРє |
+| `workflow_executions` | Р–СѓСЂРЅР°Р» Р·Р°РїСѓСЃРєРѕРІ: СЃС‚Р°С‚СѓСЃ, РєРѕРЅС‚РµРєСЃС‚, РѕС€РёР±РєР° |
+| `workflow_step_executions` | Р–СѓСЂРЅР°Р» РІС‹РїРѕР»РЅРµРЅРёСЏ РєР°Р¶РґРѕРіРѕ С€Р°РіР° РІ СЂР°РјРєР°С… Р·Р°РїСѓСЃРєР° |
 
-## Типы триггеров
+## РўРёРїС‹ С‚СЂРёРіРіРµСЂРѕРІ
 
-| Тип | Источник |
+| РўРёРї | РСЃС‚РѕС‡РЅРёРє |
 |-----|---------|
-| `event` | `DomainEvent` через `EventBus` |
-| `cron` | Расписание (cron-выражение), тик через `WorkflowCronScheduler` |
-| `webhook` | Входящий HTTP-запрос на платформенный эндпоинт |
-| `manual` | Кнопка в админке / API-вызов |
+| `event` | `DomainEvent` С‡РµСЂРµР· `EventBus` |
+| `cron` | Р Р°СЃРїРёСЃР°РЅРёРµ (cron-РІС‹СЂР°Р¶РµРЅРёРµ), С‚РёРє С‡РµСЂРµР· `WorkflowCronScheduler` |
+| `webhook` | Р’С…РѕРґСЏС‰РёР№ HTTP-Р·Р°РїСЂРѕСЃ РЅР° РїР»Р°С‚С„РѕСЂРјРµРЅРЅС‹Р№ СЌРЅРґРїРѕРёРЅС‚ |
+| `manual` | РљРЅРѕРїРєР° РІ Р°РґРјРёРЅРєРµ / API-РІС‹Р·РѕРІ |
 
-## Типы шагов
+## РўРёРїС‹ С€Р°РіРѕРІ
 
-| Тип | Что делает |
+| РўРёРї | Р§С‚Рѕ РґРµР»Р°РµС‚ |
 |-----|-----------|
-| `action` | Вызывает действие платформенного сервиса |
-| `emit_event` | Публикует `DomainEvent` в outbox |
-| `condition` | Ветвление по значению в JSON-контексте |
-| `delay` | Отложенное выполнение через scheduled event |
-| `http` | Внешний HTTP-запрос (webhook out) |
-| `alloy_script` | Запускает Rhai-скрипт через `alloy-scripting` |
-| `notify` | Уведомление (email, Slack, Telegram) |
+| `action` | Р’С‹Р·С‹РІР°РµС‚ РґРµР№СЃС‚РІРёРµ РїР»Р°С‚С„РѕСЂРјРµРЅРЅРѕРіРѕ СЃРµСЂРІРёСЃР° |
+| `emit_event` | РџСѓР±Р»РёРєСѓРµС‚ `DomainEvent` РІ outbox |
+| `condition` | Р’РµС‚РІР»РµРЅРёРµ РїРѕ Р·РЅР°С‡РµРЅРёСЋ РІ JSON-РєРѕРЅС‚РµРєСЃС‚Рµ |
+| `delay` | РћС‚Р»РѕР¶РµРЅРЅРѕРµ РІС‹РїРѕР»РЅРµРЅРёРµ С‡РµСЂРµР· scheduled event |
+| `http` | Р’РЅРµС€РЅРёР№ HTTP-Р·Р°РїСЂРѕСЃ (webhook out) |
+| `alloy_script` | Р—Р°РїСѓСЃРєР°РµС‚ Rhai-СЃРєСЂРёРїС‚ С‡РµСЂРµР· `alloy` |
+| `notify` | РЈРІРµРґРѕРјР»РµРЅРёРµ (email, Slack, Telegram) |
 
-## Связь с Alloy
+## РЎРІСЏР·СЊ СЃ Alloy
 
-`rustok-workflow` использует Alloy как capability для отдельных шагов, но больше не объявляет
-runtime-зависимость `workflow -> alloy` в module registry.
+`rustok-workflow` РёСЃРїРѕР»СЊР·СѓРµС‚ Alloy РєР°Рє capability РґР»СЏ РѕС‚РґРµР»СЊРЅС‹С… С€Р°РіРѕРІ, РЅРѕ Р±РѕР»СЊС€Рµ РЅРµ РѕР±СЉСЏРІР»СЏРµС‚
+runtime-Р·Р°РІРёСЃРёРјРѕСЃС‚СЊ `workflow -> alloy` РІ module registry.
 
-Workflow оркестрирует — Alloy исполняет. Alloy может быть шагом внутри workflow:
+Workflow РѕСЂРєРµСЃС‚СЂРёСЂСѓРµС‚ вЂ” Alloy РёСЃРїРѕР»РЅСЏРµС‚. Alloy РјРѕР¶РµС‚ Р±С‹С‚СЊ С€Р°РіРѕРј РІРЅСѓС‚СЂРё workflow:
 
 ```
 Trigger: order.paid
-  → Step 1: alloy_script "сгенерируй invoice PDF"
-  → Step 2: notify — отправь email клиенту
-  → Step 3: http — уведомить CRM
+  в†’ Step 1: alloy_script "СЃРіРµРЅРµСЂРёСЂСѓР№ invoice PDF"
+  в†’ Step 2: notify вЂ” РѕС‚РїСЂР°РІСЊ email РєР»РёРµРЅС‚Сѓ
+  в†’ Step 3: http вЂ” СѓРІРµРґРѕРјРёС‚СЊ CRM
 ```
 
-В перспективе Alloy может порождать workflow из описания на натуральном языке.
+Р’ РїРµСЂСЃРїРµРєС‚РёРІРµ Alloy РјРѕР¶РµС‚ РїРѕСЂРѕР¶РґР°С‚СЊ workflow РёР· РѕРїРёСЃР°РЅРёСЏ РЅР° РЅР°С‚СѓСЂР°Р»СЊРЅРѕРј СЏР·С‹РєРµ.
 
 ## RBAC
 
-Ресурс `Workflows`: `Create`, `Read`, `Update`, `Delete`, `List`, `Execute`, `Manage`.
-Ресурс `WorkflowExecutions`: `Read`, `List`.
+Р РµСЃСѓСЂСЃ `Workflows`: `Create`, `Read`, `Update`, `Delete`, `List`, `Execute`, `Manage`.
+Р РµСЃСѓСЂСЃ `WorkflowExecutions`: `Read`, `List`.
 
-Все таблицы содержат `tenant_id` — полная изоляция между тенантами.
+Р’СЃРµ С‚Р°Р±Р»РёС†С‹ СЃРѕРґРµСЂР¶Р°С‚ `tenant_id` вЂ” РїРѕР»РЅР°СЏ РёР·РѕР»СЏС†РёСЏ РјРµР¶РґСѓ С‚РµРЅР°РЅС‚Р°РјРё.
 
 ## Admin UI
 
 - Publishable Leptos root page package: `crates/rustok-workflow/admin`.
-- `rustok-module.toml [provides.admin_ui]` теперь объявляет `rustok-workflow-admin`, `route_segment = "workflow"`, `nav_label = "Workflow"` и nested subpage `templates` через `[[provides.admin_ui.pages]]`.
-- `apps/admin` монтирует этот пакет через generic routes `/modules/workflow` и `/modules/workflow/templates`, не зная о модуле по имени в router или sidebar.
-- Root page уже живёт в модульном crate и покрывает overview/list, а templates теперь открываются как module-owned nested route поверх generic host contract.
-- Legacy detail/edit flow всё ещё остаётся на маршрутах `/workflows/*` внутри `apps/admin`; новый nested contract пока закрывает package-owned overview/templates слой, а не весь legacy workflow editor.
+- `rustok-module.toml [provides.admin_ui]` С‚РµРїРµСЂСЊ РѕР±СЉСЏРІР»СЏРµС‚ `rustok-workflow-admin`, `route_segment = "workflow"`, `nav_label = "Workflow"` Рё nested subpage `templates` С‡РµСЂРµР· `[[provides.admin_ui.pages]]`.
+- `apps/admin` РјРѕРЅС‚РёСЂСѓРµС‚ СЌС‚РѕС‚ РїР°РєРµС‚ С‡РµСЂРµР· generic routes `/modules/workflow` Рё `/modules/workflow/templates`, РЅРµ Р·РЅР°СЏ Рѕ РјРѕРґСѓР»Рµ РїРѕ РёРјРµРЅРё РІ router РёР»Рё sidebar.
+- Root page СѓР¶Рµ Р¶РёРІС‘С‚ РІ РјРѕРґСѓР»СЊРЅРѕРј crate Рё РїРѕРєСЂС‹РІР°РµС‚ overview/list, Р° templates С‚РµРїРµСЂСЊ РѕС‚РєСЂС‹РІР°СЋС‚СЃСЏ РєР°Рє module-owned nested route РїРѕРІРµСЂС… generic host contract.
+- Legacy detail/edit flow РІСЃС‘ РµС‰С‘ РѕСЃС‚Р°С‘С‚СЃСЏ РЅР° РјР°СЂС€СЂСѓС‚Р°С… `/workflows/*` РІРЅСѓС‚СЂРё `apps/admin`; РЅРѕРІС‹Р№ nested contract РїРѕРєР° Р·Р°РєСЂС‹РІР°РµС‚ package-owned overview/templates СЃР»РѕР№, Р° РЅРµ РІРµСЃСЊ legacy workflow editor.
 
-## Связанные документы
+## РЎРІСЏР·Р°РЅРЅС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹
 
 - [CRATE_API](../CRATE_API.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 
 ## Transport adapters
 
-- GraphQL адаптеры модуля теперь живут в `crates/rustok-workflow/src/graphql/`.
-- REST-контроллеры и webhook ingress теперь живут в `crates/rustok-workflow/src/controllers/`.
-- `apps/server` для workflow больше не хранит бизнес-логику transport-адаптеров и используется только как composition root / shim-слой.
+- GraphQL Р°РґР°РїС‚РµСЂС‹ РјРѕРґСѓР»СЏ С‚РµРїРµСЂСЊ Р¶РёРІСѓС‚ РІ `crates/rustok-workflow/src/graphql/`.
+- REST-РєРѕРЅС‚СЂРѕР»Р»РµСЂС‹ Рё webhook ingress С‚РµРїРµСЂСЊ Р¶РёРІСѓС‚ РІ `crates/rustok-workflow/src/controllers/`.
+- `apps/server` РґР»СЏ workflow Р±РѕР»СЊС€Рµ РЅРµ С…СЂР°РЅРёС‚ Р±РёР·РЅРµСЃ-Р»РѕРіРёРєСѓ transport-Р°РґР°РїС‚РµСЂРѕРІ Рё РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РєР°Рє composition root / shim-СЃР»РѕР№.
 
 ## Event contracts
 
-Модуль публикует события через `emit_event`-шаг. Контракт событий определяется
-конфигурацией конкретного workflow — не зашит в код модуля.
+РњРѕРґСѓР»СЊ РїСѓР±Р»РёРєСѓРµС‚ СЃРѕР±С‹С‚РёСЏ С‡РµСЂРµР· `emit_event`-С€Р°Рі. РљРѕРЅС‚СЂР°РєС‚ СЃРѕР±С‹С‚РёР№ РѕРїСЂРµРґРµР»СЏРµС‚СЃСЏ
+РєРѕРЅС„РёРіСѓСЂР°С†РёРµР№ РєРѕРЅРєСЂРµС‚РЅРѕРіРѕ workflow вЂ” РЅРµ Р·Р°С€РёС‚ РІ РєРѕРґ РјРѕРґСѓР»СЏ.
 
-Системные события (backlog):
+РЎРёСЃС‚РµРјРЅС‹Рµ СЃРѕР±С‹С‚РёСЏ (backlog):
 - `workflow.execution.started`
 - `workflow.execution.completed`
 - `workflow.execution.failed`
 
-## Статус реализации
+## РЎС‚Р°С‚СѓСЃ СЂРµР°Р»РёР·Р°С†РёРё
 
-Все четыре фазы реализованы:
+Р’СЃРµ С‡РµС‚С‹СЂРµ С„Р°Р·С‹ СЂРµР°Р»РёР·РѕРІР°РЅС‹:
 
-- ✅ Phase 1 — Foundation: таблицы, entities, `WorkflowService`, `WorkflowEngine`, event trigger, базовые шаги
-- ✅ Phase 2 — Advanced Steps: `alloy_script`, `http`, `delay`, `notify`, cron trigger, manual trigger, error handling
-- ✅ Phase 3 — Admin UI: граф-редактор в Next.js, execution history, Leptos GraphQL API
-- ✅ Phase 4 — Alloy Synergy: webhook trigger, версионирование, marketplace шаблоны, Alloy-генерация workflow
+- вњ… Phase 1 вЂ” Foundation: С‚Р°Р±Р»РёС†С‹, entities, `WorkflowService`, `WorkflowEngine`, event trigger, Р±Р°Р·РѕРІС‹Рµ С€Р°РіРё
+- вњ… Phase 2 вЂ” Advanced Steps: `alloy_script`, `http`, `delay`, `notify`, cron trigger, manual trigger, error handling
+- вњ… Phase 3 вЂ” Admin UI: РіСЂР°С„-СЂРµРґР°РєС‚РѕСЂ РІ Next.js, execution history, Leptos GraphQL API
+- вњ… Phase 4 вЂ” Alloy Synergy: webhook trigger, РІРµСЂСЃРёРѕРЅРёСЂРѕРІР°РЅРёРµ, marketplace С€Р°Р±Р»РѕРЅС‹, Alloy-РіРµРЅРµСЂР°С†РёСЏ workflow
 
 ### Backlog
 
-- Integration-тесты с реальной БД (sqlite in-memory).
-- Полная реализация `alloy_script` шага (сейчас stub + `ScriptRunner` trait).
-- Полная реализация `notify` шага (сейчас stub + `NotificationSender` trait).
-- DAG вместо линейной цепочки шагов.
-- Системные события `workflow.execution.*` в outbox.
+- Integration-С‚РµСЃС‚С‹ СЃ СЂРµР°Р»СЊРЅРѕР№ Р‘Р” (sqlite in-memory).
+- РџРѕР»РЅР°СЏ СЂРµР°Р»РёР·Р°С†РёСЏ `alloy_script` С€Р°РіР° (СЃРµР№С‡Р°СЃ stub + `ScriptRunner` trait).
+- РџРѕР»РЅР°СЏ СЂРµР°Р»РёР·Р°С†РёСЏ `notify` С€Р°РіР° (СЃРµР№С‡Р°СЃ stub + `NotificationSender` trait).
+- DAG РІРјРµСЃС‚Рѕ Р»РёРЅРµР№РЅРѕР№ С†РµРїРѕС‡РєРё С€Р°РіРѕРІ.
+- РЎРёСЃС‚РµРјРЅС‹Рµ СЃРѕР±С‹С‚РёСЏ `workflow.execution.*` РІ outbox.
+

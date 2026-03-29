@@ -72,11 +72,9 @@ pub fn build_storefront_router() -> AxumRouter {
 
 pub fn mount_application_shell(
     router: AxumRouter,
-    alloy_rest_router: AxumRouter,
     admin_router: Option<AxumRouter>,
     storefront_router: Option<AxumRouter>,
 ) -> AxumRouter {
-    let router = router.nest("/api/alloy", alloy_rest_router);
     let router = if let Some(admin_router) = admin_router {
         router.nest("/admin", admin_router)
     } else {
@@ -98,7 +96,6 @@ pub fn compose_application_router(
 ) -> AxumRouter {
     mount_application_shell(
         router,
-        runtime.alloy_rest_router,
         runtime
             .deployment_surfaces
             .embed_admin
@@ -154,33 +151,13 @@ mod tests {
 
     #[tokio::test]
     async fn mount_application_shell_routes_requests_to_nested_routers() {
-        let alloy_router = AxumRouter::new().route("/health", get(|| async { "alloy" }));
         let admin_router = AxumRouter::new().route("/dashboard", get(|| async { "admin" }));
         let storefront_router = AxumRouter::new().route("/", get(|| async { "storefront" }));
 
         let app = mount_application_shell(
             AxumRouter::new(),
-            alloy_router,
             Some(admin_router),
             Some(storefront_router),
-        );
-
-        let alloy_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/alloy/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(alloy_response.status(), StatusCode::OK);
-        assert_eq!(
-            to_bytes(alloy_response.into_body(), usize::MAX)
-                .await
-                .unwrap(),
-            "alloy"
         );
 
         let admin_response = app
@@ -216,20 +193,7 @@ mod tests {
 
     #[tokio::test]
     async fn mount_application_shell_skips_admin_and_storefront_for_headless_profile() {
-        let alloy_router = AxumRouter::new().route("/health", get(|| async { "alloy" }));
-        let app = mount_application_shell(AxumRouter::new(), alloy_router, None, None);
-
-        let alloy_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/alloy/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(alloy_response.status(), StatusCode::OK);
+        let app = mount_application_shell(AxumRouter::new(), None, None);
 
         let root_response = app
             .clone()
@@ -252,10 +216,8 @@ mod tests {
 
     #[tokio::test]
     async fn mount_application_shell_supports_server_with_admin_profile() {
-        let alloy_router = AxumRouter::new().route("/health", get(|| async { "alloy" }));
         let admin_router = AxumRouter::new().route("/dashboard", get(|| async { "admin" }));
-        let app =
-            mount_application_shell(AxumRouter::new(), alloy_router, Some(admin_router), None);
+        let app = mount_application_shell(AxumRouter::new(), Some(admin_router), None);
 
         let admin_response = app
             .clone()

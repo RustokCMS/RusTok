@@ -11,7 +11,7 @@ uuid.workspace = true
 # Platform-core dependencies
 rustok-core = { path = "../../../crates/rustok-core" }
 # Module crates — each owns its own migration files
-alloy-scripting = { path = "../../../crates/alloy-scripting" }
+alloy = { path = "../../../crates/alloy" }
 rustok-auth = { path = "../../../crates/rustok-auth" }
 rustok-channel = { path = "../../../crates/rustok-channel" }
 rustok-cart = { path = "../../../crates/rustok-cart" }

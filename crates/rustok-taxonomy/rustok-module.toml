@@ -1,0 +1,10 @@
+[module]
+slug = "taxonomy"
+name = "Taxonomy"
+version = "0.1.0"
+description = "Scope-aware taxonomy dictionary for shared and module-local terms"
+ownership = "first_party"
+trust_level = "verified"
+
+[crate]
+entry_type = "TaxonomyModule"

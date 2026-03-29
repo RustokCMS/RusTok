@@ -1,4 +1,4 @@
-﻿# Module documentation index
+# Module documentation index
 
 Per-module documentation lives inside each crate at `crates/<name>/docs/README.md`.
 This page is the navigation index for all module-level docs.
@@ -50,6 +50,7 @@ Core module UI packages:
 | `rustok-comments` | [docs](../../crates/rustok-comments/docs/README.md) | [plan](../../crates/rustok-comments/docs/implementation-plan.md) |
 | `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |
 | `rustok-pages` | [docs](../../crates/rustok-pages/docs/README.md) | [plan](../../crates/rustok-pages/docs/implementation-plan.md) |
+| `rustok-taxonomy` | [docs](../../crates/rustok-taxonomy/docs/README.md) | [plan](../../crates/rustok-taxonomy/docs/implementation-plan.md) |
 | `rustok-media` | [docs](../../crates/rustok-media/docs/README.md) | [plan](../../crates/rustok-media/docs/implementation-plan.md) |
 | `rustok-storage` | [docs](../../crates/rustok-storage/docs/README.md) | [plan](../../crates/rustok-storage/docs/implementation-plan.md) |
 | `rustok-workflow` | [docs](../../crates/rustok-workflow/docs/README.md) | [plan](../../crates/rustok-workflow/docs/implementation-plan.md) |
@@ -58,8 +59,7 @@ Core module UI packages:
 
 | Capability | Docs | Implementation plan |
 |--------|------|-------------------|
-| `alloy-scripting` | [docs](../../crates/alloy-scripting/docs/README.md) | [plan](../../crates/alloy-scripting/docs/implementation-plan.md) |
-| `alloy` | [docs](../../crates/alloy/docs/README.md) | n/a |
+| `alloy` | [docs](../../crates/alloy/docs/README.md) | [plan](../../crates/alloy/docs/implementation-plan.md) |
 
 ## Module template
 
@@ -92,4 +92,5 @@ docs/modules/_template/
 - [Module manifest](./manifest.md) — modules.toml format and rebuild lifecycle
 - [Rich-text (Tiptap) and GrapesJS Page Builder implementation plan](./tiptap-page-builder-implementation-plan.md) — phased rollout plan with completion marks
 - [Flex docs](../../crates/flex/docs/README.md) — Flex module concept
+
 

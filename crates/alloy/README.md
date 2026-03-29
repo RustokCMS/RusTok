@@ -1,31 +1,30 @@
-﻿# alloy
+# alloy
 
 ## Purpose
 
-`alloy` owns the GraphQL and REST transport adapters for the module-agnostic Alloy
-capability.
+`alloy` owns the module-agnostic Alloy runtime for RusToK automation.
 
 ## Responsibilities
 
-- Expose Alloy GraphQL adapters for script CRUD and manual execution.
-- Expose Alloy REST entry points as a thin transport shell over `alloy-scripting`.
-- Keep `apps/server` as a composition root while isolating web-facing Alloy contracts from the
-  scripting runtime crate.
+- Own script storage, execution contracts, scheduler, and migrations.
+- Own the Rhai runtime, hook orchestration, execution log, and transport surfaces.
+- Expose the canonical Alloy runtime API used by MCP, workflow integrations, and server wiring.
 
 ## Interactions
 
-- Depends on `alloy-scripting` for the Rhai runtime, storage, execution log, and REST handler core.
-- Depends on `rustok-api` for shared auth/tenant and GraphQL helper contracts.
-- Depends on `rustok-core` for the typed `scripts:*` permission surface used by GraphQL auth guards.
-- Serves as the server-facing transport layer for the Alloy capability while Alloy itself remains
-  outside the tenant module registry.
-- `apps/server` now mounts `alloy` as a shim/composition-root layer instead of owning Alloy
-  GraphQL code directly.
+- Used by `apps/server` through generated module wiring from `rustok-module.toml`.
+- Used by `rustok-mcp` as the canonical Alloy capability backend.
+- Used by `rustok-core` for scripting-aware auth/domain integrations.
+- Used by `rustok-workflow` through the `ScriptRunner` abstraction without making Alloy a tenant module.
 
 ## Entry points
 
+- `create_default_engine`
+- `ScriptEngine`
+- `ScriptOrchestrator`
+- `Scheduler`
+- `ScriptRegistry`
+- `SeaOrmStorage`
 - `graphql::AlloyQuery`
 - `graphql::AlloyMutation`
-- `graphql::AlloyState`
-- `controllers::router`
-
+- `controllers::routes`

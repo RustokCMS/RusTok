@@ -28,6 +28,7 @@ pub enum Resource {
     Media,
     Comments,
     Tags,
+    Taxonomy,
     Analytics,
     Logs,
     Webhooks,
@@ -70,6 +71,7 @@ impl fmt::Display for Resource {
             Self::Media => "media",
             Self::Comments => "comments",
             Self::Tags => "tags",
+            Self::Taxonomy => "taxonomy",
             Self::Analytics => "analytics",
             Self::Logs => "logs",
             Self::Webhooks => "webhooks",
@@ -113,6 +115,7 @@ impl FromStr for Resource {
             "media" => Ok(Self::Media),
             "comments" => Ok(Self::Comments),
             "tags" => Ok(Self::Tags),
+            "taxonomy" => Ok(Self::Taxonomy),
             "analytics" => Ok(Self::Analytics),
             "logs" => Ok(Self::Logs),
             "webhooks" => Ok(Self::Webhooks),
@@ -274,6 +277,13 @@ impl Permission {
     pub const REGIONS_DELETE: Self = Self::new(Resource::Regions, Action::Delete);
     pub const REGIONS_LIST: Self = Self::new(Resource::Regions, Action::List);
     pub const REGIONS_MANAGE: Self = Self::new(Resource::Regions, Action::Manage);
+
+    pub const TAXONOMY_CREATE: Self = Self::new(Resource::Taxonomy, Action::Create);
+    pub const TAXONOMY_READ: Self = Self::new(Resource::Taxonomy, Action::Read);
+    pub const TAXONOMY_UPDATE: Self = Self::new(Resource::Taxonomy, Action::Update);
+    pub const TAXONOMY_DELETE: Self = Self::new(Resource::Taxonomy, Action::Delete);
+    pub const TAXONOMY_LIST: Self = Self::new(Resource::Taxonomy, Action::List);
+    pub const TAXONOMY_MANAGE: Self = Self::new(Resource::Taxonomy, Action::Manage);
 
     pub const PAYMENTS_CREATE: Self = Self::new(Resource::Payments, Action::Create);
     pub const PAYMENTS_READ: Self = Self::new(Resource::Payments, Action::Read);

@@ -11,6 +11,7 @@ pub struct GqlForumCategory {
     pub requested_locale: String,
     pub locale: String,
     pub effective_locale: String,
+    pub available_locales: Vec<String>,
     pub name: String,
     pub slug: String,
     pub description: Option<String>,
@@ -18,6 +19,7 @@ pub struct GqlForumCategory {
     pub color: Option<String>,
     pub topic_count: i32,
     pub reply_count: i32,
+    pub is_subscribed: bool,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -37,6 +39,10 @@ pub struct GqlForumTopic {
     pub status: String,
     pub tags: Vec<String>,
     pub channel_slugs: Vec<String>,
+    pub vote_score: i32,
+    pub current_user_vote: Option<i32>,
+    pub is_subscribed: bool,
+    pub solution_reply_id: Option<Uuid>,
     pub is_pinned: bool,
     pub is_locked: bool,
     pub reply_count: i32,
@@ -56,8 +62,20 @@ pub struct GqlForumReply {
     pub content: String,
     pub content_format: String,
     pub status: String,
+    pub vote_score: i32,
+    pub current_user_vote: Option<i32>,
+    pub is_solution: bool,
     pub parent_reply_id: Option<Uuid>,
     pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlForumUserStats {
+    pub user_id: Uuid,
+    pub topic_count: i32,
+    pub reply_count: i32,
+    pub solution_count: i32,
     pub updated_at: String,
 }
 

@@ -1,19 +1,19 @@
 use std::collections::HashMap;
 
-use alloy_scripting::{
+use async_graphql::{Context, Json, Object, Result};
+use chrono::Utc;
+use uuid::Uuid;
+
+use crate::{
     model::{Script, ScriptStatus},
     runner::ExecutionOutcome,
     utils::{dynamic_to_json, json_to_dynamic, validate_cron_expression},
     ScriptRegistry,
 };
-use async_graphql::{Context, Json, Object, Result};
-use chrono::Utc;
-use rustok_api::TenantContext;
-use uuid::Uuid;
 
 use super::{
-    require_admin, AlloyState, CreateScriptInput, GqlExecutionResult, GqlScript, RunScriptInput,
-    ScriptTriggerInput, UpdateScriptInput,
+    require_admin, runtime_from_graphql_ctx, CreateScriptInput, GqlExecutionResult, GqlScript,
+    RunScriptInput, ScriptTriggerInput, UpdateScriptInput,
 };
 
 fn validate_cron_trigger(trigger: &ScriptTriggerInput) -> Result<()> {
@@ -38,15 +38,15 @@ impl AlloyMutation {
     ) -> Result<GqlScript> {
         require_admin(ctx).await?;
         validate_cron_trigger(&input.trigger)?;
-        let state = ctx.data::<AlloyState>()?;
+        let runtime = runtime_from_graphql_ctx(ctx)?;
         let mut scope = rhai_full::Scope::new();
-        state
+        runtime
             .engine
             .compile(&input.name, &input.code, &mut scope)
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         let tenant_id = ctx
-            .data::<TenantContext>()
+            .data::<rustok_api::TenantContext>()
             .map(|tenant| tenant.id)
             .unwrap_or_default();
 
@@ -60,7 +60,7 @@ impl AlloyMutation {
             script.status = status.into();
         }
 
-        let saved = state
+        let saved = runtime
             .storage
             .save(script)
             .await
@@ -76,24 +76,24 @@ impl AlloyMutation {
         input: UpdateScriptInput,
     ) -> Result<GqlScript> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
-        let mut script = state
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let mut script = runtime
             .storage
             .get(id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         if let Some(name) = input.name {
-            state.engine.invalidate(&script.name);
+            runtime.engine.invalidate(&script.name);
             script.name = name;
         }
         if let Some(description) = input.description {
             script.description = Some(description);
         }
         if let Some(code) = input.code {
-            state.engine.invalidate(&script.name);
+            runtime.engine.invalidate(&script.name);
             let mut scope = rhai_full::Scope::new();
-            state
+            runtime
                 .engine
                 .compile(&script.name, &code, &mut scope)
                 .map_err(|error| async_graphql::Error::new(error.to_string()))?;
@@ -120,7 +120,7 @@ impl AlloyMutation {
             script.author_id = Some(author_id);
         }
 
-        let saved = state
+        let saved = runtime
             .storage
             .save(script)
             .await
@@ -131,8 +131,8 @@ impl AlloyMutation {
 
     async fn delete_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<bool> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
-        state
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        runtime
             .storage
             .delete(id)
             .await
@@ -147,7 +147,7 @@ impl AlloyMutation {
         input: RunScriptInput,
     ) -> Result<GqlExecutionResult> {
         let auth = require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
+        let runtime = runtime_from_graphql_ctx(ctx)?;
         let user_id = Some(auth.user_id.to_string());
 
         let params = input
@@ -157,24 +157,26 @@ impl AlloyMutation {
                     .0
                     .as_object()
                     .ok_or_else(|| async_graphql::Error::new("params must be a JSON object"))?;
-                let params_map: HashMap<String, rhai_full::Dynamic> = object
+                Ok(object
                     .iter()
                     .map(|(key, value)| (key.clone(), json_to_dynamic(value.clone())))
-                    .collect();
-                Ok(params_map)
+                    .collect())
             })
             .transpose()?
             .unwrap_or_default();
 
-        let result = state
+        let result = runtime
             .orchestrator
             .run_manual(&input.script_name, params, user_id.clone())
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
-        let tenant_id = ctx.data::<TenantContext>().map(|tenant| tenant.id).ok();
+        let tenant_id = ctx
+            .data::<rustok_api::TenantContext>()
+            .map(|tenant| tenant.id)
+            .ok();
 
-        let _ = state
+        let _ = runtime
             .execution_log
             .record_with_context(&result, user_id, tenant_id)
             .await;
@@ -210,15 +212,15 @@ impl AlloyMutation {
 
     async fn activate_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
-        let mut script = state
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let mut script = runtime
             .storage
             .get(id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         script.activate();
-        let saved = state
+        let saved = runtime
             .storage
             .save(script)
             .await
@@ -229,8 +231,8 @@ impl AlloyMutation {
 
     async fn pause_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
-        let mut script = state
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let mut script = runtime
             .storage
             .get(id)
             .await
@@ -239,7 +241,7 @@ impl AlloyMutation {
         script.status = ScriptStatus::Paused;
         script.updated_at = Utc::now();
 
-        let saved = state
+        let saved = runtime
             .storage
             .save(script)
             .await
@@ -250,15 +252,15 @@ impl AlloyMutation {
 
     async fn disable_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
-        let mut script = state
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let mut script = runtime
             .storage
             .get(id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         script.disable();
-        let saved = state
+        let saved = runtime
             .storage
             .save(script)
             .await
@@ -269,15 +271,15 @@ impl AlloyMutation {
 
     async fn archive_script(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
-        let mut script = state
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let mut script = runtime
             .storage
             .get(id)
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         script.archive();
-        let saved = state
+        let saved = runtime
             .storage
             .save(script)
             .await
@@ -288,8 +290,8 @@ impl AlloyMutation {
 
     async fn reset_script_errors(&self, ctx: &Context<'_>, id: Uuid) -> Result<GqlScript> {
         require_admin(ctx).await?;
-        let state = ctx.data::<AlloyState>()?;
-        let mut script = state
+        let runtime = runtime_from_graphql_ctx(ctx)?;
+        let mut script = runtime
             .storage
             .get(id)
             .await
@@ -298,7 +300,7 @@ impl AlloyMutation {
         script.reset_errors();
         script.updated_at = Utc::now();
 
-        let saved = state
+        let saved = runtime
             .storage
             .save(script)
             .await

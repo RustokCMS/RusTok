@@ -34,6 +34,8 @@ pub enum Relation {
     Translations,
     #[sea_orm(has_many = "super::forum_topic_channel_access::Entity")]
     ChannelAccess,
+    #[sea_orm(has_many = "super::forum_topic_tag::Entity")]
+    TopicTags,
     #[sea_orm(has_many = "super::forum_reply::Entity")]
     Replies,
 }
@@ -53,6 +55,12 @@ impl Related<super::forum_topic_translation::Entity> for Entity {
 impl Related<super::forum_topic_channel_access::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::ChannelAccess.def()
+    }
+}
+
+impl Related<super::forum_topic_tag::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TopicTags.def()
     }
 }
 

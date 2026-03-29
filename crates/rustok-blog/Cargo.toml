@@ -20,6 +20,7 @@ rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles.workspace = true
+rustok-taxonomy.workspace = true
 rustok-telemetry.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true

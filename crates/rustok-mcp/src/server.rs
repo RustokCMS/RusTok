@@ -35,7 +35,7 @@ use crate::tools::{
     TOOL_LIST_MODULES, TOOL_MCP_HEALTH, TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS,
     TOOL_PAGES_MODULE, TOOL_QUERY_MODULES,
 };
-use alloy_scripting::storage::ScriptRegistry;
+use alloy::storage::ScriptRegistry;
 
 /// Configuration for the MCP server
 pub struct McpServerConfig {
@@ -102,7 +102,7 @@ impl McpServerConfig {
 }
 
 /// MCP Server handler for RusToK modules
-pub struct RusToKMcpServer<R: ScriptRegistry + 'static = alloy_scripting::InMemoryStorage> {
+pub struct RusToKMcpServer<R: ScriptRegistry + 'static = alloy::InMemoryStorage> {
     state: Arc<McpState>,
     alloy: Option<Arc<AlloyMcpState<R>>>,
     enabled_tools: Option<Arc<HashSet<String>>>,
@@ -126,7 +126,7 @@ impl<R: ScriptRegistry + 'static> Clone for RusToKMcpServer<R> {
     }
 }
 
-impl RusToKMcpServer<alloy_scripting::InMemoryStorage> {
+impl RusToKMcpServer<alloy::InMemoryStorage> {
     pub fn new(registry: ModuleRegistry) -> Self {
         Self {
             state: Arc::new(McpState { registry }),

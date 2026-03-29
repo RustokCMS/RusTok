@@ -170,6 +170,7 @@ rustok-fulfillment = { path = "crates/rustok-fulfillment" }
 rustok-blog = { path = "crates/rustok-blog" }
 rustok-content = { path = "crates/rustok-content" }
 rustok-pages = { path = "crates/rustok-pages" }
+rustok-taxonomy = { path = "crates/rustok-taxonomy" }
 rustok-index = { path = "crates/rustok-index" }
 rustok-search = { path = "crates/rustok-search" }
 rustok-auth = { path = "crates/rustok-auth" }
@@ -189,6 +190,5 @@ rustok-test-utils = { path = "crates/rustok-test-utils" }
 rustok-storage = { path = "crates/rustok-storage" }
 rustok-media = { path = "crates/rustok-media" }
 flex = { path = "crates/flex" }
-alloy-scripting = { path = "crates/alloy-scripting" }
 alloy = { path = "crates/alloy" }
 rustok-workflow = { path = "crates/rustok-workflow" }

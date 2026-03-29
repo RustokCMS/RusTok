@@ -141,6 +141,17 @@ impl From<BlogError> for RichError {
                 .with_field("target_type", target_type)
                 .with_field("target_id", target_id.to_string())
                 .with_error_code("COMMENT_THREAD_NOT_FOUND"),
+                rustok_comments::CommentsError::CommentThreadClosed {
+                    target_type,
+                    target_id,
+                } => RichError::new(
+                    ErrorKind::Conflict,
+                    format!("Comment thread for {}:{} is closed", target_type, target_id),
+                )
+                .with_user_message("Comments are closed for this thread")
+                .with_field("target_type", target_type)
+                .with_field("target_id", target_id.to_string())
+                .with_error_code("COMMENT_THREAD_CLOSED"),
                 rustok_comments::CommentsError::Forbidden(message) => {
                     RichError::new(ErrorKind::Forbidden, message).with_user_message(
                         "You do not have permission to perform this comment action",
@@ -195,6 +206,22 @@ impl BlogError {
     /// Create a forbidden error
     pub fn forbidden(message: impl Into<String>) -> Self {
         BlogError::Forbidden(message.into())
+    }
+}
+
+impl From<rustok_taxonomy::TaxonomyError> for BlogError {
+    fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
+        match value {
+            rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
+            rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Forbidden(message),
+            rustok_taxonomy::TaxonomyError::Validation(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateAlias(message) => Self::Validation(message),
+            rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
+                Self::Validation(format!("Taxonomy term not found: {term_id}"))
+            }
+        }
     }
 }
 

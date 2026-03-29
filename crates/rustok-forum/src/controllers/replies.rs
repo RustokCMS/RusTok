@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::{
     CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, ReplyService,
-    UpdateReplyInput,
+    UpdateReplyInput, VoteService,
 };
 
 fn clamp_per_page(per_page: u64) -> u64 {
@@ -46,8 +46,8 @@ pub async fn list_replies(
 ) -> Result<Json<Vec<ReplyListItem>>> {
     ensure_forum_permission(
         &auth,
-        &[Permission::FORUM_REPLIES_READ],
-        "Permission denied: forum_replies:read required",
+        &[Permission::FORUM_REPLIES_LIST],
+        "Permission denied: forum_replies:list required",
     )?;
 
     filter.locale = filter.locale.or(Some(request_context.locale.clone()));
@@ -131,7 +131,13 @@ pub async fn get_reply(
         .unwrap_or_else(|| request_context.locale.clone());
     let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let reply = service
-        .get_with_locale_fallback(tenant.id, id, &locale, Some(tenant.default_locale.as_str()))
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            id,
+            &locale,
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(reply))
@@ -193,8 +199,8 @@ pub async fn update_reply(
 ) -> Result<Json<ReplyResponse>> {
     ensure_forum_permission(
         &auth,
-        &[Permission::FORUM_TOPICS_MODERATE],
-        "Permission denied: forum_topics:moderate required",
+        &[Permission::FORUM_REPLIES_UPDATE],
+        "Permission denied: forum_replies:update required",
     )?;
 
     let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -225,8 +231,8 @@ pub async fn delete_reply(
 ) -> Result<StatusCode> {
     ensure_forum_permission(
         &auth,
-        &[Permission::FORUM_TOPICS_MODERATE],
-        "Permission denied: forum_topics:moderate required",
+        &[Permission::FORUM_REPLIES_DELETE],
+        "Permission denied: forum_replies:delete required",
     )?;
 
     let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -235,6 +241,95 @@ pub async fn delete_reply(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/forum/replies/{reply_id}/vote/{value}",
+    tag = "forum",
+    params(
+        ("reply_id" = Uuid, Path, description = "Reply ID"),
+        ("value" = i32, Path, description = "Vote value (-1 or 1)")
+    ),
+    responses(
+        (status = 200, description = "Reply vote updated", body = ReplyResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn set_reply_vote(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path((reply_id, value)): Path<(Uuid, i32)>,
+) -> Result<Json<ReplyResponse>> {
+    ensure_forum_permission(
+        &auth,
+        &[Permission::FORUM_REPLIES_READ],
+        "Permission denied: forum_replies:read required",
+    )?;
+
+    VoteService::new(ctx.db.clone())
+        .set_reply_vote(tenant.id, reply_id, auth.security_context(), value)
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let reply = service
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            reply_id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(reply))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/forum/replies/{reply_id}/vote",
+    tag = "forum",
+    params(("reply_id" = Uuid, Path, description = "Reply ID")),
+    responses(
+        (status = 200, description = "Reply vote cleared", body = ReplyResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn clear_reply_vote(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(reply_id): Path<Uuid>,
+) -> Result<Json<ReplyResponse>> {
+    ensure_forum_permission(
+        &auth,
+        &[Permission::FORUM_REPLIES_READ],
+        "Permission denied: forum_replies:read required",
+    )?;
+
+    VoteService::new(ctx.db.clone())
+        .clear_reply_vote(tenant.id, reply_id, auth.security_context())
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let service = ReplyService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let reply = service
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            reply_id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(reply))
 }
 
 fn ensure_forum_permission(

@@ -1,0 +1,14 @@
+[module]
+slug = "alloy"
+name = "Alloy"
+version = "0.1.0"
+description = "Alloy scripting capability"
+ownership = "first_party"
+trust_level = "verified"
+
+[provides.graphql]
+query = "graphql::AlloyQuery"
+mutation = "graphql::AlloyMutation"
+
+[provides.http]
+routes = "controllers::routes"

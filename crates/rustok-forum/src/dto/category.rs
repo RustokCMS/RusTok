@@ -44,13 +44,16 @@ pub struct CategoryResponse {
     pub topic_count: i32,
     pub reply_count: i32,
     pub moderated: bool,
+    pub is_subscribed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CategoryListItem {
     pub id: Uuid,
+    pub requested_locale: String,
     pub locale: String,
     pub effective_locale: String,
+    pub available_locales: Vec<String>,
     pub name: String,
     pub slug: String,
     pub description: Option<String>,
@@ -58,4 +61,5 @@ pub struct CategoryListItem {
     pub color: Option<String>,
     pub topic_count: i32,
     pub reply_count: i32,
+    pub is_subscribed: bool,
 }

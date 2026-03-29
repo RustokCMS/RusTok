@@ -139,94 +139,6 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(BlogTags::Table)
-                    .if_not_exists()
-                    .col(ColumnDef::new(BlogTags::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(BlogTags::TenantId).uuid().not_null())
-                    .col(
-                        ColumnDef::new(BlogTags::UseCount)
-                            .integer()
-                            .not_null()
-                            .default(0),
-                    )
-                    .col(
-                        ColumnDef::new(BlogTags::CreatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null()
-                            .default(Expr::current_timestamp()),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_table(
-                Table::create()
-                    .table(BlogTagTranslations::Table)
-                    .if_not_exists()
-                    .col(
-                        ColumnDef::new(BlogTagTranslations::Id)
-                            .uuid()
-                            .not_null()
-                            .primary_key(),
-                    )
-                    .col(ColumnDef::new(BlogTagTranslations::TagId).uuid().not_null())
-                    .col(
-                        ColumnDef::new(BlogTagTranslations::TenantId)
-                            .uuid()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(BlogTagTranslations::Locale)
-                            .string_len(16)
-                            .not_null(),
-                    )
-                    .col(ColumnDef::new(BlogTagTranslations::Name).text().not_null())
-                    .col(
-                        ColumnDef::new(BlogTagTranslations::Slug)
-                            .string_len(100)
-                            .not_null(),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_blog_tag_translations_tag")
-                            .from(BlogTagTranslations::Table, BlogTagTranslations::TagId)
-                            .to(BlogTags::Table, BlogTags::Id)
-                            .on_update(ForeignKeyAction::Cascade)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_blog_tag_translations_tag_locale")
-                    .table(BlogTagTranslations::Table)
-                    .col(BlogTagTranslations::TagId)
-                    .col(BlogTagTranslations::Locale)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_blog_tag_translations_tenant_locale_slug")
-                    .table(BlogTagTranslations::Table)
-                    .col(BlogTagTranslations::TenantId)
-                    .col(BlogTagTranslations::Locale)
-                    .col(BlogTagTranslations::Slug)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_table(
-                Table::create()
                     .table(BlogPostTags::Table)
                     .if_not_exists()
                     .col(ColumnDef::new(BlogPostTags::PostId).uuid().not_null())
@@ -254,7 +166,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk_blog_post_tags_tag")
                             .from(BlogPostTags::Table, BlogPostTags::TagId)
-                            .to(BlogTags::Table, BlogTags::Id)
+                            .to(TaxonomyTerms::Table, TaxonomyTerms::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -278,12 +190,6 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
             .drop_table(Table::drop().table(BlogPostTags::Table).to_owned())
-            .await?;
-        manager
-            .drop_table(Table::drop().table(BlogTagTranslations::Table).to_owned())
-            .await?;
-        manager
-            .drop_table(Table::drop().table(BlogTags::Table).to_owned())
             .await?;
         manager
             .drop_table(
@@ -332,29 +238,15 @@ enum BlogCategoryTranslations {
 }
 
 #[derive(DeriveIden)]
-enum BlogTags {
-    Table,
-    Id,
-    TenantId,
-    UseCount,
-    CreatedAt,
-}
-
-#[derive(DeriveIden)]
-enum BlogTagTranslations {
-    Table,
-    Id,
-    TagId,
-    TenantId,
-    Locale,
-    Name,
-    Slug,
-}
-
-#[derive(DeriveIden)]
 enum BlogPostTags {
     Table,
     PostId,
     TagId,
     CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum TaxonomyTerms {
+    Table,
+    Id,
 }

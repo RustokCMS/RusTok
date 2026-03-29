@@ -21,6 +21,9 @@ pub enum ForumError {
     #[error("Reply not found: {0}")]
     ReplyNotFound(Uuid),
 
+    #[error("Topic solution not found for topic: {0}")]
+    SolutionNotFound(Uuid),
+
     #[error("Topic is closed")]
     TopicClosed,
 
@@ -30,6 +33,9 @@ pub enum ForumError {
     #[error("Validation error: {0}")]
     Validation(String),
 
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+
     #[error("{0}")]
     InvalidTopicTransition(#[from] crate::state_machine::InvalidTopicTransition),
 
@@ -38,3 +44,25 @@ pub enum ForumError {
 }
 
 pub type ForumResult<T> = Result<T, ForumError>;
+
+impl ForumError {
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::Forbidden(message.into())
+    }
+}
+
+impl From<rustok_taxonomy::TaxonomyError> for ForumError {
+    fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
+        match value {
+            rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
+            rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Forbidden(message),
+            rustok_taxonomy::TaxonomyError::Validation(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
+            | rustok_taxonomy::TaxonomyError::DuplicateAlias(message) => Self::Validation(message),
+            rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
+                Self::Validation(format!("Taxonomy term not found: {term_id}"))
+            }
+        }
+    }
+}

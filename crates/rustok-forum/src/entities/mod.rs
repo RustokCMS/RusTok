@@ -1,12 +1,19 @@
 //! SeaORM entities for forum-owned persistence.
 
 pub mod forum_category;
+pub mod forum_category_subscription;
 pub mod forum_category_translation;
 pub mod forum_reply;
 pub mod forum_reply_body;
+pub mod forum_reply_vote;
+pub mod forum_solution;
 pub mod forum_topic;
 pub mod forum_topic_channel_access;
+pub mod forum_topic_subscription;
+pub mod forum_topic_tag;
 pub mod forum_topic_translation;
+pub mod forum_topic_vote;
+pub mod forum_user_stat;
 
 pub use forum_category::Entity as ForumCategory;
 pub use forum_reply::Entity as ForumReply;

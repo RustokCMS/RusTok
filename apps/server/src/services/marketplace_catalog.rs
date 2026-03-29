@@ -5,16 +5,19 @@ use std::time::Duration;
 use async_trait::async_trait;
 use loco_rs::app::AppContext;
 use moka::future::Cache;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use rustok_core::ModuleRegistry;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::modules::{
     CatalogManifestModule, CatalogModuleVersion, ManifestManager, ModuleSettingSpec,
     ModulesManifest,
 };
 
-const REGISTRY_CATALOG_SCHEMA_VERSION: u32 = 1;
+pub const REGISTRY_CATALOG_SCHEMA_VERSION: u32 = 1;
+const REGISTRY_CATALOG_PATH: &str = "/v1/catalog";
+const LEGACY_REGISTRY_CATALOG_PATH: &str = "/catalog";
 
 #[async_trait]
 pub trait MarketplaceCatalogProvider: Send + Sync {
@@ -86,7 +89,31 @@ impl RegistryMarketplaceProvider {
         &self,
         registry_url: &str,
     ) -> anyhow::Result<Vec<CatalogManifestModule>> {
-        let endpoint = format!("{}/catalog", registry_url.trim_end_matches('/'));
+        match self
+            .fetch_catalog_from_path(registry_url, REGISTRY_CATALOG_PATH)
+            .await
+        {
+            Ok(modules) => Ok(modules),
+            Err(err) if should_fallback_to_legacy_catalog_path(&err) => {
+                tracing::info!(
+                    registry_url,
+                    primary_path = REGISTRY_CATALOG_PATH,
+                    fallback_path = LEGACY_REGISTRY_CATALOG_PATH,
+                    "Registry marketplace provider falling back to legacy catalog path"
+                );
+                self.fetch_catalog_from_path(registry_url, LEGACY_REGISTRY_CATALOG_PATH)
+                    .await
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    async fn fetch_catalog_from_path(
+        &self,
+        registry_url: &str,
+        path: &str,
+    ) -> anyhow::Result<Vec<CatalogManifestModule>> {
+        let endpoint = format!("{}{}", registry_url.trim_end_matches('/'), path);
         let response = self.client.get(&endpoint).send().await?;
         let response = response.error_for_status()?;
         let payload = response.json::<RegistryCatalogResponse>().await?;
@@ -100,55 +127,59 @@ impl RegistryMarketplaceProvider {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct RegistryCatalogResponse {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryCatalogResponse {
     #[serde(default = "default_registry_catalog_schema_version")]
-    schema_version: u32,
+    pub schema_version: u32,
     #[serde(default)]
-    modules: Vec<RegistryCatalogModule>,
+    pub modules: Vec<RegistryCatalogModule>,
 }
 
-#[derive(Debug, Deserialize)]
-struct RegistryCatalogModule {
-    slug: String,
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryCatalogModule {
+    pub slug: String,
     #[serde(default = "default_registry_source")]
-    source: String,
+    pub source: String,
     #[serde(rename = "crate", alias = "crate_name")]
-    crate_name: String,
+    pub crate_name: String,
     #[serde(default)]
-    version: Option<String>,
+    pub name: Option<String>,
     #[serde(default)]
-    git: Option<String>,
+    pub version: Option<String>,
     #[serde(default)]
-    rev: Option<String>,
+    pub description: Option<String>,
     #[serde(default)]
-    path: Option<String>,
+    pub git: Option<String>,
     #[serde(default)]
-    required: bool,
+    pub rev: Option<String>,
     #[serde(default)]
-    depends_on: Vec<String>,
+    pub path: Option<String>,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
     #[serde(default = "default_registry_ownership")]
-    ownership: String,
+    pub ownership: String,
     #[serde(default = "default_registry_trust_level")]
-    trust_level: String,
+    pub trust_level: String,
     #[serde(default)]
-    rustok_min_version: Option<String>,
+    pub rustok_min_version: Option<String>,
     #[serde(default)]
-    rustok_max_version: Option<String>,
+    pub rustok_max_version: Option<String>,
     #[serde(default)]
-    publisher: Option<String>,
+    pub publisher: Option<String>,
     #[serde(default)]
-    checksum_sha256: Option<String>,
+    pub checksum_sha256: Option<String>,
     #[serde(default)]
-    signature: Option<String>,
+    pub signature: Option<String>,
     #[serde(default)]
-    versions: Vec<RegistryCatalogVersion>,
+    pub versions: Vec<RegistryCatalogVersion>,
     #[serde(default)]
-    recommended_admin_surfaces: Vec<String>,
+    pub recommended_admin_surfaces: Vec<String>,
     #[serde(default)]
-    showcase_admin_surfaces: Vec<String>,
+    pub showcase_admin_surfaces: Vec<String>,
     #[serde(default)]
-    settings_schema: HashMap<String, ModuleSettingSpec>,
+    pub settings_schema: HashMap<String, ModuleSettingSpec>,
 }
 
 impl RegistryCatalogModule {
@@ -163,7 +194,9 @@ impl RegistryCatalogModule {
             slug: self.slug,
             source: self.source,
             crate_name: self.crate_name,
+            name: self.name,
             version: self.version,
+            description: self.description,
             git: self.git,
             rev: self.rev,
             path: self.path,
@@ -182,21 +215,94 @@ impl RegistryCatalogModule {
             settings_schema: self.settings_schema,
         }
     }
+
+    pub fn from_catalog_module(module: CatalogManifestModule) -> Self {
+        let CatalogManifestModule {
+            slug,
+            source: _source,
+            crate_name,
+            name,
+            version,
+            description,
+            git: _git,
+            rev: _rev,
+            path: _path,
+            required,
+            depends_on,
+            ownership,
+            trust_level,
+            rustok_min_version,
+            rustok_max_version,
+            publisher,
+            checksum_sha256,
+            signature,
+            versions,
+            recommended_admin_surfaces,
+            showcase_admin_surfaces,
+            settings_schema,
+        } = module;
+
+        let versions = if versions.is_empty() {
+            version
+                .clone()
+                .map(|version| {
+                    vec![RegistryCatalogVersion {
+                        version,
+                        changelog: None,
+                        yanked: false,
+                        published_at: None,
+                        checksum_sha256: checksum_sha256.clone(),
+                        signature: signature.clone(),
+                    }]
+                })
+                .unwrap_or_default()
+        } else {
+            versions
+                .into_iter()
+                .map(RegistryCatalogVersion::from_catalog_version)
+                .collect()
+        };
+
+        Self {
+            slug,
+            source: default_registry_source(),
+            crate_name,
+            name,
+            version,
+            description,
+            git: None,
+            rev: None,
+            path: None,
+            required,
+            depends_on,
+            ownership,
+            trust_level,
+            rustok_min_version,
+            rustok_max_version,
+            publisher,
+            checksum_sha256,
+            signature,
+            versions,
+            recommended_admin_surfaces,
+            showcase_admin_surfaces,
+            settings_schema,
+        }
+    }
 }
 
-#[derive(Debug, Deserialize)]
-struct RegistryCatalogVersion {
-    version: String,
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryCatalogVersion {
+    pub version: String,
     #[serde(default)]
-    changelog: Option<String>,
+    pub changelog: Option<String>,
     #[serde(default)]
-    yanked: bool,
+    pub yanked: bool,
     #[serde(default)]
-    published_at: Option<String>,
+    pub published_at: Option<String>,
     #[serde(default)]
-    checksum_sha256: Option<String>,
+    pub checksum_sha256: Option<String>,
     #[serde(default)]
-    signature: Option<String>,
+    pub signature: Option<String>,
 }
 
 impl RegistryCatalogVersion {
@@ -208,6 +314,17 @@ impl RegistryCatalogVersion {
             published_at: self.published_at,
             checksum_sha256: self.checksum_sha256,
             signature: self.signature,
+        }
+    }
+
+    fn from_catalog_version(version: CatalogModuleVersion) -> Self {
+        Self {
+            version: version.version,
+            changelog: version.changelog,
+            yanked: version.yanked,
+            published_at: version.published_at,
+            checksum_sha256: version.checksum_sha256,
+            signature: version.signature,
         }
     }
 }
@@ -312,6 +429,29 @@ pub fn marketplace_catalog_from_context(ctx: &AppContext) -> Arc<MarketplaceCata
     service
 }
 
+pub fn registry_catalog_path() -> &'static str {
+    REGISTRY_CATALOG_PATH
+}
+
+pub fn legacy_registry_catalog_path() -> &'static str {
+    LEGACY_REGISTRY_CATALOG_PATH
+}
+
+pub fn registry_catalog_from_modules(
+    modules: Vec<CatalogManifestModule>,
+) -> RegistryCatalogResponse {
+    let mut modules = modules
+        .into_iter()
+        .map(RegistryCatalogModule::from_catalog_module)
+        .collect::<Vec<_>>();
+    modules.sort_by(|left, right| left.slug.cmp(&right.slug));
+
+    RegistryCatalogResponse {
+        schema_version: REGISTRY_CATALOG_SCHEMA_VERSION,
+        modules,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,7 +482,9 @@ mod tests {
             slug: slug.to_string(),
             source: source.to_string(),
             crate_name: crate_name.to_string(),
+            name: None,
             version: None,
+            description: None,
             git: None,
             rev: None,
             path: None,
@@ -410,7 +552,9 @@ mod tests {
             slug: "seo".to_string(),
             source: default_registry_source(),
             crate_name: "rustok-seo".to_string(),
+            name: Some("SEO".to_string()),
             version: Some("1.2.0".to_string()),
+            description: Some("SEO tools".to_string()),
             git: None,
             rev: None,
             path: None,
@@ -441,8 +585,54 @@ mod tests {
         assert_eq!(module.ownership, "third_party");
         assert_eq!(module.trust_level, "unverified");
         assert_eq!(module.crate_name, "rustok-seo");
+        assert_eq!(module.name.as_deref(), Some("SEO"));
+        assert_eq!(module.description.as_deref(), Some("SEO tools"));
         assert_eq!(module.publisher.as_deref(), Some("RusTok Labs"));
         assert_eq!(module.versions.len(), 1);
+    }
+
+    #[test]
+    fn registry_catalog_from_modules_normalizes_registry_surface() {
+        let response = registry_catalog_from_modules(vec![CatalogManifestModule {
+            slug: "blog".to_string(),
+            source: "path".to_string(),
+            crate_name: "rustok-blog".to_string(),
+            name: Some("Blog".to_string()),
+            version: Some("1.4.0".to_string()),
+            description: Some("Blog module".to_string()),
+            git: Some("https://example.test/blog.git".to_string()),
+            rev: Some("abc123".to_string()),
+            path: Some("../../crates/rustok-blog".to_string()),
+            required: false,
+            depends_on: vec!["content".to_string()],
+            ownership: "first_party".to_string(),
+            trust_level: "verified".to_string(),
+            rustok_min_version: Some("0.9.0".to_string()),
+            rustok_max_version: None,
+            publisher: Some("RusTok Labs".to_string()),
+            checksum_sha256: Some("sum123".to_string()),
+            signature: Some("sig123".to_string()),
+            versions: Vec::new(),
+            recommended_admin_surfaces: vec!["leptos-admin".to_string()],
+            showcase_admin_surfaces: vec!["next-admin".to_string()],
+            settings_schema: HashMap::new(),
+        }]);
+
+        let module = response
+            .modules
+            .into_iter()
+            .next()
+            .expect("catalog response should contain module");
+
+        assert_eq!(response.schema_version, REGISTRY_CATALOG_SCHEMA_VERSION);
+        assert_eq!(module.source, "registry");
+        assert_eq!(module.name.as_deref(), Some("Blog"));
+        assert_eq!(module.description.as_deref(), Some("Blog module"));
+        assert_eq!(module.path, None);
+        assert_eq!(module.git, None);
+        assert_eq!(module.rev, None);
+        assert_eq!(module.versions.len(), 1);
+        assert_eq!(module.versions[0].version, "1.4.0");
     }
 
     #[test]
@@ -453,7 +643,9 @@ mod tests {
                 {
                     "slug": "seo",
                     "crate": "rustok-seo",
+                    "name": "SEO",
                     "version": "1.2.0",
+                    "description": "SEO tools",
                     "depends_on": ["content"],
                     "publisher": "RusTok Labs",
                     "checksum_sha256": "abc123",
@@ -482,6 +674,8 @@ mod tests {
         assert_eq!(module.slug, "seo");
         assert_eq!(module.source, "registry");
         assert_eq!(module.crate_name, "rustok-seo");
+        assert_eq!(module.name.as_deref(), Some("SEO"));
+        assert_eq!(module.description.as_deref(), Some("SEO tools"));
         assert_eq!(module.ownership, "third_party");
         assert_eq!(module.trust_level, "unverified");
         assert_eq!(module.publisher.as_deref(), Some("RusTok Labs"));
@@ -509,6 +703,17 @@ fn default_registry_ownership() -> String {
 
 fn default_registry_trust_level() -> String {
     "unverified".to_string()
+}
+
+fn should_fallback_to_legacy_catalog_path(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<reqwest::Error>()
+        .and_then(|error| error.status())
+        .is_some_and(|status| {
+            matches!(
+                status,
+                StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
+            )
+        })
 }
 
 fn validate_registry_schema_version(schema_version: u32) -> anyhow::Result<()> {

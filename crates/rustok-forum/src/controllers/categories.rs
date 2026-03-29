@@ -13,7 +13,8 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::{
-    CategoryListItem, CategoryResponse, CategoryService, CreateCategoryInput, UpdateCategoryInput,
+    CategoryListItem, CategoryResponse, CategoryService, CreateCategoryInput, SubscriptionService,
+    UpdateCategoryInput,
 };
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -121,7 +122,13 @@ pub async fn get_category(
         .unwrap_or_else(|| request_context.locale.clone());
     let service = CategoryService::new(ctx.db.clone());
     let category = service
-        .get_with_locale_fallback(tenant.id, id, &locale, Some(tenant.default_locale.as_str()))
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            id,
+            &locale,
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(category))
@@ -223,6 +230,90 @@ pub async fn delete_category(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/forum/categories/{id}/subscription",
+    tag = "forum",
+    params(("id" = Uuid, Path, description = "Category ID")),
+    responses(
+        (status = 200, description = "Category subscription updated", body = CategoryResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn subscribe_category(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<CategoryResponse>> {
+    ensure_forum_permission(
+        &auth,
+        &[Permission::FORUM_CATEGORIES_READ],
+        "Permission denied: forum_categories:read required",
+    )?;
+
+    SubscriptionService::new(ctx.db.clone())
+        .set_category_subscription(tenant.id, id, auth.security_context())
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let category = CategoryService::new(ctx.db.clone())
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(category))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/forum/categories/{id}/subscription",
+    tag = "forum",
+    params(("id" = Uuid, Path, description = "Category ID")),
+    responses(
+        (status = 200, description = "Category subscription cleared", body = CategoryResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn unsubscribe_category(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
+) -> Result<Json<CategoryResponse>> {
+    ensure_forum_permission(
+        &auth,
+        &[Permission::FORUM_CATEGORIES_READ],
+        "Permission denied: forum_categories:read required",
+    )?;
+
+    SubscriptionService::new(ctx.db.clone())
+        .clear_category_subscription(tenant.id, id, auth.security_context())
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+
+    let category = CategoryService::new(ctx.db.clone())
+        .get_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
+        .await
+        .map_err(|err| Error::BadRequest(err.to_string()))?;
+    Ok(Json(category))
 }
 
 fn ensure_forum_permission(

@@ -1,9 +1,11 @@
 use crate::auth::{auth_config_from_ctx, decode_access_token};
 use crate::context::{infer_user_role_from_permissions, TenantContextExt};
 use crate::models::{
+    oauth_apps::Entity as OAuthApps,
     sessions::Entity as Sessions,
     users::{self, Entity as Users},
 };
+use crate::services::rbac_service::RbacService;
 use axum::{
     extract::{FromRef, FromRequestParts},
     http::{request::Parts, StatusCode},
@@ -14,17 +16,14 @@ use axum_extra::{
 };
 use loco_rs::app::AppContext;
 use rustok_core::{Permission, UserRole};
-use sea_orm::EntityTrait;
+use sea_orm::{DatabaseConnection, EntityTrait};
 use tracing::warn;
-
-use crate::services::rbac_service::RbacService;
 
 pub struct CurrentUser {
     pub user: users::Model,
     pub session_id: uuid::Uuid,
     pub permissions: Vec<Permission>,
     pub inferred_role: UserRole,
-    // OAuth2 fields from JWT claims
     pub client_id: Option<uuid::Uuid>,
     pub scopes: Vec<String>,
     pub grant_type: String,
@@ -38,6 +37,42 @@ impl CurrentUser {
             self.permissions.iter().copied(),
         )
     }
+}
+
+async fn resolve_service_token_permissions(
+    db: &DatabaseConnection,
+    tenant_id: uuid::Uuid,
+    client_id: uuid::Uuid,
+    claimed_role: UserRole,
+) -> Result<(Vec<Permission>, UserRole), (StatusCode, &'static str)> {
+    let app = OAuthApps::find_active_by_client_id(db, client_id)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .ok_or((StatusCode::UNAUTHORIZED, "OAuth app not found or inactive"))?;
+
+    if app.tenant_id != tenant_id {
+        return Err((StatusCode::FORBIDDEN, "Token belongs to another tenant"));
+    }
+
+    let permissions = app.parsed_granted_permissions().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "OAuth app permissions are invalid",
+        )
+    })?;
+    let inferred_role = infer_user_role_from_permissions(&permissions);
+    if claimed_role != inferred_role {
+        RbacService::record_claim_role_mismatch();
+        warn!(
+            client_id = %client_id,
+            tenant_id = %tenant_id,
+            claimed_role = %claimed_role,
+            inferred_role = %inferred_role,
+            "rbac_claim_role_mismatch"
+        );
+    }
+
+    Ok((permissions, inferred_role))
 }
 
 pub(crate) async fn resolve_current_user<S>(
@@ -82,7 +117,6 @@ pub async fn resolve_current_user_from_access_token(
         return Err((StatusCode::FORBIDDEN, "Token belongs to another tenant"));
     }
 
-    // For OAuth2 client_credentials tokens (session_id is nil), skip session check
     let is_oauth_service_token =
         claims.client_id.is_some() && claims.session_id == uuid::Uuid::nil();
 
@@ -103,8 +137,7 @@ pub async fn resolve_current_user_from_access_token(
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    // For OAuth2 service tokens, user may not exist (sub = app_id)
-    let (user, permissions, inferred_role) = if let Some(user) = user {
+    let (user, permissions, inferred_role, session_id) = if let Some(user) = user {
         if !user.is_active() {
             return Err((StatusCode::FORBIDDEN, "User is inactive"));
         }
@@ -124,26 +157,29 @@ pub async fn resolve_current_user_from_access_token(
                 "rbac_claim_role_mismatch"
             );
         }
-        (user, permissions, inferred_role)
+
+        (user, permissions, inferred_role, claims.session_id)
     } else if is_oauth_service_token {
-        // Service token without a real user — create a minimal model
-        // The sub field is the app_id, not a user_id
-        return Ok(CurrentUser {
-            user: users::Model::default_service_user(claims.sub, tenant_id),
-            session_id: uuid::Uuid::nil(),
-            permissions: Vec::new(),
-            inferred_role: claims.role,
-            client_id: claims.client_id,
-            scopes: claims.scopes,
-            grant_type: claims.grant_type,
-        });
+        let client_id = claims.client_id.ok_or((
+            StatusCode::UNAUTHORIZED,
+            "OAuth service token is missing client_id",
+        ))?;
+        let (permissions, inferred_role) =
+            resolve_service_token_permissions(&ctx.db, tenant_id, client_id, claims.role).await?;
+
+        (
+            users::Model::default_service_user(claims.sub, tenant_id),
+            permissions,
+            inferred_role,
+            uuid::Uuid::nil(),
+        )
     } else {
         return Err((StatusCode::UNAUTHORIZED, "User not found"));
     };
 
     Ok(CurrentUser {
         user,
-        session_id: claims.session_id,
+        session_id,
         permissions,
         inferred_role,
         client_id: claims.client_id,
@@ -184,5 +220,96 @@ where
 
         let current_user = resolve_current_user(parts, state).await?;
         Ok(Self(Some(current_user)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_service_token_permissions;
+    use crate::models::oauth_apps;
+    use crate::models::tenants;
+    use migration::Migrator;
+    use rustok_core::Permission;
+    use rustok_test_utils::db::setup_test_db_with_migrations;
+    use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, Schema, Set};
+    use sea_orm_migration::SchemaManager;
+    use std::str::FromStr;
+    use uuid::Uuid;
+
+    async fn ensure_oauth_apps_table(db: &DatabaseConnection) {
+        let manager = SchemaManager::new(db);
+        if manager
+            .has_table("oauth_apps")
+            .await
+            .expect("check oauth_apps presence")
+        {
+            return;
+        }
+
+        let builder = db.get_database_backend();
+        assert_eq!(builder, DbBackend::Sqlite, "expected sqlite test backend");
+        let schema = Schema::new(builder);
+        let mut statement = schema.create_table_from_entity(oauth_apps::Entity);
+        statement.if_not_exists();
+        db.execute(builder.build(&statement))
+            .await
+            .expect("create oauth_apps table for auth extractor tests");
+    }
+
+    #[tokio::test]
+    async fn oauth_service_token_resolves_granted_permissions_from_oauth_app() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        ensure_oauth_apps_table(&db).await;
+        let tenant =
+            tenants::ActiveModel::new("OAuth tenant", &format!("tenant-{}", Uuid::new_v4()))
+                .insert(&db)
+                .await
+                .expect("create tenant");
+
+        let created = oauth_apps::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            name: Set("Forum Bot".to_string()),
+            slug: Set("forum-bot".to_string()),
+            description: Set(Some("Service integration".to_string())),
+            app_type: Set("service".to_string()),
+            icon_url: Set(None),
+            client_id: Set(Uuid::new_v4()),
+            client_secret_hash: Set(Some("hash".to_string())),
+            redirect_uris: Set(serde_json::json!([])),
+            scopes: Set(serde_json::json!(["forum:*"])),
+            grant_types: Set(serde_json::json!(["client_credentials"])),
+            granted_permissions: Set(serde_json::json!(["forum_topics:list", "modules:list"])),
+            manifest_ref: Set(None),
+            auto_created: Set(false),
+            is_active: Set(true),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(chrono::Utc::now().into()),
+            updated_at: Set(chrono::Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert oauth app");
+
+        let expected_permissions = vec![
+            Permission::from_str("forum_topics:list").expect("forum permission"),
+            Permission::from_str("modules:list").expect("modules permission"),
+        ];
+        let (permissions, inferred_role) = resolve_service_token_permissions(
+            &db,
+            tenant.id,
+            created.client_id,
+            rustok_core::UserRole::Customer,
+        )
+        .await
+        .expect("resolve service token permissions");
+
+        assert_eq!(permissions, expected_permissions);
+        assert_eq!(
+            inferred_role,
+            crate::context::infer_user_role_from_permissions(&permissions)
+        );
     }
 }

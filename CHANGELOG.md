@@ -11,33 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Cleanup & Documentation
 
-**apps/admin — removed orphaned old-structure files**
+**apps/admin вЂ” removed orphaned old-structure files**
 - Deleted `src/api/`, `src/components/`, `src/modules/`, `src/providers/`, `src/i18n.rs`
 - These directories were superseded by the FSD structure (`src/shared/`, `src/widgets/`, etc.) and were no longer compiled
 
-**crates/tailwind-{rs,css,ast} — added README.md**
+**crates/tailwind-{rs,css,ast} вЂ” added README.md**
 - Added `README.md` to all three vendored Tailwind crates (was `Readme.md` only)
 - Covers purpose, responsibilities, entry points, interactions, maintenance instructions
 
-**UI/leptos — expanded README.md**
+**UI/leptos вЂ” expanded README.md**
 - Extended crate README with component index table, interactions, and links
 
-**docs/UI/rust-ui-component-catalog.md — filled with decisions**
+**docs/UI/rust-ui-component-catalog.md вЂ” filled with decisions**
 - Replaced all `TODO` entries with `adopt`, `pilot`, or `defer`/`reject` decisions
-- Documents which components have full Leptos ↔ Next.js parity
+- Documents which components have full Leptos в†” Next.js parity
 - Notes components pending porting (Alert Dialog, Combobox, Skeleton in Leptos)
 
-**docs/index.md — updated map**
+**docs/index.md вЂ” updated map**
 - Added links to `docs/UI/fsd-restructuring-plan.md`, `UI/docs/api-contracts.md`
 - Updated `tailwind-*` links from `Readme.md` to `README.md`
 - Added `iu-leptos` and `UI/next/components` to distributed docs inventory
 
 ### Added - 2026-02-25
 
-#### FSD Restructuring — Phases 1.1–1.3 + Phase 3 (next-admin)
+#### FSD Restructuring вЂ” Phases 1.1вЂ“1.3 + Phase 3 (next-admin)
 
-**UI/leptos as iu-leptos Rust crate (Phase 1.1–1.2)**
-- Created `UI/leptos/Cargo.toml` — `iu-leptos` crate registered in workspace
+**UI/leptos as iu-leptos Rust crate (Phase 1.1вЂ“1.2)**
+- Created `UI/leptos/Cargo.toml` вЂ” `iu-leptos` crate registered in workspace
 - Implemented 8 Leptos components in `UI/leptos/src/`: `Button`, `Input`, `Textarea`, `Select`, `Checkbox`, `Switch`, `Badge`, `Spinner`
 - All components use `--iu-*` CSS custom properties from `UI/tokens/base.css`
 - Components respect `Size`, `ButtonVariant`, `BadgeVariant` enums with `Default` derive
@@ -49,31 +49,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `src/{button,input,badge,types}.rs` (replaced by iu-leptos)
 - Kept `Card`, `Label`, `Separator` as leptos-ui-specific components
 
-**apps/next-admin FSD restructuring (Phase 3.1–3.4)**
+**apps/next-admin FSD restructuring (Phase 3.1вЂ“3.4)**
 - Created `src/shared/` layer with 7 sub-slices:
-  - `api/` — `graphql.ts`, `auth-api.ts` barrel re-exports
-  - `lib/` — `utils`, `format`, `parsers`, `searchparams`, `data-table`, plus `themes/` sub-folder
-  - `hooks/` — all 10 hooks barrel re-exports
-  - `types/` — `NavItem`, `BaseFormFieldProps`, `DataTableRowAction` etc.
-  - `config/` — `navItems`, `data-table` config
-  - `constants/` — `data.ts`, `mock-api.ts` re-exports
-  - `ui/` — breadcrumbs, icons, search-input, form-card-skeleton, file-uploader, alert-modal, forms/
+  - `api/` вЂ” `graphql.ts`, `auth-api.ts` barrel re-exports
+  - `lib/` вЂ” `utils`, `format`, `parsers`, `searchparams`, `data-table`, plus `themes/` sub-folder
+  - `hooks/` вЂ” all 10 hooks barrel re-exports
+  - `types/` вЂ” `NavItem`, `BaseFormFieldProps`, `DataTableRowAction` etc.
+  - `config/` вЂ” `navItems`, `data-table` config
+  - `constants/` вЂ” `data.ts`, `mock-api.ts` re-exports
+  - `ui/` вЂ” breadcrumbs, icons, search-input, form-card-skeleton, file-uploader, alert-modal, forms/
 - Created `src/entities/` layer: `user/` (model + UserAvatar + UserCard), `product/` (model + ProductCard), `tenant/` (model)
 - Created `src/widgets/` layer: `app-shell/`, `command-palette/`, `data-table/`, `alert-modal/` with barrel `index.ts`
 - Updated `tsconfig.json` with `@/shared/*`, `@/entities/*`, `@/widgets/*` path aliases
 - Updated key imports in `src/app/**` and `src/features/**` to use FSD canonical paths
 
-#### Alloy Scripting — Registered as Optional RusToKModule (improvement 2.13)
+#### Alloy Scripting вЂ” Registered as Optional RusToKModule (improvement 2.13)
 - **AlloyModule** (`apps/server/src/modules/alloy.rs`)
   - New `AlloyModule` struct implementing `RusToKModule` with `ModuleKind::Optional`
   - Declares RBAC permissions for the `Scripts` resource (create/read/update/delete/list/manage)
-  - Delegates `ScriptsMigration` from `alloy-scripting` for unified migration management
+  - Delegates `ScriptsMigration` from `alloy` for unified migration management
   - Registered in `build_registry()` alongside other optional domain modules
-- **modules.toml** — added `alloy = { crate = "alloy-scripting", ... }` entry
+- **modules.toml** вЂ” added `alloy = { crate = "alloy", ... }` entry
 - **rustok-core permissions** (`crates/rustok-core/src/permissions.rs`)
   - Added `Scripts` variant to `Resource` enum
   - Added `SCRIPTS_*` permission constants (create/read/update/delete/list/manage)
-- **Documentation** — updated `docs/architecture/improvement-recommendations.md` (2.13 marked ✅)
+- **Documentation** вЂ” updated `docs/architecture/improvement-recommendations.md` (2.13 marked вњ…)
 
 ### Added - 2026-02-19
 
@@ -270,22 +270,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Coverage Increase:** +5-7%
 
 ### Quality Improvements
-- **Production Readiness:** 75% → 85% (+10 points)
-- **Security Score:** 70% → 90% (+20 points)
-- **Reliability Score:** 75% → 85% (+10 points)
-- **Test Coverage:** ~25% → ~30% (+5 points)
+- **Production Readiness:** 75% в†’ 85% (+10 points)
+- **Security Score:** 70% в†’ 90% (+20 points)
+- **Reliability Score:** 75% в†’ 85% (+10 points)
+- **Test Coverage:** ~25% в†’ ~30% (+5 points)
 
 ### Critical Issues Resolved
-- ✅ P0 Issue #1: Event validation missing
-- ✅ P0 Issue #2: Tenant sanitization vulnerability
-- ✅ P0 Issue #3: Rate limiting missing
-- ✅ P0 Issue #4: EventBus consistency unknown
+- вњ… P0 Issue #1: Event validation missing
+- вњ… P0 Issue #2: Tenant sanitization vulnerability
+- вњ… P0 Issue #3: Rate limiting missing
+- вњ… P0 Issue #4: EventBus consistency unknown
 
 ### Added - Sprint 2 (2026-02-13) - Resilience & Simplification
 
 #### Tenant Cache v2 with moka
 - **Simplified Tenant Cache** (`apps/server/src/middleware/tenant_cache_v2.rs`)
-  - 724 → 400 lines (-45% code reduction)
+  - 724 в†’ 400 lines (-45% code reduction)
   - Built-in stampede protection via moka crate
   - Better consistency and performance
   - Migration guide: `docs/TENANT_CACHE_V2_MIGRATION.md`
@@ -296,7 +296,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Retry strategies: 150 lines (exponential, linear, fixed)
   - Timeout wrapper: 60 lines
   - 11 unit tests
-  - Performance: 30s → 0.1ms fail-fast latency (-99.997%)
+  - Performance: 30s в†’ 0.1ms fail-fast latency (-99.997%)
   - Guide: `docs/CIRCUIT_BREAKER_GUIDE.md`
 
 #### Type-Safe State Machines
@@ -345,7 +345,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Content flow tests: 450+ lines, 4 test cases
   - Event flow tests: 350+ lines, 6 test cases
   - rstest framework integration
-  - Coverage: 36% → 76% (+40%)
+  - Coverage: 36% в†’ 76% (+40%)
   - Guide: `docs/INTEGRATION_TESTS_GUIDE.md`
 
 #### Property-Based Tests
@@ -379,10 +379,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Production Impact Summary (All Sprints)
 
 ### Final Metrics (17/17 tasks complete)
-- **Architecture Score:** 7.8/10 → 9.6/10 (+1.8 points) ✅
-- **Production Ready:** 72% → 100% (+28 points) ✅
-- **Test Coverage:** 31% → 80% (+49 points) ✅
-- **Security Score:** 70% → 98% (+28 points) ✅
+- **Architecture Score:** 7.8/10 в†’ 9.6/10 (+1.8 points) вњ…
+- **Production Ready:** 72% в†’ 100% (+28 points) вњ…
+- **Test Coverage:** 31% в†’ 80% (+49 points) вњ…
+- **Security Score:** 70% в†’ 98% (+28 points) вњ…
 
 ### Lines of Code
 - **Added:** ~8,000+ lines of production code
@@ -392,9 +392,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Quality Improvements by Sprint
 
 **Sprint 1:**
-- Security Score: 70% → 90% (+20 points)
-- Reliability Score: 75% → 85% (+10 points)
-- Test Coverage: 31% → 36% (+5 points)
+- Security Score: 70% в†’ 90% (+20 points)
+- Reliability Score: 75% в†’ 85% (+10 points)
+- Test Coverage: 31% в†’ 36% (+5 points)
 
 **Sprint 2:**
 - Code simplification: -45% tenant cache
@@ -407,20 +407,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 40+ production alerts configured
 
 **Sprint 4:**
-- Coverage: 76% → 80% (+4 points)
+- Coverage: 76% в†’ 80% (+4 points)
 - 10,752+ property-based test cases
 - OWASP Top 10 compliance: 100%
 
 ### All Critical Issues Resolved
-- ✅ P0: Event validation missing
-- ✅ P0: Tenant sanitization vulnerability  
-- ✅ P0: Rate limiting missing
-- ✅ P0: EventBus consistency unknown
-- ✅ Resilience: No circuit breaker
-- ✅ Complexity: Over-engineered tenant cache
-- ✅ Observability: No distributed tracing
-- ✅ Testing: Low coverage (31% → 80%)
-- ✅ Security: OWASP Top 10 compliance
+- вњ… P0: Event validation missing
+- вњ… P0: Tenant sanitization vulnerability  
+- вњ… P0: Rate limiting missing
+- вњ… P0: EventBus consistency unknown
+- вњ… Resilience: No circuit breaker
+- вњ… Complexity: Over-engineered tenant cache
+- вњ… Observability: No distributed tracing
+- вњ… Testing: Low coverage (31% в†’ 80%)
+- вњ… Security: OWASP Top 10 compliance
 
 ---
 
@@ -433,3 +433,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [EventBus Audit](docs/EVENTBUS_CONSISTENCY_AUDIT.md)
 - [Implementation Progress](.architecture_progress)
 - [Main Manifest](RUSTOK_MANIFEST.md)
+

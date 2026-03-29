@@ -30,6 +30,31 @@
 - `SearchSettingsRecord`
 - `PgSearchEngine`
 
+## Capability matrix
+
+| Capability | Primary surface | Consumer | Scope and guardrails |
+|---|---|---|---|
+| Public search results | `storefrontSearch` | Leptos/Next storefront | Tenant-scoped, read-only, published/public documents only |
+| Public autocomplete | `storefrontSearchSuggestions` | Leptos/Next storefront | Tenant-scoped, read-only, same public visibility boundary as storefront search |
+| Public click tracking | `trackSearchClick` | Storefront hosts | Best-effort analytics write for CTR/abandonment, no rebuild side effects |
+| Admin search preview | `searchPreview` | Leptos/Next admin package | Authenticated tenant-scoped control-plane preview with filters/facets and ranking override |
+| Host quick search | `adminGlobalSearch` | Leptos header search / Next KBar | Authenticated tenant-scoped quick-open surface, separate from preview telemetry |
+| Diagnostics | `searchDiagnostics`, `searchLaggingDocuments`, `searchConsistencyIssues` | Admin/operators | Authenticated tenant-scoped operational inspection |
+| Analytics | `searchAnalytics` | Admin/operators | Authenticated tenant-scoped query intelligence and slow-query analysis |
+| Dictionaries and merchandising | `searchDictionarySnapshot` plus synonym/stop-word/pin-rule mutations | Admin/operators | Authenticated tenant-scoped control plane for normalization and exact-query pinning |
+| Settings and rebuild control | `searchSettingsPreview`, `updateSearchSettings`, `triggerSearchRebuild` | Admin/operators | Authenticated tenant-scoped control plane; settings and rebuild actions emit audit events |
+
+## Error catalog and validation policy
+
+- `Validation`: caller input is rejected for unsupported engines or ranking profiles, unknown preset keys, malformed preset surfaces/keys/values, empty synonym or stop-word values, and empty query-rule targets. These are non-retriable caller bugs.
+- `NotFound`: product-facing search remains read-only, but merchandising writes can fail when a pinned document is absent from `search_documents`. Operators should reindex or choose another target instead of retrying blindly.
+- `Forbidden` / `Auth`: admin/control-plane surfaces require authenticated tenant-scoped access. Storefront search surfaces stay public and read-only.
+- `Database` / `External`: projector and dictionary/runtime services require PostgreSQL. Storage failures or unsupported backends are operational failures, not validation errors.
+- Search settings validation is centralized in `SearchSettingsService::save`, so raw JSON config and structured editors share the same checks for `ranking_profiles` and `filter_presets`.
+- Ranking-profile surfaces accept only stable identifiers and only the built-in profiles `balanced`, `exact`, `fresh`, `catalog`, and `content`.
+- Filter-preset surfaces accept only stable ASCII identifiers, normalize values to lowercase, and reject duplicates or oversized lists instead of silently truncating them.
+- Query normalization trims whitespace, lowercases tokens, removes configured stop words, and expands tenant-owned synonym groups before PostgreSQL FTS execution.
+
 ## Current status
 
 - Admin GraphQL exposes engine availability, effective settings preview, and an FTS-backed

@@ -58,7 +58,7 @@ impl PagesQuery {
         if is_public_request(ctx)
             && (page.status != rustok_content::entities::node::ContentStatus::Published
                 || !is_page_visible_for_request(
-                    &page.metadata,
+                    &page.channel_slugs,
                     public_channel_slug(ctx).as_deref(),
                     false,
                 ))
@@ -101,7 +101,7 @@ impl PagesQuery {
         Ok(page
             .filter(|page| {
                 is_page_visible_for_request(
-                    &page.metadata,
+                    &page.channel_slugs,
                     public_channel_slug.as_deref(),
                     !is_public_request(ctx),
                 )
@@ -134,7 +134,7 @@ impl PagesQuery {
             return list_public_visible_pages(
                 db,
                 event_bus,
-                tenant.id,
+                tenant_id,
                 filter,
                 tenant.default_locale.as_str(),
                 public_channel_slug(ctx).as_deref(),
@@ -168,19 +168,7 @@ impl PagesQuery {
             list_started_at.elapsed().as_secs_f64(),
             total,
         );
-
-        let public_channel_slug = public_channel_slug(ctx);
-        let items = items
-            .into_iter()
-            .filter(|item| {
-                item.channel_slugs.is_empty()
-                    || public_channel_slug
-                        .as_deref()
-                        .map(|slug| item.channel_slugs.iter().any(|item_slug| item_slug == slug))
-                        .unwrap_or(false)
-            })
-            .map(Into::into)
-            .collect::<Vec<_>>();
+        let items = items.into_iter().map(Into::into).collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
             "graphql",
@@ -224,11 +212,11 @@ fn request_channel_resolution_source(request_context: &RequestContext) -> &str {
 }
 
 fn is_page_visible_for_request(
-    metadata: &serde_json::Value,
+    channel_slugs: &[String],
     public_channel_slug: Option<&str>,
     is_authenticated: bool,
 ) -> bool {
-    is_authenticated || is_page_visible_for_channel(metadata, public_channel_slug)
+    is_authenticated || is_page_visible_for_channel(channel_slugs, public_channel_slug)
 }
 
 async fn list_public_visible_pages(
@@ -239,63 +227,25 @@ async fn list_public_visible_pages(
     default_locale: &str,
     public_channel_slug: Option<&str>,
 ) -> Result<GqlPageList> {
-    let requested_page = filter.page.unwrap_or(1).max(1);
-    let requested_per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
-    let batch_size = requested_per_page.max(100);
     let locale = resolve_graphql_locale_fallback(filter.locale.as_deref(), default_locale);
     let service = PageService::new(db.clone(), event_bus.clone());
+    let (items, total) = service
+        .list_public_visible(
+            tenant_id,
+            crate::ListPagesFilter {
+                status: Some(rustok_content::entities::node::ContentStatus::Published),
+                template: filter.template.clone(),
+                locale: Some(locale),
+                page: filter.page.unwrap_or(1).max(1),
+                per_page: filter.per_page.unwrap_or(20).clamp(1, 100),
+            },
+            public_channel_slug,
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+    let items = items.into_iter().map(Into::into).collect();
 
-    let mut current_page = 1u64;
-    let mut visible_items = Vec::new();
-
-    loop {
-        let (items, total) = service
-            .list(
-                tenant_id,
-                SecurityContext::system(),
-                crate::ListPagesFilter {
-                    status: Some(rustok_content::entities::node::ContentStatus::Published),
-                    template: filter.template.clone(),
-                    locale: Some(locale.clone()),
-                    page: current_page,
-                    per_page: batch_size,
-                },
-            )
-            .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-
-        if items.is_empty() {
-            break;
-        }
-
-        visible_items.extend(items.into_iter().filter(|item| {
-            item.channel_slugs.is_empty()
-                || public_channel_slug
-                    .map(|slug| item.channel_slugs.iter().any(|item_slug| item_slug == slug))
-                    .unwrap_or(false)
-        }));
-
-        if current_page.saturating_mul(batch_size) >= total {
-            break;
-        }
-        current_page += 1;
-    }
-
-    let visible_total = visible_items.len() as u64;
-    let offset = requested_page
-        .saturating_sub(1)
-        .saturating_mul(requested_per_page) as usize;
-    let items = visible_items
-        .into_iter()
-        .skip(offset)
-        .take(requested_per_page as usize)
-        .map(Into::into)
-        .collect();
-
-    Ok(GqlPageList {
-        items,
-        total: visible_total,
-    })
+    Ok(GqlPageList { items, total })
 }
 
 fn resolve_graphql_locale_fallback(requested: Option<&str>, fallback: &str) -> String {
@@ -355,7 +305,7 @@ async fn ensure_public_pages_channel_enabled(
 #[cfg(test)]
 mod tests {
     use super::{ensure_public_pages_channel_enabled, is_page_visible_for_request};
-    use crate::services::page::{extract_channel_slugs, is_page_visible_for_channel};
+    use crate::services::page::is_page_visible_for_channel;
     use rustok_api::{context::ChannelResolutionSource, RequestContext};
     use rustok_channel::{migrations, BindChannelModuleInput, ChannelService, CreateChannelInput};
     use rustok_test_utils::setup_test_db;
@@ -545,31 +495,17 @@ mod tests {
             .channel_slug
             .as_ref()
             .map(|slug| slug.trim().to_ascii_lowercase());
-        let visible = is_page_visible_for_channel(
-            &serde_json::json!({
-                "channel_visibility": {
-                    "allowed_channel_slugs": ["web"]
-                }
-            }),
-            unauthenticated.as_deref(),
-        );
+        let visible = is_page_visible_for_channel(&["web".to_string()], unauthenticated.as_deref());
         assert!(visible);
-        assert_eq!(
-            extract_channel_slugs(&serde_json::json!({})),
-            Vec::<String>::new()
-        );
+        assert!(is_page_visible_for_channel(&[], unauthenticated.as_deref()));
     }
 
     #[test]
     fn authenticated_request_bypasses_page_channel_allowlist() {
-        let metadata = serde_json::json!({
-            "channel_visibility": {
-                "allowed_channel_slugs": ["web"]
-            }
-        });
+        let channel_slugs = vec!["web".to_string()];
 
-        assert!(is_page_visible_for_request(&metadata, None, true));
-        assert!(!is_page_visible_for_request(&metadata, None, false));
+        assert!(is_page_visible_for_request(&channel_slugs, None, true));
+        assert!(!is_page_visible_for_request(&channel_slugs, None, false));
     }
 
     #[tokio::test]

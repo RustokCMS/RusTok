@@ -3,17 +3,20 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
 };
+use std::collections::HashMap;
 use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
-use rustok_core::SecurityContext;
+use rustok_core::{Action, Resource, SecurityContext};
 
 use crate::dto::{CategoryListItem, CategoryResponse, CreateCategoryInput, UpdateCategoryInput};
 use crate::entities::{forum_category, forum_category_translation};
 use crate::error::{ForumError, ForumResult};
+use crate::services::rbac::enforce_scope;
+use crate::services::subscription::SubscriptionService;
 
 pub struct CategoryService {
     db: DatabaseConnection,
@@ -24,13 +27,14 @@ impl CategoryService {
         Self { db }
     }
 
-    #[instrument(skip(self, _security, input))]
+    #[instrument(skip(self, security, input))]
     pub async fn create(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         input: CreateCategoryInput,
     ) -> ForumResult<CategoryResponse> {
+        enforce_scope(&security, Resource::ForumCategories, Action::Create)?;
         validate_category_name(&input.name)?;
         let locale = normalize_locale(&input.locale)?;
         let slug = normalize_required_slug(&input.slug)?;
@@ -65,17 +69,18 @@ impl CategoryService {
         .insert(&self.db)
         .await?;
 
-        self.get(tenant_id, id, &locale).await
+        self.get(tenant_id, security, id, &locale).await
     }
 
     #[instrument(skip(self))]
     pub async fn get(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         category_id: Uuid,
         locale: &str,
     ) -> ForumResult<CategoryResponse> {
-        self.get_with_locale_fallback(tenant_id, category_id, locale, None)
+        self.get_with_locale_fallback(tenant_id, security, category_id, locale, None)
             .await
     }
 
@@ -83,10 +88,12 @@ impl CategoryService {
     pub async fn get_with_locale_fallback(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         category_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<CategoryResponse> {
+        enforce_scope(&security, Resource::ForumCategories, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let category = forum_category::Entity::find_by_id(category_id)
@@ -95,22 +102,30 @@ impl CategoryService {
             .await?
             .ok_or(ForumError::CategoryNotFound(category_id))?;
         let translations = self.load_translations(category_id).await?;
+        let is_subscribed = SubscriptionService::new(self.db.clone())
+            .category_subscription_flags(tenant_id, &[category_id], security.user_id)
+            .await?
+            .get(&category_id)
+            .copied()
+            .unwrap_or(false);
         Ok(to_category_response(
             category,
             translations,
+            is_subscribed,
             &locale,
             fallback_locale.as_deref(),
         ))
     }
 
-    #[instrument(skip(self, _security, input))]
+    #[instrument(skip(self, security, input))]
     pub async fn update(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> ForumResult<CategoryResponse> {
+        enforce_scope(&security, Resource::ForumCategories, Action::Update)?;
         let locale = normalize_locale(&input.locale)?;
         let category = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
@@ -185,16 +200,17 @@ impl CategoryService {
             }
         }
 
-        self.get(tenant_id, category_id, &locale).await
+        self.get(tenant_id, security, category_id, &locale).await
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
     ) -> ForumResult<()> {
+        enforce_scope(&security, Resource::ForumCategories, Action::Delete)?;
         let category = forum_category::Entity::find_by_id(category_id)
             .filter(forum_category::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -212,38 +228,31 @@ impl CategoryService {
         Ok(())
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn list(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         locale: &str,
     ) -> ForumResult<Vec<CategoryListItem>> {
         let (items, _) = self
-            .list_paginated_with_locale_fallback(
-                tenant_id,
-                SecurityContext::system(),
-                locale,
-                1,
-                1000,
-                None,
-            )
+            .list_paginated_with_locale_fallback(tenant_id, security, locale, 1, 1000, None)
             .await?;
         Ok(items)
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn list_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<Vec<CategoryListItem>> {
         let (items, _) = self
             .list_paginated_with_locale_fallback(
                 tenant_id,
-                SecurityContext::system(),
+                security,
                 locale,
                 1,
                 1000,
@@ -253,16 +262,17 @@ impl CategoryService {
         Ok(items)
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn list_paginated_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         locale: &str,
         page: u64,
         per_page: u64,
         fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<CategoryListItem>, u64)> {
+        enforce_scope(&security, Resource::ForumCategories, Action::List)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let paginator = forum_category::Entity::find()
@@ -272,15 +282,20 @@ impl CategoryService {
         let total = paginator.num_items().await?;
         let categories = paginator.fetch_page(page.saturating_sub(1)).await?;
         let category_ids: Vec<Uuid> = categories.iter().map(|item| item.id).collect();
-        let translations = self.load_translations_for_categories(&category_ids).await?;
+        let translations_by_category_id = self
+            .load_translations_map_for_categories(&category_ids)
+            .await?;
+        let subscription_flags = SubscriptionService::new(self.db.clone())
+            .category_subscription_flags(tenant_id, &category_ids, security.user_id)
+            .await?;
 
         let items = categories
             .into_iter()
             .map(|category| {
-                let localized = translations
-                    .iter()
-                    .filter(|translation| translation.category_id == category.id)
-                    .collect::<Vec<_>>();
+                let localized = translations_by_category_id
+                    .get(&category.id)
+                    .cloned()
+                    .unwrap_or_default();
                 let resolved = resolve_by_locale_with_fallback(
                     &localized,
                     &locale,
@@ -290,8 +305,12 @@ impl CategoryService {
 
                 CategoryListItem {
                     id: category.id,
+                    requested_locale: locale.clone(),
                     locale: locale.clone(),
                     effective_locale: resolved.effective_locale,
+                    available_locales: available_locales_from(&localized, |translation| {
+                        translation.locale.as_str()
+                    }),
                     name: resolved
                         .item
                         .map(|translation| translation.name.clone())
@@ -307,6 +326,10 @@ impl CategoryService {
                     color: category.color.clone(),
                     topic_count: category.topic_count,
                     reply_count: category.reply_count,
+                    is_subscribed: subscription_flags
+                        .get(&category.id)
+                        .copied()
+                        .unwrap_or(false),
                 }
             })
             .collect();
@@ -378,11 +401,25 @@ impl CategoryService {
             .all(&self.db)
             .await?)
     }
+
+    async fn load_translations_map_for_categories(
+        &self,
+        category_ids: &[Uuid],
+    ) -> ForumResult<HashMap<Uuid, Vec<forum_category_translation::Model>>> {
+        let mut map: HashMap<Uuid, Vec<forum_category_translation::Model>> = HashMap::new();
+        for translation in self.load_translations_for_categories(category_ids).await? {
+            map.entry(translation.category_id)
+                .or_default()
+                .push(translation);
+        }
+        Ok(map)
+    }
 }
 
 fn to_category_response(
     category: forum_category::Model,
     translations: Vec<forum_category_translation::Model>,
+    is_subscribed: bool,
     locale: &str,
     fallback_locale: Option<&str>,
 ) -> CategoryResponse {
@@ -417,6 +454,7 @@ fn to_category_response(
         topic_count: category.topic_count,
         reply_count: category.reply_count,
         moderated: category.moderated,
+        is_subscribed,
     }
 }
 

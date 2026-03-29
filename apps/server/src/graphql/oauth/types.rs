@@ -91,6 +91,10 @@ impl OAuthAppGql {
         self.0.grant_types_list()
     }
 
+    async fn granted_permissions(&self) -> Vec<String> {
+        self.0.granted_permissions_list()
+    }
+
     async fn manifest_ref(&self) -> Option<&str> {
         self.0.manifest_ref.as_deref()
     }
@@ -146,6 +150,7 @@ pub struct CreateOAuthAppInput {
     pub redirect_uris: Option<Vec<String>>,
     pub scopes: Vec<String>,
     pub grant_types: Vec<String>,
+    pub granted_permissions: Vec<String>,
 }
 
 /// Input for updating a manual OAuth app
@@ -157,6 +162,7 @@ pub struct UpdateOAuthAppInput {
     pub redirect_uris: Vec<String>,
     pub scopes: Vec<String>,
     pub grant_types: Vec<String>,
+    pub granted_permissions: Vec<String>,
 }
 
 /// Result of creating an OAuth app — includes client_secret shown ONCE

@@ -1,5 +1,3 @@
-extern crate rhai_full as rhai;
-
 pub mod async_utils;
 pub mod auth;
 pub mod cache;
@@ -21,7 +19,6 @@ pub mod rbac;
 pub mod registry;
 pub mod resilience;
 pub mod rt_json;
-pub mod scripting;
 pub mod security;
 pub mod state_machine;
 pub mod tenant_validation;
@@ -91,7 +88,6 @@ pub use rt_json::{
     sanitize_rt_json_before_html_render, validate_and_sanitize_rt_json, RtJsonValidationConfig,
     RtJsonValidationResult,
 };
-pub use scripting::ScriptingContext;
 pub use security::{
     audit::AuditEventType, headers::FrameOptions, run_security_audit, AuditEvent, AuditLogger,
     InputValidator, RateLimitConfig, RateLimitResult, RateLimiter, SecurityAudit,

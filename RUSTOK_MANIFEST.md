@@ -145,14 +145,14 @@ Capability/runtime crates:
 
 - `rustok-mcp`
 - `alloy`
-- `alloy-scripting`
+- `alloy`
 - `flex`
 - `rustok-iggy`
 - `rustok-iggy-connector`
 
 Boundary rule:
 
-- `rustok-mcp`, `alloy`, `alloy-scripting`, and `flex` are capability layers or support systems.
+- `rustok-mcp`, `alloy`, `alloy`, and `flex` are capability layers or support systems.
 - They must not be documented as tenant-toggle platform modules unless `modules.toml` and the runtime taxonomy actually change.
 
 <a id="core-philosophy"></a>
@@ -289,3 +289,4 @@ When the architecture, runtime boundaries, module taxonomy, or public host contr
 5. Record non-trivial boundary changes in [DECISIONS/README.md](DECISIONS/README.md) via an ADR.
 
 This manifest should remain stable, high-level, and code-aligned. It is not the place for speculative claims, obsolete bootstrap examples, or duplicated subsystem detail that already belongs in component docs.
+

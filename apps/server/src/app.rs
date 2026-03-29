@@ -104,6 +104,7 @@ impl Hooks for App {
     fn routes(_ctx: &AppContext) -> AppRoutes {
         let routes = AppRoutes::with_default_routes()
             .add_route(controllers::health::routes())
+            .add_route(controllers::marketplace_registry::routes())
             .add_route(controllers::metrics::routes())
             .add_route(controllers::swagger::routes())
             .add_route(controllers::admin_events::routes())
@@ -208,6 +209,7 @@ mod tests {
     use loco_rs::{app::Hooks, tests_cfg::app::get_app_context};
     use migration::Migrator;
     use sea_orm_migration::MigratorTrait;
+    use serde_json::Value;
     use serial_test::serial;
     use std::sync::Arc;
     use tower::ServiceExt;
@@ -273,5 +275,64 @@ mod tests {
             "unexpected /health/live response body: {}",
             String::from_utf8_lossy(&body)
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_catalog_endpoint_serves_v1_contract() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for registry catalog smoke");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/catalog")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("v1 catalog request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("v1 catalog body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected /v1/catalog response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: Value =
+            serde_json::from_slice(&body).expect("v1 catalog payload should be valid json");
+        let modules = payload["modules"]
+            .as_array()
+            .expect("v1 catalog should return modules array");
+
+        assert_eq!(payload["schema_version"], 1);
+        assert!(
+            !modules.is_empty(),
+            "v1 catalog should expose first-party modules"
+        );
+        assert!(modules.iter().all(|module| module["source"] == "registry"));
+        assert!(modules
+            .iter()
+            .all(|module| module["ownership"] == "first_party"));
     }
 }

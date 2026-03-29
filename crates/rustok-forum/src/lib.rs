@@ -18,7 +18,10 @@ pub use constants::*;
 pub use dto::*;
 pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
-pub use services::{CategoryService, ModerationService, ReplyService, TopicService};
+pub use services::{
+    CategoryService, ModerationService, ReplyService, SubscriptionService, TopicService,
+    UserStatsService, VoteService,
+};
 pub use state_machine::{ReplyStatus, TopicStatus};
 
 pub struct ForumModule;
@@ -42,7 +45,7 @@ impl RusToKModule for ForumModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content"]
+        &["content", "taxonomy"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

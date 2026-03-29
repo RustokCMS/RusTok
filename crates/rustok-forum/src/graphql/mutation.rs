@@ -12,7 +12,7 @@ use rustok_profiles::{
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{CategoryService, ReplyService, TopicService};
+use crate::{CategoryService, ReplyService, SubscriptionService, TopicService, VoteService};
 
 use super::types::*;
 
@@ -83,6 +83,10 @@ impl ForumMutation {
             status: topic.status,
             tags: topic.tags,
             channel_slugs: topic.channel_slugs.clone(),
+            vote_score: topic.vote_score,
+            current_user_vote: topic.current_user_vote,
+            is_subscribed: topic.is_subscribed,
+            solution_reply_id: topic.solution_reply_id,
             is_pinned: topic.is_pinned,
             is_locked: topic.is_locked,
             reply_count: topic.reply_count,
@@ -149,6 +153,10 @@ impl ForumMutation {
             status: topic.status,
             tags: topic.tags,
             channel_slugs: topic.channel_slugs.clone(),
+            vote_score: topic.vote_score,
+            current_user_vote: topic.current_user_vote,
+            is_subscribed: topic.is_subscribed,
+            solution_reply_id: topic.solution_reply_id,
             is_pinned: topic.is_pinned,
             is_locked: topic.is_locked,
             reply_count: topic.reply_count,
@@ -178,6 +186,234 @@ impl ForumMutation {
             .await?;
 
         Ok(true)
+    }
+
+    async fn set_forum_category_subscription(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        category_id: Uuid,
+    ) -> Result<GqlForumCategory> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_CATEGORIES_READ],
+            "Permission denied: forum_categories:read required",
+        )?;
+
+        SubscriptionService::new(db.clone())
+            .set_category_subscription(tenant_id, category_id, auth.security_context())
+            .await?;
+
+        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let category = CategoryService::new(db.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                category_id,
+                tenant.default_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+
+        Ok(GqlForumCategory {
+            id: category.id,
+            requested_locale: category.requested_locale,
+            locale: category.locale,
+            effective_locale: category.effective_locale,
+            available_locales: category.available_locales,
+            name: category.name,
+            slug: category.slug,
+            description: category.description,
+            icon: category.icon,
+            color: category.color,
+            topic_count: category.topic_count,
+            reply_count: category.reply_count,
+            is_subscribed: category.is_subscribed,
+        })
+    }
+
+    async fn clear_forum_category_subscription(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        category_id: Uuid,
+    ) -> Result<GqlForumCategory> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_CATEGORIES_READ],
+            "Permission denied: forum_categories:read required",
+        )?;
+
+        SubscriptionService::new(db.clone())
+            .clear_category_subscription(tenant_id, category_id, auth.security_context())
+            .await?;
+
+        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let category = CategoryService::new(db.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                category_id,
+                tenant.default_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+
+        Ok(GqlForumCategory {
+            id: category.id,
+            requested_locale: category.requested_locale,
+            locale: category.locale,
+            effective_locale: category.effective_locale,
+            available_locales: category.available_locales,
+            name: category.name,
+            slug: category.slug,
+            description: category.description,
+            icon: category.icon,
+            color: category.color,
+            topic_count: category.topic_count,
+            reply_count: category.reply_count,
+            is_subscribed: category.is_subscribed,
+        })
+    }
+
+    async fn set_forum_topic_subscription(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        locale: Option<String>,
+    ) -> Result<GqlForumTopic> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_READ],
+            "Permission denied: forum_topics:read required",
+        )?;
+        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+
+        SubscriptionService::new(db.clone())
+            .set_topic_subscription(tenant_id, topic_id, auth.security_context())
+            .await?;
+
+        let topic = TopicService::new(db.clone(), event_bus.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                topic_id,
+                resolved_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+        let author_profile = load_author_profile(
+            ctx,
+            db,
+            tenant_id,
+            topic.author_id,
+            topic.effective_locale.as_str(),
+        )
+        .await?;
+
+        Ok(GqlForumTopic {
+            id: topic.id,
+            requested_locale: topic.requested_locale,
+            locale: topic.locale,
+            effective_locale: topic.effective_locale,
+            available_locales: topic.available_locales,
+            category_id: topic.category_id,
+            author_id: topic.author_id,
+            author_profile,
+            title: topic.title,
+            slug: topic.slug,
+            body: topic.body,
+            body_format: topic.body_format,
+            status: topic.status,
+            tags: topic.tags,
+            channel_slugs: topic.channel_slugs,
+            vote_score: topic.vote_score,
+            current_user_vote: topic.current_user_vote,
+            is_subscribed: topic.is_subscribed,
+            solution_reply_id: topic.solution_reply_id,
+            is_pinned: topic.is_pinned,
+            is_locked: topic.is_locked,
+            reply_count: topic.reply_count,
+            created_at: topic.created_at,
+            updated_at: topic.updated_at,
+        })
+    }
+
+    async fn clear_forum_topic_subscription(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        locale: Option<String>,
+    ) -> Result<GqlForumTopic> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_READ],
+            "Permission denied: forum_topics:read required",
+        )?;
+        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+
+        SubscriptionService::new(db.clone())
+            .clear_topic_subscription(tenant_id, topic_id, auth.security_context())
+            .await?;
+
+        let topic = TopicService::new(db.clone(), event_bus.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                topic_id,
+                resolved_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+        let author_profile = load_author_profile(
+            ctx,
+            db,
+            tenant_id,
+            topic.author_id,
+            topic.effective_locale.as_str(),
+        )
+        .await?;
+
+        Ok(GqlForumTopic {
+            id: topic.id,
+            requested_locale: topic.requested_locale,
+            locale: topic.locale,
+            effective_locale: topic.effective_locale,
+            available_locales: topic.available_locales,
+            category_id: topic.category_id,
+            author_id: topic.author_id,
+            author_profile,
+            title: topic.title,
+            slug: topic.slug,
+            body: topic.body,
+            body_format: topic.body_format,
+            status: topic.status,
+            tags: topic.tags,
+            channel_slugs: topic.channel_slugs,
+            vote_score: topic.vote_score,
+            current_user_vote: topic.current_user_vote,
+            is_subscribed: topic.is_subscribed,
+            solution_reply_id: topic.solution_reply_id,
+            is_pinned: topic.is_pinned,
+            is_locked: topic.is_locked,
+            reply_count: topic.reply_count,
+            created_at: topic.created_at,
+            updated_at: topic.updated_at,
+        })
     }
 
     async fn create_forum_reply(
@@ -233,9 +469,415 @@ impl ForumMutation {
             content: reply.content,
             content_format: reply.content_format,
             status: reply.status,
+            vote_score: reply.vote_score,
+            current_user_vote: reply.current_user_vote,
+            is_solution: reply.is_solution,
             parent_reply_id: reply.parent_reply_id,
             created_at: reply.created_at,
             updated_at: reply.updated_at,
+        })
+    }
+
+    async fn set_forum_topic_vote(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        value: i32,
+        locale: Option<String>,
+    ) -> Result<GqlForumTopic> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_READ],
+            "Permission denied: forum_topics:read required",
+        )?;
+        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+
+        VoteService::new(db.clone())
+            .set_topic_vote(tenant_id, topic_id, auth.security_context(), value)
+            .await?;
+
+        let topic = TopicService::new(db.clone(), event_bus.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                topic_id,
+                resolved_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+        let author_profile = load_author_profile(
+            ctx,
+            db,
+            tenant_id,
+            topic.author_id,
+            topic.effective_locale.as_str(),
+        )
+        .await?;
+
+        Ok(GqlForumTopic {
+            id: topic.id,
+            requested_locale: topic.requested_locale,
+            locale: topic.locale,
+            effective_locale: topic.effective_locale,
+            available_locales: topic.available_locales,
+            category_id: topic.category_id,
+            author_id: topic.author_id,
+            author_profile,
+            title: topic.title,
+            slug: topic.slug,
+            body: topic.body,
+            body_format: topic.body_format,
+            status: topic.status,
+            tags: topic.tags,
+            channel_slugs: topic.channel_slugs,
+            vote_score: topic.vote_score,
+            current_user_vote: topic.current_user_vote,
+            is_subscribed: topic.is_subscribed,
+            solution_reply_id: topic.solution_reply_id,
+            is_pinned: topic.is_pinned,
+            is_locked: topic.is_locked,
+            reply_count: topic.reply_count,
+            created_at: topic.created_at,
+            updated_at: topic.updated_at,
+        })
+    }
+
+    async fn clear_forum_topic_vote(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        locale: Option<String>,
+    ) -> Result<GqlForumTopic> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_TOPICS_READ],
+            "Permission denied: forum_topics:read required",
+        )?;
+        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+
+        VoteService::new(db.clone())
+            .clear_topic_vote(tenant_id, topic_id, auth.security_context())
+            .await?;
+
+        let topic = TopicService::new(db.clone(), event_bus.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                topic_id,
+                resolved_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+        let author_profile = load_author_profile(
+            ctx,
+            db,
+            tenant_id,
+            topic.author_id,
+            topic.effective_locale.as_str(),
+        )
+        .await?;
+
+        Ok(GqlForumTopic {
+            id: topic.id,
+            requested_locale: topic.requested_locale,
+            locale: topic.locale,
+            effective_locale: topic.effective_locale,
+            available_locales: topic.available_locales,
+            category_id: topic.category_id,
+            author_id: topic.author_id,
+            author_profile,
+            title: topic.title,
+            slug: topic.slug,
+            body: topic.body,
+            body_format: topic.body_format,
+            status: topic.status,
+            tags: topic.tags,
+            channel_slugs: topic.channel_slugs,
+            vote_score: topic.vote_score,
+            current_user_vote: topic.current_user_vote,
+            is_subscribed: topic.is_subscribed,
+            solution_reply_id: topic.solution_reply_id,
+            is_pinned: topic.is_pinned,
+            is_locked: topic.is_locked,
+            reply_count: topic.reply_count,
+            created_at: topic.created_at,
+            updated_at: topic.updated_at,
+        })
+    }
+
+    async fn set_forum_reply_vote(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        value: i32,
+        locale: Option<String>,
+    ) -> Result<GqlForumReply> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_REPLIES_READ],
+            "Permission denied: forum_replies:read required",
+        )?;
+        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+
+        VoteService::new(db.clone())
+            .set_reply_vote(tenant_id, reply_id, auth.security_context(), value)
+            .await?;
+
+        let reply = ReplyService::new(db.clone(), event_bus.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                reply_id,
+                resolved_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+        let author_profile = load_author_profile(
+            ctx,
+            db,
+            tenant_id,
+            reply.author_id,
+            reply.effective_locale.as_str(),
+        )
+        .await?;
+
+        Ok(GqlForumReply {
+            id: reply.id,
+            requested_locale: reply.requested_locale,
+            locale: reply.locale,
+            effective_locale: reply.effective_locale,
+            topic_id: reply.topic_id,
+            author_id: reply.author_id,
+            author_profile,
+            content: reply.content,
+            content_format: reply.content_format,
+            status: reply.status,
+            vote_score: reply.vote_score,
+            current_user_vote: reply.current_user_vote,
+            is_solution: reply.is_solution,
+            parent_reply_id: reply.parent_reply_id,
+            created_at: reply.created_at,
+            updated_at: reply.updated_at,
+        })
+    }
+
+    async fn clear_forum_reply_vote(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        locale: Option<String>,
+    ) -> Result<GqlForumReply> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[Permission::FORUM_REPLIES_READ],
+            "Permission denied: forum_replies:read required",
+        )?;
+        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+
+        VoteService::new(db.clone())
+            .clear_reply_vote(tenant_id, reply_id, auth.security_context())
+            .await?;
+
+        let reply = ReplyService::new(db.clone(), event_bus.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                reply_id,
+                resolved_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+        let author_profile = load_author_profile(
+            ctx,
+            db,
+            tenant_id,
+            reply.author_id,
+            reply.effective_locale.as_str(),
+        )
+        .await?;
+
+        Ok(GqlForumReply {
+            id: reply.id,
+            requested_locale: reply.requested_locale,
+            locale: reply.locale,
+            effective_locale: reply.effective_locale,
+            topic_id: reply.topic_id,
+            author_id: reply.author_id,
+            author_profile,
+            content: reply.content,
+            content_format: reply.content_format,
+            status: reply.status,
+            vote_score: reply.vote_score,
+            current_user_vote: reply.current_user_vote,
+            is_solution: reply.is_solution,
+            parent_reply_id: reply.parent_reply_id,
+            created_at: reply.created_at,
+            updated_at: reply.updated_at,
+        })
+    }
+
+    async fn mark_forum_topic_solution(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        reply_id: Uuid,
+        locale: Option<String>,
+    ) -> Result<GqlForumTopic> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[
+                Permission::FORUM_TOPICS_UPDATE,
+                Permission::FORUM_TOPICS_MODERATE,
+            ],
+            "Permission denied: forum_topics:update or forum_topics:moderate required",
+        )?;
+        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+
+        let moderation = crate::ModerationService::new(db.clone(), event_bus.clone());
+        moderation
+            .mark_solution(tenant_id, topic_id, reply_id, auth.security_context())
+            .await?;
+
+        let topic = TopicService::new(db.clone(), event_bus.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                topic_id,
+                resolved_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+        let author_profile = load_author_profile(
+            ctx,
+            db,
+            tenant_id,
+            topic.author_id,
+            topic.effective_locale.as_str(),
+        )
+        .await?;
+
+        Ok(GqlForumTopic {
+            id: topic.id,
+            requested_locale: topic.requested_locale,
+            locale: topic.locale,
+            effective_locale: topic.effective_locale,
+            available_locales: topic.available_locales,
+            category_id: topic.category_id,
+            author_id: topic.author_id,
+            author_profile,
+            title: topic.title,
+            slug: topic.slug,
+            body: topic.body,
+            body_format: topic.body_format,
+            status: topic.status,
+            tags: topic.tags,
+            channel_slugs: topic.channel_slugs,
+            vote_score: topic.vote_score,
+            current_user_vote: topic.current_user_vote,
+            is_subscribed: topic.is_subscribed,
+            solution_reply_id: topic.solution_reply_id,
+            is_pinned: topic.is_pinned,
+            is_locked: topic.is_locked,
+            reply_count: topic.reply_count,
+            created_at: topic.created_at,
+            updated_at: topic.updated_at,
+        })
+    }
+
+    async fn clear_forum_topic_solution(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        locale: Option<String>,
+    ) -> Result<GqlForumTopic> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_forum_permission(
+            ctx,
+            &[
+                Permission::FORUM_TOPICS_UPDATE,
+                Permission::FORUM_TOPICS_MODERATE,
+            ],
+            "Permission denied: forum_topics:update or forum_topics:moderate required",
+        )?;
+        let tenant = ctx.data::<rustok_api::TenantContext>()?;
+        let resolved_locale = locale.unwrap_or_else(|| tenant.default_locale.clone());
+
+        let moderation = crate::ModerationService::new(db.clone(), event_bus.clone());
+        moderation
+            .clear_solution(tenant_id, topic_id, auth.security_context())
+            .await?;
+
+        let topic = TopicService::new(db.clone(), event_bus.clone())
+            .get_with_locale_fallback(
+                tenant_id,
+                auth.security_context(),
+                topic_id,
+                resolved_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+        let author_profile = load_author_profile(
+            ctx,
+            db,
+            tenant_id,
+            topic.author_id,
+            topic.effective_locale.as_str(),
+        )
+        .await?;
+
+        Ok(GqlForumTopic {
+            id: topic.id,
+            requested_locale: topic.requested_locale,
+            locale: topic.locale,
+            effective_locale: topic.effective_locale,
+            available_locales: topic.available_locales,
+            category_id: topic.category_id,
+            author_id: topic.author_id,
+            author_profile,
+            title: topic.title,
+            slug: topic.slug,
+            body: topic.body,
+            body_format: topic.body_format,
+            status: topic.status,
+            tags: topic.tags,
+            channel_slugs: topic.channel_slugs,
+            vote_score: topic.vote_score,
+            current_user_vote: topic.current_user_vote,
+            is_subscribed: topic.is_subscribed,
+            solution_reply_id: topic.solution_reply_id,
+            is_pinned: topic.is_pinned,
+            is_locked: topic.is_locked,
+            reply_count: topic.reply_count,
+            created_at: topic.created_at,
+            updated_at: topic.updated_at,
         })
     }
 
@@ -277,6 +919,7 @@ impl ForumMutation {
             requested_locale: category.requested_locale,
             locale: category.locale,
             effective_locale: category.effective_locale,
+            available_locales: category.available_locales,
             name: category.name,
             slug: category.slug,
             description: category.description,
@@ -284,6 +927,7 @@ impl ForumMutation {
             color: category.color,
             topic_count: category.topic_count,
             reply_count: category.reply_count,
+            is_subscribed: category.is_subscribed,
         })
     }
 }

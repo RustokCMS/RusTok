@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# RusTok — Верификация code quality
-# Фаза 19: PII logging, hardcoded secrets, code metrics, dependency antipatterns
+# RusTok вЂ” Р’РµСЂРёС„РёРєР°С†РёСЏ code quality
+# Р¤Р°Р·Р° 19: PII logging, hardcoded secrets, code metrics, dependency antipatterns
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,8 +17,8 @@ ERRORS=0
 WARNINGS=0
 
 header() { echo -e "\n${BOLD}=== $1 ===${NC}"; }
-pass()   { echo -e "  ${GREEN}✓${NC} $1"; }
-fail()   { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
+pass()   { echo -e "  ${GREEN}вњ“${NC} $1"; }
+fail()   { echo -e "  ${RED}вњ—${NC} $1"; ERRORS=$((ERRORS + 1)); }
 warn()   { echo -e "  ${YELLOW}!${NC} $1"; WARNINGS=$((WARNINGS + 1)); }
 
 PROD_RS_PATHS=(
@@ -35,7 +35,7 @@ PROD_RS_PATHS=(
     "crates/rustok-iggy/src"
     "crates/rustok-outbox/src"
     "crates/rustok-index/src"
-    "crates/alloy-scripting/src"
+    "crates/alloy/src"
     "apps/server/src"
 )
 
@@ -49,12 +49,12 @@ if [[ ${#EXISTING[@]} -eq 0 ]]; then
     exit 0
 fi
 
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 # SECURITY
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
-# ─── 1. PII в логах ───
-header "1. PII в логах (password, email, token в tracing)"
+# в”Ђв”Ђв”Ђ 1. PII РІ Р»РѕРіР°С… в”Ђв”Ђв”Ђ
+header "1. PII РІ Р»РѕРіР°С… (password, email, token РІ tracing)"
 
 pii_in_logs=$(grep -rn 'tracing::\|info!\|debug!\|warn!\|error!\|trace!' "${EXISTING[@]}" --include="*.rs" 2>/dev/null | grep -iE 'password|email|token|secret|credential' | grep -v "test\|// \|password_hash\|token_type\|email_verified\|password_reset\|token_expir" || true)
 if [[ -n "$pii_in_logs" ]]; then
@@ -65,7 +65,7 @@ else
     pass "No PII found in tracing/logging calls"
 fi
 
-# ─── 2. Hardcoded secrets ───
+# в”Ђв”Ђв”Ђ 2. Hardcoded secrets в”Ђв”Ђв”Ђ
 header "2. Hardcoded secrets"
 
 # Look for string assignments with suspicious names
@@ -87,7 +87,7 @@ else
     pass "No .env files in git (only examples)"
 fi
 
-# ─── 3. Entities exposed directly in API responses ───
+# в”Ђв”Ђв”Ђ 3. Entities exposed directly in API responses в”Ђв”Ђв”Ђ
 header "3. Entities exposed directly in API responses"
 
 # Check if Model structs are returned in Json<> responses
@@ -100,12 +100,12 @@ else
     pass "Controllers don't return raw Model/Entity types"
 fi
 
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 # CODE METRICS
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
-# ─── 4. Модули > 500 строк ───
-header "4. Файлы > 500 строк"
+# в”Ђв”Ђв”Ђ 4. РњРѕРґСѓР»Рё > 500 СЃС‚СЂРѕРє в”Ђв”Ђв”Ђ
+header "4. Р¤Р°Р№Р»С‹ > 500 СЃС‚СЂРѕРє"
 
 large_files=""
 for dir in "${EXISTING[@]}"; do
@@ -125,8 +125,8 @@ else
     pass "All files under 500 lines"
 fi
 
-# ─── 5. Функции > 60 строк ───
-header "5. Длинные функции (> 60 строк) — top 10"
+# в”Ђв”Ђв”Ђ 5. Р¤СѓРЅРєС†РёРё > 60 СЃС‚СЂРѕРє в”Ђв”Ђв”Ђ
+header "5. Р”Р»РёРЅРЅС‹Рµ С„СѓРЅРєС†РёРё (> 60 СЃС‚СЂРѕРє) вЂ” top 10"
 
 # Simple heuristic: find fn definitions and count lines to next fn or }
 long_fns=""
@@ -165,11 +165,11 @@ else
 fi
 rm -f /tmp/rustok_long_fns.txt
 
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 # DEPENDENCY ANTIPATTERNS
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
-# ─── 6. rustok-core не зависит от domain crates ───
+# в”Ђв”Ђв”Ђ 6. rustok-core РЅРµ Р·Р°РІРёСЃРёС‚ РѕС‚ domain crates в”Ђв”Ђв”Ђ
 header "6. Dependency: rustok-core independence"
 
 if [[ -f "crates/rustok-core/Cargo.toml" ]]; then
@@ -182,7 +182,7 @@ if [[ -f "crates/rustok-core/Cargo.toml" ]]; then
     fi
 fi
 
-# ─── 7. Domain crates не зависят друг от друга ───
+# в”Ђв”Ђв”Ђ 7. Domain crates РЅРµ Р·Р°РІРёСЃСЏС‚ РґСЂСѓРі РѕС‚ РґСЂСѓРіР° в”Ђв”Ђв”Ђ
 header "7. Dependency: domain crate independence"
 
 domain_crate_names=("rustok-content" "rustok-commerce" "rustok-blog" "rustok-forum" "rustok-pages")
@@ -200,12 +200,12 @@ for crate in "${domain_crate_names[@]}"; do
         if [[ -n "$other_domains" ]]; then
             warn "$crate depends on:$other_domains (should communicate via events)"
         else
-            pass "$crate — independent from other domain crates"
+            pass "$crate вЂ” independent from other domain crates"
         fi
     fi
 done
 
-# ─── 8. rustok-test-utils only in dev-dependencies ───
+# в”Ђв”Ђв”Ђ 8. rustok-test-utils only in dev-dependencies в”Ђв”Ђв”Ђ
 header "8. Dependency: test-utils only in dev-dependencies"
 
 test_utils_in_deps=$(grep -rl 'rustok-test-utils' crates/*/Cargo.toml apps/*/Cargo.toml 2>/dev/null || true)
@@ -215,48 +215,48 @@ if [[ -n "$test_utils_in_deps" ]]; then
         in_dev=$(awk '/\[dev-dependencies\]/,/\[/' "$cargo_file" 2>/dev/null | grep "rustok-test-utils" || true)
         in_deps=$(awk '/\[dependencies\]/,/\[/' "$cargo_file" 2>/dev/null | grep "rustok-test-utils" || true)
         if [[ -n "$in_deps" && -z "$in_dev" ]]; then
-            fail "$cargo_file — rustok-test-utils in [dependencies] (should be [dev-dependencies])"
+            fail "$cargo_file вЂ” rustok-test-utils in [dependencies] (should be [dev-dependencies])"
         else
-            pass "$cargo_file — rustok-test-utils in [dev-dependencies]"
+            pass "$cargo_file вЂ” rustok-test-utils in [dev-dependencies]"
         fi
     done
 else
     pass "rustok-test-utils not referenced (or only in dev)"
 fi
 
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 # ERROR HANDLING
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
-# ─── 9. thiserror в domain crates ───
+# в”Ђв”Ђв”Ђ 9. thiserror РІ domain crates в”Ђв”Ђв”Ђ
 header "9. Error handling: thiserror in domain crates"
 
 for crate in "${domain_crate_names[@]}"; do
     cargo_toml="crates/$crate/Cargo.toml"
     if [[ -f "$cargo_toml" ]]; then
         if grep -q "thiserror" "$cargo_toml" 2>/dev/null; then
-            pass "$crate — uses thiserror"
+            pass "$crate вЂ” uses thiserror"
         else
-            warn "$crate — thiserror not in dependencies"
+            warn "$crate вЂ” thiserror not in dependencies"
         fi
     fi
 done
 
-# ─── 10. anyhow в library crates (antipattern) ───
+# в”Ђв”Ђв”Ђ 10. anyhow РІ library crates (antipattern) в”Ђв”Ђв”Ђ
 header "10. Error handling: anyhow in library crates (antipattern)"
 
 for crate in "${domain_crate_names[@]}" "rustok-core" "rustok-rbac" "rustok-events"; do
     cargo_toml="crates/$crate/Cargo.toml"
     if [[ -f "$cargo_toml" ]]; then
         if grep -q "anyhow" "$cargo_toml" 2>/dev/null; then
-            warn "$crate — uses anyhow (prefer thiserror for library crates)"
+            warn "$crate вЂ” uses anyhow (prefer thiserror for library crates)"
         else
-            pass "$crate — no anyhow (good for library crate)"
+            pass "$crate вЂ” no anyhow (good for library crate)"
         fi
     fi
 done
 
-# ─── 11. String-based status checks ───
+# в”Ђв”Ђв”Ђ 11. String-based status checks в”Ђв”Ђв”Ђ
 header "11. String-based status/state checks (antipattern)"
 
 string_status=$(grep -rn '"published"\|"draft"\|"archived"\|"active"\|"inactive"\|"pending"' "${EXISTING[@]}" --include="*.rs" 2>/dev/null | grep -iE 'status\s*==\|state\s*==\|==\s*"' | grep -v "test\|// \|///\|migration\|assert" || true)
@@ -268,11 +268,11 @@ else
     pass "No string-based status checks (using enums)"
 fi
 
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 # OBSERVABILITY
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
-# ─── 12. #[instrument] на service methods ───
+# в”Ђв”Ђв”Ђ 12. #[instrument] РЅР° service methods в”Ђв”Ђв”Ђ
 header "12. Observability: #[instrument] on service methods"
 
 SERVICE_DIRS=()
@@ -301,14 +301,14 @@ if [[ ${#SERVICE_DIRS[@]} -gt 0 ]]; then
         if [[ $pct -ge 80 ]]; then
             pass "#[instrument] coverage: $instrumented_fns/$total_svc_fns service functions ($pct%)"
         elif [[ $pct -ge 50 ]]; then
-            warn "#[instrument] coverage: $instrumented_fns/$total_svc_fns service functions ($pct%) — aim for 80%+"
+            warn "#[instrument] coverage: $instrumented_fns/$total_svc_fns service functions ($pct%) вЂ” aim for 80%+"
         else
-            warn "#[instrument] coverage: $instrumented_fns/$total_svc_fns service functions ($pct%) — LOW"
+            warn "#[instrument] coverage: $instrumented_fns/$total_svc_fns service functions ($pct%) вЂ” LOW"
         fi
     fi
 fi
 
-# ─── 13. Structured logging (not string interpolation) ───
+# в”Ђв”Ђв”Ђ 13. Structured logging (not string interpolation) в”Ђв”Ђв”Ђ
 header "13. Observability: structured logging"
 
 string_format_logs=$(grep -rn 'tracing::\|info!\|debug!\|warn!\|error!' "${EXISTING[@]}" --include="*.rs" 2>/dev/null | grep -E 'format!\|&format' | grep -v "test\|// " || true)
@@ -320,11 +320,11 @@ else
     pass "No format! in tracing calls (using structured fields)"
 fi
 
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 # TYPE SAFETY
-# ═══════════════════════════════════════════
+# в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
-# ─── 14. Newtype IDs ───
+# в”Ђв”Ђв”Ђ 14. Newtype IDs в”Ђв”Ђв”Ђ
 header "14. Type safety: Newtype IDs (not bare Uuid)"
 
 bare_uuid_params=$(grep -rn 'Path<Uuid>\|Query.*Uuid>\|Json.*uuid::Uuid' "apps/server/src/controllers" --include="*.rs" 2>/dev/null | grep -v "test\|// " || true)
@@ -336,7 +336,7 @@ else
     pass "No bare Uuid in controller parameters"
 fi
 
-# ─── 15. Function arity (> 5 args) ───
+# в”Ђв”Ђв”Ђ 15. Function arity (> 5 args) в”Ђв”Ђв”Ђ
 header "15. Code metrics: functions with > 5 arguments"
 
 # Find function signatures with many commas (heuristic for argument count)
@@ -353,7 +353,7 @@ for dir in "${EXISTING[@]}"; do
             params=$(echo "$sig" | grep -oP '\(.*?\)' | head -1 || true)
             comma_count=$(echo "$params" | tr -cd ',' | wc -c)
             if [[ $comma_count -gt 5 ]]; then
-                echo "  $file:$lineno $fn_name — $((comma_count + 1)) params"
+                echo "  $file:$lineno $fn_name вЂ” $((comma_count + 1)) params"
             fi
         done
     done < <(find "$dir" -name "*.rs" -type f 2>/dev/null)
@@ -368,14 +368,15 @@ else
 fi
 rm -f /tmp/rustok_high_arity.txt
 
-# ─── Summary ───
+# в”Ђв”Ђв”Ђ Summary в”Ђв”Ђв”Ђ
 echo ""
-echo -e "${BOLD}━━━ Code Quality Summary ━━━${NC}"
+echo -e "${BOLD}в”Ѓв”Ѓв”Ѓ Code Quality Summary в”Ѓв”Ѓв”Ѓ${NC}"
 if [[ $ERRORS -eq 0 && $WARNINGS -eq 0 ]]; then
     echo -e "${GREEN}All checks passed!${NC}"
 elif [[ $ERRORS -eq 0 ]]; then
-    echo -e "${YELLOW}$WARNINGS warning(s) — manual review recommended${NC}"
+    echo -e "${YELLOW}$WARNINGS warning(s) вЂ” manual review recommended${NC}"
 else
     echo -e "${RED}$ERRORS error(s), $WARNINGS warning(s)${NC}"
 fi
 exit $ERRORS
+

@@ -4,7 +4,7 @@ mod model;
 use leptos::prelude::*;
 use rustok_api::UiRouteContext;
 
-use crate::model::{PageDetail, PageListItem, StorefrontPagesData};
+use crate::model::{PageBlock, PageDetail, PageListItem, StorefrontPagesData};
 
 #[component]
 pub fn PagesView() -> impl IntoView {
@@ -101,11 +101,7 @@ fn SelectedPageCard(page: Option<PageDetail>) -> impl IntoView {
         .effective_locale
         .clone()
         .unwrap_or_else(|| "default".to_string());
-    let body = page
-        .body
-        .as_ref()
-        .map(|body| summarize_content(body.content.as_str(), body.format.as_str()))
-        .unwrap_or_else(|| "No body content yet.".to_string());
+    let summary = summarize_page_content(&page);
 
     view! {
         <article class="rounded-2xl border border-border bg-background p-6">
@@ -115,7 +111,7 @@ fn SelectedPageCard(page: Option<PageDetail>) -> impl IntoView {
                 <span>{format!("locale: {effective_locale}")}</span>
             </div>
             <h3 class="mt-3 text-2xl font-semibold text-foreground">{title}</h3>
-            <p class="mt-3 whitespace-pre-line text-sm leading-7 text-muted-foreground">{body}</p>
+            <p class="mt-3 whitespace-pre-line text-sm leading-7 text-muted-foreground">{summary}</p>
         </article>
     }
     .into_any()
@@ -184,4 +180,93 @@ fn summarize_content(content: &str, format: &str) -> String {
         "Stored in `{format}` format. Raw body length: {} characters.",
         content.chars().count()
     )
+}
+
+fn summarize_page_content(page: &PageDetail) -> String {
+    if let Some(body) = page.body.as_ref() {
+        return summarize_content(body.content.as_str(), body.format.as_str());
+    }
+
+    if !page.blocks.is_empty() {
+        return summarize_legacy_blocks(&page.blocks);
+    }
+
+    "No page body or legacy blocks yet.".to_string()
+}
+
+fn summarize_legacy_blocks(blocks: &[PageBlock]) -> String {
+    let block_count = blocks.len();
+    let first_block = blocks
+        .first()
+        .map(|block| humanize_block_type(block.block_type.as_str()))
+        .unwrap_or("block");
+
+    if block_count == 1 {
+        return format!("Legacy block-driven page with 1 {first_block} block.");
+    }
+
+    format!("Legacy block-driven page with {block_count} blocks. First block: {first_block}.")
+}
+
+fn humanize_block_type(block_type: &str) -> &'static str {
+    match block_type {
+        "hero" => "hero",
+        "text" => "text",
+        "image" => "image",
+        "gallery" => "gallery",
+        "cta" => "CTA",
+        "features" => "features",
+        "testimonials" => "testimonials",
+        "pricing" => "pricing",
+        "faq" => "FAQ",
+        "contact" => "contact",
+        "product_grid" => "product grid",
+        "newsletter" => "newsletter",
+        "video" => "video",
+        "html" => "HTML",
+        "spacer" => "spacer",
+        _ => "content",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{summarize_page_content, PageBlock, PageDetail};
+    use crate::model::PageBody;
+
+    #[test]
+    fn page_body_takes_precedence_over_legacy_blocks() {
+        let summary = summarize_page_content(&PageDetail {
+            effective_locale: Some("en".to_string()),
+            translation: None,
+            body: Some(PageBody {
+                locale: "en".to_string(),
+                content: "Hello".to_string(),
+                format: "markdown".to_string(),
+            }),
+            blocks: vec![PageBlock {
+                id: "1".to_string(),
+                block_type: "text".to_string(),
+                position: 0,
+            }],
+        });
+
+        assert_eq!(summary, "Hello");
+    }
+
+    #[test]
+    fn legacy_blocks_are_summarized_when_body_is_missing() {
+        let summary = summarize_page_content(&PageDetail {
+            effective_locale: Some("en".to_string()),
+            translation: None,
+            body: None,
+            blocks: vec![PageBlock {
+                id: "1".to_string(),
+                block_type: "text".to_string(),
+                position: 0,
+            }],
+        });
+
+        assert_eq!(summary, "Legacy block-driven page with 1 text block.");
+    }
 }

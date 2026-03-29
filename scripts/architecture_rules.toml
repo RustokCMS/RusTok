@@ -6,7 +6,7 @@ allowed_internal_dep_prefixes = ["rustok-"]
 allowed_internal_dep_exceptions = [
   # Shared backend infra still outside rustok-* naming.
   "migration",
-  "alloy-scripting",
+  "alloy",
 ]
 
 [domain]
@@ -49,3 +49,4 @@ explicitly_allowed_paths = [
   "rustok_content::entities",
   "rustok_outbox::entity",
 ]
+

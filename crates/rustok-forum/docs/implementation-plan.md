@@ -23,10 +23,16 @@ preserving clarity of the forum bounded context.
 The cross-module storage split is complete:
 
 - `rustok-forum` owns forum categories, topics, topic translations, replies,
-  reply bodies, and channel-access persistence;
+  reply bodies, channel-access persistence, and topic-tag attachment persistence;
 - `rustok-content` remains only as a shared helper/orchestration dependency;
+- `rustok-taxonomy` is now the shared dictionary behind forum tags, while
+  `forum_topic_tags` remains forum-owned storage;
 - topic ↔ post conversion compatibility now lives in orchestration and server
   runtime adapters, not in shared storage.
+- locale metadata is aligned on detail and list surfaces through shared
+  `rustok-content` helpers;
+- forum slug/locale semantics are now fixed by ADR
+  `2026-03-29-forum-slug-locale-contract.md`.
 
 This document intentionally keeps only forum-local implementation details and
 future forum backlog.
@@ -74,10 +80,11 @@ future forum backlog.
     are correctly populated.
 - [x] Fix P1: `locale.rs` module with `resolve_translation` / `resolve_body` /
   `available_locales` helpers.
-  - Fallback chain: `requested -> "en" -> first available`.
+  - Fallback chain: `requested -> explicit fallback -> "en" -> first available`.
   - All `node_to_*` mappers migrated to use the new helpers.
-- [x] Fix P1: `effective_locale` and `available_locales` added to
-  `TopicResponse`, `TopicListItem`, `CategoryResponse`, `CategoryListItem`.
+- [x] Fix P1: `requested_locale`, `effective_locale`, and `available_locales`
+  are aligned on `TopicResponse`, `TopicListItem`, `CategoryResponse`, and
+  `CategoryListItem`.
 - [x] Fix P1: `effective_locale` added to `ReplyResponse` and `ReplyListItem`.
 - [x] Fix P1: `author_id: Option<Uuid>` added to `TopicResponse`,
   `TopicListItem`, `ReplyResponse`, `ReplyListItem`.
@@ -100,7 +107,7 @@ future forum backlog.
   `hide_reply`, `pin_topic`, `unpin_topic`, `close_topic`, `archive_topic` now
   accept `tenant_id: Uuid`.
 
-### Phase 3 - Forum-local productionization after split (planned)
+### Phase 3 - Forum-local productionization after split (done)
 
 Forum-owned persistence baseline is now in place:
 
@@ -109,18 +116,53 @@ Forum-owned persistence baseline is now in place:
   storage backend;
 - `rustok-content` remains only as a shared helper/orchestration dependency
   for locale and rich-text contracts;
-- the remaining forum-local backlog is now about product capabilities and
-  moderation hardening, not about shared-storage cutover.
+- the remaining forum-local backlog is no longer about shared-storage cutover or
+  multilingual contract cleanup; those are complete.
 
 Forum-local backlog that remains relevant after the split:
 
-- [ ] `forum_topic_votes` / `forum_reply_votes` - voting tables.
-- [ ] `forum_solutions` - Q&A solution marking.
-- [ ] `forum_subscriptions` - per-category/topic notification subscriptions.
-- [ ] `forum_user_stats` - per-user forum statistics.
-- [ ] Full forum-specific RBAC enforcement in moderation/runtime flows.
-- [ ] Validate observability, runbooks, and operational readiness for the final
+- [x] `forum_topic_votes` / `forum_reply_votes` - voting tables.
+  - [x] module-owned vote relations with `{-1, +1}` contract and cascade cleanup.
+  - [x] topic/reply read-paths now expose aggregate `vote_score` plus
+    viewer-specific `current_user_vote`.
+  - [x] GraphQL + REST transport can set/clear topic and reply votes through
+    forum-owned service layer.
+- [x] `forum_solutions` - Q&A solution marking.
+  - [x] module-owned `forum_solutions` relation table with topic/reply FK and
+    cascade cleanup.
+  - [x] topic read-path now exposes `solution_reply_id`; reply read-path exposes
+    `is_solution`.
+  - [x] GraphQL + REST transport can mark/clear accepted solution through
+    forum-owned moderation/service layer.
+- [x] `forum_subscriptions` - per-category/topic notification subscriptions.
+  - [x] module-owned category/topic subscription relations with cascade cleanup.
+  - [x] category/topic read-paths now expose viewer-specific `is_subscribed`.
+  - [x] GraphQL + REST transport can subscribe/unsubscribe category and topic
+    watches through forum-owned service layer.
+- [x] `forum_user_stats` - per-user forum statistics.
+  - [x] module-owned `forum_user_stats` table with tenant-scoped counters per user.
+  - [x] topic/reply create-delete flows and solution mark/clear now keep
+    `topic_count`, `reply_count`, and `solution_count` in sync.
+  - [x] GraphQL + REST expose a dedicated per-user stats read-path.
+- [x] Full forum-specific RBAC enforcement in moderation/runtime flows.
+  - [x] Category/topic/reply services now re-validate forum permissions in the
+    service layer.
+  - [x] Moderation flows now require `forum_topics:moderate` or
+    `forum_replies:moderate` at the service layer, not only in transport.
+  - [x] Regression tests cover customer-denied mutation/moderation paths.
+- [x] Validate observability, runbooks, and operational readiness for the final
   forum-owned persistence model.
+- [x] Move forum tags to module-owned relation storage backed by shared taxonomy.
+  - [x] forum-owned `forum_topic_tags` relation table is in place.
+  - [x] topic create/update flows now resolve existing global terms before
+    creating forum-local ones.
+  - [x] external topic `tags: Vec<String>` contract remains unchanged.
+- [x] Close forum slug/locale contract for the split track.
+  - [x] category slug is translation-local and follows the resolved locale.
+  - [x] topic slug remains a stable thread label copied into new translations for
+    compatibility.
+  - [x] current public forum API remains ID-based; any future slug lookup must
+    reuse the shared locale fallback contract.
 
 ## Tracking and updates
 

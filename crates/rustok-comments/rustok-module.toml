@@ -2,7 +2,7 @@
 slug = "comments"
 name = "Comments"
 version = "0.1.0"
-description = "Generic comments domain for blog, pages, and other non-forum discussion surfaces"
+description = "Generic comments domain for blog and other opt-in non-forum discussion surfaces"
 ownership = "first_party"
 trust_level = "verified"
 recommended_admin_surfaces = ["leptos-admin"]

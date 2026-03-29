@@ -65,7 +65,7 @@ impl BlogQuery {
         if is_public_request(ctx)
             && (post.status != crate::BlogPostStatus::Published
                 || !is_post_visible_for_request(
-                    &post.metadata,
+                    &post.channel_slugs,
                     public_channel_slug(ctx).as_deref(),
                     false,
                 ))
@@ -116,7 +116,7 @@ impl BlogQuery {
 
         if let Some(post) = post.filter(|post| {
             is_post_visible_for_request(
-                &post.metadata,
+                &post.channel_slugs,
                 public_channel_slug(ctx).as_deref(),
                 !is_public_request(ctx),
             )
@@ -164,7 +164,7 @@ impl BlogQuery {
                 ctx,
                 db,
                 event_bus,
-                tenant.id,
+                tenant_id,
                 tenant.default_locale.as_str(),
                 filter,
                 public_channel_slug(ctx).as_deref(),
@@ -268,27 +268,11 @@ fn request_channel_resolution_source(request_context: &RequestContext) -> &str {
 }
 
 fn is_post_visible_for_request(
-    metadata: &serde_json::Value,
+    channel_slugs: &[String],
     public_channel_slug: Option<&str>,
     is_authenticated: bool,
 ) -> bool {
-    is_authenticated || is_post_visible_for_channel(metadata, public_channel_slug)
-}
-
-fn is_post_summary_visible_for_channel(
-    item: &crate::PostSummary,
-    public_channel_slug: Option<&str>,
-) -> bool {
-    if item.channel_slugs.is_empty() {
-        return true;
-    }
-
-    let Some(channel_slug) = public_channel_slug else {
-        return false;
-    };
-
-    let normalized = channel_slug.trim().to_ascii_lowercase();
-    !normalized.is_empty() && item.channel_slugs.iter().any(|item| item == &normalized)
+    is_authenticated || is_post_visible_for_channel(channel_slugs, public_channel_slug)
 }
 
 async fn list_public_visible_posts(
@@ -301,72 +285,38 @@ async fn list_public_visible_posts(
     public_channel_slug: Option<&str>,
 ) -> Result<GqlPostList> {
     let locale = resolve_graphql_locale_fallback(filter.locale.as_deref(), default_locale);
-    let requested_page = filter.page.unwrap_or(1).max(1);
-    let requested_per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
-    let batch_size = requested_per_page.max(100);
     let service = PostService::new(db.clone(), event_bus.clone());
-
-    let mut current_page = 1u64;
-    let mut visible_items = Vec::new();
-
-    loop {
-        let result = service
-            .list_posts_with_locale_fallback(
-                tenant_id,
-                SecurityContext::system(),
-                crate::PostListQuery {
-                    status: Some(crate::BlogPostStatus::Published),
-                    category_id: None,
-                    tag: None,
-                    author_id: filter.author_id,
-                    search: None,
-                    locale: Some(locale.clone()),
-                    page: Some(current_page as u32),
-                    per_page: Some(batch_size as u32),
-                    sort_by: Some("published_at".to_string()),
-                    sort_order: Some("desc".to_string()),
-                },
-                Some(default_locale),
-            )
-            .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
-
-        if result.items.is_empty() {
-            break;
-        }
-
-        visible_items.extend(
-            result
-                .items
-                .into_iter()
-                .filter(|item| is_post_summary_visible_for_channel(item, public_channel_slug)),
-        );
-
-        if current_page.saturating_mul(batch_size) >= result.total {
-            break;
-        }
-        current_page += 1;
-    }
-
-    let visible_total = visible_items.len() as u64;
-    let offset = requested_page
-        .saturating_sub(1)
-        .saturating_mul(requested_per_page) as usize;
-    let page_items = visible_items
-        .into_iter()
-        .skip(offset)
-        .take(requested_per_page as usize)
-        .collect::<Vec<_>>();
+    let result = service
+        .list_public_visible_with_locale_fallback(
+            tenant_id,
+            crate::PostListQuery {
+                status: Some(crate::BlogPostStatus::Published),
+                category_id: None,
+                tag: None,
+                author_id: filter.author_id,
+                search: None,
+                locale: Some(locale.clone()),
+                page: Some(filter.page.unwrap_or(1) as u32),
+                per_page: Some(filter.per_page.unwrap_or(20) as u32),
+                sort_by: Some("published_at".to_string()),
+                sort_order: Some("desc".to_string()),
+            },
+            Some(default_locale),
+            public_channel_slug,
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
     let author_profiles = load_author_profiles_map(
         ctx,
         db,
         tenant_id,
-        page_items.iter().map(|item| Some(item.author_id)),
+        result.items.iter().map(|item| Some(item.author_id)),
         locale.as_str(),
         default_locale,
     )
     .await?;
-    let items = page_items
+    let items = result
+        .items
         .into_iter()
         .map(|item| {
             let author_profile = author_profiles.get(&item.author_id).cloned();
@@ -376,7 +326,7 @@ async fn list_public_visible_posts(
 
     Ok(GqlPostList {
         items,
-        total: visible_total,
+        total: result.total,
     })
 }
 
@@ -683,14 +633,10 @@ mod tests {
 
     #[test]
     fn authenticated_request_bypasses_post_channel_allowlist() {
-        let metadata = serde_json::json!({
-            "channel_visibility": {
-                "allowed_channel_slugs": ["web"]
-            }
-        });
+        let channel_slugs = vec!["web".to_string()];
 
-        assert!(is_post_visible_for_request(&metadata, None, true));
-        assert!(!is_post_visible_for_request(&metadata, None, false));
+        assert!(is_post_visible_for_request(&channel_slugs, None, true));
+        assert!(!is_post_visible_for_request(&channel_slugs, None, false));
     }
 
     #[tokio::test]

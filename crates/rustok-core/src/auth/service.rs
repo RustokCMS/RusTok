@@ -1,18 +1,13 @@
-use std::sync::Arc;
-
 use chrono::Utc;
 use uuid::Uuid;
 
 use crate::id::generate_id;
-
-use alloy_scripting::{integration::ScriptableEntity, model::EventType, runner::HookOutcome};
 
 use crate::auth::error::AuthError;
 use crate::auth::jwt::{encode_token, JwtConfig};
 use crate::auth::password::{hash_password, verify_password};
 use crate::auth::repository::UserRepository;
 use crate::auth::user::Model as User;
-use crate::scripting::ScriptingContext;
 use crate::types::{UserRole, UserStatus};
 
 #[derive(Debug)]
@@ -33,21 +28,11 @@ pub struct RegistrationInput {
 pub struct IdentityService {
     repo: UserRepository,
     jwt_config: JwtConfig,
-    scripting: Option<Arc<ScriptingContext>>,
 }
 
 impl IdentityService {
     pub fn new(repo: UserRepository, jwt_config: JwtConfig) -> Self {
-        Self {
-            repo,
-            jwt_config,
-            scripting: None,
-        }
-    }
-
-    pub fn with_scripting(mut self, scripting: Arc<ScriptingContext>) -> Self {
-        self.scripting = Some(scripting);
-        self
+        Self { repo, jwt_config }
     }
 
     pub async fn register(&self, input: RegistrationInput) -> Result<User, AuthError> {
@@ -64,7 +49,7 @@ impl IdentityService {
             .map_err(|err| AuthError::PasswordHashing(err.to_string()))?;
 
         let now = chrono::DateTime::<chrono::FixedOffset>::from(Utc::now());
-        let mut user = User {
+        let user = User {
             id: generate_id(),
             tenant_id: input.tenant_id,
             email: input.email,
@@ -79,52 +64,7 @@ impl IdentityService {
             updated_at: now,
         };
 
-        if let Some(scripting) = &self.scripting {
-            let proxy = user.to_entity_proxy();
-            match scripting
-                .orchestrator
-                .run_before(user.entity_type(), EventType::BeforeCreate, proxy, None)
-                .await
-            {
-                HookOutcome::Continue { changes } => {
-                    if !changes.is_empty() {
-                        user.apply_changes(changes);
-                    }
-                }
-                HookOutcome::Rejected { reason } => {
-                    return Err(AuthError::ValidationFailed(reason));
-                }
-                HookOutcome::Error { error } => {
-                    return Err(AuthError::ScriptError(error.to_string()));
-                }
-            }
-        }
-
         let saved = self.repo.create(user.clone()).await?;
-
-        if let Some(scripting) = &self.scripting {
-            let scripting = scripting.clone();
-            let after_user = saved.clone();
-            tokio::spawn(async move {
-                let proxy = after_user.to_entity_proxy();
-                let _ = scripting
-                    .orchestrator
-                    .run_after(
-                        after_user.entity_type(),
-                        EventType::AfterCreate,
-                        proxy,
-                        None,
-                        None,
-                    )
-                    .await;
-
-                let commit_proxy = after_user.to_entity_proxy();
-                let _ = scripting
-                    .orchestrator
-                    .run_on_commit(after_user.entity_type(), commit_proxy, None)
-                    .await;
-            });
-        }
 
         Ok(saved)
     }

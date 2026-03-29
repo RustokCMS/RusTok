@@ -3,7 +3,7 @@ use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
     has_any_effective_permission, AuthContext,
 };
-use rustok_core::Permission;
+use rustok_core::{Action, Permission, Resource};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -32,6 +32,9 @@ impl PagesMutation {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_pages_permission(ctx, Permission::PAGES_CREATE)?;
+        if input.publish.unwrap_or(false) {
+            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
+        }
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
 
@@ -88,7 +91,8 @@ impl PagesMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
+        let auth =
+            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
 
@@ -137,7 +141,8 @@ impl PagesMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
+        let auth =
+            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
         let tenant = ctx.data::<rustok_api::TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
 

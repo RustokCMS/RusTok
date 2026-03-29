@@ -1,190 +1,131 @@
-# Module Metrics Guide
+# Метрики модулей
 
-This guide explains the Prometheus metrics implementation in RusToK.
+Этот документ фиксирует актуальный базовый набор Prometheus-метрик для модулей
+RusToK. Источником истины по именам и labels остаётся
+`crates/rustok-telemetry/src/metrics.rs`; этот guide описывает, как ими
+пользоваться и что считать минимальным operational baseline.
 
-## Overview
+## Базовый набор
 
-RusToK uses Prometheus metrics for observability and monitoring of all modules. The `rustok-telemetry` crate provides a centralized metrics registry.
+### Входные точки модулей
 
-## Available Metrics
-
-### Content Module (`rustok-content`)
-
-#### Operations Counter
 ```
-rustok_content_operations_total{operation, kind, status}
+rustok_module_entrypoint_calls_total{module,entry_point,path}
 ```
-Tracks all content operations (create, update, delete, publish).
 
-- `operation`: The type of operation (create, update, delete, publish, unpublish)
-- `kind`: The content kind (post, page, article, comment)
-- `status`: success or error
+- `module` — slug модуля, например `rbac` или `comments`
+- `entry_point` — имя публичной операции
+- `path` — путь интеграции: `library`, `core_runtime`, `bypass`
 
-#### Operation Duration
-```
-rustok_content_operation_duration_seconds{operation, kind}
-```
-Histogram of operation durations in seconds.
+Эта метрика нужна, чтобы видеть, через какой контракт реально ходит runtime и
+не вернулся ли legacy bypass.
 
-#### Total Nodes Gauge
-```
-rustok_content_nodes_total
-```
-Current total number of content nodes.
+### Ошибки модулей
 
-### Commerce Module (`rustok-commerce`)
+```
+rustok_module_errors_total{module,error_type,severity}
+```
 
-#### Operations Counter
-```
-rustok_commerce_operations_total{operation, kind, status}
-```
-Tracks all commerce operations (create_product, update_order, etc.).
+- `error_type` — короткий стабильный класс ошибки (`database`, `validation`,
+  `forbidden`, `not_found`)
+- `severity` — операторская важность (`warning`, `error`)
 
-- `operation`: The type of operation (create_product, update_order, place_order)
-- `kind`: The commerce entity type (product, variant, order, price)
-- `status`: success or error
+Используйте только низкокардинальные значения. Нельзя передавать request id,
+tenant slug, user id или raw error message.
 
-#### Operation Duration
-```
-rustok_commerce_operation_duration_seconds{operation, kind}
-```
-Histogram of commerce operation durations.
+### Длительность и ошибки операций
 
-#### Products Gauge
 ```
-rustok_commerce_products_total
+rustok_span_duration_seconds{operation}
+rustok_spans_with_errors_total{operation,error_type}
 ```
-Current total number of products.
 
-#### Orders Gauge
-```
-rustok_commerce_orders_total
-```
-Current total number of orders.
+- `operation` — стабильное имя операции, например `comments.create_comment`
+- `error_type` — тот же низкокардинальный класс ошибки
 
-### HTTP Metrics
+Это минимальный latency/error слой для write-path и library entry-point
+операций.
 
-#### Requests Counter
-```
-rustok_http_requests_total{method, path, status}
-```
-- `method`: HTTP method (GET, POST, PUT, DELETE)
-- `path`: Request path (`/api/blog/posts`, `/api/forum/topics`, `/store/products`)
-- `status`: HTTP status code (200, 201, 400, 404, 500)
+### Бюджеты read-path
 
-#### Request Duration
 ```
-rustok_http_request_duration_seconds{method, path}
+rustok_read_path_requested_limit{surface,path}
+rustok_read_path_effective_limit{surface,path}
+rustok_read_path_returned_items{surface,path}
+rustok_read_path_limit_clamped_total{surface,path}
+rustok_read_path_query_duration_seconds{surface,path,query}
+rustok_read_path_query_rows{surface,path,query}
 ```
-Histogram of HTTP request durations.
 
-## Usage in Services
+- `surface` — transport или runtime surface (`rest`, `graphql`, `library`)
+- `path` — имя read-path
+- `query` — стабильный шаг внутри read-path, например `comments.page`
 
-### Recording Operations
+Этот набор обязателен для bounded list/read surfaces, где есть `page/per_page`,
+SSR feed или batch read path.
+
+## Что уже instrumented
+
+- `rustok-forum` — public GraphQL/REST read-path для categories, topics и
+  replies пишет read-path budgets и query metrics.
+- `rustok-blog` — public post list/read surfaces пишет read-path budgets и
+  query metrics.
+- `rustok-pages` — public page read-path пишет read-path budgets и query
+  metrics.
+- `rustok-comments` — service entry-points пишут module entrypoint metrics,
+  span duration/error и read-path budget/query metrics для
+  `list_comments_for_target`.
+- `rustok-content` — orchestration/helper операции пишут span duration/error,
+  а canonical/orchestration runbooks опираются на них.
+
+## Минимальный contract для нового модуля
+
+Если модуль добавляет новую публичную surface, минимальный baseline такой:
+
+1. Для каждого service entry-point писать
+   `rustok_module_entrypoint_calls_total`.
+2. Для ошибок писать `rustok_module_errors_total` с коротким классификатором.
+3. Для write-path или orchestration операций писать
+   `rustok_span_duration_seconds` и `rustok_spans_with_errors_total`.
+4. Для bounded list/read path писать весь read-path budget/query набор.
+
+Без этого модуль считается operationally incomplete.
+
+## Пример
 
 ```rust
-use rustok_telemetry::{
-    CONTENT_OPERATIONS_TOTAL, CONTENT_OPERATION_DURATION_SECONDS,
-    CONTENT_NODES_TOTAL
-};
+use std::time::Instant;
+use rustok_telemetry::metrics;
 
-pub async fn create_node(&self, ...) -> ContentResult<NodeResponse> {
-    // Start timer
-    let timer = CONTENT_OPERATION_DURATION_SECONDS
-        .with_label_values(&["create", &input.kind])
-        .start_timer();
-    
-    let result = self.create_node_impl(...).await;
-    
-    // Drop timer to record duration
-    drop(timer);
-    
-    // Count operation
-    let status = result.is_ok();
-    CONTENT_OPERATIONS_TOTAL
-        .with_label_values(&["create", &input.kind, if status { "success" } else { "error" }])
-        .inc();
-    
-    // Update gauge on success
-    if result.is_ok() {
-        CONTENT_NODES_TOTAL.inc();
+fn record_entrypoint() {
+    metrics::record_module_entrypoint_call("comments", "create_comment", "library");
+}
+
+fn finish(operation: &str, started: Instant, result: &Result<(), MyError>) {
+    metrics::record_span_duration(operation, started.elapsed().as_secs_f64());
+    if let Err(error) = result {
+        metrics::record_span_error(operation, error.kind());
+        metrics::record_module_error("comments", error.kind(), error.severity());
     }
-    
-    result
 }
 ```
 
-### Exporting Metrics
+## Операторские вопросы
 
-The metrics endpoint is exposed by the server:
+При проблемах с модулем сначала отвечайте на три вопроса:
 
-```bash
-curl http://localhost:3000/metrics
-```
+1. Через какой integration path идёт трафик:
+   `rate(rustok_module_entrypoint_calls_total{module="comments"}[5m])`
+2. Какой error-class растёт:
+   `sum(rate(rustok_module_errors_total{module="comments"}[5m])) by (error_type,severity)`
+3. Где read-path теряет бюджет или упирается в latency:
+   `histogram_quantile(0.95, rate(rustok_read_path_query_duration_seconds_bucket{path="comments.list_comments_for_target"}[5m]))`
 
-Returns Prometheus format:
+## Правила
 
-```
-# HELP rustok_content_operations_total Total content operations
-# TYPE rustok_content_operations_total counter
-rustok_content_operations_total{operation="create",kind="post",status="success"} 42
-rustok_content_operations_total{operation="create",kind="page",status="success"} 15
-rustok_content_operations_total{operation="create",kind="post",status="error"} 2
-
-# HELP rustok_content_operation_duration_seconds Duration of content operations
-# TYPE rustok_content_operation_duration_seconds histogram
-rustok_content_operation_duration_seconds{operation="create",kind="post"} 0.05 0.02 0.01 0.005
-
-# HELP rustok_content_nodes_total Total number of content nodes
-# TYPE rustok_content_nodes_total gauge
-rustok_content_nodes_total 57
-```
-
-## Grafana Dashboard Example
-
-Create a new dashboard in Grafana with the following panels:
-
-### 1. Content Operations Rate
-- Query: `rate(rustok_content_operations_total[5m])`
-- Visualization: Time series graph
-
-### 2. Content Operation Duration (P95)
-- Query: `histogram_quantile(0.95, rate(rustok_content_operation_duration_seconds_bucket[5m]))`
-- Visualization: Single stat / gauge
-
-### 3. Content Nodes Total
-- Query: `rustok_content_nodes_total`
-- Visualization: Gauge
-
-### 4. Error Rate
-- Query: `sum(rate(rustok_content_operations_total{status="error"}[5m])) by (operation, kind)`
-- Visualization: Heatmap
-
-## Initialization
-
-The telemetry system is initialized in the server app:
-
-```rust
-use rustok_telemetry::{TelemetryConfig, LogFormat};
-
-let telemetry_handles = TelemetryConfig {
-    service_name: "rustok-server".to_string(),
-    log_format: LogFormat::Json, // or LogFormat::Pretty for development
-    metrics: true,
-}.init()?;
-```
-
-## Best Practices
-
-1. **Always record both counters and histograms** - Counters give volume, histograms give latency
-2. **Use consistent label values** - Define enums for operation types and use them
-3. **Don't create high-cardinality labels** - Avoid using user IDs or request IDs as labels
-4. **Update gauges atomically** - Gauges should reflect current state, not increments
-5. **Label all operations** - Every database/external call should be measured
-
-## Future Enhancements
-
-- [ ] Add RED method metrics (Rate, Errors, Duration) for each endpoint
-- [ ] Add SLA/SLO alerts based on metrics
-- [ ] Add business metrics (revenue, conversion rate)
-- [ ] Add custom dashboards for each module
+1. Не вводить high-cardinality labels.
+2. Не плодить новые метрики, если существующий baseline уже покрывает задачу.
+3. Не оставлять новый public read-path без `read_path_*`.
+4. Не оставлять новый write/orchestration path без `span_*`.
+5. Документация модуля должна перечислять, какие его surfaces уже
+   instrumented и чего ещё не хватает.

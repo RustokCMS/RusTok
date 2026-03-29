@@ -34,6 +34,7 @@
 - Used by `apps/server` through thin GraphQL/REST shims and route composition.
 - `apps/admin` consumes `rustok-commerce-admin` through manifest-driven `build.rs` code generation, with a module-owned catalog control room mounted under `/modules/commerce`.
 - `apps/storefront` consumes `rustok-commerce-storefront` through manifest-driven `build.rs` code generation, with a public catalog surface mounted under `/modules/commerce`.
+- `rustok-module.toml` exports both surfaces through `[provides.admin_ui]` and `[provides.storefront_ui]`, so host wiring stays manifest-derived instead of relying on manual route registration.
 - Declares permissions via `rustok-core::Permission` for `products`, `orders`, `customers`,
   `regions`, `payments`, `fulfillments`, `inventory`, and `discounts`.
 - Transport adapters validate permissions against `AuthContext.permissions`, then invoke

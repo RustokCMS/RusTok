@@ -21,6 +21,7 @@ use rustok_core::{
 };
 use rustok_events::EventEnvelope;
 use rustok_outbox::TransactionalEventBus;
+use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use tokio::sync::broadcast;
@@ -204,13 +205,7 @@ async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestR
     assert_eq!(direct.effective_locale, "en-us");
 
     let by_fallback = post_service
-        .get_post_with_locale_fallback(
-            tenant_id,
-            admin.clone(),
-            post_id,
-            "FR_fr",
-            Some("EN_us"),
-        )
+        .get_post_with_locale_fallback(tenant_id, admin.clone(), post_id, "FR_fr", Some("EN_us"))
         .await?;
     assert_eq!(by_fallback.requested_locale, "fr-fr");
     assert_eq!(by_fallback.locale, "fr-fr");
@@ -638,9 +633,7 @@ async fn test_taxonomy_services_enforce_rbac() -> TestResult<()> {
     let category = category_service
         .get(tenant_id, admin.clone(), category_id, "en")
         .await?;
-    let tag = tag_service
-        .get_tag(tenant_id, admin, tag_id, "en")
-        .await?;
+    let tag = tag_service.get_tag(tenant_id, admin, tag_id, "en").await?;
     assert_eq!(category.name, "Allowed");
     assert_eq!(tag.name, "Allowed");
 
@@ -664,6 +657,12 @@ async fn setup_blog_test_db() -> DatabaseConnection {
 
 async fn ensure_blog_schema(db: &DatabaseConnection) {
     let manager = SchemaManager::new(db);
+    for migration in TaxonomyModule.migrations() {
+        migration
+            .up(&manager)
+            .await
+            .expect("taxonomy migration should apply");
+    }
     for migration in BlogModule.migrations() {
         migration
             .up(&manager)

@@ -8,7 +8,7 @@ use rustok_api::{
     has_any_effective_permission, loco::transactional_event_bus_from_context, AuthContext,
     RequestContext, TenantContext,
 };
-use rustok_core::Permission;
+use rustok_core::{Action, Permission, Resource};
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -92,6 +92,9 @@ pub async fn create_page(
     Json(input): Json<CreatePageInput>,
 ) -> Result<(StatusCode, Json<PageResponse>)> {
     ensure_pages_permission(&auth, Permission::PAGES_CREATE)?;
+    if input.publish {
+        ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
+    }
 
     let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let page = service
@@ -122,6 +125,9 @@ pub async fn update_page(
     Json(input): Json<UpdatePageInput>,
 ) -> Result<Json<PageResponse>> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
+    if input.status.is_some() {
+        ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
+    }
 
     let service = PageService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let page = service

@@ -1,6 +1,8 @@
 //! Business logic wrapper for OAuth apps
 
+use rustok_core::Permission;
 use sea_orm::{entity::prelude::*, Condition, QueryFilter};
+use std::str::FromStr;
 use uuid::Uuid;
 
 pub use super::_entities::oauth_apps::{ActiveModel, Column, Entity, Model, Relation};
@@ -14,7 +16,8 @@ impl Entity {
             .filter(
                 Condition::all()
                     .add(Column::ClientId.eq(client_id))
-                    .add(Column::IsActive.eq(true)),
+                    .add(Column::IsActive.eq(true))
+                    .add(Column::RevokedAt.is_null()),
             )
             .one(db)
             .await
@@ -38,7 +41,8 @@ impl Entity {
             .filter(
                 Condition::all()
                     .add(Column::TenantId.eq(tenant_id))
-                    .add(Column::IsActive.eq(true)),
+                    .add(Column::IsActive.eq(true))
+                    .add(Column::RevokedAt.is_null()),
             )
             .all(db)
             .await
@@ -66,6 +70,18 @@ impl Model {
     /// Parse grant_types from JSONB field
     pub fn grant_types_list(&self) -> Vec<String> {
         serde_json::from_value(self.grant_types.clone()).unwrap_or_default()
+    }
+
+    /// Parse granted_permissions from JSONB field
+    pub fn granted_permissions_list(&self) -> Vec<String> {
+        serde_json::from_value(self.granted_permissions.clone()).unwrap_or_default()
+    }
+
+    pub fn parsed_granted_permissions(&self) -> Result<Vec<Permission>, String> {
+        self.granted_permissions_list()
+            .into_iter()
+            .map(|value| Permission::from_str(&value))
+            .collect()
     }
 
     /// Parse redirect_uris from JSONB field

@@ -15,6 +15,12 @@ pub enum CommentsError {
         target_id: Uuid,
     },
 
+    #[error("Comment thread is closed for target {target_type}:{target_id}")]
+    CommentThreadClosed {
+        target_type: String,
+        target_id: Uuid,
+    },
+
     #[error("Forbidden: {0}")]
     Forbidden(String),
 
@@ -23,3 +29,27 @@ pub enum CommentsError {
 }
 
 pub type CommentsResult<T> = Result<T, CommentsError>;
+
+impl CommentsError {
+    pub fn kind(&self) -> &'static str {
+        match self {
+            CommentsError::Database(_) => "database",
+            CommentsError::CommentNotFound(_) => "not_found",
+            CommentsError::CommentThreadNotFound { .. } => "not_found",
+            CommentsError::CommentThreadClosed { .. } => "conflict",
+            CommentsError::Forbidden(_) => "forbidden",
+            CommentsError::Validation(_) => "validation",
+        }
+    }
+
+    pub fn severity(&self) -> &'static str {
+        match self {
+            CommentsError::Database(_) => "error",
+            CommentsError::CommentNotFound(_) => "warning",
+            CommentsError::CommentThreadNotFound { .. } => "warning",
+            CommentsError::CommentThreadClosed { .. } => "warning",
+            CommentsError::Forbidden(_) => "warning",
+            CommentsError::Validation(_) => "warning",
+        }
+    }
+}

@@ -27,6 +27,8 @@ pub enum Relation {
     Bodies,
     #[sea_orm(has_many = "super::page_block::Entity")]
     Blocks,
+    #[sea_orm(has_many = "super::page_channel_visibility::Entity")]
+    ChannelVisibility,
 }
 
 impl Related<super::page_translation::Entity> for Entity {
@@ -44,6 +46,12 @@ impl Related<super::page_body::Entity> for Entity {
 impl Related<super::page_block::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Blocks.def()
+    }
+}
+
+impl Related<super::page_channel_visibility::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ChannelVisibility.def()
     }
 }
 
