@@ -11,7 +11,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**[Русская версия](README.ru.md)** | **[Quick Platform Info (RU)](PLATFORM_INFO_RU.md)**
+**[Русская версия](README.ru.md)**
 
 </div>
 
