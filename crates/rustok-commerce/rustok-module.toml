@@ -7,6 +7,9 @@ ownership = "first_party"
 trust_level = "verified"
 recommended_admin_surfaces = ["leptos-admin"]
 
+[marketplace]
+category = "commerce"
+
 [crate]
 entry_type = "CommerceModule"
 

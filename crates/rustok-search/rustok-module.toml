@@ -8,6 +8,9 @@ trust_level = "core"
 recommended_admin_surfaces = ["leptos-admin"]
 showcase_admin_surfaces = ["next-admin"]
 
+[marketplace]
+category = "search"
+
 [crate]
 entry_type = "SearchModule"
 

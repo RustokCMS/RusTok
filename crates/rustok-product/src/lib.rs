@@ -3,6 +3,7 @@ use rustok_core::permissions::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod entities;
 pub mod migrations;
 pub mod services;
 
@@ -26,6 +27,10 @@ impl RusToKModule for ProductModule {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    fn dependencies(&self) -> &[&'static str] {
+        &["taxonomy"]
     }
 
     fn permissions(&self) -> Vec<Permission> {

@@ -7,6 +7,9 @@ ownership = "first_party"
 trust_level = "verified"
 recommended_admin_surfaces = ["leptos-admin"]
 
+[marketplace]
+category = "content"
+
 [dependencies]
 content = { version_req = ">=0.1.0" }
 

@@ -145,6 +145,8 @@ pub struct RegistryCatalogModule {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
@@ -195,6 +197,7 @@ impl RegistryCatalogModule {
             source: self.source,
             crate_name: self.crate_name,
             name: self.name,
+            category: self.category,
             version: self.version,
             description: self.description,
             git: self.git,
@@ -222,6 +225,7 @@ impl RegistryCatalogModule {
             source: _source,
             crate_name,
             name,
+            category,
             version,
             description,
             git: _git,
@@ -268,6 +272,7 @@ impl RegistryCatalogModule {
             source: default_registry_source(),
             crate_name,
             name,
+            category,
             version,
             description,
             git: None,
@@ -483,6 +488,7 @@ mod tests {
             source: source.to_string(),
             crate_name: crate_name.to_string(),
             name: None,
+            category: None,
             version: None,
             description: None,
             git: None,
@@ -553,6 +559,7 @@ mod tests {
             source: default_registry_source(),
             crate_name: "rustok-seo".to_string(),
             name: Some("SEO".to_string()),
+            category: Some("marketing".to_string()),
             version: Some("1.2.0".to_string()),
             description: Some("SEO tools".to_string()),
             git: None,
@@ -586,6 +593,7 @@ mod tests {
         assert_eq!(module.trust_level, "unverified");
         assert_eq!(module.crate_name, "rustok-seo");
         assert_eq!(module.name.as_deref(), Some("SEO"));
+        assert_eq!(module.category.as_deref(), Some("marketing"));
         assert_eq!(module.description.as_deref(), Some("SEO tools"));
         assert_eq!(module.publisher.as_deref(), Some("RusTok Labs"));
         assert_eq!(module.versions.len(), 1);
@@ -598,6 +606,7 @@ mod tests {
             source: "path".to_string(),
             crate_name: "rustok-blog".to_string(),
             name: Some("Blog".to_string()),
+            category: Some("content".to_string()),
             version: Some("1.4.0".to_string()),
             description: Some("Blog module".to_string()),
             git: Some("https://example.test/blog.git".to_string()),
@@ -627,6 +636,7 @@ mod tests {
         assert_eq!(response.schema_version, REGISTRY_CATALOG_SCHEMA_VERSION);
         assert_eq!(module.source, "registry");
         assert_eq!(module.name.as_deref(), Some("Blog"));
+        assert_eq!(module.category.as_deref(), Some("content"));
         assert_eq!(module.description.as_deref(), Some("Blog module"));
         assert_eq!(module.path, None);
         assert_eq!(module.git, None);
@@ -644,6 +654,7 @@ mod tests {
                     "slug": "seo",
                     "crate": "rustok-seo",
                     "name": "SEO",
+                    "category": "marketing",
                     "version": "1.2.0",
                     "description": "SEO tools",
                     "depends_on": ["content"],
@@ -675,6 +686,7 @@ mod tests {
         assert_eq!(module.source, "registry");
         assert_eq!(module.crate_name, "rustok-seo");
         assert_eq!(module.name.as_deref(), Some("SEO"));
+        assert_eq!(module.category.as_deref(), Some("marketing"));
         assert_eq!(module.description.as_deref(), Some("SEO tools"));
         assert_eq!(module.ownership, "third_party");
         assert_eq!(module.trust_level, "unverified");

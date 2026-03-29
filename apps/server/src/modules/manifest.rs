@@ -129,6 +129,8 @@ pub struct ManifestModuleSpec {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
@@ -207,6 +209,7 @@ pub struct CatalogManifestModule {
     pub source: String,
     pub crate_name: String,
     pub name: Option<String>,
+    pub category: Option<String>,
     pub version: Option<String>,
     pub description: Option<String>,
     pub git: Option<String>,
@@ -351,6 +354,8 @@ fn executable_suffix(cargo_target: Option<&str>) -> &'static str {
 struct ModulePackageManifest {
     #[serde(default)]
     module: ModulePackageMetadata,
+    #[serde(default)]
+    marketplace: ModulePackageMarketplaceMetadata,
     #[serde(rename = "crate", default)]
     crate_contract: ModulePackageCrateContract,
     #[serde(default)]
@@ -370,6 +375,8 @@ struct ModulePackageMetadata {
     #[serde(default)]
     name: Option<String>,
     #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
     version: Option<String>,
     #[serde(default)]
     description: Option<String>,
@@ -385,6 +392,12 @@ struct ModulePackageMetadata {
     recommended_admin_surfaces: Vec<String>,
     #[serde(default)]
     showcase_admin_surfaces: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct ModulePackageMarketplaceMetadata {
+    #[serde(default)]
+    category: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -641,6 +654,16 @@ fn merge_module_package_manifest(
         .filter(|value| !value.is_empty())
     {
         spec.description = Some(description.to_string());
+    }
+    if let Some(category) = package_manifest
+        .marketplace
+        .category
+        .as_deref()
+        .or(metadata.category.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        spec.category = Some(category.to_string());
     }
 
     if !metadata.ownership.trim().is_empty() {
@@ -1616,6 +1639,7 @@ impl ManifestManager {
                     source: spec.source,
                     crate_name: spec.crate_name,
                     name: spec.name,
+                    category: spec.category,
                     version: spec.version,
                     description: spec.description,
                     git: spec.git,
@@ -2457,6 +2481,9 @@ ownership = "third_party"
 trust_level = "private"
 recommended_admin_surfaces = ["custom-admin"]
 showcase_admin_surfaces = ["next-admin", "storybook"]
+
+[marketplace]
+category = "editorial"
 "#,
         )
         .unwrap();
@@ -2489,6 +2516,7 @@ showcase_admin_surfaces = ["next-admin", "storybook"]
             .unwrap();
         assert_eq!(blog.ownership, "third_party");
         assert_eq!(blog.trust_level, "private");
+        assert_eq!(blog.category.as_deref(), Some("editorial"));
         assert_eq!(blog.recommended_admin_surfaces, vec!["custom-admin"]);
         assert_eq!(
             blog.showcase_admin_surfaces,

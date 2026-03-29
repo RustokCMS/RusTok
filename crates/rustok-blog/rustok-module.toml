@@ -8,6 +8,9 @@ trust_level = "verified"
 recommended_admin_surfaces = ["leptos-admin"]
 showcase_admin_surfaces = ["next-admin"]
 
+[marketplace]
+category = "content"
+
 [dependencies]
 content = { version_req = ">=0.1.0" }
 comments = { version_req = ">=0.1.0" }

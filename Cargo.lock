@@ -10339,6 +10339,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-taxonomy",
  "sea-orm",
  "sea-orm-migration",
  "serde_json",

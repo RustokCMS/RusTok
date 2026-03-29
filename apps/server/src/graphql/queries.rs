@@ -265,7 +265,7 @@ fn humanize_slug(slug: &str) -> String {
         .join(" ")
 }
 
-fn module_category(slug: &str) -> &'static str {
+fn fallback_module_category(slug: &str) -> &'static str {
     match slug {
         "content" | "blog" | "forum" | "pages" => "content",
         "commerce" => "commerce",
@@ -391,7 +391,10 @@ fn marketplace_module_from_catalog_entry(
         } else {
             "optional".to_string()
         },
-        category: module_category(&entry.slug).to_string(),
+        category: entry
+            .category
+            .clone()
+            .unwrap_or_else(|| fallback_module_category(&entry.slug).to_string()),
         crate_name: entry.crate_name,
         dependencies,
         ownership: entry.ownership,
@@ -1229,6 +1232,7 @@ mod tests {
             source: "registry".to_string(),
             crate_name: "rustok-seo".to_string(),
             name: None,
+            category: None,
             version: Some("1.2.0".to_string()),
             description: None,
             git: None,
@@ -1350,5 +1354,34 @@ mod tests {
 
         assert_eq!(module.name, "SEO Toolkit");
         assert_eq!(module.description, "Search optimization bundle");
+    }
+
+    #[test]
+    fn marketplace_mapping_prefers_manifest_category_when_present() {
+        let mut entry = catalog_module(None, None);
+        entry.slug = "search".to_string();
+        entry.category = Some("search".to_string());
+
+        let module = marketplace_module_from_catalog_entry(
+            entry,
+            &ModuleRegistry::new(),
+            &Vec::<InstalledManifestModule>::new(),
+        );
+
+        assert_eq!(module.category, "search");
+    }
+
+    #[test]
+    fn marketplace_mapping_falls_back_to_legacy_slug_category_when_manifest_category_missing() {
+        let mut entry = catalog_module(None, None);
+        entry.slug = "search".to_string();
+
+        let module = marketplace_module_from_catalog_entry(
+            entry,
+            &ModuleRegistry::new(),
+            &Vec::<InstalledManifestModule>::new(),
+        );
+
+        assert_eq!(module.category, "extensions");
     }
 }

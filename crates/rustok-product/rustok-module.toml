@@ -8,3 +8,6 @@ trust_level = "verified"
 
 [crate]
 entry_type = "ProductModule"
+
+[dependencies]
+taxonomy = { version_req = ">=0.1.0" }
