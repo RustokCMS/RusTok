@@ -39,8 +39,10 @@ impl PostService {
     pub async fn unpublish_post(post_id, security) -> BlogResult<()>;
     pub async fn archive_post(post_id, security, reason: Option<String>) -> BlogResult<()>;
     pub async fn delete_post(post_id, security) -> BlogResult<()>;
-    pub async fn get_post(post_id, locale: &str) -> BlogResult<PostResponse>;
+    pub async fn get_post(tenant_id, security, post_id, locale: &str) -> BlogResult<PostResponse>;
+    pub async fn get_post_with_locale_fallback(tenant_id, security, post_id, locale: &str, fallback_locale: Option<&str>) -> BlogResult<PostResponse>;
     pub async fn list_posts(tenant_id, security, query: PostListQuery) -> BlogResult<PostListResponse>;
+    pub async fn get_post_by_slug(tenant_id, security, locale: &str, slug: &str) -> BlogResult<Option<PostResponse>>;
     pub async fn get_posts_by_tag(tenant_id, security, tag, page, per_page) -> BlogResult<PostListResponse>;
     pub async fn get_posts_by_category(tenant_id, security, category_id, page, per_page) -> BlogResult<PostListResponse>;
     pub async fn get_posts_by_author(tenant_id, security, author_id, page, per_page) -> BlogResult<PostListResponse>;

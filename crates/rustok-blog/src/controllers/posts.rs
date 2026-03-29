@@ -109,7 +109,13 @@ pub async fn get_post(
         .unwrap_or(request_context.locale.as_str());
     let service = PostService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let post = service
-        .get_post_with_locale_fallback(tenant.id, id, locale, Some(tenant.default_locale.as_str()))
+        .get_post_with_locale_fallback(
+            tenant.id,
+            auth.security_context(),
+            id,
+            locale,
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(post))

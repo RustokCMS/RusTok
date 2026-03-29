@@ -54,7 +54,12 @@ contracts.
 ### Phase 4 - Productionization (planned)
 
 - [x] Finalize rollout and migration strategy for the menu slice.
-- [ ] Complete security, tenancy, and RBAC checks relevant to the module.
+- [x] Complete security, tenancy, and RBAC checks relevant to the module.
+  - [x] Page, block, and menu services now re-validate `pages:*` in the
+    service layer.
+  - [x] `publish` can no longer be bypassed through `create` / `update`.
+  - [x] Customer read paths no longer expose draft/private pages through
+    service-level `get` / `list`.
 - [ ] Validate observability, runbooks, and operational readiness.
 
 ## Notes

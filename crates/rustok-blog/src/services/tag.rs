@@ -9,11 +9,12 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_content::PLATFORM_FALLBACK_LOCALE;
-use rustok_core::SecurityContext;
+use rustok_core::{Action, Resource, SecurityContext};
 
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
 use crate::entities::{blog_post_tag, blog_tag, blog_tag_translation};
 use crate::error::{BlogError, BlogResult};
+use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 
 pub struct TagService {
     db: DatabaseConnection,
@@ -24,13 +25,14 @@ impl TagService {
         Self { db }
     }
 
-    #[instrument(skip(self, _security, input))]
+    #[instrument(skip(self, security, input))]
     pub async fn create_tag(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         input: CreateTagInput,
     ) -> BlogResult<Uuid> {
+        enforce_scope(&security, Resource::Tags, Action::Create)?;
         validate_tag_name(&input.name)?;
         let locale = normalize_locale(&input.locale)?;
         let slug = normalize_tag_slug(input.slug.as_deref().unwrap_or(&input.name));
@@ -64,9 +66,11 @@ impl TagService {
     pub async fn get_tag(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         tag_id: Uuid,
         locale: &str,
     ) -> BlogResult<TagResponse> {
+        enforce_scope(&security, Resource::Tags, Action::Read)?;
         let tag = blog_tag::Entity::find_by_id(tag_id)
             .filter(blog_tag::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -81,12 +85,12 @@ impl TagService {
         Ok(to_tag_response(tag, translations, locale))
     }
 
-    #[instrument(skip(self, _security, input))]
+    #[instrument(skip(self, security, input))]
     pub async fn update_tag(
         &self,
         tenant_id: Uuid,
         tag_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         input: UpdateTagInput,
     ) -> BlogResult<TagResponse> {
         let tag = blog_tag::Entity::find_by_id(tag_id)
@@ -94,6 +98,7 @@ impl TagService {
             .one(&self.db)
             .await?
             .ok_or_else(|| BlogError::tag_not_found(tag_id))?;
+        enforce_owned_scope(&security, Resource::Tags, Action::Update, tag.id)?;
 
         let locale = normalize_locale(&input.locale)?;
         let existing_translation = blog_tag_translation::Entity::find()
@@ -148,18 +153,19 @@ impl TagService {
         Ok(to_tag_response(tag, translations, &locale))
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn delete_tag(
         &self,
         tenant_id: Uuid,
         tag_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
     ) -> BlogResult<()> {
         let tag = blog_tag::Entity::find_by_id(tag_id)
             .filter(blog_tag::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
             .ok_or_else(|| BlogError::tag_not_found(tag_id))?;
+        enforce_owned_scope(&security, Resource::Tags, Action::Delete, tag.id)?;
 
         blog_post_tag::Entity::delete_many()
             .filter(blog_post_tag::Column::TagId.eq(tag_id))
@@ -175,13 +181,14 @@ impl TagService {
         Ok(())
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn list_tags(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         filter: ListTagsFilter,
     ) -> BlogResult<(Vec<TagListItem>, u64)> {
+        enforce_scope(&security, Resource::Tags, Action::List)?;
         let locale = filter
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());

@@ -29,6 +29,8 @@
 - Declares permissions via `rustok-core::Permission`.
 - Transport adapters validate `blog_posts:*` against `AuthContext.permissions`, then pass
   a permission-aware `SecurityContext` into blog services.
+- Blog services now re-validate RBAC locally for posts, categories, and tags, and customer
+  read paths are restricted to published posts even when the transport layer is authenticated.
 
 ## Entry points
 

@@ -3,6 +3,7 @@
 mod category;
 mod comment;
 mod post;
+mod rbac;
 mod tag;
 
 pub use category::CategoryService;

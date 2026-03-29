@@ -8,12 +8,13 @@ use std::future::Future;
 use std::pin::Pin;
 use uuid::Uuid;
 
-use rustok_core::SecurityContext;
+use rustok_core::{Action, Resource, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
 use crate::entities::{menu, menu_item, menu_item_translation, menu_translation};
 use crate::error::{PagesError, PagesResult};
+use crate::services::rbac::enforce_scope;
 
 const PLATFORM_FALLBACK_LOCALE: &str = "en";
 
@@ -33,7 +34,7 @@ impl MenuService {
         security: SecurityContext,
         input: CreateMenuInput,
     ) -> PagesResult<MenuResponse> {
-        let _ = security;
+        enforce_scope(&security, Resource::Pages, Action::Create)?;
         let now = Utc::now();
         let menu_id = Uuid::new_v4();
 
@@ -121,7 +122,7 @@ impl MenuService {
         security: SecurityContext,
         menu_id: Uuid,
     ) -> PagesResult<MenuResponse> {
-        let _ = security;
+        enforce_scope(&security, Resource::Pages, Action::Read)?;
         let menu = menu::Entity::find_by_id(menu_id)
             .filter(menu::Column::TenantId.eq(tenant_id))
             .one(&self.db)

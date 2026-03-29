@@ -125,7 +125,9 @@ Target invariants:
 - [x] `PostService::list_posts` now filters by normalized tag relations instead of metadata scans
 - [x] Channel-aware pilot on public read-path via `rustok-channel` module bindings
 - [x] Extend the pilot to publication-level metadata-based `channelSlugs` allowlists on published public read-paths
-- [ ] RBAC enforcement: check permissions in service layer
+- [x] RBAC enforcement: service layer now re-validates `blog_posts:*`,
+  `categories:*`, and `tags:*`, and customer read paths no longer expose
+  non-public posts
 - [ ] Rate limiting for post creation
 - [ ] Full-text search integration via rustok-index (will supersede in-memory tag filtering)
 - [ ] Performance testing and optimization

@@ -65,7 +65,9 @@ async fn test_post_lifecycle() -> TestResult<()> {
         )
         .await?;
 
-    let post = post_service.get_post(tenant_id, post_id, "en").await?;
+    let post = post_service
+        .get_post(tenant_id, admin.clone(), post_id, "en")
+        .await?;
     assert_eq!(post.title, "Test Post");
     assert_eq!(post.status, BlogPostStatus::Draft);
     assert_eq!(post.tags, vec!["rust"]);
@@ -73,7 +75,9 @@ async fn test_post_lifecycle() -> TestResult<()> {
     post_service
         .publish_post(tenant_id, post_id, admin.clone())
         .await?;
-    let published = post_service.get_post(tenant_id, post_id, "en").await?;
+    let published = post_service
+        .get_post(tenant_id, admin.clone(), post_id, "en")
+        .await?;
     assert_eq!(published.status, BlogPostStatus::Published);
     assert!(published.published_at.is_some());
 
@@ -85,7 +89,9 @@ async fn test_post_lifecycle() -> TestResult<()> {
             Some("outdated".to_string()),
         )
         .await?;
-    let archived = post_service.get_post(tenant_id, post_id, "en").await?;
+    let archived = post_service
+        .get_post(tenant_id, admin.clone(), post_id, "en")
+        .await?;
     assert_eq!(archived.status, BlogPostStatus::Archived);
 
     let event_types = drain_event_types(&mut receiver);
@@ -133,7 +139,9 @@ async fn test_create_and_publish_post() -> TestResult<()> {
         )
         .await?;
 
-    let draft = post_service.get_post(tenant_id, post_id, "en").await?;
+    let draft = post_service
+        .get_post(tenant_id, admin.clone(), post_id, "en")
+        .await?;
     assert_eq!(draft.status, BlogPostStatus::Draft);
     assert!(draft.published_at.is_none());
 
@@ -141,7 +149,9 @@ async fn test_create_and_publish_post() -> TestResult<()> {
         .publish_post(tenant_id, post_id, admin.clone())
         .await?;
 
-    let published = post_service.get_post(tenant_id, post_id, "en").await?;
+    let published = post_service
+        .get_post(tenant_id, admin.clone(), post_id, "en")
+        .await?;
     assert_eq!(published.status, BlogPostStatus::Published);
     assert!(published.published_at.is_some());
     assert_eq!(published.slug, "draft-post");
@@ -165,7 +175,7 @@ async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestR
     let post_id = post_service
         .create_post(
             tenant_id,
-            admin,
+            admin.clone(),
             CreatePostInput {
                 locale: "en-us".to_string(),
                 title: "Localized Post".to_string(),
@@ -186,13 +196,21 @@ async fn test_post_read_paths_normalize_requested_and_fallback_locale() -> TestR
         )
         .await?;
 
-    let direct = post_service.get_post(tenant_id, post_id, "EN_us").await?;
+    let direct = post_service
+        .get_post(tenant_id, admin.clone(), post_id, "EN_us")
+        .await?;
     assert_eq!(direct.requested_locale, "en-us");
     assert_eq!(direct.locale, "en-us");
     assert_eq!(direct.effective_locale, "en-us");
 
     let by_fallback = post_service
-        .get_post_with_locale_fallback(tenant_id, post_id, "FR_fr", Some("EN_us"))
+        .get_post_with_locale_fallback(
+            tenant_id,
+            admin.clone(),
+            post_id,
+            "FR_fr",
+            Some("EN_us"),
+        )
         .await?;
     assert_eq!(by_fallback.requested_locale, "fr-fr");
     assert_eq!(by_fallback.locale, "fr-fr");
@@ -434,7 +452,9 @@ async fn test_category_crud() -> TestResult<()> {
         )
         .await?;
 
-    let category = category_service.get(tenant_id, category_id, "en").await?;
+    let category = category_service
+        .get(tenant_id, admin.clone(), category_id, "en")
+        .await?;
     assert_eq!(category.name, "Technology");
     assert_eq!(category.slug, "technology");
     assert_eq!(category.description.as_deref(), Some("Tech articles"));
@@ -458,7 +478,7 @@ async fn test_category_crud() -> TestResult<()> {
         .await?;
 
     let not_found = category_service
-        .get(tenant_id, category_id, "en")
+        .get(tenant_id, admin.clone(), category_id, "en")
         .await
         .expect_err("deleted category should not be found");
     assert!(matches!(not_found, BlogError::CategoryNotFound(_)));
@@ -490,7 +510,9 @@ async fn test_tag_crud_and_slug_normalization() -> TestResult<()> {
         )
         .await?;
 
-    let tag = tag_service.get_tag(tenant_id, tag_id, "en").await?;
+    let tag = tag_service
+        .get_tag(tenant_id, admin.clone(), tag_id, "en")
+        .await?;
     assert_eq!(tag.name, "Rust Language");
     assert_eq!(tag.slug, "rust-language");
 
@@ -538,6 +560,89 @@ async fn test_tag_crud_and_slug_normalization() -> TestResult<()> {
     assert_eq!(list_after[0].slug, "rust-language");
 
     let _ = list;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_taxonomy_services_enforce_rbac() -> TestResult<()> {
+    let db = setup_blog_test_db().await;
+    ensure_blog_schema(&db).await;
+
+    let category_service = CategoryService::new(db.clone());
+    let tag_service = TagService::new(db);
+
+    let tenant_id = Uuid::new_v4();
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+    let denied_category = category_service
+        .create(
+            tenant_id,
+            customer.clone(),
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: "Denied".to_string(),
+                slug: None,
+                description: None,
+                parent_id: None,
+                position: None,
+                settings: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect_err("customer should not create categories");
+    assert!(matches!(denied_category, BlogError::Forbidden(_)));
+
+    let denied_tag = tag_service
+        .create_tag(
+            tenant_id,
+            customer,
+            CreateTagInput {
+                locale: "en".to_string(),
+                name: "Denied".to_string(),
+                slug: None,
+            },
+        )
+        .await
+        .expect_err("customer should not create tags");
+    assert!(matches!(denied_tag, BlogError::Forbidden(_)));
+
+    let category_id = category_service
+        .create(
+            tenant_id,
+            admin.clone(),
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: "Allowed".to_string(),
+                slug: None,
+                description: None,
+                parent_id: None,
+                position: None,
+                settings: serde_json::json!({}),
+            },
+        )
+        .await?;
+    let tag_id = tag_service
+        .create_tag(
+            tenant_id,
+            admin.clone(),
+            CreateTagInput {
+                locale: "en".to_string(),
+                name: "Allowed".to_string(),
+                slug: None,
+            },
+        )
+        .await?;
+
+    let category = category_service
+        .get(tenant_id, admin.clone(), category_id, "en")
+        .await?;
+    let tag = tag_service
+        .get_tag(tenant_id, admin, tag_id, "en")
+        .await?;
+    assert_eq!(category.name, "Allowed");
+    assert_eq!(tag.name, "Allowed");
 
     Ok(())
 }

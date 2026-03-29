@@ -8,12 +8,14 @@ use tracing::instrument;
 use url::Url;
 use uuid::Uuid;
 
-use rustok_core::SecurityContext;
+use rustok_content::entities::node::ContentStatus;
+use rustok_core::{Action, Resource, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
 use crate::entities::{page, page_block};
 use crate::error::{PagesError, PagesResult};
+use crate::services::rbac::{can_read_non_public_pages, enforce_owned_scope, enforce_scope};
 
 pub struct BlockService {
     db: DatabaseConnection,
@@ -28,11 +30,17 @@ impl BlockService {
     pub async fn create_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         page_id: Uuid,
         input: CreateBlockInput,
     ) -> PagesResult<BlockResponse> {
-        ensure_page_exists_in_tx(txn, tenant_id, page_id).await?;
+        let parent_page = find_page_in_tx(txn, tenant_id, page_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Update,
+            parent_page.author_id,
+        )?;
         let data = validate_and_sanitize_block_data(&input.block_type, input.data)?;
         let translations = sanitize_translations(&input.block_type, input.translations)?;
         let now = Utc::now();
@@ -95,6 +103,14 @@ impl BlockService {
             .ok_or_else(|| PagesError::block_not_found(block_id))
     }
 
+    async fn find_page_for_block(&self, tenant_id: Uuid, page_id: Uuid) -> PagesResult<page::Model> {
+        page::Entity::find_by_id(page_id)
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| PagesError::page_not_found(page_id))
+    }
+
     async fn find_block_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -143,7 +159,14 @@ impl BlockService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<Vec<BlockResponse>> {
-        let _ = security;
+        enforce_scope(&security, Resource::Pages, Action::Read)?;
+        let parent_page = self.find_page_for_block(tenant_id, page_id).await?;
+        if !can_read_non_public_pages(&security)
+            && storage_to_status(&parent_page.status)?
+                != rustok_content::entities::node::ContentStatus::Published
+        {
+            return Err(PagesError::forbidden("Permission denied"));
+        }
         let blocks = self.list_models_for_page(tenant_id, page_id).await?;
         let mut responses = Vec::with_capacity(blocks.len());
         for block in blocks {
@@ -160,8 +183,14 @@ impl BlockService {
         block_id: Uuid,
         input: UpdateBlockInput,
     ) -> PagesResult<BlockResponse> {
-        let _ = security;
         let existing = self.find_block(tenant_id, block_id).await?;
+        let parent_page = self.find_page_for_block(tenant_id, existing.page_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Update,
+            parent_page.author_id,
+        )?;
         let block_type = block_type_from_str(&existing.block_type)?;
 
         let mut data = existing.data.clone();
@@ -202,9 +231,14 @@ impl BlockService {
         page_id: Uuid,
         block_order: Vec<Uuid>,
     ) -> PagesResult<()> {
-        let _ = security;
         let txn = self.db.begin().await?;
-        ensure_page_exists_in_tx(&txn, tenant_id, page_id).await?;
+        let parent_page = find_page_in_tx(&txn, tenant_id, page_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Update,
+            parent_page.author_id,
+        )?;
         for (position, block_id) in block_order.into_iter().enumerate() {
             let block = Self::find_block_in_tx(&txn, tenant_id, block_id).await?;
             if block.page_id != page_id {
@@ -225,8 +259,14 @@ impl BlockService {
         security: SecurityContext,
         block_id: Uuid,
     ) -> PagesResult<()> {
-        let _ = security;
         let block = self.find_block(tenant_id, block_id).await?;
+        let parent_page = self.find_page_for_block(tenant_id, block.page_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Delete,
+            parent_page.author_id,
+        )?;
         page_block::Entity::delete_by_id(block.id)
             .exec(&self.db)
             .await?;
@@ -239,7 +279,13 @@ impl BlockService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<()> {
-        let _ = security;
+        let parent_page = self.find_page_for_block(tenant_id, page_id).await?;
+        enforce_owned_scope(
+            &security,
+            Resource::Pages,
+            Action::Delete,
+            parent_page.author_id,
+        )?;
         page_block::Entity::delete_many()
             .filter(page_block::Column::TenantId.eq(tenant_id))
             .filter(page_block::Column::PageId.eq(page_id))
@@ -249,19 +295,29 @@ impl BlockService {
     }
 }
 
-async fn ensure_page_exists_in_tx(
+async fn find_page_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     page_id: Uuid,
-) -> PagesResult<()> {
-    let page = page::Entity::find_by_id(page_id)
+) -> PagesResult<page::Model> {
+    page::Entity::find_by_id(page_id)
         .filter(page::Column::TenantId.eq(tenant_id))
         .one(txn)
-        .await?;
-    if page.is_none() {
-        return Err(PagesError::page_not_found(page_id));
-    }
-    Ok(())
+        .await?
+        .ok_or_else(|| PagesError::page_not_found(page_id))
+}
+
+fn storage_to_status(status: &str) -> PagesResult<ContentStatus> {
+    Ok(match status {
+        "draft" => ContentStatus::Draft,
+        "published" => ContentStatus::Published,
+        "archived" => ContentStatus::Archived,
+        other => {
+            return Err(PagesError::validation(format!(
+                "Unknown page status: {other}"
+            )))
+        }
+    })
 }
 
 fn block_type_str(block_type: &BlockType) -> &'static str {

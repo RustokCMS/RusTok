@@ -39,6 +39,8 @@
 - Declares permissions via `rustok-core::Permission`.
 - Module adapters enforce `pages:*` permissions from `AuthContext.permissions` and pass a
   permission-aware `SecurityContext` into page services.
+- Page, block, and menu services now re-validate `pages:*` locally; `publish` can no longer be
+  bypassed through create/update flows, and customer read paths only see published pages.
 
 ## Entry points
 

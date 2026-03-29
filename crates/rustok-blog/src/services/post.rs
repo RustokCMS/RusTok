@@ -10,7 +10,7 @@ use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
     PLATFORM_FALLBACK_LOCALE,
 };
-use rustok_core::{prepare_content_payload, SecurityContext};
+use rustok_core::{prepare_content_payload, Action, Resource, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
@@ -21,6 +21,9 @@ use crate::dto::{
 use crate::entities::{blog_post, blog_post_translation};
 use crate::error::{BlogError, BlogResult};
 use crate::services::category::CategoryService;
+use crate::services::rbac::{
+    can_read_non_public_posts, enforce_create_author, enforce_owned_scope, enforce_scope,
+};
 use crate::services::tag::{find_post_ids_by_tag, load_post_tags_map, sync_post_tags_in_tx};
 use crate::state_machine::BlogPostStatus;
 
@@ -71,7 +74,7 @@ impl PostService {
         validate_locale(&locale)?;
         validate_tags(&tags)?;
 
-        let author_id = security.user_id.ok_or(BlogError::AuthorRequired)?;
+        let author_id = enforce_create_author(&security, Resource::BlogPosts, Action::Create)?;
         let prepared_body = prepare_content_payload(
             Some(&body_format),
             Some(&body),
@@ -178,6 +181,7 @@ impl PostService {
         input: UpdatePostInput,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
+        enforce_owned_scope(&security, Resource::BlogPosts, Action::Update, post.author_id)?;
         if let Some(expected_version) = input.version {
             if post.version != expected_version {
                 return Err(BlogError::validation("Version mismatch"));
@@ -294,6 +298,7 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
+        enforce_owned_scope(&security, Resource::BlogPosts, Action::Publish, post.author_id)?;
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
@@ -330,6 +335,7 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
+        enforce_owned_scope(&security, Resource::BlogPosts, Action::Publish, post.author_id)?;
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
@@ -363,6 +369,7 @@ impl PostService {
         reason: Option<String>,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
+        enforce_owned_scope(&security, Resource::BlogPosts, Action::Publish, post.author_id)?;
         let now = chrono::Utc::now();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
@@ -398,6 +405,7 @@ impl PostService {
         security: SecurityContext,
     ) -> BlogResult<()> {
         let post = self.find_post(tenant_id, post_id).await?;
+        enforce_owned_scope(&security, Resource::BlogPosts, Action::Delete, post.author_id)?;
         if storage_to_status(&post.status)? == BlogPostStatus::Published {
             return Err(BlogError::CannotDeletePublished);
         }
@@ -426,10 +434,11 @@ impl PostService {
     pub async fn get_post(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         post_id: Uuid,
         locale: &str,
     ) -> BlogResult<PostResponse> {
-        self.get_post_with_locale_fallback(tenant_id, post_id, locale, None)
+        self.get_post_with_locale_fallback(tenant_id, security, post_id, locale, None)
             .await
     }
 
@@ -437,13 +446,20 @@ impl PostService {
     pub async fn get_post_with_locale_fallback(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         post_id: Uuid,
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<PostResponse> {
+        enforce_scope(&security, Resource::BlogPosts, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let post = self.find_post(tenant_id, post_id).await?;
+        if !can_read_non_public_posts(&security)
+            && storage_to_status(&post.status)? != BlogPostStatus::Published
+        {
+            return Err(BlogError::forbidden("Permission denied"));
+        }
         let translations = self.load_translations(post_id).await?;
         self.build_post_response(post, translations, &locale, fallback_locale.as_deref())
             .await
@@ -453,10 +469,11 @@ impl PostService {
     pub async fn get_post_by_slug(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         locale: &str,
         slug: &str,
     ) -> BlogResult<Option<PostResponse>> {
-        self.get_post_by_slug_with_locale_fallback(tenant_id, locale, slug, None)
+        self.get_post_by_slug_with_locale_fallback(tenant_id, security, locale, slug, None)
             .await
     }
 
@@ -464,10 +481,12 @@ impl PostService {
     pub async fn get_post_by_slug_with_locale_fallback(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         locale: &str,
         slug: &str,
         fallback_locale: Option<&str>,
     ) -> BlogResult<Option<PostResponse>> {
+        enforce_scope(&security, Resource::BlogPosts, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let Some(post) = blog_post::Entity::find()
@@ -480,7 +499,9 @@ impl PostService {
             return Ok(None);
         };
 
-        if storage_to_status(&post.status)? != BlogPostStatus::Published {
+        if storage_to_status(&post.status)? != BlogPostStatus::Published
+            && !can_read_non_public_posts(&security)
+        {
             return Ok(None);
         }
 
@@ -505,10 +526,11 @@ impl PostService {
     pub async fn list_posts_with_locale_fallback(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         query: PostListQuery,
         fallback_locale: Option<&str>,
     ) -> BlogResult<PostListResponse> {
+        enforce_scope(&security, Resource::BlogPosts, Action::List)?;
         let locale = query
             .locale
             .clone()
@@ -531,6 +553,15 @@ impl PostService {
 
         if let Some(status) = query.status {
             select = select.filter(blog_post::Column::Status.eq(status_to_storage(status)));
+        } else if !can_read_non_public_posts(&security) {
+            select = select.filter(
+                blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published)),
+            );
+        }
+        if !can_read_non_public_posts(&security)
+            && matches!(query.status, Some(status) if status != BlogPostStatus::Published)
+        {
+            return Ok(PostListResponse::new(Vec::new(), 0, &query));
         }
         if let Some(author_id) = query.author_id {
             select = select.filter(blog_post::Column::AuthorId.eq(author_id));
@@ -1241,7 +1272,7 @@ mod tests {
             .expect("post should be created");
 
         let draft = post_service
-            .get_post(tenant_id, post_id, "en")
+            .get_post(tenant_id, admin.clone(), post_id, "en")
             .await
             .expect("draft should be readable");
         assert_eq!(draft.status, BlogPostStatus::Draft);
@@ -1253,11 +1284,98 @@ mod tests {
             .expect("post should publish");
 
         let published = post_service
-            .get_post(tenant_id, post_id, "en")
+            .get_post(tenant_id, admin.clone(), post_id, "en")
             .await
             .expect("published should be readable");
         assert_eq!(published.status, BlogPostStatus::Published);
         assert_eq!(published.slug, "draft-post");
         assert!(published.published_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn customer_cannot_create_or_read_draft_posts() {
+        let db = setup_test_db().await;
+        ensure_blog_schema(&db).await;
+
+        let transport = MemoryTransport::new();
+        let _receiver = transport.subscribe();
+        let event_bus = TransactionalEventBus::new(Arc::new(transport));
+        let post_service = PostService::new(db.clone(), event_bus);
+
+        let tenant_id = Uuid::new_v4();
+        let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+        let customer = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+        let denied_create = post_service
+            .create_post(
+                tenant_id,
+                customer.clone(),
+                CreatePostInput {
+                    locale: "en".to_string(),
+                    title: "Customer draft".to_string(),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    excerpt: None,
+                    slug: Some("customer-draft".to_string()),
+                    publish: false,
+                    tags: vec![],
+                    category_id: None,
+                    featured_image_url: None,
+                    seo_title: None,
+                    seo_description: None,
+                    channel_slugs: None,
+                    metadata: None,
+                },
+            )
+            .await
+            .expect_err("customer should not create posts");
+        assert!(matches!(denied_create, BlogError::Forbidden(_)));
+
+        let post_id = post_service
+            .create_post(
+                tenant_id,
+                admin.clone(),
+                CreatePostInput {
+                    locale: "en".to_string(),
+                    title: "Admin draft".to_string(),
+                    body: "Body".to_string(),
+                    body_format: "markdown".to_string(),
+                    content_json: None,
+                    excerpt: None,
+                    slug: Some("admin-draft".to_string()),
+                    publish: false,
+                    tags: vec![],
+                    category_id: None,
+                    featured_image_url: None,
+                    seo_title: None,
+                    seo_description: None,
+                    channel_slugs: None,
+                    metadata: None,
+                },
+            )
+            .await
+            .expect("admin draft should be created");
+
+        let denied_read = post_service
+            .get_post(tenant_id, customer.clone(), post_id, "en")
+            .await
+            .expect_err("customer should not read drafts");
+        assert!(matches!(denied_read, BlogError::Forbidden(_)));
+
+        let listed = post_service
+            .list_posts(
+                tenant_id,
+                customer,
+                PostListQuery {
+                    page: Some(1),
+                    per_page: Some(10),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("customer listing should succeed");
+        assert!(listed.items.is_empty());
+        assert_eq!(listed.total, 0);
     }
 }

@@ -47,6 +47,7 @@ impl BlogQuery {
         let post = match service
             .get_post_with_locale_fallback(
                 tenant_id,
+                auth_context_to_security(ctx),
                 id,
                 &locale,
                 Some(tenant.default_locale.as_str()),
@@ -105,6 +106,7 @@ impl BlogQuery {
         let post = service
             .get_post_by_slug_with_locale_fallback(
                 tenant_id,
+                auth_context_to_security(ctx),
                 &locale,
                 &slug,
                 Some(tenant.default_locale.as_str()),

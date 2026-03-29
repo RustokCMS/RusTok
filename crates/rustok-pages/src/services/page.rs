@@ -11,8 +11,8 @@ use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::{
-    normalize_content_format, prepare_content_payload, SecurityContext, CONTENT_FORMAT_GRAPESJS_V1,
-    CONTENT_FORMAT_RT_JSON_V1,
+    normalize_content_format, prepare_content_payload, Action, Resource, SecurityContext,
+    CONTENT_FORMAT_GRAPESJS_V1, CONTENT_FORMAT_RT_JSON_V1,
 };
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -20,6 +20,7 @@ use rustok_outbox::TransactionalEventBus;
 use crate::dto::*;
 use crate::entities::{page, page_body, page_translation};
 use crate::error::{PagesError, PagesResult};
+use crate::services::rbac::{can_read_non_public_pages, enforce_owned_scope, enforce_scope};
 use crate::services::BlockService;
 
 const PAGE_KIND: &str = "page";
@@ -65,6 +66,10 @@ impl PageService {
         security: SecurityContext,
         input: CreatePageInput,
     ) -> PagesResult<PageResponse> {
+        enforce_scope(&security, Resource::Pages, Action::Create)?;
+        if input.publish {
+            enforce_scope(&security, Resource::Pages, Action::Publish)?;
+        }
         validate_page_translations(&input.translations)?;
         let template = input
             .template
@@ -165,9 +170,16 @@ impl PageService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> PagesResult<PageResponse> {
+        enforce_scope(&security, Resource::Pages, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let page = self.find_page(tenant_id, page_id).await?;
+        if !can_read_non_public_pages(&security)
+            && storage_to_status(&page.status)?
+                != rustok_content::entities::node::ContentStatus::Published
+        {
+            return Err(PagesError::forbidden("Permission denied"));
+        }
         let translations = self.load_translations(page_id).await?;
         let bodies = self.load_bodies(page_id).await?;
         let blocks = self
@@ -193,6 +205,7 @@ impl PageService {
         slug: &str,
         fallback_locale: Option<&str>,
     ) -> PagesResult<Option<PageResponse>> {
+        enforce_scope(&security, Resource::Pages, Action::Read)?;
         let requested_locale = normalize_locale(locale)?;
         let normalized_fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let candidates = page_translation::Entity::find()
@@ -251,12 +264,26 @@ impl PageService {
         security: SecurityContext,
         filter: ListPagesFilter,
     ) -> PagesResult<(Vec<PageListItem>, u64)> {
-        let _ = security;
+        enforce_scope(&security, Resource::Pages, Action::List)?;
         let locale = filter
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
         let locale = normalize_locale(&locale)?;
         let mut select = page::Entity::find().filter(page::Column::TenantId.eq(tenant_id));
+        if !can_read_non_public_pages(&security) {
+            if matches!(
+                filter.status,
+                Some(ref status)
+                    if status != &rustok_content::entities::node::ContentStatus::Published
+            ) {
+                return Ok((Vec::new(), 0));
+            }
+            select = select.filter(
+                page::Column::Status.eq(status_to_storage(
+                    &rustok_content::entities::node::ContentStatus::Published,
+                )),
+            );
+        }
         if let Some(status) = filter.status {
             select = select.filter(page::Column::Status.eq(status_to_storage(&status)));
         }
@@ -298,6 +325,10 @@ impl PageService {
         input: UpdatePageInput,
     ) -> PagesResult<PageResponse> {
         let existing = self.find_page(tenant_id, page_id).await?;
+        enforce_owned_scope(&security, Resource::Pages, Action::Update, existing.author_id)?;
+        if input.status.is_some() {
+            enforce_scope(&security, Resource::Pages, Action::Publish)?;
+        }
         if let Some(ref translations) = input.translations {
             validate_page_translations(translations)?;
         }
@@ -424,7 +455,8 @@ impl PageService {
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<()> {
-        self.find_page(tenant_id, page_id).await?;
+        let existing = self.find_page(tenant_id, page_id).await?;
+        enforce_owned_scope(&security, Resource::Pages, Action::Delete, existing.author_id)?;
         let txn = self.db.begin().await?;
         BlockService::delete_all_for_page_in_tx(&txn, tenant_id, page_id).await?;
         page_body::Entity::delete_many()
@@ -460,6 +492,7 @@ impl PageService {
         follow_up_event: Option<DomainEvent>,
     ) -> PagesResult<PageResponse> {
         let existing = self.find_page(tenant_id, page_id).await?;
+        enforce_owned_scope(&security, Resource::Pages, Action::Publish, existing.author_id)?;
         let txn = self.db.begin().await?;
         let mut active: page::ActiveModel = existing.into();
         active.status = Set(status_to_storage(&status).to_string());

@@ -7,7 +7,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_content::PLATFORM_FALLBACK_LOCALE;
-use rustok_core::SecurityContext;
+use rustok_core::{Action, Resource, SecurityContext};
 
 use crate::dto::{
     CategoryListItem, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
@@ -15,6 +15,7 @@ use crate::dto::{
 };
 use crate::entities::{blog_category, blog_category_translation};
 use crate::error::{BlogError, BlogResult};
+use crate::services::rbac::{enforce_scope, enforce_owned_scope};
 
 pub struct CategoryService {
     db: DatabaseConnection,
@@ -25,13 +26,14 @@ impl CategoryService {
         Self { db }
     }
 
-    #[instrument(skip(self, _security, input))]
+    #[instrument(skip(self, security, input))]
     pub async fn create(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         input: CreateCategoryInput,
     ) -> BlogResult<Uuid> {
+        enforce_scope(&security, Resource::Categories, Action::Create)?;
         validate_category_name(&input.name)?;
         let slug = normalize_category_slug(input.slug.as_deref(), &input.name);
         let now = Utc::now();
@@ -70,9 +72,11 @@ impl CategoryService {
     pub async fn get(
         &self,
         tenant_id: Uuid,
+        security: SecurityContext,
         category_id: Uuid,
         locale: &str,
     ) -> BlogResult<CategoryResponse> {
+        enforce_scope(&security, Resource::Categories, Action::Read)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -87,12 +91,12 @@ impl CategoryService {
         Ok(to_category_response(category, translations, locale))
     }
 
-    #[instrument(skip(self, _security, input))]
+    #[instrument(skip(self, security, input))]
     pub async fn update(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> BlogResult<CategoryResponse> {
         let category = blog_category::Entity::find_by_id(category_id)
@@ -100,6 +104,12 @@ impl CategoryService {
             .one(&self.db)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
+        enforce_owned_scope(
+            &security,
+            Resource::Categories,
+            Action::Update,
+            category.id,
+        )?;
 
         let mut active: blog_category::ActiveModel = category.into();
         active.updated_at = Set(Utc::now().into());
@@ -168,18 +178,24 @@ impl CategoryService {
         Ok(to_category_response(category, translations, &locale))
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
     ) -> BlogResult<()> {
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
+        enforce_owned_scope(
+            &security,
+            Resource::Categories,
+            Action::Delete,
+            category.id,
+        )?;
 
         blog_category_translation::Entity::delete_many()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))
@@ -190,13 +206,14 @@ impl CategoryService {
         Ok(())
     }
 
-    #[instrument(skip(self, _security))]
+    #[instrument(skip(self, security))]
     pub async fn list(
         &self,
         tenant_id: Uuid,
-        _security: SecurityContext,
+        security: SecurityContext,
         filter: ListCategoriesFilter,
     ) -> BlogResult<(Vec<CategoryListItem>, u64)> {
+        enforce_scope(&security, Resource::Categories, Action::List)?;
         let locale = filter
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
