@@ -39,6 +39,7 @@ pub struct Model {
     pub ui_packages: Json,
     pub status: RegistryPublishRequestStatus,
     pub requested_by: String,
+    pub publisher_identity: Option<String>,
     pub approved_by: Option<String>,
     pub rejected_by: Option<String>,
     pub rejection_reason: Option<String>,

@@ -13,6 +13,8 @@ All significant architectural choices should be recorded as ADRs.
 | ADR | Title | Status |
 |-----|-------|--------|
 | [2026-03-29](./2026-03-29-taxonomy-module-scope-aware-terms.md) | `rustok-taxonomy` as a shared scope-aware vocabulary module | Accepted |
+| [2026-04-03](./2026-04-03-request-trust-and-tenant-hardening.md) | Request trust, strict tenant fallback and forwarded-header policy | Accepted |
+| [2026-04-03](./2026-04-03-system-i18n-fluent-migration.md) | Fluent migration path for system i18n bundles | Accepted |
 | [2026-03-29](./2026-03-29-forum-slug-locale-contract.md) | Forum slug/locale contract after content split | Accepted |
 | [2026-03-29](./2026-03-29-index-search-boundary.md) | Граница между `rustok-index` и `rustok-search` | Accepted |
 | [2026-03-29](./2026-03-29-pages-comments-no-default-integration.md) | `rustok-pages` не получает default-интеграцию с `rustok-comments` | Accepted |

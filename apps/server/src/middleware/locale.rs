@@ -1,26 +1,199 @@
-/// Locale extraction middleware for RusToK
-///
-/// Reads the `Accept-Language` HTTP header and injects a `rustok_core::i18n::Locale`
-/// into the Axum request as an `Extension<Locale>`. Controllers and GraphQL resolvers
-/// extract it with `Extension(locale): Extension<Locale>`.
-///
-/// Locale resolution chain (Phase 0):
-///   Accept-Language header → "en"
-///
-/// Phase 1 will extend this to: Accept-Language → tenant.default_locale → "en".
-use axum::{extract::Request, middleware::Next, response::Response};
-use rustok_core::i18n::extract_locale_from_header;
+use std::collections::HashMap;
 
-/// Axum middleware that resolves and injects the request locale.
-pub async fn resolve_locale(mut request: Request, next: Next) -> Response {
-    let accept_language = request
-        .headers()
-        .get(axum::http::header::ACCEPT_LANGUAGE)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_owned);
+use axum::{
+    extract::{Request, State},
+    http::HeaderValue,
+    middleware::Next,
+    response::Response,
+};
+use loco_rs::app::AppContext;
+use rustok_api::request::{resolve_request_locale, ResolvedRequestLocale};
+use rustok_core::i18n::Locale;
+use sea_orm::sea_query::{Alias, Expr, Order, Query};
+use sea_orm::ConnectionTrait;
+use uuid::Uuid;
 
-    let locale = extract_locale_from_header(accept_language.as_deref());
-    request.extensions_mut().insert(locale);
+use crate::context::TenantContextExt;
 
-    next.run(request).await
+#[derive(Debug, Clone)]
+struct TenantLocaleRecord {
+    locale: String,
+    is_enabled: bool,
+    is_default: bool,
+    fallback_locale: Option<String>,
+}
+
+pub async fn resolve_locale(
+    State(ctx): State<AppContext>,
+    request: Request,
+    next: Next,
+) -> Result<Response, axum::http::StatusCode> {
+    let (mut parts, body) = request.into_parts();
+    let tenant_context = parts.extensions.tenant_context().cloned();
+    let mut resolved = resolve_request_locale(
+        &parts,
+        tenant_context
+            .as_ref()
+            .map(|tenant| tenant.default_locale.as_str()),
+    );
+
+    if let Some(tenant) = tenant_context.as_ref() {
+        let locales = load_tenant_locales(&ctx, tenant.id)
+            .await
+            .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+        if !locales.is_empty() {
+            resolved.effective_locale =
+                constrain_locale_to_tenant(&resolved, &locales, &tenant.default_locale);
+        }
+    }
+
+    let locale = Locale::parse(&resolved.effective_locale).unwrap_or_default();
+    parts.extensions.insert(resolved.clone());
+    parts.extensions.insert(locale);
+
+    let request = Request::from_parts(parts, body);
+    let mut response = next.run(request).await;
+    if let Ok(value) = HeaderValue::from_str(&resolved.effective_locale) {
+        response.headers_mut().insert("content-language", value);
+    }
+    Ok(response)
+}
+
+async fn load_tenant_locales(
+    ctx: &AppContext,
+    tenant_id: Uuid,
+) -> Result<Vec<TenantLocaleRecord>, sea_orm::DbErr> {
+    let statement = Query::select()
+        .from(Alias::new("tenant_locales"))
+        .columns([
+            Alias::new("locale"),
+            Alias::new("is_enabled"),
+            Alias::new("is_default"),
+            Alias::new("fallback_locale"),
+        ])
+        .and_where(Expr::col(Alias::new("tenant_id")).eq(tenant_id))
+        .order_by(Alias::new("is_default"), Order::Desc)
+        .order_by(Alias::new("locale"), Order::Asc)
+        .to_owned();
+
+    let rows = ctx
+        .db
+        .query_all(ctx.db.get_database_backend().build(&statement))
+        .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            Ok(TenantLocaleRecord {
+                locale: row.try_get("", "locale")?,
+                is_enabled: row.try_get("", "is_enabled")?,
+                is_default: row.try_get("", "is_default")?,
+                fallback_locale: row.try_get("", "fallback_locale").ok(),
+            })
+        })
+        .collect()
+}
+
+fn constrain_locale_to_tenant(
+    resolved: &ResolvedRequestLocale,
+    locales: &[TenantLocaleRecord],
+    tenant_default_locale: &str,
+) -> String {
+    let locale_map = locales
+        .iter()
+        .map(|record| (record.locale.as_str(), record))
+        .collect::<HashMap<_, _>>();
+
+    if let Some(requested_locale) = resolved.requested_locale.as_deref() {
+        if locale_map
+            .get(requested_locale)
+            .is_some_and(|record| record.is_enabled)
+        {
+            return requested_locale.to_string();
+        }
+
+        if let Some(fallback) = locale_map
+            .get(requested_locale)
+            .and_then(|record| record.fallback_locale.as_deref())
+            .and_then(|fallback_locale| locale_map.get(fallback_locale))
+            .filter(|record| record.is_enabled)
+            .map(|record| record.locale.clone())
+        {
+            return fallback;
+        }
+    }
+
+    if let Some(default_locale) = locales
+        .iter()
+        .find(|record| record.is_default && record.is_enabled)
+        .map(|record| record.locale.clone())
+    {
+        return default_locale;
+    }
+
+    if locale_map
+        .get(tenant_default_locale)
+        .is_some_and(|record| record.is_enabled)
+    {
+        return tenant_default_locale.to_string();
+    }
+
+    locales
+        .iter()
+        .find(|record| record.is_enabled)
+        .map(|record| record.locale.clone())
+        .unwrap_or_else(|| resolved.effective_locale.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{constrain_locale_to_tenant, TenantLocaleRecord};
+    use rustok_api::request::ResolvedRequestLocale;
+
+    #[test]
+    fn prefers_requested_enabled_locale() {
+        let resolved = ResolvedRequestLocale {
+            requested_locale: Some("ru".to_string()),
+            effective_locale: "ru".to_string(),
+        };
+        let locales = vec![
+            TenantLocaleRecord {
+                locale: "en".to_string(),
+                is_enabled: true,
+                is_default: true,
+                fallback_locale: None,
+            },
+            TenantLocaleRecord {
+                locale: "ru".to_string(),
+                is_enabled: true,
+                is_default: false,
+                fallback_locale: Some("en".to_string()),
+            },
+        ];
+
+        assert_eq!(constrain_locale_to_tenant(&resolved, &locales, "en"), "ru");
+    }
+
+    #[test]
+    fn falls_back_from_disabled_requested_locale() {
+        let resolved = ResolvedRequestLocale {
+            requested_locale: Some("de".to_string()),
+            effective_locale: "de".to_string(),
+        };
+        let locales = vec![
+            TenantLocaleRecord {
+                locale: "en".to_string(),
+                is_enabled: true,
+                is_default: true,
+                fallback_locale: None,
+            },
+            TenantLocaleRecord {
+                locale: "de".to_string(),
+                is_enabled: false,
+                is_default: false,
+                fallback_locale: Some("en".to_string()),
+            },
+        ];
+
+        assert_eq!(constrain_locale_to_tenant(&resolved, &locales, "en"), "en");
+    }
 }

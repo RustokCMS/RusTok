@@ -71,7 +71,7 @@ pub use health::{
     checks::{DatabaseHealthCheck, FnHealthCheck},
     HealthCheck, HealthRegistry, HealthResult, HealthStatus, OverallHealth,
 };
-pub use i18n::{extract_locale_from_header, translate, Locale};
+pub use i18n::{extract_locale_from_header, extract_locale_tag_from_header, translate, Locale};
 pub use id::generate_id;
 pub use metrics::{Counter, Gauge, Histogram, MetricSnapshot, MetricValue, MetricsRegistry, Timer};
 pub use migrations::ModuleMigration;

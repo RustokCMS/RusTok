@@ -1,12 +1,12 @@
 use crate::error::{Error, Result};
-use axum::response::Response;
 use axum::{
     extract::{Path, Query},
     routing::get,
 };
+use axum::{http::StatusCode, response::Response};
 use loco_rs::app::AppContext;
-use loco_rs::controller::format;
 use loco_rs::controller::Routes;
+use loco_rs::controller::{format, ErrorDetail};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -71,12 +71,19 @@ async fn list_users(
         &rustok_core::Permission::USERS_LIST,
     )
     .await
-    .unwrap_or(false);
+    .map_err(|error| {
+        tracing::error!(
+            tenant_id = %tenant.id,
+            user_id = %current.user.id,
+            permission = %rustok_core::Permission::USERS_LIST,
+            %error,
+            "Failed to evaluate RBAC permission for list_users"
+        );
+        Error::InternalServerError
+    })?;
 
     if !can_list {
-        return Err(Error::Unauthorized(
-            "Permission denied: users:list required".into(),
-        ));
+        return Err(forbidden_error("Permission denied: users:list required"));
     }
 
     let page = params.page.unwrap_or(1).max(1);
@@ -133,12 +140,19 @@ async fn get_user(
         &rustok_core::Permission::USERS_READ,
     )
     .await
-    .unwrap_or(false);
+    .map_err(|error| {
+        tracing::error!(
+            tenant_id = %tenant.id,
+            user_id = %current.user.id,
+            permission = %rustok_core::Permission::USERS_READ,
+            %error,
+            "Failed to evaluate RBAC permission for get_user"
+        );
+        Error::InternalServerError
+    })?;
 
     if !can_read {
-        return Err(Error::Unauthorized(
-            "Permission denied: users:read required".into(),
-        ));
+        return Err(forbidden_error("Permission denied: users:read required"));
     }
 
     let user = users::Entity::find_by_id(user_id)
@@ -156,4 +170,12 @@ pub fn routes() -> Routes {
         .prefix("api/users")
         .add("/", get(list_users))
         .add("/{id}", get(get_user))
+}
+
+fn forbidden_error(description: impl Into<String>) -> Error {
+    let description = description.into();
+    Error::CustomError(
+        StatusCode::FORBIDDEN,
+        ErrorDetail::new("forbidden", description.as_str()),
+    )
 }

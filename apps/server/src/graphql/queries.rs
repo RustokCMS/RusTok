@@ -434,11 +434,20 @@ fn registry_module_lifecycle_from_snapshot(
     snapshot: RegistryModuleLifecycleSnapshot,
 ) -> crate::graphql::types::RegistryModuleLifecycle {
     crate::graphql::types::RegistryModuleLifecycle {
+        owner_binding: snapshot.owner_binding.map(|owner| {
+            crate::graphql::types::RegistryOwnerLifecycle {
+                owner_actor: owner.owner_actor,
+                bound_by: owner.bound_by,
+                bound_at: owner.bound_at,
+                updated_at: owner.updated_at,
+            }
+        }),
         latest_request: snapshot.latest_request.map(|request| {
             crate::graphql::types::RegistryPublishRequestLifecycle {
                 id: request.id,
                 status: request.status,
                 requested_by: request.requested_by,
+                publisher_identity: request.publisher_identity,
                 approved_by: request.approved_by,
                 rejected_by: request.rejected_by,
                 rejection_reason: request.rejection_reason,
@@ -461,6 +470,20 @@ fn registry_module_lifecycle_from_snapshot(
                 yanked_at: release.yanked_at,
             }
         }),
+        recent_events: snapshot
+            .recent_events
+            .into_iter()
+            .map(
+                |event| crate::graphql::types::RegistryGovernanceEventLifecycle {
+                    id: event.id,
+                    event_type: event.event_type,
+                    actor: event.actor,
+                    publisher: event.publisher,
+                    details: event.details,
+                    created_at: event.created_at,
+                },
+            )
+            .collect(),
     }
 }
 

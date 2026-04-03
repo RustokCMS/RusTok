@@ -18,7 +18,14 @@ use crate::services::app_runtime::AppRuntimeBootstrap;
 #[cfg(feature = "embed-admin-assets")]
 use axum::response::IntoResponse;
 #[cfg(feature = "embed-admin-assets")]
+use axum::{
+    http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG},
+    response::Response as AxumResponse,
+};
+#[cfg(feature = "embed-admin-assets")]
 use rust_embed::RustEmbed;
+#[cfg(feature = "embed-admin-assets")]
+use sha2::{Digest, Sha256};
 
 #[cfg(feature = "embed-admin")]
 #[derive(RustEmbed)]
@@ -32,24 +39,37 @@ pub fn build_admin_router() -> AxumRouter {
         let path = if path.is_empty() { "index.html" } else { path };
 
         match AdminAssets::get(path) {
-            Some(content) => {
-                let mime = mime_guess::from_path(path).first_or_octet_stream();
-                (
-                    [(axum::http::header::CONTENT_TYPE, mime.as_ref())],
-                    content.data,
-                )
-                    .into_response()
-            }
+            Some(content) => admin_asset_response(path, content.data),
             None => match AdminAssets::get("index.html") {
-                Some(content) => (
-                    [(axum::http::header::CONTENT_TYPE, "text/html")],
-                    content.data,
-                )
-                    .into_response(),
+                Some(content) => admin_asset_response("index.html", content.data),
                 None => (axum::http::StatusCode::NOT_FOUND, "Admin UI not bundled").into_response(),
             },
         }
     })
+}
+
+#[cfg(feature = "embed-admin-assets")]
+fn admin_asset_response(path: &str, bytes: std::borrow::Cow<'static, [u8]>) -> AxumResponse {
+    let mime = mime_guess::from_path(path).first_or_octet_stream();
+    let mut response = ([(CONTENT_TYPE, mime.as_ref())], bytes.clone()).into_response();
+    let digest = hex::encode(Sha256::digest(bytes.as_ref()));
+    let cache_control = if path.ends_with("index.html") {
+        "no-cache"
+    } else {
+        "public, max-age=31536000, immutable"
+    };
+
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        cache_control.parse().expect("cache-control header"),
+    );
+    response.headers_mut().insert(
+        ETAG,
+        format!("\"{}\"", &digest[..16])
+            .parse()
+            .expect("etag header"),
+    );
+    response
 }
 
 #[cfg(not(feature = "embed-admin"))]
@@ -104,10 +124,13 @@ pub fn compose_application_router(
     if rustok_settings.runtime.is_registry_only() {
         return router
             .layer(Extension(runtime.registry))
+            .layer(axum_middleware::from_fn_with_state(
+                ctx.clone(),
+                middleware::locale::resolve_locale,
+            ))
             .layer(axum_middleware::from_fn(
                 middleware::security_headers::security_headers,
-            ))
-            .layer(axum_middleware::from_fn(middleware::locale::resolve_locale));
+            ));
     }
 
     let server_fn_ctx = ctx.clone();
@@ -143,15 +166,7 @@ pub fn compose_application_router(
     .layer(Extension(runtime.registry))
     .layer(Extension(runtime.graphql_schema))
     .layer(axum_middleware::from_fn_with_state(
-        runtime.oauth_rate_limit_state,
-        rate_limit_for_paths,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        runtime.auth_rate_limit_state,
-        rate_limit_for_paths,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        runtime.api_rate_limit_state,
+        runtime.rate_limit_state,
         rate_limit_for_paths,
     ))
     .layer(axum_middleware::from_fn_with_state(
@@ -164,12 +179,15 @@ pub fn compose_application_router(
     ))
     .layer(axum_middleware::from_fn_with_state(
         ctx.clone(),
+        middleware::locale::resolve_locale,
+    ))
+    .layer(axum_middleware::from_fn_with_state(
+        ctx.clone(),
         middleware::tenant::resolve,
     ))
     .layer(axum_middleware::from_fn(
         middleware::security_headers::security_headers,
     ))
-    .layer(axum_middleware::from_fn(middleware::locale::resolve_locale))
 }
 
 #[cfg(test)]

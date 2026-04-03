@@ -26,4 +26,4 @@ rustok-telemetry.workspace = true
 parking_lot = "0.12"
 cron = "0.15"
 email_address = "0.2.9"
-rhai-full = { package = "rhai", git = "https://github.com/rhaiscript/rhai", tag = "v1.24.0", features = ["sync", "metadata"] }
+rhai-full = { package = "rhai", version = "=1.24.0", features = ["sync", "metadata"] }

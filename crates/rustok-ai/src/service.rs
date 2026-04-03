@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use loco_rs::app::AppContext;
 use once_cell::sync::Lazy;
-use rustok_core::permissions::Permission;
+use rustok_core::permissions::{Action, Permission};
 use rustok_core::registry::ModuleRegistry;
 use rustok_mcp::alloy_tools::{
     self, AlloyMcpState, ApplyModuleScaffoldRequest, CreateScriptRequest, DeleteScriptRequest,
@@ -29,8 +29,9 @@ use rustok_mcp::{
 };
 use schemars::schema_for;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait,
+    DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -40,6 +41,7 @@ use crate::entities::{
     ai_approval_requests, ai_chat_messages, ai_chat_runs, ai_chat_sessions, ai_provider_profiles,
     ai_task_profiles, ai_tool_profiles, ai_tool_traces,
 };
+use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
 use crate::mcp::{McpClientAdapter, ToolExecutionResult};
 use crate::model::{
     AiProviderConfig, AiRunDecisionTrace, ChatMessage, ChatMessageRole, ExecutionMode,
@@ -64,6 +66,8 @@ pub struct AiOperatorContext {
     pub tenant_id: Uuid,
     pub user_id: Uuid,
     pub permissions: Vec<Permission>,
+    pub role_slugs: Vec<String>,
+    pub preferred_locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,7 +160,19 @@ pub struct StartAiChatSessionInput {
     pub tool_profile_id: Option<Uuid>,
     pub execution_mode: Option<ExecutionMode>,
     pub override_config: ExecutionOverride,
+    pub locale: Option<String>,
     pub initial_message: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunAiTaskJobInput {
+    pub title: String,
+    pub provider_profile_id: Option<Uuid>,
+    pub task_profile_id: Uuid,
+    pub execution_mode: Option<ExecutionMode>,
+    pub locale: Option<String>,
+    pub task_input_json: serde_json::Value,
     pub metadata: serde_json::Value,
 }
 
@@ -250,6 +266,8 @@ pub struct AiChatRunRecord {
     pub model: String,
     pub execution_mode: ExecutionMode,
     pub execution_path: ExecutionMode,
+    pub requested_locale: Option<String>,
+    pub resolved_locale: String,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
     pub error_message: Option<String>,
@@ -287,6 +305,8 @@ pub struct AiChatSessionSummary {
     pub task_profile_id: Option<Uuid>,
     pub tool_profile_id: Option<Uuid>,
     pub execution_mode: ExecutionMode,
+    pub requested_locale: Option<String>,
+    pub resolved_locale: String,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -601,6 +621,13 @@ impl AiManagementService {
             }
             None => None,
         };
+        enforce_task_permissions(operator, task_profile.as_ref())?;
+        if input.override_config.provider_profile_id.is_some()
+            || input.override_config.model.is_some()
+            || input.execution_mode.is_some()
+        {
+            ensure_permission(operator, Permission::AI_ROUTER_OVERRIDE)?;
+        }
         if let Some(tool_profile_id) = input.tool_profile_id {
             let tool_profile =
                 require_tool_profile(db, operator.tenant_id, tool_profile_id).await?;
@@ -608,6 +635,14 @@ impl AiManagementService {
                 return Err(AiError::Validation("tool profile is inactive".to_string()));
             }
         }
+        let resolved_locale = resolve_task_locale(
+            db,
+            operator.tenant_id,
+            operator.preferred_locale.as_deref(),
+            input.locale.as_deref(),
+            task_profile.as_ref().map(|profile| profile.slug.as_str()),
+        )
+        .await?;
         let providers = list_router_provider_profiles(db, operator.tenant_id).await?;
         let task_profile_record = match task_profile.as_ref() {
             Some(profile) => Some(map_task_profile(profile.clone())?),
@@ -625,8 +660,14 @@ impl AiManagementService {
                 execution_mode: input.execution_mode,
                 ..input.override_config.clone()
             },
-            &[],
+            &operator.role_slugs,
         )?;
+        let decision_trace = enrich_decision_trace(
+            execution_plan.decision_trace,
+            execution_plan.execution_mode,
+            input.locale.clone(),
+            resolved_locale.clone(),
+        );
 
         let txn = db.begin().await.map_err(db_err)?;
         let session = ai_chat_sessions::ActiveModel {
@@ -637,11 +678,13 @@ impl AiManagementService {
             task_profile_id: Set(execution_plan.task_profile_id),
             tool_profile_id: Set(execution_plan.tool_profile_id),
             execution_mode: Set(execution_plan.execution_mode.slug().to_string()),
+            requested_locale: Set(input.locale.clone()),
+            resolved_locale: Set(resolved_locale.clone()),
             status: Set("active".to_string()),
             created_by: Set(Some(operator.user_id)),
             metadata: Set(merge_metadata(
                 input.metadata,
-                json!({ "decision_trace": execution_plan.decision_trace }),
+                json!({ "decision_trace": decision_trace }),
             )),
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
@@ -691,6 +734,8 @@ impl AiManagementService {
                     model: detail.provider_profile.model.clone(),
                     execution_mode: detail.session.execution_mode,
                     execution_path: detail.session.execution_mode,
+                    requested_locale: detail.session.requested_locale.clone(),
+                    resolved_locale: detail.session.resolved_locale.clone(),
                     temperature: detail.provider_profile.temperature,
                     max_tokens: detail.provider_profile.max_tokens,
                     error_message: None,
@@ -705,6 +750,106 @@ impl AiManagementService {
                 session: detail,
             })
         }
+    }
+
+    pub async fn run_task_job(
+        app_ctx: &AppContext,
+        operator: &AiOperatorContext,
+        input: RunAiTaskJobInput,
+    ) -> AiResult<AiSendMessageResult> {
+        let db = &app_ctx.db;
+        let task_profile = require_task_profile(db, operator.tenant_id, input.task_profile_id).await?;
+        if !task_profile.is_active {
+            return Err(AiError::Validation("task profile is inactive".to_string()));
+        }
+        enforce_task_permissions(operator, Some(&task_profile))?;
+        if input.provider_profile_id.is_some() || input.execution_mode.is_some() {
+            ensure_permission(operator, Permission::AI_ROUTER_OVERRIDE)?;
+        }
+
+        let resolved_locale = resolve_task_locale(
+            db,
+            operator.tenant_id,
+            operator.preferred_locale.as_deref(),
+            input.locale.as_deref(),
+            Some(task_profile.slug.as_str()),
+        )
+        .await?;
+
+        let task_profile_record = map_task_profile(task_profile.clone())?;
+        let providers = list_router_provider_profiles(db, operator.tenant_id).await?;
+        let execution_plan = AiRouter::resolve(
+            Some(&task_profile_runtime(&task_profile_record)),
+            &providers,
+            input.provider_profile_id,
+            task_profile.tool_profile_id,
+            &ExecutionOverride {
+                execution_mode: input.execution_mode,
+                ..ExecutionOverride::default()
+            },
+            &operator.role_slugs,
+        )?;
+        let decision_trace = enrich_decision_trace(
+            execution_plan.decision_trace,
+            execution_plan.execution_mode,
+            input.locale.clone(),
+            resolved_locale.clone(),
+        );
+
+        let txn = db.begin().await.map_err(db_err)?;
+        let session = ai_chat_sessions::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(operator.tenant_id),
+            title: Set(input.title),
+            provider_profile_id: Set(execution_plan.provider_profile_id),
+            task_profile_id: Set(Some(task_profile.id)),
+            tool_profile_id: Set(execution_plan.tool_profile_id),
+            execution_mode: Set(execution_plan.execution_mode.slug().to_string()),
+            requested_locale: Set(input.locale.clone()),
+            resolved_locale: Set(resolved_locale.clone()),
+            status: Set("active".to_string()),
+            created_by: Set(Some(operator.user_id)),
+            metadata: Set(merge_metadata(
+                input.metadata,
+                json!({
+                    "decision_trace": decision_trace,
+                    "task_input": input.task_input_json,
+                    "task_job": true,
+                }),
+            )),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&txn)
+        .await
+        .map_err(db_err)?;
+
+        insert_message(
+            &txn,
+            operator.tenant_id,
+            session.id,
+            None,
+            Some(operator.user_id),
+            build_task_job_user_message(
+                task_profile.slug.as_str(),
+                input.locale.as_deref(),
+                resolved_locale.as_str(),
+                &input.task_input_json,
+            ),
+        )
+        .await?;
+
+        txn.commit().await.map_err(db_err)?;
+
+        Self::execute_task_job_run(
+            app_ctx,
+            operator,
+            session.id,
+            input.task_input_json,
+            input.locale,
+            resolved_locale,
+        )
+        .await
     }
 
     pub async fn send_chat_message(
@@ -774,6 +919,8 @@ impl AiManagementService {
                 task_profile_id: session.task_profile_id,
                 tool_profile_id: session.tool_profile_id,
                 execution_mode: execution_mode_from_slug(&session.execution_mode),
+                requested_locale: session.requested_locale,
+                resolved_locale: session.resolved_locale,
                 status: session.status,
                 created_at: to_utc(session.created_at),
                 updated_at: to_utc(session.updated_at),
@@ -879,6 +1026,8 @@ impl AiManagementService {
                 task_profile_id: session.task_profile_id,
                 tool_profile_id: session.tool_profile_id,
                 execution_mode: execution_mode_from_slug(&session.execution_mode),
+                requested_locale: session.requested_locale,
+                resolved_locale: session.resolved_locale,
                 status: session.status,
                 created_at: to_utc(session.created_at),
                 updated_at: to_utc(session.updated_at),
@@ -1049,6 +1198,9 @@ impl AiManagementService {
             task_profile,
             tool_profile,
             execution_mode_from_slug(&session.execution_mode),
+            session.requested_locale.clone(),
+            session.resolved_locale.clone(),
+            None,
         )
         .await
     }
@@ -1085,6 +1237,8 @@ impl AiManagementService {
             None => None,
         };
         let execution_mode = execution_mode_from_slug(&session.execution_mode);
+        let requested_locale = session.requested_locale.clone();
+        let resolved_locale = session.resolved_locale.clone();
 
         let run = ai_chat_runs::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -1097,6 +1251,8 @@ impl AiManagementService {
             model: Set(provider.model.clone()),
             execution_mode: Set(execution_mode.slug().to_string()),
             execution_path: Set(execution_mode.slug().to_string()),
+            requested_locale: Set(requested_locale.clone()),
+            resolved_locale: Set(resolved_locale.clone()),
             temperature: Set(provider.temperature),
             max_tokens: Set(provider.max_tokens),
             error_message: Set(None),
@@ -1125,6 +1281,81 @@ impl AiManagementService {
             task_profile,
             tool_profile,
             execution_mode,
+            requested_locale,
+            resolved_locale,
+            None,
+        )
+        .await
+    }
+
+    async fn execute_task_job_run(
+        app_ctx: &AppContext,
+        operator: &AiOperatorContext,
+        session_id: Uuid,
+        task_input_json: serde_json::Value,
+        requested_locale: Option<String>,
+        resolved_locale: String,
+    ) -> AiResult<AiSendMessageResult> {
+        let db = &app_ctx.db;
+        let session = require_session(db, operator.tenant_id, session_id).await?;
+        let provider =
+            require_provider_profile(db, operator.tenant_id, session.provider_profile_id).await?;
+        let task_profile = match session.task_profile_id {
+            Some(id) => Some(require_task_profile(db, operator.tenant_id, id).await?),
+            None => None,
+        };
+        let tool_profile = match session.tool_profile_id {
+            Some(id) => Some(require_tool_profile(db, operator.tenant_id, id).await?),
+            None => None,
+        };
+        let execution_mode = execution_mode_from_slug(&session.execution_mode);
+
+        let run = ai_chat_runs::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(operator.tenant_id),
+            session_id: Set(session.id),
+            provider_profile_id: Set(provider.id),
+            task_profile_id: Set(task_profile.as_ref().map(|value| value.id)),
+            tool_profile_id: Set(tool_profile.as_ref().map(|value| value.id)),
+            status: Set("running".to_string()),
+            model: Set(provider.model.clone()),
+            execution_mode: Set(execution_mode.slug().to_string()),
+            execution_path: Set(execution_mode.slug().to_string()),
+            requested_locale: Set(requested_locale.clone()),
+            resolved_locale: Set(resolved_locale.clone()),
+            temperature: Set(provider.temperature),
+            max_tokens: Set(provider.max_tokens),
+            error_message: Set(None),
+            pending_approval_id: Set(None),
+            decision_trace: Set(
+                session
+                    .metadata
+                    .get("decision_trace")
+                    .cloned()
+                    .unwrap_or_else(|| json!({})),
+            ),
+            metadata: Set(json!({ "task_input": task_input_json })),
+            created_at: sea_orm::ActiveValue::NotSet,
+            started_at: Set(Utc::now().into()),
+            completed_at: Set(None),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(db)
+        .await
+        .map_err(db_err)?;
+
+        Self::continue_run(
+            app_ctx,
+            operator,
+            session.id,
+            run.id,
+            provider,
+            task_profile,
+            tool_profile,
+            execution_mode,
+            requested_locale,
+            resolved_locale,
+            Some(task_input_json),
         )
         .await
     }
@@ -1138,6 +1369,9 @@ impl AiManagementService {
         task_profile: Option<ai_task_profiles::Model>,
         tool_profile: Option<ai_tool_profiles::Model>,
         execution_mode: ExecutionMode,
+        requested_locale: Option<String>,
+        resolved_locale: String,
+        task_input_json: Option<serde_json::Value>,
     ) -> AiResult<AiSendMessageResult> {
         let db = &app_ctx.db;
         let messages = ai_chat_messages::Entity::find()
@@ -1153,6 +1387,82 @@ impl AiManagementService {
             .into_iter()
             .map(map_chat_message)
             .collect::<AiResult<Vec<_>>>()?;
+
+        let direct_registry = DirectExecutionRegistry::with_defaults();
+        if matches!(execution_mode, ExecutionMode::Direct) {
+            if let (Some(task_profile), Some(handler)) = (
+                task_profile.as_ref(),
+                task_profile
+                    .as_ref()
+                    .and_then(|profile| direct_registry.handler(&profile.slug)),
+            ) {
+                let task_input_json = match task_input_json {
+                    Some(task_input_json) => task_input_json,
+                    None => session_task_input(db, operator.tenant_id, session_id)
+                        .await?
+                        .ok_or_else(|| {
+                            AiError::Validation(
+                                "direct task execution requires task_input_json".to_string(),
+                            )
+                        })?,
+                };
+                let provider = Arc::<dyn ModelProvider>::from(provider_for_kind(
+                    provider_kind_from_slug(&provider_profile.provider_kind),
+                ));
+                let direct_result = handler
+                    .execute(
+                        app_ctx,
+                        operator,
+                        DirectExecutionRequest {
+                            task_slug: task_profile.slug.clone(),
+                            task_input_json,
+                            requested_locale: requested_locale.clone(),
+                            resolved_locale: resolved_locale.clone(),
+                            system_prompt: task_profile.system_prompt.clone(),
+                            provider_config: provider_config(&provider_profile)?,
+                            provider,
+                        },
+                    )
+                    .await?;
+                let mut run = require_run(db, operator.tenant_id, run_id).await?;
+                persist_runtime_outputs(
+                    db,
+                    operator,
+                    session_id,
+                    run_id,
+                    direct_result.appended_messages,
+                    direct_result.traces,
+                )
+                .await?;
+                let mut decision_trace: AiRunDecisionTrace =
+                    serde_json::from_value(run.decision_trace.clone()).unwrap_or_default();
+                decision_trace = enrich_decision_trace(
+                    decision_trace,
+                    ExecutionMode::Direct,
+                    requested_locale.clone(),
+                    resolved_locale.clone(),
+                );
+                decision_trace.execution_target =
+                    Some(format!("direct:{}", direct_result.execution_target.slug()));
+                let run_metadata = run.metadata.clone();
+                let mut active: ai_chat_runs::ActiveModel = run.into();
+                active.execution_path = Set(ExecutionMode::Direct.slug().to_string());
+                active.completed_at = Set(Some(Utc::now().into()));
+                active.updated_at = Set(Utc::now().into());
+                active.decision_trace =
+                    Set(serde_json::to_value(decision_trace).unwrap_or_else(|_| json!({})));
+                active.metadata = Set(merge_metadata(run_metadata, direct_result.metadata));
+                active.status = Set("completed".to_string());
+                run = active.update(db).await.map_err(db_err)?;
+                let detail = Self::chat_session_detail(db, operator.tenant_id, session_id)
+                    .await?
+                    .ok_or_else(|| AiError::Runtime("failed to reload AI chat session".to_string()))?;
+                return Ok(AiSendMessageResult {
+                    session: detail,
+                    run: map_run_record(run),
+                });
+            }
+        }
 
         let provider = Arc::<dyn ModelProvider>::from(provider_for_kind(provider_kind_from_slug(
             &provider_profile.provider_kind,
@@ -1174,6 +1484,7 @@ impl AiManagementService {
                     system_prompt: task_profile
                         .as_ref()
                         .and_then(|value| value.system_prompt.clone()),
+                    locale: Some(resolved_locale.clone()),
                 },
             )
             .await?;
@@ -1830,6 +2141,8 @@ fn map_run_record(model: ai_chat_runs::Model) -> AiChatRunRecord {
         model: model.model,
         execution_mode: execution_mode_from_slug(&model.execution_mode),
         execution_path: execution_mode_from_slug(&model.execution_path),
+        requested_locale: model.requested_locale,
+        resolved_locale: model.resolved_locale,
         temperature: model.temperature,
         max_tokens: model.max_tokens,
         error_message: model.error_message,
@@ -2186,6 +2499,266 @@ fn merge_metadata(base: serde_json::Value, extension: serde_json::Value) -> serd
         }
     }
     merged
+}
+
+fn has_effective_permission(operator: &AiOperatorContext, permission: Permission) -> bool {
+    operator.permissions.contains(&permission)
+        || operator
+            .permissions
+            .contains(&Permission::new(permission.resource, Action::Manage))
+}
+
+fn ensure_permission(operator: &AiOperatorContext, permission: Permission) -> AiResult<()> {
+    if has_effective_permission(operator, permission) {
+        Ok(())
+    } else {
+        Err(AiError::Validation(format!(
+            "permission denied: {}",
+            permission
+        )))
+    }
+}
+
+fn enforce_task_permissions(
+    operator: &AiOperatorContext,
+    task_profile: Option<&ai_task_profiles::Model>,
+) -> AiResult<()> {
+    let Some(task_profile) = task_profile else {
+        return ensure_permission(operator, Permission::AI_TASKS_TEXT_RUN);
+    };
+
+    match capability_from_slug(&task_profile.target_capability) {
+        ProviderCapability::TextGeneration | ProviderCapability::StructuredGeneration => {
+            ensure_permission(operator, Permission::AI_TASKS_TEXT_RUN)?;
+        }
+        ProviderCapability::ImageGeneration => {
+            ensure_permission(operator, Permission::AI_TASKS_IMAGE_RUN)?;
+        }
+        ProviderCapability::MultimodalUnderstanding => {
+            ensure_permission(operator, Permission::AI_TASKS_MULTIMODAL_RUN)?;
+        }
+        ProviderCapability::CodeGeneration => {
+            ensure_permission(operator, Permission::AI_TASKS_CODE_RUN)?;
+        }
+        ProviderCapability::AlloyAssist => {
+            ensure_permission(operator, Permission::AI_TASKS_ALLOY_RUN)?;
+        }
+    }
+
+    if task_profile.slug == "alloy_code" {
+        ensure_permission(operator, Permission::AI_TASKS_CODE_RUN)?;
+        ensure_permission(operator, Permission::AI_TASKS_ALLOY_RUN)?;
+    }
+
+    if task_profile.slug == "product_copy" {
+        ensure_permission(operator, Permission::AI_TASKS_TEXT_RUN)?;
+        ensure_permission(operator, Permission::PRODUCTS_UPDATE)?;
+    }
+
+    Ok(())
+}
+
+async fn resolve_task_locale(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    preferred_locale: Option<&str>,
+    requested_locale: Option<&str>,
+    task_slug: Option<&str>,
+) -> AiResult<String> {
+    let requested = normalize_locale_tag_opt(requested_locale)?;
+    let preferred = normalize_locale_tag_opt(preferred_locale)?;
+    let (tenant_default_locale, tenant_enabled_locales) = load_tenant_locale_policy(db, tenant_id).await?;
+    let tenant_default_locale = tenant_default_locale.unwrap_or_else(|| "en".to_string());
+
+    if task_slug.is_some_and(task_allows_free_locale) {
+        return Ok(requested
+            .or(preferred)
+            .unwrap_or(tenant_default_locale));
+    }
+
+    for candidate in [requested.clone(), preferred, Some(tenant_default_locale.clone())]
+        .into_iter()
+        .flatten()
+    {
+        if tenant_enabled_locales.contains(&candidate) {
+            return Ok(candidate);
+        }
+    }
+
+    Ok(tenant_default_locale)
+}
+
+fn normalize_locale_tag_opt(locale: Option<&str>) -> AiResult<Option<String>> {
+    locale.map(normalize_locale_tag).transpose()
+}
+
+fn normalize_locale_tag(locale: &str) -> AiResult<String> {
+    let normalized = locale.trim().replace('_', "-");
+    if normalized.is_empty() || normalized.len() > 32 {
+        return Err(AiError::Validation(format!("invalid locale `{locale}`")));
+    }
+
+    let parts = normalized
+        .split('-')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if parts.is_empty()
+        || !parts
+            .iter()
+            .all(|part| part.chars().all(|ch| ch.is_ascii_alphanumeric()))
+    {
+        return Err(AiError::Validation(format!("invalid locale `{locale}`")));
+    }
+
+    let mut rebuilt = Vec::with_capacity(parts.len());
+    for (index, part) in parts.into_iter().enumerate() {
+        let rebuilt_part = if index == 0 {
+            part.to_ascii_lowercase()
+        } else if part.len() == 2 && part.chars().all(|ch| ch.is_ascii_alphabetic()) {
+            part.to_ascii_uppercase()
+        } else if part.len() == 4 && part.chars().all(|ch| ch.is_ascii_alphabetic()) {
+            let mut chars = part.chars();
+            let head = chars
+                .next()
+                .map(|ch| ch.to_ascii_uppercase().to_string())
+                .unwrap_or_default();
+            let tail = chars.as_str().to_ascii_lowercase();
+            format!("{head}{tail}")
+        } else if part.len() == 3 && part.chars().all(|ch| ch.is_ascii_digit()) {
+            part.to_string()
+        } else {
+            part.to_ascii_lowercase()
+        };
+        rebuilt.push(rebuilt_part);
+    }
+
+    Ok(rebuilt.join("-"))
+}
+
+async fn load_tenant_locale_policy(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> AiResult<(Option<String>, Vec<String>)> {
+    let backend = db.get_database_backend();
+    let statement = match backend {
+        DbBackend::Sqlite => Statement::from_sql_and_values(
+            backend,
+            "SELECT default_locale, settings FROM tenants WHERE id = ?1",
+            vec![tenant_id.into()],
+        ),
+        _ => Statement::from_sql_and_values(
+            backend,
+            "SELECT default_locale, settings FROM tenants WHERE id = $1",
+            vec![tenant_id.into()],
+        ),
+    };
+
+    let Some(row) = db.query_one(statement).await.map_err(db_err)? else {
+        return Ok((Some("en".to_string()), vec!["en".to_string()]));
+    };
+
+    let default_locale = row
+        .try_get::<String>("", "default_locale")
+        .ok()
+        .and_then(|value| normalize_locale_tag_opt(Some(value.as_str())).ok().flatten());
+    let settings = row
+        .try_get::<serde_json::Value>("", "settings")
+        .unwrap_or_else(|_| json!({}));
+    let mut enabled_locales = locale_list_from_settings(&settings);
+    if let Some(default_locale) = default_locale.as_ref() {
+        if !enabled_locales.contains(default_locale) {
+            enabled_locales.push(default_locale.clone());
+        }
+    }
+    if enabled_locales.is_empty() {
+        enabled_locales.push(default_locale.clone().unwrap_or_else(|| "en".to_string()));
+    }
+
+    Ok((default_locale, enabled_locales))
+}
+
+fn locale_list_from_settings(settings: &serde_json::Value) -> Vec<String> {
+    let mut locales = Vec::new();
+    for key in ["enabled_locales", "supported_locales", "locales"] {
+        if let Some(values) = settings.get(key).and_then(|value| value.as_array()) {
+            for value in values {
+                if let Some(locale) = value.as_str() {
+                    if let Ok(locale) = normalize_locale_tag(locale) {
+                        if !locales.contains(&locale) {
+                            locales.push(locale);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    locales
+}
+
+fn task_allows_free_locale(task_slug: &str) -> bool {
+    matches!(
+        task_slug,
+        "operator_chat" | "alloy_code" | "summarization" | "translation"
+    )
+}
+
+fn enrich_decision_trace(
+    mut trace: AiRunDecisionTrace,
+    execution_mode: ExecutionMode,
+    requested_locale: Option<String>,
+    resolved_locale: String,
+) -> AiRunDecisionTrace {
+    trace.execution_mode = Some(execution_mode);
+    trace.requested_locale = requested_locale;
+    trace.resolved_locale = Some(resolved_locale);
+    if trace.execution_target.is_none() {
+        trace.execution_target = Some(match execution_mode {
+            ExecutionMode::Direct => "direct".to_string(),
+            ExecutionMode::McpTooling => "mcp:rustok-mcp".to_string(),
+            ExecutionMode::Auto => "auto".to_string(),
+        });
+    }
+    trace
+}
+
+fn build_task_job_user_message(
+    task_slug: &str,
+    requested_locale: Option<&str>,
+    resolved_locale: &str,
+    task_input: &serde_json::Value,
+) -> ChatMessage {
+    let mut metadata = json!({
+        "task_job": true,
+        "task_slug": task_slug,
+        "resolved_locale": resolved_locale,
+        "task_input": task_input,
+    });
+    if let Some(requested_locale) = requested_locale {
+        metadata["requested_locale"] = json!(requested_locale);
+    }
+
+    let pretty_input = serde_json::to_string_pretty(task_input)
+        .unwrap_or_else(|_| task_input.to_string());
+    ChatMessage {
+        role: ChatMessageRole::User,
+        content: Some(format!(
+            "Run AI task `{task_slug}` in locale `{resolved_locale}`.\n\n```json\n{pretty_input}\n```"
+        )),
+        name: None,
+        tool_call_id: None,
+        tool_calls: Vec::new(),
+        metadata,
+    }
+}
+
+async fn session_task_input(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    session_id: Uuid,
+) -> AiResult<Option<serde_json::Value>> {
+    let session = require_session(db, tenant_id, session_id).await?;
+    Ok(session.metadata.get("task_input").cloned())
 }
 
 async fn list_router_provider_profiles(

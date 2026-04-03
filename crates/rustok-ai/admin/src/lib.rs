@@ -21,7 +21,9 @@ pub fn AiAdmin() -> impl IntoView {
     let provider_temperature = RwSignal::new("0.2".to_string());
     let provider_max_tokens = RwSignal::new("1024".to_string());
     let provider_capabilities =
-        RwSignal::new("text_generation,structured_generation,code_generation".to_string());
+        RwSignal::new(
+            "text_generation,structured_generation,image_generation,code_generation".to_string(),
+        );
     let provider_allowed_tasks = RwSignal::new(String::new());
     let provider_denied_tasks = RwSignal::new(String::new());
     let provider_restricted_roles = RwSignal::new(String::new());
@@ -52,9 +54,52 @@ pub fn AiAdmin() -> impl IntoView {
 
     let session_title = RwSignal::new(String::new());
     let session_message = RwSignal::new(String::new());
+    let session_locale = RwSignal::new("en".to_string());
     let selected_provider = RwSignal::new(String::new());
     let selected_task_profile = RwSignal::new(String::new());
     let selected_tool_profile = RwSignal::new(String::new());
+    let alloy_title = RwSignal::new("Alloy Assist".to_string());
+    let alloy_locale = RwSignal::new("en".to_string());
+    let alloy_operation = RwSignal::new("list_scripts".to_string());
+    let alloy_script_id = RwSignal::new(String::new());
+    let alloy_script_name = RwSignal::new(String::new());
+    let alloy_script_source = RwSignal::new(String::new());
+    let alloy_runtime_payload = RwSignal::new(String::new());
+    let alloy_prompt = RwSignal::new(String::new());
+    let image_title = RwSignal::new("Media Image".to_string());
+    let image_locale = RwSignal::new("en".to_string());
+    let image_prompt = RwSignal::new(String::new());
+    let image_negative_prompt = RwSignal::new(String::new());
+    let image_file_name = RwSignal::new(String::new());
+    let image_asset_title = RwSignal::new(String::new());
+    let image_alt_text = RwSignal::new(String::new());
+    let image_caption = RwSignal::new(String::new());
+    let image_size = RwSignal::new("1024x1024".to_string());
+    let image_assistant_prompt = RwSignal::new(String::new());
+    let product_title = RwSignal::new("Product Copy".to_string());
+    let product_locale = RwSignal::new("en".to_string());
+    let product_id = RwSignal::new(String::new());
+    let product_source_locale = RwSignal::new(String::new());
+    let product_source_title = RwSignal::new(String::new());
+    let product_source_description = RwSignal::new(String::new());
+    let product_source_meta_title = RwSignal::new(String::new());
+    let product_source_meta_description = RwSignal::new(String::new());
+    let product_copy_instructions = RwSignal::new(String::new());
+    let product_assistant_prompt = RwSignal::new(String::new());
+    let blog_title = RwSignal::new("Blog Draft".to_string());
+    let blog_locale = RwSignal::new("en".to_string());
+    let blog_post_id = RwSignal::new(String::new());
+    let blog_source_locale = RwSignal::new(String::new());
+    let blog_source_title = RwSignal::new(String::new());
+    let blog_source_body = RwSignal::new(String::new());
+    let blog_source_excerpt = RwSignal::new(String::new());
+    let blog_source_seo_title = RwSignal::new(String::new());
+    let blog_source_seo_description = RwSignal::new(String::new());
+    let blog_tags = RwSignal::new(String::new());
+    let blog_category_id = RwSignal::new(String::new());
+    let blog_featured_image_url = RwSignal::new(String::new());
+    let blog_copy_instructions = RwSignal::new(String::new());
+    let blog_assistant_prompt = RwSignal::new(String::new());
 
     let reply_message = RwSignal::new(String::new());
 
@@ -122,7 +167,7 @@ pub fn AiAdmin() -> impl IntoView {
         provider_temperature.set("0.2".to_string());
         provider_max_tokens.set("1024".to_string());
         provider_capabilities
-            .set("text_generation,structured_generation,code_generation".to_string());
+            .set("text_generation,structured_generation,image_generation,code_generation".to_string());
         provider_allowed_tasks.set(String::new());
         provider_denied_tasks.set(String::new());
         provider_restricted_roles.set(String::new());
@@ -290,6 +335,7 @@ pub fn AiAdmin() -> impl IntoView {
                 optional_text(selected_provider.get_untracked()),
                 optional_text(selected_task_profile.get_untracked()),
                 optional_text(selected_tool_profile.get_untracked()),
+                optional_text(session_locale.get_untracked()),
                 optional_text(session_message.get_untracked()),
             )
             .await;
@@ -298,6 +344,227 @@ pub fn AiAdmin() -> impl IntoView {
                     set_selected_session.set(Some(result.session.session.id.clone()));
                     set_feedback.set(Some(format!(
                         "Session `{}` started.",
+                        result.session.session.title
+                    )));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(err) => set_error.set(Some(err.to_string())),
+            }
+        });
+    };
+
+    let on_run_alloy_job = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        let task_profile_id = selected_task_profile.get_untracked();
+        if task_profile_id.trim().is_empty() {
+            set_error.set(Some(
+                "Select the `alloy_code` task profile before running Alloy Assist.".to_string(),
+            ));
+            return;
+        }
+
+        let payload = alloy_task_payload(
+            alloy_operation.get_untracked(),
+            optional_text(alloy_script_id.get_untracked()),
+            optional_text(alloy_script_name.get_untracked()),
+            optional_text(alloy_script_source.get_untracked()),
+            optional_text(alloy_runtime_payload.get_untracked()),
+            optional_text(alloy_prompt.get_untracked()),
+        );
+        let Ok(payload) = payload else {
+            set_error.set(Some(
+                "Failed to assemble Alloy task payload. Check the runtime payload JSON."
+                    .to_string(),
+            ));
+            return;
+        };
+
+        set_feedback.set(None);
+        set_error.set(None);
+        spawn_local(async move {
+            let result = api::run_task_job(
+                alloy_title.get_untracked(),
+                optional_text(selected_provider.get_untracked()),
+                task_profile_id,
+                Some("direct".to_string()),
+                optional_text(alloy_locale.get_untracked()),
+                payload,
+            )
+            .await;
+            match result {
+                Ok(result) => {
+                    set_selected_session.set(Some(result.session.session.id.clone()));
+                    set_feedback.set(Some(format!(
+                        "Alloy job `{}` completed.",
+                        result.session.session.title
+                    )));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(err) => set_error.set(Some(err.to_string())),
+            }
+        });
+    };
+
+    let on_run_image_job = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        let task_profile_id = selected_task_profile.get_untracked();
+        if task_profile_id.trim().is_empty() {
+            set_error.set(Some(
+                "Select the `image_asset` task profile before generating a media image."
+                    .to_string(),
+            ));
+            return;
+        }
+
+        let payload = image_task_payload(
+            image_prompt.get_untracked(),
+            optional_text(image_negative_prompt.get_untracked()),
+            optional_text(image_asset_title.get_untracked()),
+            optional_text(image_alt_text.get_untracked()),
+            optional_text(image_caption.get_untracked()),
+            optional_text(image_file_name.get_untracked()),
+            optional_text(image_size.get_untracked()),
+            optional_text(image_assistant_prompt.get_untracked()),
+        );
+        let Ok(payload) = payload else {
+            set_error.set(Some(
+                "Failed to assemble image task payload. Check prompt and size fields."
+                    .to_string(),
+            ));
+            return;
+        };
+
+        set_feedback.set(None);
+        set_error.set(None);
+        spawn_local(async move {
+            let result = api::run_task_job(
+                image_title.get_untracked(),
+                optional_text(selected_provider.get_untracked()),
+                task_profile_id,
+                Some("direct".to_string()),
+                optional_text(image_locale.get_untracked()),
+                payload,
+            )
+            .await;
+            match result {
+                Ok(result) => {
+                    set_selected_session.set(Some(result.session.session.id.clone()));
+                    set_feedback.set(Some(format!(
+                        "Image job `{}` completed.",
+                        result.session.session.title
+                    )));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(err) => set_error.set(Some(err.to_string())),
+            }
+        });
+    };
+
+    let on_run_product_job = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        let task_profile_id = selected_task_profile.get_untracked();
+        if task_profile_id.trim().is_empty() {
+            set_error.set(Some(
+                "Select the `product_copy` task profile before generating localized product copy."
+                    .to_string(),
+            ));
+            return;
+        }
+
+        let payload = product_task_payload(
+            product_id.get_untracked(),
+            optional_text(product_source_locale.get_untracked()),
+            optional_text(product_source_title.get_untracked()),
+            optional_text(product_source_description.get_untracked()),
+            optional_text(product_source_meta_title.get_untracked()),
+            optional_text(product_source_meta_description.get_untracked()),
+            optional_text(product_copy_instructions.get_untracked()),
+            optional_text(product_assistant_prompt.get_untracked()),
+        );
+        let Ok(payload) = payload else {
+            set_error.set(Some(
+                "Failed to assemble product copy payload. Check the product id."
+                    .to_string(),
+            ));
+            return;
+        };
+
+        set_feedback.set(None);
+        set_error.set(None);
+        spawn_local(async move {
+            let result = api::run_task_job(
+                product_title.get_untracked(),
+                optional_text(selected_provider.get_untracked()),
+                task_profile_id,
+                Some("direct".to_string()),
+                optional_text(product_locale.get_untracked()),
+                payload,
+            )
+            .await;
+            match result {
+                Ok(result) => {
+                    set_selected_session.set(Some(result.session.session.id.clone()));
+                    set_feedback.set(Some(format!(
+                        "Product copy job `{}` completed.",
+                        result.session.session.title
+                    )));
+                    set_refresh_nonce.update(|value| *value += 1);
+                }
+                Err(err) => set_error.set(Some(err.to_string())),
+            }
+        });
+    };
+
+    let on_run_blog_job = move |ev: SubmitEvent| {
+        ev.prevent_default();
+        let task_profile_id = selected_task_profile.get_untracked();
+        if task_profile_id.trim().is_empty() {
+            set_error.set(Some(
+                "Select the `blog_draft` task profile before generating blog draft content."
+                    .to_string(),
+            ));
+            return;
+        }
+
+        let payload = blog_task_payload(
+            optional_text(blog_post_id.get_untracked()),
+            optional_text(blog_source_locale.get_untracked()),
+            optional_text(blog_source_title.get_untracked()),
+            optional_text(blog_source_body.get_untracked()),
+            optional_text(blog_source_excerpt.get_untracked()),
+            optional_text(blog_source_seo_title.get_untracked()),
+            optional_text(blog_source_seo_description.get_untracked()),
+            parse_csv(blog_tags.get_untracked()),
+            optional_text(blog_category_id.get_untracked()),
+            optional_text(blog_featured_image_url.get_untracked()),
+            optional_text(blog_copy_instructions.get_untracked()),
+            optional_text(blog_assistant_prompt.get_untracked()),
+        );
+        let Ok(payload) = payload else {
+            set_error.set(Some(
+                "Failed to assemble blog draft payload. Check post/category ids."
+                    .to_string(),
+            ));
+            return;
+        };
+
+        set_feedback.set(None);
+        set_error.set(None);
+        spawn_local(async move {
+            let result = api::run_task_job(
+                blog_title.get_untracked(),
+                optional_text(selected_provider.get_untracked()),
+                task_profile_id,
+                Some("direct".to_string()),
+                optional_text(blog_locale.get_untracked()),
+                payload,
+            )
+            .await;
+            match result {
+                Ok(result) => {
+                    set_selected_session.set(Some(result.session.session.id.clone()));
+                    set_feedback.set(Some(format!(
+                        "Blog draft job `{}` completed.",
                         result.session.session.title
                     )));
                     set_refresh_nonce.update(|value| *value += 1);
@@ -641,9 +908,160 @@ pub fn AiAdmin() -> impl IntoView {
                             </section>
 
                             <section class="space-y-6">
+                                <Card title="Blog Draft">
+                                    <form class="space-y-3" on:submit=on_run_blog_job>
+                                        <TextField label="Job title" value=blog_title />
+                                        <TextField label="Locale" value=blog_locale />
+                                        <TextField label="Existing post id" value=blog_post_id />
+                                        <TextField label="Source locale" value=blog_source_locale />
+                                        <TextField label="Source title override" value=blog_source_title />
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">"Source body override"</span>
+                                            <textarea
+                                                class="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=blog_source_body
+                                                on:input=move |ev| blog_source_body.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <TextField label="Source excerpt override" value=blog_source_excerpt />
+                                        <TextField label="Source SEO title override" value=blog_source_seo_title />
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">"Source SEO description override"</span>
+                                            <textarea
+                                                class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=blog_source_seo_description
+                                                on:input=move |ev| blog_source_seo_description.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <TextField label="Tags (csv)" value=blog_tags />
+                                        <TextField label="Category id" value=blog_category_id />
+                                        <TextField label="Featured image URL" value=blog_featured_image_url />
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">"Copy instructions"</span>
+                                            <textarea
+                                                class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=blog_copy_instructions
+                                                on:input=move |ev| blog_copy_instructions.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <TextField label="Assistant prompt" value=blog_assistant_prompt />
+                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
+                                            {move || format!(
+                                                "Provider: {} | Task profile: {} | Mode: direct",
+                                                selected_provider.get(),
+                                                selected_task_profile.get(),
+                                            )}
+                                        </div>
+                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Generate blog draft"</button>
+                                    </form>
+                                </Card>
+
+                                <Card title="Product Copy">
+                                    <form class="space-y-3" on:submit=on_run_product_job>
+                                        <TextField label="Job title" value=product_title />
+                                        <TextField label="Locale" value=product_locale />
+                                        <TextField label="Product id" value=product_id />
+                                        <TextField label="Source locale" value=product_source_locale />
+                                        <TextField label="Source title override" value=product_source_title />
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">"Source description override"</span>
+                                            <textarea
+                                                class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=product_source_description
+                                                on:input=move |ev| product_source_description.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <TextField label="Source meta title override" value=product_source_meta_title />
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">"Source meta description override"</span>
+                                            <textarea
+                                                class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=product_source_meta_description
+                                                on:input=move |ev| product_source_meta_description.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">"Copy instructions"</span>
+                                            <textarea
+                                                class="min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=product_copy_instructions
+                                                on:input=move |ev| product_copy_instructions.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <TextField label="Assistant prompt" value=product_assistant_prompt />
+                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
+                                            {move || format!(
+                                                "Provider: {} | Task profile: {} | Mode: direct",
+                                                selected_provider.get(),
+                                                selected_task_profile.get(),
+                                            )}
+                                        </div>
+                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Generate product copy"</button>
+                                    </form>
+                                </Card>
+
+                                <Card title="Media Image">
+                                    <form class="space-y-3" on:submit=on_run_image_job>
+                                        <TextField label="Job title" value=image_title />
+                                        <TextField label="Locale" value=image_locale />
+                                        <TextField label="Prompt" value=image_prompt />
+                                        <TextField label="Negative prompt" value=image_negative_prompt />
+                                        <TextField label="File name" value=image_file_name />
+                                        <TextField label="Media title" value=image_asset_title />
+                                        <TextField label="Alt text" value=image_alt_text />
+                                        <TextField label="Caption" value=image_caption />
+                                        <TextField label="Size" value=image_size />
+                                        <TextField label="Assistant prompt" value=image_assistant_prompt />
+                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
+                                            {move || format!(
+                                                "Provider: {} | Task profile: {} | Mode: direct",
+                                                selected_provider.get(),
+                                                selected_task_profile.get(),
+                                            )}
+                                        </div>
+                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Generate media image"</button>
+                                    </form>
+                                </Card>
+
+                                <Card title="Alloy Assist">
+                                    <form class="space-y-3" on:submit=on_run_alloy_job>
+                                        <TextField label="Job title" value=alloy_title />
+                                        <TextField label="Locale" value=alloy_locale />
+                                        <TextField label="Operation" value=alloy_operation />
+                                        <TextField label="Script id" value=alloy_script_id />
+                                        <TextField label="Script name" value=alloy_script_name />
+                                        <TextField label="Assistant prompt" value=alloy_prompt />
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">"Script source"</span>
+                                            <textarea
+                                                class="min-h-28 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=alloy_script_source
+                                                on:input=move |ev| alloy_script_source.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <label class="block space-y-1">
+                                            <span class="text-sm text-muted-foreground">"Runtime payload JSON"</span>
+                                            <textarea
+                                                class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                                                prop:value=alloy_runtime_payload
+                                                on:input=move |ev| alloy_runtime_payload.set(event_target_value(&ev))
+                                            />
+                                        </label>
+                                        <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
+                                            {move || format!(
+                                                "Provider: {} | Task profile: {} | Mode: direct",
+                                                selected_provider.get(),
+                                                selected_task_profile.get(),
+                                            )}
+                                        </div>
+                                        <button type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">"Run Alloy job"</button>
+                                    </form>
+                                </Card>
+
                                 <Card title="New Session">
                                     <form class="space-y-3" on:submit=on_start_session>
                                         <TextField label="Title" value=session_title />
+                                        <TextField label="Locale" value=session_locale />
                                         <TextField label="Initial message" value=session_message />
                                         <div class="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground">
                                             {move || format!(
@@ -704,6 +1122,13 @@ pub fn AiAdmin() -> impl IntoView {
                                                                     detail.provider_profile.display_name,
                                                                     detail.provider_profile.model,
                                                                     detail.session.execution_mode
+                                                                )}
+                                                            </div>
+                                                            <div class="text-muted-foreground">
+                                                                {format!(
+                                                                    "locale: {} -> {}",
+                                                                    detail.session.requested_locale.clone().unwrap_or_else(|| "auto".to_string()),
+                                                                    detail.session.resolved_locale.clone(),
                                                                 )}
                                                             </div>
                                                         </div>
@@ -788,6 +1213,13 @@ pub fn AiAdmin() -> impl IntoView {
                                                                                 run.status,
                                                                                 run.execution_mode,
                                                                                 run.execution_path
+                                                                            )}
+                                                                        </div>
+                                                                        <div class="text-muted-foreground">
+                                                                            {format!(
+                                                                                "locale: {} -> {}",
+                                                                                run.requested_locale.clone().unwrap_or_else(|| "auto".to_string()),
+                                                                                run.resolved_locale.clone(),
                                                                             )}
                                                                         </div>
                                                                         <Show when=move || has_error>
@@ -877,4 +1309,116 @@ fn optional_text(value: String) -> Option<String> {
     } else {
         Some(value)
     }
+}
+
+fn alloy_task_payload(
+    operation: String,
+    script_id: Option<String>,
+    script_name: Option<String>,
+    script_source: Option<String>,
+    runtime_payload_json: Option<String>,
+    assistant_prompt: Option<String>,
+) -> Result<String, serde_json::Error> {
+    let payload = serde_json::json!({
+        "operation": operation,
+        "script_id": script_id,
+        "script_name": script_name,
+        "script_source": script_source,
+        "runtime_payload_json": runtime_payload_json,
+        "assistant_prompt": assistant_prompt,
+    });
+    serde_json::to_string(&payload)
+}
+
+fn image_task_payload(
+    prompt: String,
+    negative_prompt: Option<String>,
+    title: Option<String>,
+    alt_text: Option<String>,
+    caption: Option<String>,
+    file_name: Option<String>,
+    size: Option<String>,
+    assistant_prompt: Option<String>,
+) -> Result<String, serde_json::Error> {
+    let payload = serde_json::json!({
+        "prompt": prompt,
+        "negative_prompt": negative_prompt,
+        "title": title,
+        "alt_text": alt_text,
+        "caption": caption,
+        "file_name": file_name,
+        "size": size,
+        "assistant_prompt": assistant_prompt,
+    });
+    serde_json::to_string(&payload)
+}
+
+fn product_task_payload(
+    product_id: String,
+    source_locale: Option<String>,
+    source_title: Option<String>,
+    source_description: Option<String>,
+    source_meta_title: Option<String>,
+    source_meta_description: Option<String>,
+    copy_instructions: Option<String>,
+    assistant_prompt: Option<String>,
+) -> Result<String, serde_json::Error> {
+    let product_id = uuid::Uuid::parse_str(product_id.trim())
+        .map_err(|error| serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidInput, error)))?;
+    let payload = serde_json::json!({
+        "product_id": product_id,
+        "source_locale": source_locale,
+        "source_title": source_title,
+        "source_description": source_description,
+        "source_meta_title": source_meta_title,
+        "source_meta_description": source_meta_description,
+        "copy_instructions": copy_instructions,
+        "assistant_prompt": assistant_prompt,
+    });
+    serde_json::to_string(&payload)
+}
+
+fn blog_task_payload(
+    post_id: Option<String>,
+    source_locale: Option<String>,
+    source_title: Option<String>,
+    source_body: Option<String>,
+    source_excerpt: Option<String>,
+    source_seo_title: Option<String>,
+    source_seo_description: Option<String>,
+    tags: Vec<String>,
+    category_id: Option<String>,
+    featured_image_url: Option<String>,
+    copy_instructions: Option<String>,
+    assistant_prompt: Option<String>,
+) -> Result<String, serde_json::Error> {
+    let post_id = post_id
+        .map(|value| {
+            uuid::Uuid::parse_str(value.trim()).map_err(|error| {
+                serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidInput, error))
+            })
+        })
+        .transpose()?;
+    let category_id = category_id
+        .map(|value| {
+            uuid::Uuid::parse_str(value.trim()).map_err(|error| {
+                serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidInput, error))
+            })
+        })
+        .transpose()?;
+    let payload = serde_json::json!({
+        "post_id": post_id,
+        "source_locale": source_locale,
+        "source_title": source_title,
+        "source_body": source_body,
+        "source_excerpt": source_excerpt,
+        "source_seo_title": source_seo_title,
+        "source_seo_description": source_seo_description,
+        "tags": tags,
+        "category_id": category_id,
+        "featured_image_url": featured_image_url,
+        "copy_instructions": copy_instructions,
+        "assistant_prompt": assistant_prompt,
+    });
+    serde_json::to_string(&payload)
 }

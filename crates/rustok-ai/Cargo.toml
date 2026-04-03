@@ -9,10 +9,17 @@ description = "AI orchestration capability for RusToK"
 default = []
 server = [
   "dep:alloy",
+  "dep:bytes",
   "dep:loco-rs",
   "dep:once_cell",
+  "dep:rhai",
+  "dep:rustok-api",
+  "dep:rustok-blog",
+  "dep:rustok-commerce",
   "dep:rustok-core",
+  "dep:rustok-media",
   "dep:rustok-mcp",
+  "dep:rustok-storage",
   "dep:schemars",
   "dep:sea-orm",
 ]
@@ -20,14 +27,21 @@ server = [
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+bytes = { version = "1.0", optional = true }
 chrono.workspace = true
 alloy = { workspace = true, optional = true }
 base64.workspace = true
 loco-rs = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json"] }
+rhai = { workspace = true, optional = true }
+rustok-api = { workspace = true, optional = true }
+rustok-blog = { workspace = true, optional = true }
+rustok-commerce = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
+rustok-media = { workspace = true, optional = true }
 rustok-mcp = { workspace = true, optional = true }
+rustok-storage = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 serde.workspace = true

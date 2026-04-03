@@ -23,14 +23,14 @@ use crate::services::marketplace_catalog::{
     legacy_registry_catalog_module_path, legacy_registry_catalog_path,
     registry_catalog_from_modules, registry_catalog_module_path, registry_catalog_path,
     registry_publish_approve_path, registry_publish_artifact_path, registry_publish_path,
-    registry_publish_reject_path, registry_publish_status_path, registry_yank_path,
-    validate_registry_mutation_schema_version, RegistryCatalogModule, RegistryCatalogResponse,
-    RegistryMutationResponse, RegistryPublishDecisionRequest, RegistryPublishRequest,
-    RegistryPublishStatusResponse, RegistryYankRequest,
+    registry_publish_reject_path, registry_publish_status_path, registry_publish_validate_path,
+    registry_yank_path, validate_registry_mutation_schema_version, RegistryCatalogModule,
+    RegistryCatalogResponse, RegistryMutationResponse, RegistryPublishDecisionRequest,
+    RegistryPublishRequest, RegistryPublishStatusResponse, RegistryPublishValidationRequest,
+    RegistryYankRequest,
 };
 use crate::services::registry_governance::{
-    actor_can_manage_registry_slug, release_status_label, request_status_label,
-    RegistryArtifactUpload, RegistryGovernanceService,
+    release_status_label, request_status_label, RegistryArtifactUpload, RegistryGovernanceService,
 };
 
 #[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams)]
@@ -167,7 +167,7 @@ async fn publish(
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
 
-    let warnings = validate_publish_request(&request)?;
+    let warnings = validate_publish_request_payload(&request)?;
 
     if !request.dry_run {
         if !request.module.ownership.eq_ignore_ascii_case("first_party") {
@@ -178,14 +178,9 @@ async fn publish(
         }
 
         let actor = request_actor_from_headers(&headers);
-        if !actor_can_manage_registry_slug(&actor, &request.module.slug) {
-            return Err(Error::BadRequest(format!(
-                "Actor '{}' is not allowed to create live publish requests for module '{}'",
-                actor, request.module.slug
-            )));
-        }
+        let publisher = request_publisher_from_headers(&headers);
         let created = RegistryGovernanceService::new(ctx.db.clone())
-            .create_publish_request(&request, &actor, &warnings)
+            .create_publish_request(&request, &actor, publisher.as_deref(), &warnings)
             .await
             .map_err(|error| {
                 Error::Message(format!(
@@ -296,8 +291,8 @@ async fn publish_status(
     ),
     responses(
         (
-            status = 200,
-            description = "Artifact uploaded, validated, and projected into the published registry release trail",
+            status = 202,
+            description = "Artifact uploaded and queued for validation",
             body = RegistryMutationResponse
         ),
         (
@@ -332,7 +327,7 @@ async fn upload_publish_artifact(
     let actor = request_actor_from_headers(&headers);
 
     let request = RegistryGovernanceService::new(ctx.db.clone())
-        .upload_and_publish_request(
+        .upload_publish_artifact(
             &request_id,
             &actor,
             RegistryArtifactUpload {
@@ -344,7 +339,7 @@ async fn upload_publish_artifact(
         .map_err(map_registry_governance_error)?;
 
     Ok((
-        StatusCode::OK,
+        StatusCode::ACCEPTED,
         Json(RegistryMutationResponse {
             schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
             action: "publish".to_string(),
@@ -357,6 +352,123 @@ async fn upload_publish_artifact(
             warnings: deserialize_message_list(&request.validation_warnings),
             errors: deserialize_message_list(&request.validation_errors),
             next_step: publish_request_next_step(&request.status, &request_id),
+        }),
+    ))
+}
+
+/// POST /v2/catalog/publish/{request_id}/validate - Run publish artifact validation outside the upload path
+#[utoipa::path(
+    post,
+    path = "/v2/catalog/publish/{request_id}/validate",
+    tag = "marketplace",
+    params(
+        ("request_id" = String, Path, description = "Registry publish request identifier")
+    ),
+    request_body = RegistryPublishValidationRequest,
+    responses(
+        (
+            status = 200,
+            description = "Publish request validation already completed or returned the current terminal lifecycle state",
+            body = RegistryMutationResponse
+        ),
+        (
+            status = 202,
+            description = "Publish request validation was accepted and queued as a background lifecycle step",
+            body = RegistryMutationResponse
+        ),
+        (
+            status = 400,
+            description = "Validation request failed lifecycle or governance checks"
+        ),
+        (
+            status = 404,
+            description = "Registry publish request was not found"
+        )
+    )
+)]
+async fn validate_publish_request_step(
+    State(ctx): State<AppContext>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<RegistryPublishValidationRequest>,
+) -> Result<impl IntoResponse, Error> {
+    validate_registry_mutation_schema_version(request.schema_version)
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
+    let existing = RegistryGovernanceService::new(ctx.db.clone())
+        .get_publish_request(&request_id)
+        .await
+        .map_err(|error| {
+            Error::Message(format!("Failed to load registry publish request: {error}"))
+        })?
+        .ok_or(Error::NotFound)?;
+    let actor = request_actor_from_headers(&headers);
+
+    if request.dry_run {
+        return Ok((
+            StatusCode::OK,
+            Json(RegistryMutationResponse {
+                schema_version:
+                    crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+                action: "validate".to_string(),
+                dry_run: true,
+                accepted: true,
+                request_id: Some(request_id),
+                status: Some("dry_run".to_string()),
+                slug: existing.slug,
+                version: existing.version,
+                warnings: vec!["Dry-run preview only. Re-run with dry_run=false to execute publish validation outside the upload path.".to_string()],
+                errors: Vec::new(),
+                next_step: Some("Use the same endpoint with dry_run=false after artifact upload completes.".to_string()),
+            }),
+        ));
+    }
+
+    let governance = RegistryGovernanceService::new(ctx.db.clone());
+    let (validated, queued) = governance
+        .validate_publish_request(&request_id, &actor)
+        .await
+        .map_err(map_registry_governance_error)?;
+    if queued {
+        let db = ctx.db.clone();
+        let request_id = validated.id.clone();
+        let actor = actor.clone();
+        tokio::spawn(async move {
+            if let Err(error) = RegistryGovernanceService::new(db)
+                .run_publish_validation_job(&request_id, &actor)
+                .await
+            {
+                tracing::error!(
+                    error = %error,
+                    request_id = %request_id,
+                    actor = %actor,
+                    "Background registry publish validation failed"
+                );
+            }
+        });
+    }
+
+    let status_code = if validated.status
+        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Validating
+    {
+        StatusCode::ACCEPTED
+    } else {
+        StatusCode::OK
+    };
+
+    Ok((
+        status_code,
+        Json(RegistryMutationResponse {
+            schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
+            action: "validate".to_string(),
+            dry_run: false,
+            accepted: publish_request_accepted(&validated.status),
+            request_id: Some(validated.id.clone()),
+            status: Some(request_status_label(validated.status.clone()).to_string()),
+            slug: validated.slug,
+            version: validated.version,
+            warnings: deserialize_message_list(&validated.validation_warnings),
+            errors: deserialize_message_list(&validated.validation_errors),
+            next_step: publish_request_next_step(&validated.status, &validated.id),
         }),
     ))
 }
@@ -423,8 +535,9 @@ async fn approve_publish_request(
         ));
     }
 
+    let publisher = request_publisher_from_headers(&headers);
     let approved = RegistryGovernanceService::new(ctx.db.clone())
-        .approve_publish_request(&request_id, &actor)
+        .approve_publish_request(&request_id, &actor, publisher.as_deref())
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -638,6 +751,10 @@ pub fn routes() -> Routes {
         .add(
             registry_publish_artifact_path(),
             put(upload_publish_artifact),
+        )
+        .add(
+            registry_publish_validate_path(),
+            post(validate_publish_request_step),
         )
         .add(
             registry_publish_approve_path(),
@@ -856,7 +973,9 @@ fn request_matches_etag(headers: &HeaderMap, etag: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn validate_publish_request(request: &RegistryPublishRequest) -> Result<Vec<String>, Error> {
+fn validate_publish_request_payload(
+    request: &RegistryPublishRequest,
+) -> Result<Vec<String>, Error> {
     validate_registry_slug(&request.module.slug)?;
     validate_registry_version(&request.module.version)?;
 
@@ -911,7 +1030,7 @@ fn validate_yank_request(request: &RegistryYankRequest) -> Result<Vec<String>, E
         .is_none_or(|reason| reason.is_empty())
     {
         warnings.push(
-            "No yank reason supplied; governance audit trail is not implemented yet, but reasons will be expected by the real backend."
+            "No yank reason supplied; live yank requires a non-empty reason for the governance audit trail."
                 .to_string(),
         );
     }
@@ -931,12 +1050,20 @@ fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
 fn request_actor_from_headers(headers: &HeaderMap) -> String {
     headers
         .get("x-rustok-actor")
-        .or_else(|| headers.get("x-rustok-publisher"))
         .and_then(|value| value.to_str().ok())
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("anonymous")
         .to_string()
+}
+
+fn request_publisher_from_headers(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("x-rustok-publisher")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 fn publish_request_accepted(
@@ -957,8 +1084,13 @@ fn publish_request_next_step(
             Some(registry_publish_artifact_path().replace("{request_id}", request_id))
         }
         crate::models::registry_publish_request::RegistryPublishRequestStatus::ArtifactUploaded
-        | crate::models::registry_publish_request::RegistryPublishRequestStatus::Submitted
-        | crate::models::registry_publish_request::RegistryPublishRequestStatus::Validating => {
+        | crate::models::registry_publish_request::RegistryPublishRequestStatus::Submitted => {
+            Some(format!(
+                "Trigger artifact validation via POST {}",
+                registry_publish_validate_path().replace("{request_id}", request_id)
+            ))
+        }
+        crate::models::registry_publish_request::RegistryPublishRequestStatus::Validating => {
             Some(format!(
                 "Poll {} for the latest publish lifecycle status.",
                 registry_publish_status_path().replace("{request_id}", request_id)

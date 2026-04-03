@@ -16,6 +16,8 @@ pub mod oauth_tokens;
 pub mod order_field_definitions;
 pub mod platform_settings;
 pub mod product_field_definitions;
+pub mod registry_governance_event;
+pub mod registry_module_owner;
 pub mod registry_module_release;
 pub mod registry_publish_request;
 pub mod release;
@@ -27,6 +29,8 @@ pub mod user_field_definitions;
 pub mod users;
 
 pub use build::Entity as Build;
+pub use registry_governance_event::Entity as RegistryGovernanceEvent;
+pub use registry_module_owner::Entity as RegistryModuleOwner;
 pub use registry_module_release::Entity as RegistryModuleRelease;
 pub use registry_publish_request::Entity as RegistryPublishRequest;
 pub use release::Entity as Release;

@@ -12,7 +12,6 @@ use chrono::Utc;
 use loco_rs::app::AppContext;
 use loco_rs::controller::format;
 use loco_rs::controller::Routes;
-use rustok_core::{i18n::translate, Locale};
 use rustok_telemetry::metrics;
 use sea_orm::{
     sea_query::Expr, ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
@@ -284,7 +283,7 @@ async fn logout(
     let token_hash = hash_refresh_token(&params.refresh_token);
     let session = sessions::Entity::find_by_token_hash(&ctx.db, tenant.id, &token_hash)
         .await?
-        .ok_or_else(|| Error::Unauthorized(translate(Locale::En, "auth.invalid_refresh_token")))?;
+        .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
 
     if session.revoked_at.is_none() {
         let mut session_model: sessions::ActiveModel = session.into();

@@ -183,7 +183,7 @@ curl -s http://localhost:5150/graphql -H 'Content-Type: application/json' \
 grep -rn "RequestContext\|Accept-Language\|rustok-admin-locale\|extract_requested_locale\|resolve_locale" apps/server/src/ --include="*.rs"
 ```
 
-**Ожидаемый результат:** Каноническая цепочка locale resolution (`query -> cookie -> Accept-Language -> tenant.default_locale -> en`) собрана в request context, а middleware/GraphQL используют тот же effective locale.
+**Ожидаемый результат:** Каноническая цепочка locale resolution (`query -> x-medusa-locale -> cookie -> Accept-Language(q-values) -> tenant.default_locale -> en`) собрана в request context, а middleware/GraphQL используют тот же effective locale.
 
 ### 6.2 API ошибки локализованы
 
@@ -201,6 +201,14 @@ grep -rn "fn translations" crates/rustok-*/src/ --include="*.rs"
 ```
 
 **Ожидаемый результат:** Если trait-based translation bundles будут введены, они должны появиться в коде и docs одновременно. Отсутствие `fn translations` сегодня само по себе не баг, но live docs не должны описывать этот слой как уже работающий platform contract.
+
+### 6.4 UI locale bundles parity проверяется машинно
+
+```bash
+npm run verify:i18n:ui
+```
+
+**Ожидаемый результат:** `locales/*.json` и `messages/*.json` в host apps и module-owned UI packages проходят проверку на parity ключей; отсутствие такого артефакта считается незакрытым verification gap для native i18n.
 
 ---
 

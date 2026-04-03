@@ -3,7 +3,7 @@
 //! `POST /oauth/token` — Token endpoint (client_credentials flow)
 
 use axum::{
-    extract::{Form, Query, State},
+    extract::{ConnectInfo, Form, Query, State},
     http::{
         header::{AUTHORIZATION, COOKIE, LOCATION, SET_COOKIE},
         HeaderMap, StatusCode,
@@ -16,9 +16,11 @@ use loco_rs::app::AppContext;
 use loco_rs::controller::Routes;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use uuid::Uuid;
 
 use crate::auth::auth_config_from_ctx;
+use crate::common::{extract_effective_proto, RustokSettings};
 use crate::context::TenantContext;
 use crate::extractors::auth::{resolve_current_user_from_access_token, CurrentUser};
 use crate::services::oauth_app::OAuthAppService;
@@ -681,6 +683,8 @@ async fn consent_handler(
 }
 
 async fn create_browser_session_handler(
+    State(ctx): State<AppContext>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     _current_user: CurrentUser,
 ) -> axum::response::Response {
@@ -692,20 +696,48 @@ async fn create_browser_session_handler(
         .into_response();
     };
 
+    let settings = match RustokSettings::from_settings(&ctx.config.settings) {
+        Ok(settings) => settings,
+        Err(_) => {
+            return TokenErrorResponse {
+                error: "server_error".to_string(),
+                error_description: "Failed to load rustok settings".to_string(),
+            }
+            .into_response();
+        }
+    };
+
     (
         StatusCode::NO_CONTENT,
         [(
             SET_COOKIE,
-            build_oauth_browser_session_cookie(&access_token, &headers),
+            build_oauth_browser_session_cookie(&access_token, &headers, addr.ip(), &settings),
         )],
     )
         .into_response()
 }
 
-async fn clear_browser_session_handler(headers: HeaderMap) -> axum::response::Response {
+async fn clear_browser_session_handler(
+    State(ctx): State<AppContext>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let settings = match RustokSettings::from_settings(&ctx.config.settings) {
+        Ok(settings) => settings,
+        Err(_) => {
+            return TokenErrorResponse {
+                error: "server_error".to_string(),
+                error_description: "Failed to load rustok settings".to_string(),
+            }
+            .into_response();
+        }
+    };
     (
         StatusCode::NO_CONTENT,
-        [(SET_COOKIE, clear_oauth_browser_session_cookie(&headers))],
+        [(
+            SET_COOKIE,
+            clear_oauth_browser_session_cookie(&headers, addr.ip(), &settings),
+        )],
     )
         .into_response()
 }
@@ -847,16 +879,29 @@ fn parse_oauth_browser_cookie(cookie_header: &str) -> Option<String> {
     })
 }
 
-fn build_oauth_browser_session_cookie(access_token: &str, headers: &HeaderMap) -> String {
+fn build_oauth_browser_session_cookie(
+    access_token: &str,
+    headers: &HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
+) -> String {
     build_oauth_browser_session_cookie_for_secure(
         access_token,
-        should_use_secure_cookie(headers),
+        should_use_secure_cookie(headers, Some(peer_ip), settings),
         Some(OAUTH_BROWSER_SESSION_TTL_SECS),
     )
 }
 
-fn clear_oauth_browser_session_cookie(headers: &HeaderMap) -> String {
-    build_oauth_browser_session_cookie_for_secure("", should_use_secure_cookie(headers), Some(0))
+fn clear_oauth_browser_session_cookie(
+    headers: &HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
+) -> String {
+    build_oauth_browser_session_cookie_for_secure(
+        "",
+        should_use_secure_cookie(headers, Some(peer_ip), settings),
+        Some(0),
+    )
 }
 
 fn clear_oauth_browser_session_cookie_for_redirect(redirect_uri: &str) -> String {
@@ -883,12 +928,13 @@ fn build_oauth_browser_session_cookie_for_secure(
     cookie
 }
 
-fn should_use_secure_cookie(headers: &HeaderMap) -> bool {
-    headers
-        .get("x-forwarded-proto")
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.eq_ignore_ascii_case("https"))
-        .unwrap_or(false)
+fn should_use_secure_cookie(
+    headers: &HeaderMap,
+    peer_ip: Option<std::net::IpAddr>,
+    settings: &RustokSettings,
+) -> bool {
+    extract_effective_proto(headers, peer_ip, &settings.runtime.request_trust)
+        .is_some_and(|value| value.eq_ignore_ascii_case("https"))
 }
 
 fn redirect_with_code(
@@ -1138,8 +1184,10 @@ pub fn routes() -> Routes {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::settings::{ForwardedHeadersMode, RequestTrustSettings};
     use axum::http::{header::HeaderValue, HeaderName};
     use chrono::Utc;
+    use std::net::{IpAddr, Ipv4Addr};
 
     fn sample_app(app_type: &str) -> crate::models::oauth_apps::Model {
         crate::models::oauth_apps::Model {
@@ -1177,6 +1225,15 @@ mod tests {
         }
     }
 
+    fn trusted_settings() -> RustokSettings {
+        let mut settings = RustokSettings::default();
+        settings.runtime.request_trust = RequestTrustSettings {
+            forwarded_headers_mode: ForwardedHeadersMode::TrustedOnly,
+            trusted_proxy_cidrs: vec!["10.0.0.0/8".to_string()],
+        };
+        settings
+    }
+
     #[test]
     fn browser_cookie_is_parsed_and_authorization_header_wins() {
         let mut headers = HeaderMap::new();
@@ -1208,15 +1265,17 @@ mod tests {
             HeaderName::from_static("x-forwarded-proto"),
             HeaderValue::from_static("https"),
         );
+        let settings = trusted_settings();
+        let peer_ip = IpAddr::V4(Ipv4Addr::new(10, 1, 2, 3));
 
-        let cookie = build_oauth_browser_session_cookie("token-123", &headers);
+        let cookie = build_oauth_browser_session_cookie("token-123", &headers, peer_ip, &settings);
         assert!(cookie.contains("rustok_oauth_browser_session=token-123"));
         assert!(cookie.contains("HttpOnly"));
         assert!(cookie.contains("SameSite=Lax"));
         assert!(cookie.contains("Max-Age=600"));
         assert!(cookie.contains("Secure"));
 
-        let cleared = clear_oauth_browser_session_cookie(&headers);
+        let cleared = clear_oauth_browser_session_cookie(&headers, peer_ip, &settings);
         assert!(cleared.contains("Max-Age=0"));
         assert!(cleared.contains("Secure"));
     }

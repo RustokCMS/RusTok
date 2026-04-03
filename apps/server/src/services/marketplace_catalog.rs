@@ -27,6 +27,7 @@ const LEGACY_REGISTRY_CATALOG_MODULE_PATH: &str = "/catalog/{slug}";
 const REGISTRY_PUBLISH_PATH: &str = "/v2/catalog/publish";
 const REGISTRY_PUBLISH_STATUS_PATH: &str = "/v2/catalog/publish/{request_id}";
 const REGISTRY_PUBLISH_ARTIFACT_PATH: &str = "/v2/catalog/publish/{request_id}/artifact";
+const REGISTRY_PUBLISH_VALIDATE_PATH: &str = "/v2/catalog/publish/{request_id}/validate";
 const REGISTRY_PUBLISH_APPROVE_PATH: &str = "/v2/catalog/publish/{request_id}/approve";
 const REGISTRY_PUBLISH_REJECT_PATH: &str = "/v2/catalog/publish/{request_id}/reject";
 const REGISTRY_YANK_PATH: &str = "/v2/catalog/yank";
@@ -537,6 +538,14 @@ pub struct RegistryPublishStatusResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPublishValidationRequest {
+    #[serde(default = "default_registry_mutation_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RegistryPublishDecisionRequest {
     #[serde(default = "default_registry_mutation_schema_version")]
     pub schema_version: u32,
@@ -772,6 +781,10 @@ pub fn registry_publish_status_path() -> &'static str {
 
 pub fn registry_publish_artifact_path() -> &'static str {
     REGISTRY_PUBLISH_ARTIFACT_PATH
+}
+
+pub fn registry_publish_validate_path() -> &'static str {
+    REGISTRY_PUBLISH_VALIDATE_PATH
 }
 
 pub fn registry_publish_approve_path() -> &'static str {

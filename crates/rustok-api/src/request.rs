@@ -2,6 +2,7 @@ use axum::{
     extract::FromRequestParts,
     http::{header, request::Parts, HeaderMap, StatusCode},
 };
+use rustok_core::extract_locale_tag_from_header;
 use uuid::Uuid;
 
 use crate::context::{ChannelContextExtension, ChannelResolutionSource, TenantContextExtension};
@@ -18,6 +19,12 @@ pub struct RequestContext {
     pub channel_slug: Option<String>,
     pub channel_resolution_source: Option<ChannelResolutionSource>,
     pub locale: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedRequestLocale {
+    pub requested_locale: Option<String>,
+    pub effective_locale: String,
 }
 
 impl RequestContext {
@@ -56,11 +63,14 @@ where
             .and_then(|value| value.to_str().ok())
             .and_then(|value| Uuid::parse_str(value).ok());
 
-        let locale = extract_requested_locale(parts)
-            .or_else(|| {
-                tenant_context.and_then(|tenant| normalize_locale_tag(&tenant.default_locale))
-            })
-            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+        let locale = parts
+            .extensions
+            .get::<ResolvedRequestLocale>()
+            .map(|resolved| resolved.effective_locale.clone())
+            .unwrap_or_else(|| {
+                resolve_request_locale(parts, tenant_context.map(|tenant| tenant.default_locale.as_str()))
+                    .effective_locale
+            });
         let channel_context = parts
             .extensions
             .get::<ChannelContextExtension>()
@@ -78,7 +88,20 @@ where
     }
 }
 
-fn extract_requested_locale(parts: &Parts) -> Option<String> {
+pub fn resolve_request_locale(parts: &Parts, tenant_default_locale: Option<&str>) -> ResolvedRequestLocale {
+    let requested_locale = extract_requested_locale(parts);
+    let effective_locale = requested_locale
+        .clone()
+        .or_else(|| tenant_default_locale.and_then(normalize_locale_tag))
+        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+
+    ResolvedRequestLocale {
+        requested_locale,
+        effective_locale,
+    }
+}
+
+pub fn extract_requested_locale(parts: &Parts) -> Option<String> {
     extract_locale_from_query(parts)
         .or_else(|| extract_locale_from_medusa_header(&parts.headers))
         .or_else(|| extract_locale_from_cookie(&parts.headers))
@@ -125,14 +148,7 @@ fn extract_locale_from_accept_language(headers: &HeaderMap) -> Option<String> {
     headers
         .get(header::ACCEPT_LANGUAGE)
         .and_then(|value| value.to_str().ok())
-        .and_then(parse_accept_language)
-}
-
-fn parse_accept_language(value: &str) -> Option<String> {
-    value
-        .split(',')
-        .filter_map(|entry| entry.split(';').next())
-        .find_map(normalize_locale_tag)
+        .and_then(|value| extract_locale_tag_from_header(Some(value)))
 }
 
 fn normalize_locale_tag(raw: &str) -> Option<String> {
@@ -305,6 +321,23 @@ mod tests {
             .expect("request context");
 
         assert_eq!(context.locale, "ru");
+    }
+
+    #[test]
+    fn prefers_highest_quality_accept_language_value() {
+        let request = Request::builder()
+            .header("X-Tenant-ID", Uuid::nil().to_string())
+            .header("Accept-Language", "en-US;q=0.5,ru-RU;q=0.9,de;q=0.8")
+            .body(())
+            .expect("request");
+        let (mut parts, _) = request.into_parts();
+
+        let runtime = Runtime::new().expect("tokio runtime");
+        let context = runtime
+            .block_on(RequestContext::from_request_parts(&mut parts, &()))
+            .expect("request context");
+
+        assert_eq!(context.locale, "ru-RU");
     }
 
     #[test]

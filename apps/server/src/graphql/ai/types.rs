@@ -339,6 +339,8 @@ pub struct AiChatRunGql {
     pub model: String,
     pub execution_mode: AiExecutionModeGql,
     pub execution_path: AiExecutionModeGql,
+    pub requested_locale: Option<String>,
+    pub resolved_locale: String,
     pub temperature: Option<f32>,
     pub max_tokens: Option<i32>,
     pub error_message: Option<String>,
@@ -363,6 +365,8 @@ impl From<AiChatRunRecord> for AiChatRunGql {
             model: value.model,
             execution_mode: value.execution_mode.into(),
             execution_path: value.execution_path.into(),
+            requested_locale: value.requested_locale,
+            resolved_locale: value.resolved_locale,
             temperature: value.temperature,
             max_tokens: value.max_tokens,
             error_message: value.error_message,
@@ -450,6 +454,8 @@ pub struct AiChatSessionSummaryGql {
     pub task_profile_id: Option<Uuid>,
     pub tool_profile_id: Option<Uuid>,
     pub execution_mode: AiExecutionModeGql,
+    pub requested_locale: Option<String>,
+    pub resolved_locale: String,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -466,6 +472,8 @@ impl From<AiChatSessionSummary> for AiChatSessionSummaryGql {
             task_profile_id: value.task_profile_id,
             tool_profile_id: value.tool_profile_id,
             execution_mode: value.execution_mode.into(),
+            requested_locale: value.requested_locale,
+            resolved_locale: value.resolved_locale,
             status: value.status,
             created_at: value.created_at,
             updated_at: value.updated_at,
@@ -599,7 +607,19 @@ pub struct StartAiChatSessionInputGql {
     pub provider_profile_id: Option<Uuid>,
     pub task_profile_id: Option<Uuid>,
     pub tool_profile_id: Option<Uuid>,
+    pub locale: Option<String>,
     pub initial_message: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct RunAiTaskJobInputGql {
+    pub title: String,
+    pub provider_profile_id: Option<Uuid>,
+    pub task_profile_id: Uuid,
+    pub execution_mode: Option<AiExecutionModeGql>,
+    pub locale: Option<String>,
+    pub task_input_json: String,
     pub metadata: Option<String>,
 }
 

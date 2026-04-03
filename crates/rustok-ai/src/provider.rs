@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use async_trait::async_trait;
+use base64::Engine;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -9,7 +10,7 @@ use crate::{
     error::{AiError, AiResult},
     model::{
         AiProviderConfig, ChatMessage, ChatMessageRole, ProviderChatRequest, ProviderChatResponse,
-        ProviderKind, ProviderTestResult, ToolCall,
+        ProviderImageRequest, ProviderImageResponse, ProviderKind, ProviderTestResult, ToolCall,
     },
 };
 
@@ -21,6 +22,11 @@ pub trait ModelProvider: Send + Sync {
         config: &AiProviderConfig,
         request: ProviderChatRequest,
     ) -> AiResult<ProviderChatResponse>;
+    async fn generate_image(
+        &self,
+        config: &AiProviderConfig,
+        request: ProviderImageRequest,
+    ) -> AiResult<ProviderImageResponse>;
 }
 
 #[derive(Debug, Clone, Default)]
@@ -194,6 +200,73 @@ impl ModelProvider for OpenAiCompatibleProvider {
             },
             finish_reason: choice
                 .get("finish_reason")
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+            raw_payload,
+        })
+    }
+
+    async fn generate_image(
+        &self,
+        config: &AiProviderConfig,
+        request: ProviderImageRequest,
+    ) -> AiResult<ProviderImageResponse> {
+        Self::require_provider(config)?;
+
+        let mut payload = json!({
+            "model": request.model,
+            "prompt": request.prompt,
+            "n": 1,
+            "response_format": "b64_json",
+        });
+        if let Some(size) = request.size.filter(|value| !value.trim().is_empty()) {
+            payload["size"] = Value::String(size);
+        }
+        if let Some(negative_prompt) = request
+            .negative_prompt
+            .filter(|value| !value.trim().is_empty())
+        {
+            payload["negative_prompt"] = Value::String(negative_prompt);
+        }
+
+        let response = self
+            .client
+            .post(format!("{}/images/generations", Self::api_root(&config.base_url)))
+            .headers(Self::headers(config)?)
+            .json(&payload)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(provider_status_error("image generation", response).await);
+        }
+
+        let raw_payload: Value = response.json().await?;
+        let image = raw_payload
+            .get("data")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .ok_or_else(|| AiError::Provider("missing image data in provider response".to_string()))?;
+        let base64_image = image
+            .get("b64_json")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                AiError::Provider(
+                    "provider did not return `b64_json` for generated image".to_string(),
+                )
+            })?;
+
+        Ok(ProviderImageResponse {
+            bytes: base64::engine::general_purpose::STANDARD
+                .decode(base64_image)
+                .map_err(|err| AiError::Provider(format!("invalid image payload: {err}")))?,
+            mime_type: image
+                .get("mime_type")
+                .and_then(Value::as_str)
+                .unwrap_or("image/png")
+                .to_string(),
+            revised_prompt: image
+                .get("revised_prompt")
                 .and_then(Value::as_str)
                 .map(ToString::to_string),
             raw_payload,
@@ -376,6 +449,17 @@ impl ModelProvider for AnthropicProvider {
             raw_payload,
         })
     }
+
+    async fn generate_image(
+        &self,
+        config: &AiProviderConfig,
+        _request: ProviderImageRequest,
+    ) -> AiResult<ProviderImageResponse> {
+        Self::require_provider(config)?;
+        Err(AiError::Provider(
+            "AnthropicProvider does not support image generation".to_string(),
+        ))
+    }
 }
 
 impl GeminiProvider {
@@ -556,6 +640,102 @@ impl ModelProvider for GeminiProvider {
                 .map(ToString::to_string),
             raw_payload,
         })
+    }
+
+    async fn generate_image(
+        &self,
+        config: &AiProviderConfig,
+        request: ProviderImageRequest,
+    ) -> AiResult<ProviderImageResponse> {
+        Self::require_provider(config)?;
+
+        let prompt = match request.negative_prompt {
+            Some(negative_prompt) if !negative_prompt.trim().is_empty() => {
+                format!(
+                    "{}\n\nNegative prompt: {}",
+                    request.prompt.trim(),
+                    negative_prompt.trim()
+                )
+            }
+            _ => request.prompt,
+        };
+
+        let response = self
+            .client
+            .post(format!(
+                "{}/models/{}:generateContent",
+                Self::api_root(&config.base_url),
+                request.model
+            ))
+            .headers(Self::headers(config)?)
+            .json(&json!({
+                "contents": [{
+                    "role": "user",
+                    "parts": [{ "text": prompt }],
+                }],
+                "generationConfig": {
+                    "responseModalities": ["TEXT", "IMAGE"],
+                }
+            }))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(provider_status_error("image generation", response).await);
+        }
+
+        let raw_payload: Value = response.json().await?;
+        let candidate = raw_payload
+            .get("candidates")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .ok_or_else(|| AiError::Provider("missing candidate in Gemini response".to_string()))?;
+        let parts = candidate
+            .get("content")
+            .and_then(|content| content.get("parts"))
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                AiError::Provider("missing content parts in Gemini response".to_string())
+            })?;
+
+        let mut revised_prompt = Vec::new();
+        for part in parts {
+            if let Some(text) = part.get("text").and_then(Value::as_str) {
+                revised_prompt.push(text.to_string());
+            }
+            if let Some(inline_data) = part.get("inlineData") {
+                let encoded = inline_data
+                    .get("data")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        AiError::Provider(
+                            "missing inlineData.data in Gemini image response".to_string(),
+                        )
+                    })?;
+                return Ok(ProviderImageResponse {
+                    bytes: base64::engine::general_purpose::STANDARD
+                        .decode(encoded)
+                        .map_err(|err| {
+                            AiError::Provider(format!("invalid Gemini image payload: {err}"))
+                        })?,
+                    mime_type: inline_data
+                        .get("mimeType")
+                        .and_then(Value::as_str)
+                        .unwrap_or("image/png")
+                        .to_string(),
+                    revised_prompt: if revised_prompt.is_empty() {
+                        None
+                    } else {
+                        Some(revised_prompt.join("\n"))
+                    },
+                    raw_payload,
+                });
+            }
+        }
+
+        Err(AiError::Provider(
+            "Gemini response did not contain inline image data".to_string(),
+        ))
     }
 }
 

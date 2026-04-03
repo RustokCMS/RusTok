@@ -3,6 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 use crate::model::TenantAdminBootstrap;
+#[cfg(feature = "ssr")]
+use crate::model::{TenantAdminModule, TenantAdminTenant};
+#[cfg(feature = "ssr")]
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {

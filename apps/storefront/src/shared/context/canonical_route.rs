@@ -132,8 +132,16 @@ async fn resolve_canonical_route(
 
 pub fn build_redirect_location(
     resolved: &ResolvedCanonicalRoute,
+    locale_path_prefix: Option<&str>,
     query_params: &HashMap<String, String>,
 ) -> String {
+    if let Some(locale) = locale_path_prefix
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return prefix_locale_to_canonical_url(&resolved.canonical_url, locale);
+    }
+
     let Some(lang) = query_params.get("lang") else {
         return resolved.canonical_url.clone();
     };
@@ -151,6 +159,14 @@ pub fn build_redirect_location(
     } else {
         format!("{}?{}", resolved.canonical_url, lang_suffix)
     }
+}
+
+fn prefix_locale_to_canonical_url(canonical_url: &str, locale: &str) -> String {
+    if canonical_url == "/" {
+        return format!("/{locale}");
+    }
+
+    format!("/{locale}{canonical_url}")
 }
 
 fn build_module_route(route_segment: &str, query_params: &HashMap<String, String>) -> String {
@@ -198,7 +214,23 @@ mod tests {
         };
         let query_params = HashMap::from([("lang".to_string(), "RU".to_string())]);
 
-        let redirect = build_redirect_location(&resolved, &query_params);
+        let redirect = build_redirect_location(&resolved, None, &query_params);
         assert_eq!(redirect, "/modules/blog?slug=release&lang=ru");
+    }
+
+    #[test]
+    fn redirect_location_prefers_locale_path_prefix_over_legacy_lang_query() {
+        let resolved = ResolvedCanonicalRoute {
+            target_kind: "blog_post".to_string(),
+            target_id: "123".to_string(),
+            locale: "ru".to_string(),
+            matched_url: "/modules/forum?topic=1".to_string(),
+            canonical_url: "/modules/blog?slug=release".to_string(),
+            redirect_required: true,
+        };
+        let query_params = HashMap::from([("lang".to_string(), "en".to_string())]);
+
+        let redirect = build_redirect_location(&resolved, Some("ru"), &query_params);
+        assert_eq!(redirect, "/ru/modules/blog?slug=release");
     }
 }

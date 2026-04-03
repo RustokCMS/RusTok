@@ -25,8 +25,9 @@
 - Такой же native-first + GraphQL-fallback path теперь заведён и для `rustok-commerce-storefront`, `rustok-forum-storefront`, `rustok-search-storefront`; GraphQL во всех module-owned storefront пакетах сохраняется.
 - По умолчанию storefront сейчас использует server-fn preflight `resolve_canonical_route`, но GraphQL-вариант остаётся валидным и не удаляется.
 - Если server возвращает alias-hit, storefront отдаёт HTTP redirect на canonical URL до рендера страницы.
-- Для canonical lookup параметр `lang` не входит в route key: locale передаётся в query отдельно.
-- Если redirect произошёл по alias, storefront сохраняет явно запрошенный `lang` в target URL, чтобы не терять locale SSR.
+- Host storefront теперь поддерживает locale-prefixed SSR routes: `/`, `/{locale}`, `/modules/{route_segment}` и `/{locale}/modules/{route_segment}`.
+- Для canonical lookup legacy-параметр `lang` не входит в route key: effective locale сначала берётся из path prefix, затем из `?lang=` как backward-compatible fallback.
+- Если redirect произошёл по alias внутри locale-prefixed route, storefront сохраняет locale в path (`/ru/...`), а не возвращает старую query-only форму.
 - Locale lookup внутри canonical preflight идёт с shared fallback policy из `rustok-content`, поэтому alias,
   записанный для `en`, корректно резолвится и для запросов вроде `en-us`, если более точного locale нет.
 - Enabled modules резолвятся отдельно и фильтруют storefront registry до рендера.

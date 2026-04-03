@@ -1,10 +1,7 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{
-        header::{FORWARDED, HOST},
-        Request, StatusCode,
-    },
+    http::{Request, StatusCode},
     middleware::Next,
     response::Response,
 };
@@ -22,7 +19,10 @@ use tokio::sync::{Mutex, Notify, RwLock};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-use crate::common::settings::RustokSettings;
+use crate::common::{
+    extract_effective_host, peer_ip_from_extensions,
+    settings::{RustokSettings, TenantFallbackMode},
+};
 use crate::context::{TenantContext, TenantContextExtension};
 use crate::models::tenants;
 
@@ -45,6 +45,21 @@ pub struct ResolvedTenantIdentifier {
     pub value: String,
     pub kind: TenantIdentifierKind,
     pub uuid: Uuid,
+}
+
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize)]
+enum CachedTenantMiss {
+    NotFound,
+    Disabled,
+}
+
+impl CachedTenantMiss {
+    fn status_code(self) -> StatusCode {
+        match self {
+            Self::NotFound => StatusCode::NOT_FOUND,
+            Self::Disabled => StatusCode::FORBIDDEN,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -376,28 +391,43 @@ impl TenantCacheInfrastructure {
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
     }
 
-    async fn check_negative(&self, cache_key: &str) -> Result<bool, StatusCode> {
-        let hit = self
+    async fn check_negative(
+        &self,
+        cache_key: &str,
+    ) -> Result<Option<CachedTenantMiss>, StatusCode> {
+        let cached = self
             .tenant_negative_cache
             .get(cache_key)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-            .is_some();
-        if hit {
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if let Some(bytes) = cached {
             self.metrics
                 .incr("negative_hits", &self.metrics.local_negative_hits)
                 .await;
-        } else {
-            self.metrics
-                .incr("negative_misses", &self.metrics.local_negative_misses)
-                .await;
+            let miss = serde_json::from_slice::<CachedTenantMiss>(&bytes).map_err(|error| {
+                tracing::warn!(%error, "Tenant negative cache deserialization error");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            return Ok(Some(miss));
         }
-        Ok(hit)
+
+        self.metrics
+            .incr("negative_misses", &self.metrics.local_negative_misses)
+            .await;
+        Ok(None)
     }
 
-    async fn set_negative(&self, cache_key: String) -> Result<(), StatusCode> {
+    async fn set_negative(
+        &self,
+        cache_key: String,
+        reason: CachedTenantMiss,
+    ) -> Result<(), StatusCode> {
+        let payload = serde_json::to_vec(&reason).map_err(|error| {
+            tracing::error!(%error, "Tenant negative cache serialization error");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
         self.tenant_negative_cache
-            .set(cache_key, Vec::new())
+            .set(cache_key, payload)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         self.metrics
@@ -623,8 +653,8 @@ pub async fn resolve(
         .key_builder
         .kind_negative_key(identifier.kind, &identifier.value);
 
-    if infra.check_negative(&negative_key).await? {
-        return Err(StatusCode::NOT_FOUND);
+    if let Some(reason) = infra.check_negative(&negative_key).await? {
+        return Err(reason.status_code());
     }
 
     if let Some(cached_context) = infra.get_cached_tenant(&cache_key).await? {
@@ -655,7 +685,7 @@ pub async fn resolve(
             };
 
             match tenant {
-                Some(tenant) => Ok(Some(TenantContext {
+                Some(tenant) if tenant.is_active => Ok(Some(TenantContext {
                     id: tenant.id,
                     name: tenant.name,
                     slug: tenant.slug,
@@ -664,8 +694,21 @@ pub async fn resolve(
                     default_locale: tenant.default_locale,
                     is_active: tenant.is_active,
                 })),
+                Some(tenant) => {
+                    tracing::warn!(
+                        tenant_id = %tenant.id,
+                        slug = %tenant.slug,
+                        "Rejecting request for disabled tenant"
+                    );
+                    infra_clone
+                        .set_negative(negative_key_clone, CachedTenantMiss::Disabled)
+                        .await?;
+                    Err(StatusCode::FORBIDDEN)
+                }
                 None => {
-                    infra_clone.set_negative(negative_key_clone).await?;
+                    infra_clone
+                        .set_negative(negative_key_clone, CachedTenantMiss::NotFound)
+                        .await?;
                     Ok(None)
                 }
             }
@@ -703,8 +746,25 @@ pub fn resolve_identifier(
 
             let identifier = header_value
                 .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| settings.tenant.default_id.to_string());
+                .filter(|value| !value.is_empty());
+
+            let identifier = match identifier {
+                Some(identifier) => identifier,
+                None if matches!(
+                    settings.tenant.fallback_mode,
+                    TenantFallbackMode::DefaultTenant
+                ) =>
+                {
+                    settings.tenant.default_id.to_string()
+                }
+                None => {
+                    tracing::warn!(
+                        header_name = %settings.tenant.header_name,
+                        "Missing tenant header in strict header resolution mode"
+                    );
+                    return Err(StatusCode::BAD_REQUEST);
+                }
+            };
 
             // Validate and classify the identifier
             classify_and_validate_identifier(&identifier).map_err(|e| {
@@ -716,11 +776,13 @@ pub fn resolve_identifier(
                 StatusCode::BAD_REQUEST
             })
         }
-        "host" | "domain" | "subdomain" => {
-            let host = extract_host(req.headers()).ok_or(StatusCode::BAD_REQUEST)?;
-            let host_without_port = host.split(':').next().unwrap_or(host);
+        "host" | "domain" => {
+            let peer_ip = peer_ip_from_extensions(req.extensions());
+            let host =
+                extract_effective_host(req.headers(), peer_ip, &settings.runtime.request_trust)
+                    .ok_or(StatusCode::BAD_REQUEST)?;
+            let host_without_port = host.split(':').next().unwrap_or(host.as_str());
 
-            // Validate hostname
             let validated_host = TenantIdentifierValidator::validate_host(host_without_port)
                 .map_err(|e| {
                     tracing::warn!(
@@ -737,6 +799,33 @@ pub fn resolve_identifier(
                 uuid: settings.tenant.default_id,
             })
         }
+        "subdomain" => {
+            let peer_ip = peer_ip_from_extensions(req.extensions());
+            let host =
+                extract_effective_host(req.headers(), peer_ip, &settings.runtime.request_trust)
+                    .ok_or(StatusCode::BAD_REQUEST)?;
+            let host_without_port = host.split(':').next().unwrap_or(host.as_str());
+            let validated_host = TenantIdentifierValidator::validate_host(host_without_port)
+                .map_err(|e| {
+                    tracing::warn!(
+                        host = %host_without_port,
+                        error = %e,
+                        "Invalid tenant hostname"
+                    );
+                    StatusCode::BAD_REQUEST
+                })?;
+
+            let identifier = subdomain_identifier(&validated_host, &settings.tenant.base_domains)?;
+            classify_and_validate_identifier(&identifier).map_err(|error| {
+                tracing::warn!(
+                    host = %validated_host,
+                    identifier = %identifier,
+                    %error,
+                    "Invalid tenant subdomain identifier"
+                );
+                StatusCode::BAD_REQUEST
+            })
+        }
         _ => Ok(ResolvedTenantIdentifier {
             value: settings.tenant.default_id.to_string(),
             kind: TenantIdentifierKind::Uuid,
@@ -745,35 +834,37 @@ pub fn resolve_identifier(
     }
 }
 
-fn extract_host(headers: &axum::http::HeaderMap) -> Option<&str> {
-    if let Some(host) = headers
-        .get("x-forwarded-host")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
-    {
-        return Some(host.trim());
-    }
+fn subdomain_identifier(host: &str, base_domains: &[String]) -> Result<String, StatusCode> {
+    for base_domain in base_domains {
+        if host == base_domain {
+            tracing::warn!(
+                host,
+                base_domain,
+                "Subdomain routing requires a tenant slug"
+            );
+            return Err(StatusCode::BAD_REQUEST);
+        }
 
-    if let Some(forwarded) = headers.get(FORWARDED).and_then(|value| value.to_str().ok()) {
-        if let Some(host) = parse_forwarded_host(forwarded) {
-            return Some(host);
+        let suffix = format!(".{base_domain}");
+        if let Some(candidate) = host.strip_suffix(&suffix) {
+            if candidate.is_empty() || candidate.contains('.') {
+                tracing::warn!(
+                    host,
+                    base_domain,
+                    "Invalid nested subdomain for tenant routing"
+                );
+                return Err(StatusCode::BAD_REQUEST);
+            }
+
+            return Ok(candidate.to_string());
         }
     }
 
-    headers.get(HOST).and_then(|value| value.to_str().ok())
-}
-
-fn parse_forwarded_host(forwarded: &str) -> Option<&str> {
-    forwarded
-        .split(',')
-        .next()
-        .and_then(|entry| {
-            entry
-                .split(';')
-                .find(|part| part.trim_start().starts_with("host="))
-        })
-        .and_then(|part| part.trim_start().strip_prefix("host="))
-        .map(|host| host.trim_matches('"').trim())
+    tracing::warn!(
+        host,
+        "No configured base domain matched subdomain tenant resolution"
+    );
+    Err(StatusCode::NOT_FOUND)
 }
 
 /// Classifies and validates a tenant identifier with security checks
@@ -899,9 +990,11 @@ async fn invalidate_cache_keys(ctx: &AppContext, kind: TenantIdentifierKind, val
 #[cfg(test)]
 mod invalidation_tests {
     use super::{
-        parse_invalidation_payload, should_bypass_tenant_resolution,
-        TenantInvalidationListenerState, TenantInvalidationListenerStatus,
+        parse_invalidation_payload, resolve_identifier, should_bypass_tenant_resolution,
+        subdomain_identifier, TenantInvalidationListenerState, TenantInvalidationListenerStatus,
     };
+    use crate::common::{RustokSettings, TenantFallbackMode};
+    use axum::{body::Body, http::Request};
 
     #[test]
     fn parse_invalidation_payload_returns_both_keys() {
@@ -943,5 +1036,53 @@ mod invalidation_tests {
         assert!(should_bypass_tenant_resolution("/api/openapi.json"));
         assert!(should_bypass_tenant_resolution("/api/graphql/ws"));
         assert!(!should_bypass_tenant_resolution("/api/blog/posts"));
+    }
+
+    #[test]
+    fn strict_header_resolution_requires_tenant_header() {
+        let mut settings = RustokSettings::default();
+        settings.tenant.enabled = true;
+        settings.tenant.resolution = "header".to_string();
+        settings.tenant.fallback_mode = TenantFallbackMode::Disabled;
+
+        let request = Request::builder()
+            .uri("/api/users")
+            .body(Body::empty())
+            .expect("request");
+
+        let result = resolve_identifier(&request, &settings);
+        assert_eq!(result, Err(axum::http::StatusCode::BAD_REQUEST));
+    }
+
+    #[test]
+    fn header_resolution_can_fallback_to_default_tenant() {
+        let mut settings = RustokSettings::default();
+        settings.tenant.enabled = true;
+        settings.tenant.resolution = "header".to_string();
+        settings.tenant.fallback_mode = TenantFallbackMode::DefaultTenant;
+
+        let request = Request::builder()
+            .uri("/api/users")
+            .body(Body::empty())
+            .expect("request");
+
+        let result = resolve_identifier(&request, &settings).expect("identifier");
+        assert_eq!(result.kind.as_str(), "uuid");
+        assert_eq!(result.uuid, settings.tenant.default_id);
+    }
+
+    #[test]
+    fn subdomain_resolution_extracts_single_label_slug() {
+        let slug = subdomain_identifier("store.example.test", &[String::from("example.test")])
+            .expect("slug");
+        assert_eq!(slug, "store");
+        assert_eq!(
+            subdomain_identifier("example.test", &[String::from("example.test")]),
+            Err(axum::http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(
+            subdomain_identifier("a.b.example.test", &[String::from("example.test")]),
+            Err(axum::http::StatusCode::BAD_REQUEST)
+        );
     }
 }

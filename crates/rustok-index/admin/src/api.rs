@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 use crate::model::IndexAdminBootstrap;
+#[cfg(feature = "ssr")]
+use crate::model::{IndexCounterSnapshot, IndexModuleSnapshot, IndexTenantSnapshot};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {

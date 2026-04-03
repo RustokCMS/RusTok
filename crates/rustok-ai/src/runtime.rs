@@ -44,13 +44,37 @@ impl AiRuntime {
         };
         let mut messages = if let Some(system_prompt) = request.system_prompt.as_ref() {
             let mut prefixed = Vec::with_capacity(request.messages.len() + 1);
+            let localized_system_prompt = if let Some(locale) = request.locale.as_ref() {
+                format!(
+                    "{system_prompt}\n\nRespond in locale `{locale}` unless the task explicitly requires another language."
+                )
+            } else {
+                system_prompt.clone()
+            };
             prefixed.push(ChatMessage {
                 role: ChatMessageRole::System,
-                content: Some(system_prompt.clone()),
+                content: Some(localized_system_prompt),
                 name: None,
                 tool_call_id: None,
                 tool_calls: Vec::new(),
-                metadata: serde_json::json!({ "system_prompt": true }),
+                metadata: serde_json::json!({
+                    "system_prompt": true,
+                    "locale": request.locale,
+                }),
+            });
+            prefixed.extend(request.messages.clone());
+            prefixed
+        } else if let Some(locale) = request.locale.as_ref() {
+            let mut prefixed = Vec::with_capacity(request.messages.len() + 1);
+            prefixed.push(ChatMessage {
+                role: ChatMessageRole::System,
+                content: Some(format!(
+                    "Respond in locale `{locale}` unless the task explicitly requires another language."
+                )),
+                name: None,
+                tool_call_id: None,
+                tool_calls: Vec::new(),
+                metadata: serde_json::json!({ "system_prompt": true, "locale": locale }),
             });
             prefixed.extend(request.messages.clone());
             prefixed
@@ -71,6 +95,7 @@ impl AiRuntime {
                         tools: tools.clone(),
                         temperature: request.temperature,
                         max_tokens: request.max_tokens,
+                        locale: request.locale.clone(),
                     },
                 )
                 .await?;

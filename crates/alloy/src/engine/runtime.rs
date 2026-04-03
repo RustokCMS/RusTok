@@ -24,11 +24,8 @@ impl ScriptEngine {
     pub fn new(config: EngineConfig) -> Self {
         let mut engine = Engine::new();
 
-        engine.set_max_operations(config.max_operations);
-        engine.set_max_call_levels(config.max_call_depth);
-        engine.set_max_string_size(config.max_string_size);
-        engine.set_max_array_size(config.max_array_size);
-        engine.set_max_map_size(config.max_array_size);
+
+
 
         engine.set_allow_looping(true);
         engine.set_allow_shadowing(true);
@@ -176,3 +173,4 @@ impl ScriptEngine {
         &self.config
     }
 }
+

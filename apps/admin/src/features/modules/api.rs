@@ -1,6 +1,11 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
+#[allow(unused_imports)]
+use crate::entities::module::model::{
+    RegistryGovernanceEventLifecycle, RegistryModuleLifecycle, RegistryOwnerLifecycle,
+    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle,
+};
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
     ToggleModuleResult,
@@ -17,7 +22,7 @@ pub const TENANT_MODULES_QUERY: &str =
 pub const MARKETPLACE_QUERY: &str =
     "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const MARKETPLACE_MODULE_QUERY: &str =
-    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { latestRequest { id status requestedBy approvedBy rejectedBy rejectionReason warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher checksumSha256 publishedAt yankedReason yankedBy yankedAt } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { ownerActor boundBy boundAt updatedAt } latestRequest { id status requestedBy publisherIdentity approvedBy rejectedBy rejectionReason warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher checksumSha256 publishedAt yankedReason yankedBy yankedAt } recentEvents { id eventType actor publisher details createdAt } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
 pub const ACTIVE_BUILD_QUERY: &str =
     "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 pub const ACTIVE_RELEASE_QUERY: &str =
@@ -1629,6 +1634,9 @@ fn map_registry_publish_request_row(
         requested_by: row
             .try_get("", "requested_by")
             .map_err(|err| server_error(err.to_string()))?,
+        publisher_identity: row
+            .try_get("", "publisher_identity")
+            .map_err(|err| server_error(err.to_string()))?,
         approved_by: row
             .try_get("", "approved_by")
             .map_err(|err| server_error(err.to_string()))?,
@@ -1697,6 +1705,56 @@ fn map_registry_release_row(
 }
 
 #[cfg(feature = "ssr")]
+fn map_registry_owner_row(
+    row: sea_orm::QueryResult,
+) -> Result<RegistryOwnerLifecycle, ServerFnError> {
+    Ok(RegistryOwnerLifecycle {
+        owner_actor: row
+            .try_get("", "owner_actor")
+            .map_err(|err| server_error(err.to_string()))?,
+        bound_by: row
+            .try_get("", "bound_by")
+            .map_err(|err| server_error(err.to_string()))?,
+        bound_at: row
+            .try_get::<chrono::DateTime<chrono::Utc>>("", "bound_at")
+            .map(|value| value.to_rfc3339())
+            .map_err(|err| server_error(err.to_string()))?,
+        updated_at: row
+            .try_get::<chrono::DateTime<chrono::Utc>>("", "updated_at")
+            .map(|value| value.to_rfc3339())
+            .map_err(|err| server_error(err.to_string()))?,
+    })
+}
+
+#[cfg(feature = "ssr")]
+fn map_registry_governance_event_row(
+    row: sea_orm::QueryResult,
+) -> Result<RegistryGovernanceEventLifecycle, ServerFnError> {
+    Ok(RegistryGovernanceEventLifecycle {
+        id: row
+            .try_get("", "id")
+            .map_err(|err| server_error(err.to_string()))?,
+        event_type: row
+            .try_get("", "event_type")
+            .map_err(|err| server_error(err.to_string()))?,
+        actor: row
+            .try_get("", "actor")
+            .map_err(|err| server_error(err.to_string()))?,
+        publisher: row
+            .try_get("", "publisher")
+            .map_err(|err| server_error(err.to_string()))?,
+        details: row
+            .try_get::<Option<serde_json::Value>>("", "details")
+            .map_err(|err| server_error(err.to_string()))?
+            .unwrap_or(serde_json::Value::Null),
+        created_at: row
+            .try_get::<chrono::DateTime<chrono::Utc>>("", "created_at")
+            .map(|value| value.to_rfc3339())
+            .map_err(|err| server_error(err.to_string()))?,
+    })
+}
+
+#[cfg(feature = "ssr")]
 async fn load_registry_module_lifecycle(
     app_ctx: &loco_rs::app::AppContext,
     slug: &str,
@@ -1712,6 +1770,7 @@ async fn load_registry_module_lifecycle(
                 id,
                 status,
                 requested_by,
+                publisher_identity,
                 approved_by,
                 rejected_by,
                 rejection_reason,
@@ -1734,6 +1793,7 @@ async fn load_registry_module_lifecycle(
                 id,
                 status,
                 requested_by,
+                publisher_identity,
                 approved_by,
                 rejected_by,
                 rejection_reason,
@@ -1790,7 +1850,80 @@ async fn load_registry_module_lifecycle(
             [slug.into()],
         ),
     };
+    let owner_statement = match backend {
+        DbBackend::Sqlite => Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            r#"
+            SELECT
+                owner_actor,
+                bound_by,
+                bound_at,
+                updated_at
+            FROM registry_module_owners
+            WHERE slug = ?
+            LIMIT 1
+            "#,
+            [slug.into()],
+        ),
+        _ => Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                owner_actor,
+                bound_by,
+                bound_at,
+                updated_at
+            FROM registry_module_owners
+            WHERE slug = $1
+            LIMIT 1
+            "#,
+            [slug.into()],
+        ),
+    };
+    let events_statement = match backend {
+        DbBackend::Sqlite => Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            r#"
+            SELECT
+                id,
+                event_type,
+                actor,
+                publisher,
+                details,
+                created_at
+            FROM registry_governance_events
+            WHERE slug = ?
+            ORDER BY created_at DESC
+            LIMIT 10
+            "#,
+            [slug.into()],
+        ),
+        _ => Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                id,
+                event_type,
+                actor,
+                publisher,
+                details,
+                created_at
+            FROM registry_governance_events
+            WHERE slug = $1
+            ORDER BY created_at DESC
+            LIMIT 10
+            "#,
+            [slug.into()],
+        ),
+    };
 
+    let owner_binding = app_ctx
+        .db
+        .query_one(owner_statement)
+        .await
+        .map_err(|err| server_error(err.to_string()))?
+        .map(map_registry_owner_row)
+        .transpose()?;
     let latest_request = app_ctx
         .db
         .query_one(request_statement)
@@ -1805,14 +1938,28 @@ async fn load_registry_module_lifecycle(
         .map_err(|err| server_error(err.to_string()))?
         .map(map_registry_release_row)
         .transpose()?;
+    let recent_events = app_ctx
+        .db
+        .query_all(events_statement)
+        .await
+        .map_err(|err| server_error(err.to_string()))?
+        .into_iter()
+        .map(map_registry_governance_event_row)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
 
-    if latest_request.is_none() && latest_release.is_none() {
+    if owner_binding.is_none()
+        && latest_request.is_none()
+        && latest_release.is_none()
+        && recent_events.is_empty()
+    {
         return Ok(None);
     }
 
     Ok(Some(RegistryModuleLifecycle {
+        owner_binding,
         latest_request,
         latest_release,
+        recent_events,
     }))
 }
 

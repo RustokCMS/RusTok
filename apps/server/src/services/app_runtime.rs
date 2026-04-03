@@ -10,8 +10,8 @@ use crate::common::settings::RustokSettings;
 use crate::graphql::AppSchema;
 use crate::middleware;
 use crate::middleware::rate_limit::{
-    cleanup_task, PathRateLimitMiddlewareState, RateLimitConfig, RateLimiter, SharedApiRateLimiter,
-    SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
+    cleanup_task, PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitConfig, RateLimiter,
+    SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
@@ -30,9 +30,7 @@ pub struct AppRuntimeBootstrap {
     pub deployment_surfaces: DeploymentSurfaceContract,
     pub registry: ModuleRegistry,
     pub graphql_schema: Arc<AppSchema>,
-    pub api_rate_limit_state: PathRateLimitMiddlewareState,
-    pub auth_rate_limit_state: PathRateLimitMiddlewareState,
-    pub oauth_rate_limit_state: PathRateLimitMiddlewareState,
+    pub rate_limit_state: PathRateLimitMiddlewareState,
 }
 
 fn validate_compiled_surface_contract(
@@ -122,9 +120,7 @@ pub async fn bootstrap_app_runtime(
         deployment_surfaces,
         registry,
         graphql_schema,
-        api_rate_limit_state: rate_limits.api_state,
-        auth_rate_limit_state: rate_limits.auth_state,
-        oauth_rate_limit_state: rate_limits.oauth_state,
+        rate_limit_state: rate_limits.combined_state,
     })
 }
 
@@ -185,9 +181,7 @@ fn init_workflow_runtime(ctx: &AppContext) {
 }
 
 struct RateLimitLayers {
-    api_state: PathRateLimitMiddlewareState,
-    auth_state: PathRateLimitMiddlewareState,
-    oauth_state: PathRateLimitMiddlewareState,
+    combined_state: PathRateLimitMiddlewareState,
 }
 
 fn init_rate_limit_layers(
@@ -236,31 +230,32 @@ fn init_rate_limit_layers(
     )?;
 
     Ok(RateLimitLayers {
-        api_state: PathRateLimitMiddlewareState {
-            limiter: api_limiter,
-            prefixes: Arc::new(vec!["/api/"]),
-            auth_config: auth_config.clone(),
-            trusted_auth_dimensions,
-        },
-        auth_state: PathRateLimitMiddlewareState {
-            limiter: auth_limiter,
-            prefixes: Arc::new(vec![
-                "/api/auth/login",
-                "/api/auth/register",
-                "/api/auth/reset",
-            ]),
-            auth_config: auth_config.clone(),
-            trusted_auth_dimensions,
-        },
-        oauth_state: PathRateLimitMiddlewareState {
-            limiter: oauth_limiter,
-            prefixes: Arc::new(vec![
-                "/api/oauth/token",
-                "/api/oauth/revoke",
-                "/api/oauth/authorize",
+        combined_state: PathRateLimitMiddlewareState {
+            policies: Arc::new(vec![
+                PathRateLimitPolicy {
+                    limiter: oauth_limiter,
+                    prefixes: Arc::new(vec![
+                        "/api/oauth/token",
+                        "/api/oauth/revoke",
+                        "/api/oauth/authorize",
+                    ]),
+                },
+                PathRateLimitPolicy {
+                    limiter: auth_limiter,
+                    prefixes: Arc::new(vec![
+                        "/api/auth/login",
+                        "/api/auth/register",
+                        "/api/auth/reset",
+                    ]),
+                },
+                PathRateLimitPolicy {
+                    limiter: api_limiter,
+                    prefixes: Arc::new(vec!["/api/"]),
+                },
             ]),
             auth_config,
             trusted_auth_dimensions,
+            request_trust: settings.runtime.request_trust.clone(),
         },
     })
 }

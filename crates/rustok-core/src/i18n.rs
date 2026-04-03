@@ -309,19 +309,80 @@ pub fn translate(locale: Locale, key: &str) -> String {
         .to_string()
 }
 
+fn normalize_locale_tag(raw: &str) -> Option<String> {
+    let candidate = raw.trim().replace('_', "-");
+    if candidate.is_empty() || candidate.len() > 16 {
+        return None;
+    }
+
+    if !candidate
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+    {
+        return None;
+    }
+
+    let mut parts = candidate.split('-');
+    let language = parts.next()?.trim();
+    if language.len() < 2 || language.len() > 8 {
+        return None;
+    }
+
+    let mut normalized = language.to_ascii_lowercase();
+    for part in parts {
+        if part.is_empty() || part.len() > 8 {
+            return None;
+        }
+
+        normalized.push('-');
+        if part.len() == 2 && part.chars().all(|ch| ch.is_ascii_alphabetic()) {
+            normalized.push_str(&part.to_ascii_uppercase());
+        } else {
+            normalized.push_str(&part.to_ascii_lowercase());
+        }
+    }
+
+    Some(normalized)
+}
+
+pub fn extract_locale_tag_from_header(accept_language: Option<&str>) -> Option<String> {
+    let header = accept_language?;
+    let mut candidates = header
+        .split(',')
+        .filter_map(|entry| {
+            let mut parts = entry.trim().split(';');
+            let locale = normalize_locale_tag(parts.next()?);
+            let quality = parts
+                .find_map(|part| {
+                    let (key, value) = part.trim().split_once('=')?;
+                    (key.eq_ignore_ascii_case("q")).then_some(value)
+                })
+                .and_then(|value| value.parse::<f32>().ok())
+                .unwrap_or(1.0);
+            locale.map(|locale| (locale, quality))
+        })
+        .collect::<Vec<_>>();
+
+    candidates.sort_by(|left, right| {
+        right
+            .1
+            .partial_cmp(&left.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    candidates
+        .into_iter()
+        .find(|(_, quality)| *quality > 0.0)
+        .map(|(locale, _)| locale)
+}
+
 /// Extract the best `Locale` from an `Accept-Language` HTTP header value.
 ///
 /// Returns `Locale::En` if the header is missing or unrecognised.
 pub fn extract_locale_from_header(accept_language: Option<&str>) -> Locale {
-    accept_language
-        .and_then(|header| {
-            // Parse Accept-Language header (e.g., "en-US,en;q=0.9,ru;q=0.8")
-            header
-                .split(',')
-                .next()
-                .and_then(|lang| lang.split(';').next())
-                .and_then(|lang| Locale::parse(lang.trim()))
-        })
+    extract_locale_tag_from_header(accept_language)
+        .as_deref()
+        .and_then(Locale::parse)
         .unwrap_or_default()
 }
 

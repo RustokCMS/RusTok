@@ -1,13 +1,17 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{header::HOST, HeaderMap, Request},
+    http::{HeaderMap, Request},
     middleware::Next,
     response::Response,
 };
 use loco_rs::app::AppContext;
+use moka::future::Cache;
+use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use crate::common::{extract_effective_host, peer_ip_from_extensions, RustokSettings};
 use crate::context::{
     ChannelContext, ChannelContextExtension, ChannelResolutionSource, TenantContextExt,
 };
@@ -17,6 +21,65 @@ use rustok_channel::{
 
 const CHANNEL_ID_HEADER: &str = "X-Channel-ID";
 const CHANNEL_SLUG_HEADER: &str = "X-Channel-Slug";
+const CHANNEL_CACHE_TTL: Duration = Duration::from_secs(60);
+const CHANNEL_CACHE_MAX_CAPACITY: u64 = 2_000;
+
+#[derive(Clone)]
+struct ChannelResolutionCache {
+    cache: Cache<ChannelCacheKey, Option<ChannelContext>>,
+    tenant_versions: Arc<RwLock<HashMap<Uuid, u64>>>,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ChannelCacheKey {
+    tenant_id: Uuid,
+    version: u64,
+    header_channel_id: Option<Uuid>,
+    header_channel_slug: Option<String>,
+    query_channel_slug: Option<String>,
+    host: Option<String>,
+}
+
+impl ChannelResolutionCache {
+    fn new() -> Self {
+        Self {
+            cache: Cache::builder()
+                .time_to_live(CHANNEL_CACHE_TTL)
+                .max_capacity(CHANNEL_CACHE_MAX_CAPACITY)
+                .build(),
+            tenant_versions: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    async fn tenant_version(&self, tenant_id: Uuid) -> u64 {
+        self.tenant_versions
+            .read()
+            .await
+            .get(&tenant_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    async fn invalidate_tenant(&self, tenant_id: Uuid) {
+        let mut versions = self.tenant_versions.write().await;
+        let next_version = versions
+            .get(&tenant_id)
+            .copied()
+            .unwrap_or(0)
+            .saturating_add(1);
+        versions.insert(tenant_id, next_version);
+    }
+}
+
+fn channel_cache(ctx: &AppContext) -> Arc<ChannelResolutionCache> {
+    if let Some(cache) = ctx.shared_store.get::<Arc<ChannelResolutionCache>>() {
+        return cache;
+    }
+
+    let cache = Arc::new(ChannelResolutionCache::new());
+    ctx.shared_store.insert(cache.clone());
+    cache
+}
 
 pub async fn resolve(
     State(ctx): State<AppContext>,
@@ -27,45 +90,83 @@ pub async fn resolve(
         return Ok(next.run(req).await);
     };
 
+    let settings = RustokSettings::from_settings(&ctx.config.settings)
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
     let resolver = ChannelResolver::new(ctx.db.clone());
-    let facts = build_request_facts(tenant.id, req.headers(), req.uri().query());
+    let facts = build_request_facts(
+        tenant.id,
+        req.headers(),
+        req.uri().query(),
+        peer_ip_from_extensions(req.extensions()),
+        &settings,
+    );
+    let cache = channel_cache(&ctx);
+    let cache_key = ChannelCacheKey {
+        tenant_id: facts.tenant_id,
+        version: cache.tenant_version(facts.tenant_id).await,
+        header_channel_id: facts.header_channel_id,
+        header_channel_slug: facts.header_channel_slug.clone(),
+        query_channel_slug: facts.query_channel_slug.clone(),
+        host: facts.host.clone(),
+    };
+
+    if let Some(cached_context) = cache.cache.get(&cache_key).await {
+        if let Some(context) = cached_context {
+            req.extensions_mut()
+                .insert(ChannelContextExtension(context));
+        }
+        return Ok(next.run(req).await);
+    }
+
     let decision = resolver
         .resolve(&facts)
         .await
         .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if let Some((detail, source)) = resolved_detail_and_source(decision) {
+    let cached_context = resolved_detail_and_source(decision).map(|(detail, source)| {
         let selected_target = detail
             .targets
             .iter()
             .find(|target| target.is_primary)
             .or_else(|| detail.targets.first());
+        ChannelContext {
+            id: detail.channel.id,
+            tenant_id: detail.channel.tenant_id,
+            slug: detail.channel.slug,
+            name: detail.channel.name,
+            is_active: detail.channel.is_active,
+            status: detail.channel.status,
+            target_type: selected_target.map(|target| target.target_type.clone()),
+            target_value: selected_target.map(|target| target.value.clone()),
+            settings: detail.channel.settings,
+            resolution_source: source,
+        }
+    });
+
+    cache.cache.insert(cache_key, cached_context.clone()).await;
+
+    if let Some(context) = cached_context {
         req.extensions_mut()
-            .insert(ChannelContextExtension(ChannelContext {
-                id: detail.channel.id,
-                tenant_id: detail.channel.tenant_id,
-                slug: detail.channel.slug,
-                name: detail.channel.name,
-                is_active: detail.channel.is_active,
-                status: detail.channel.status,
-                target_type: selected_target.map(|target| target.target_type.clone()),
-                target_value: selected_target.map(|target| target.value.clone()),
-                settings: detail.channel.settings,
-                resolution_source: source,
-            }));
+            .insert(ChannelContextExtension(context));
     }
 
     Ok(next.run(req).await)
 }
 
-fn build_request_facts(tenant_id: Uuid, headers: &HeaderMap, query: Option<&str>) -> RequestFacts {
+fn build_request_facts(
+    tenant_id: Uuid,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    peer_ip: Option<std::net::IpAddr>,
+    settings: &RustokSettings,
+) -> RequestFacts {
     RequestFacts {
         tenant_id,
         surface: TargetSurface::Http,
         header_channel_id: channel_id_from_header(headers),
         header_channel_slug: channel_slug_from_header(headers),
         query_channel_slug: channel_slug_from_query(query),
-        host: extract_host(headers).map(ToOwned::to_owned),
+        host: extract_effective_host(headers, peer_ip, &settings.runtime.request_trust),
         oauth_app_id: None,
         locale: None,
     }
@@ -115,13 +216,8 @@ fn channel_slug_from_query(query: Option<&str>) -> Option<String> {
     })
 }
 
-fn extract_host(headers: &axum::http::HeaderMap) -> Option<&str> {
-    headers
-        .get("x-forwarded-host")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
-        .map(str::trim)
-        .or_else(|| headers.get(HOST).and_then(|value| value.to_str().ok()))
+pub async fn invalidate_tenant_channel_cache(ctx: &AppContext, tenant_id: Uuid) {
+    channel_cache(ctx).invalidate_tenant(tenant_id).await;
 }
 
 #[cfg(test)]
@@ -130,6 +226,7 @@ mod tests {
         build_request_facts, channel_id_from_header, channel_slug_from_header,
         channel_slug_from_query, resolved_detail_and_source,
     };
+    use crate::common::RustokSettings;
     use crate::context::ChannelResolutionSource;
     use axum::http::{header::HOST, HeaderMap};
     use rustok_channel::{
@@ -232,6 +329,10 @@ mod tests {
             .expect("host target should be created");
     }
 
+    fn test_settings() -> RustokSettings {
+        RustokSettings::default()
+    }
+
     #[test]
     fn parses_channel_id_header() {
         let mut headers = HeaderMap::new();
@@ -294,6 +395,8 @@ mod tests {
                     tenant_id,
                     &headers,
                     Some("channel=query-channel"),
+                    None,
+                    &test_settings(),
                 ))
                 .await
                 .expect("resolution should succeed"),
@@ -326,6 +429,8 @@ mod tests {
                     tenant_id,
                     &headers,
                     Some("channel=missing"),
+                    None,
+                    &test_settings(),
                 ))
                 .await
                 .expect("resolution should succeed"),
@@ -361,6 +466,8 @@ mod tests {
                     tenant_id,
                     &headers,
                     Some("channel=missing"),
+                    None,
+                    &test_settings(),
                 ))
                 .await
                 .expect("resolution should succeed"),
@@ -399,7 +506,13 @@ mod tests {
         let resolver = ChannelResolver::new(db.clone());
         let selected = resolved_detail_and_source(
             resolver
-                .resolve(&build_request_facts(tenant_id, &headers, None))
+                .resolve(&build_request_facts(
+                    tenant_id,
+                    &headers,
+                    None,
+                    None,
+                    &test_settings(),
+                ))
                 .await
                 .expect("resolution should succeed"),
         )

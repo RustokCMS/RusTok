@@ -227,6 +227,12 @@ struct RegistryPublishStatusHttpResponse {
 }
 
 #[derive(Debug, Serialize)]
+struct RegistryPublishValidationHttpRequest {
+    schema_version: u32,
+    dry_run: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct RegistryPublishDecisionHttpRequest {
     schema_version: u32,
     dry_run: bool,
@@ -757,12 +763,14 @@ fn publish_via_registry_live(
     registry_url: &str,
     preview: &ModulePublishDryRunPreview,
 ) -> Result<String> {
+    let publisher = format!("publisher:{}", preview.slug);
     let create_endpoint = format!("{}/v2/catalog/publish", registry_url.trim_end_matches('/'));
     let create_request = build_live_publish_registry_request(preview);
     let create_response: RegistryMutationHttpResponse = post_registry_json_parsed(
         &create_endpoint,
         &create_request,
         Some("xtask:module-publish"),
+        Some(&publisher),
     )?;
     if !create_response.accepted {
         anyhow::bail!(
@@ -792,6 +800,7 @@ fn publish_via_registry_live(
         &artifact_bytes,
         "application/json",
         Some("xtask:module-publish"),
+        Some(&publisher),
     )?;
     ensure_publish_step_accepted(
         "artifact upload",
@@ -799,6 +808,48 @@ fn publish_via_registry_live(
         upload_response.status.as_deref(),
         &upload_response.errors,
     )?;
+
+    let validate_endpoint = format!(
+        "{}/v2/catalog/publish/{request_id}/validate",
+        registry_url.trim_end_matches('/')
+    );
+    let validate_request = RegistryPublishValidationHttpRequest {
+        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+        dry_run: false,
+    };
+    let validate_response: RegistryMutationHttpResponse = post_registry_json_parsed(
+        &validate_endpoint,
+        &validate_request,
+        Some("xtask:module-publish"),
+        Some(&publisher),
+    )?;
+    ensure_publish_step_accepted(
+        "validation",
+        validate_response.accepted,
+        validate_response.status.as_deref(),
+        &validate_response.errors,
+    )?;
+
+    let readiness_endpoint = format!(
+        "{}/v2/catalog/publish/{request_id}",
+        registry_url.trim_end_matches('/')
+    );
+    let readiness = poll_registry_publish_status_until(
+        &readiness_endpoint,
+        Some("xtask:module-publish"),
+        &["approved", "published", "rejected"],
+    )?;
+    ensure_publish_status_not_rejected(&readiness)?;
+    if readiness.status == "published" {
+        return pretty_json(&readiness);
+    }
+    if readiness.status != "approved" {
+        anyhow::bail!(
+            "Registry publish request '{}' did not reach approved status after validation; current status is '{}'",
+            readiness.request_id,
+            readiness.status
+        );
+    }
 
     let approve_endpoint = format!(
         "{}/v2/catalog/publish/{request_id}/approve",
@@ -813,6 +864,7 @@ fn publish_via_registry_live(
         &approve_endpoint,
         &approve_request,
         Some("xtask:module-publish"),
+        Some(&publisher),
     )?;
     ensure_publish_step_accepted(
         "approval",
@@ -825,7 +877,11 @@ fn publish_via_registry_live(
         "{}/v2/catalog/publish/{request_id}",
         registry_url.trim_end_matches('/')
     );
-    let status = poll_registry_publish_status(&status_endpoint, Some("xtask:module-publish"))?;
+    let status = poll_registry_publish_status_until(
+        &status_endpoint,
+        Some("xtask:module-publish"),
+        &["published", "rejected"],
+    )?;
     ensure_publish_status_not_rejected(&status)?;
     pretty_json(&status)
 }
@@ -848,8 +904,13 @@ fn yank_via_registry_live(
 ) -> Result<String> {
     let endpoint = format!("{}/v2/catalog/yank", registry_url.trim_end_matches('/'));
     let request = build_live_yank_registry_request(preview, Some(reason));
-    let response: RegistryMutationHttpResponse =
-        post_registry_json_parsed(&endpoint, &request, Some("xtask:module-yank"))?;
+    let publisher = format!("publisher:{}", preview.slug);
+    let response: RegistryMutationHttpResponse = post_registry_json_parsed(
+        &endpoint,
+        &request,
+        Some("xtask:module-yank"),
+        Some(&publisher),
+    )?;
     if !response.accepted {
         anyhow::bail!(
             "Registry yank request was not accepted: {}",
@@ -941,11 +1002,16 @@ fn post_registry_json<T>(endpoint: &str, payload: &T) -> Result<String>
 where
     T: Serialize,
 {
-    let value: serde_json::Value = post_registry_json_parsed(endpoint, payload, None)?;
+    let value: serde_json::Value = post_registry_json_parsed(endpoint, payload, None, None)?;
     pretty_json(&value)
 }
 
-fn post_registry_json_parsed<T, U>(endpoint: &str, payload: &T, actor: Option<&str>) -> Result<U>
+fn post_registry_json_parsed<T, U>(
+    endpoint: &str,
+    payload: &T,
+    actor: Option<&str>,
+    publisher: Option<&str>,
+) -> Result<U>
 where
     T: Serialize,
     U: DeserializeOwned,
@@ -954,6 +1020,9 @@ where
     let mut request = client.post(endpoint).json(payload);
     if let Some(actor) = actor {
         request = request.header("x-rustok-actor", actor);
+    }
+    if let Some(publisher) = publisher {
+        request = request.header("x-rustok-publisher", publisher);
     }
     let response = request
         .send()
@@ -966,6 +1035,7 @@ fn put_registry_bytes_parsed<U>(
     payload: &[u8],
     content_type: &str,
     actor: Option<&str>,
+    publisher: Option<&str>,
 ) -> Result<U>
 where
     U: DeserializeOwned,
@@ -977,6 +1047,9 @@ where
         .body(payload.to_vec());
     if let Some(actor) = actor {
         request = request.header("x-rustok-actor", actor);
+    }
+    if let Some(publisher) = publisher {
+        request = request.header("x-rustok-publisher", publisher);
     }
     let response = request
         .send()
@@ -1075,15 +1148,18 @@ fn build_publish_artifact_bytes(preview: &ModulePublishDryRunPreview) -> Result<
     serde_json::to_vec_pretty(&payload).context("Failed to serialize publish artifact bundle")
 }
 
-fn poll_registry_publish_status(
+fn poll_registry_publish_status_until(
     endpoint: &str,
     actor: Option<&str>,
+    desired_statuses: &[&str],
 ) -> Result<RegistryPublishStatusHttpResponse> {
     let mut last_status = None;
 
     for attempt in 0..10 {
         let status: RegistryPublishStatusHttpResponse = get_registry_json_parsed(endpoint, actor)?;
-        let terminal = matches!(status.status.as_str(), "published" | "rejected");
+        let terminal = desired_statuses
+            .iter()
+            .any(|candidate| status.status == *candidate);
         last_status = Some(status);
         if terminal {
             break;

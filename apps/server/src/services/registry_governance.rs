@@ -4,11 +4,19 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Context};
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+use crate::models::registry_governance_event::{
+    self, ActiveModel as RegistryGovernanceEventActiveModel,
+    Entity as RegistryGovernanceEventEntity,
+};
+use crate::models::registry_module_owner::{
+    self, ActiveModel as RegistryModuleOwnerActiveModel, Entity as RegistryModuleOwnerEntity,
+};
 use crate::models::registry_module_release::{
     self, ActiveModel as RegistryModuleReleaseActiveModel, Entity as RegistryModuleReleaseEntity,
     RegistryModuleReleaseStatus,
@@ -24,7 +32,6 @@ use crate::services::marketplace_catalog::{
 };
 
 const REGISTRY_ARTIFACT_BUNDLE_TYPE: &str = "rustok-module-publish-bundle";
-const REGISTRY_VALIDATOR_ACTOR: &str = "system:registry-validator";
 
 #[derive(Debug, Clone)]
 pub struct RegistryArtifactUpload {
@@ -42,6 +49,7 @@ pub struct RegistryPublishRequestSnapshot {
     pub id: String,
     pub status: String,
     pub requested_by: String,
+    pub publisher_identity: Option<String>,
     pub approved_by: Option<String>,
     pub rejected_by: Option<String>,
     pub rejection_reason: Option<String>,
@@ -65,9 +73,29 @@ pub struct RegistryModuleReleaseSnapshot {
 }
 
 #[derive(Debug, Clone)]
+pub struct RegistryModuleOwnerSnapshot {
+    pub owner_actor: String,
+    pub bound_by: String,
+    pub bound_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryGovernanceEventSnapshot {
+    pub id: String,
+    pub event_type: String,
+    pub actor: String,
+    pub publisher: Option<String>,
+    pub details: serde_json::Value,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct RegistryModuleLifecycleSnapshot {
+    pub owner_binding: Option<RegistryModuleOwnerSnapshot>,
     pub latest_request: Option<RegistryPublishRequestSnapshot>,
     pub latest_release: Option<RegistryModuleReleaseSnapshot>,
+    pub recent_events: Vec<RegistryGovernanceEventSnapshot>,
 }
 
 #[derive(Debug, Default)]
@@ -140,8 +168,12 @@ impl RegistryGovernanceService {
         &self,
         request: &RegistryPublishRequest,
         requested_by: &str,
+        publisher: Option<&str>,
         warnings: &[String],
     ) -> anyhow::Result<registry_publish_request::Model> {
+        self.ensure_actor_can_create_publish_request(requested_by, publisher, &request.module.slug)
+            .await?;
+
         let existing_active_release = RegistryModuleReleaseEntity::find()
             .filter(registry_module_release::Column::Slug.eq(&request.module.slug))
             .filter(registry_module_release::Column::Version.eq(&request.module.version))
@@ -175,6 +207,7 @@ impl RegistryGovernanceService {
                 .context("failed to serialize registry publish ui_packages metadata")?,
             status: RegistryPublishRequestStatus::Draft,
             requested_by: normalize_actor(requested_by),
+            publisher_identity: normalize_optional_actor(publisher),
             approved_by: None,
             rejected_by: None,
             rejection_reason: None,
@@ -209,6 +242,7 @@ impl RegistryGovernanceService {
             ui_packages: Set(model.ui_packages.clone()),
             status: Set(model.status.clone()),
             requested_by: Set(model.requested_by.clone()),
+            publisher_identity: Set(model.publisher_identity.clone()),
             approved_by: Set(None),
             rejected_by: Set(None),
             rejection_reason: Set(None),
@@ -228,6 +262,20 @@ impl RegistryGovernanceService {
         };
 
         active_model.insert(&self.db).await?;
+        self.record_governance_event(
+            &model.slug,
+            Some(&model.id),
+            None,
+            "request_created",
+            requested_by,
+            publisher,
+            serde_json::json!({
+                "version": model.version.clone(),
+                "status": request_status_label(RegistryPublishRequestStatus::Draft),
+                "warnings": warnings,
+            }),
+        )
+        .await?;
         self.get_publish_request(&request_id)
             .await?
             .ok_or_else(|| anyhow!("registry publish request disappeared after insert"))
@@ -242,7 +290,7 @@ impl RegistryGovernanceService {
             .await?)
     }
 
-    pub async fn upload_and_publish_request(
+    pub async fn upload_publish_artifact(
         &self,
         request_id: &str,
         actor: &str,
@@ -252,7 +300,8 @@ impl RegistryGovernanceService {
             .get_publish_request(request_id)
             .await?
             .ok_or_else(|| anyhow!("Registry publish request '{request_id}' was not found"))?;
-        ensure_actor_can_manage_publish_request(actor, &request, "upload an artifact for")?;
+        self.ensure_actor_can_manage_publish_request(actor, &request, "upload an artifact for")
+            .await?;
         if request.status != RegistryPublishRequestStatus::Draft {
             anyhow::bail!(
                 "Registry publish request '{}' is in status '{}' and can no longer accept an artifact upload",
@@ -277,22 +326,7 @@ impl RegistryGovernanceService {
         request_active.updated_at = Set(artifact_uploaded_at);
         let request = request_active.update(&self.db).await?;
 
-        let submitted_at = Utc::now();
-        let mut request_active: RegistryPublishRequestActiveModel = request.into();
-        request_active.status = Set(RegistryPublishRequestStatus::Submitted);
-        request_active.submitted_at = Set(Some(submitted_at));
-        request_active.updated_at = Set(submitted_at);
-        let request = request_active.update(&self.db).await?;
-
-        let validating_at = Utc::now();
-        let mut request_active: RegistryPublishRequestActiveModel = request.clone().into();
-        request_active.status = Set(RegistryPublishRequestStatus::Validating);
-        request_active.updated_at = Set(validating_at);
-        let request = request_active.update(&self.db).await?;
-
-        let validation = validate_registry_artifact_bundle(&request, &artifact);
         let mut warnings = deserialize_message_list(&request.validation_warnings);
-        warnings.extend(validation.warnings);
         let upload_actor = normalize_actor(actor);
         if upload_actor != request.requested_by {
             warnings.push(format!(
@@ -302,42 +336,85 @@ impl RegistryGovernanceService {
         }
         let warnings = dedupe_message_list(warnings);
 
-        if !validation.errors.is_empty() {
-            let rejected_at = Utc::now();
-            let errors = dedupe_message_list(validation.errors);
-            let mut request_active: RegistryPublishRequestActiveModel = request.into();
-            request_active.status = Set(RegistryPublishRequestStatus::Rejected);
-            request_active.validation_warnings = Set(serde_json::to_value(&warnings)?);
-            request_active.validation_errors = Set(serde_json::to_value(&errors)?);
-            request_active.rejected_by = Set(Some(REGISTRY_VALIDATOR_ACTOR.to_string()));
-            request_active.rejection_reason = Set(errors.first().cloned());
-            request_active.validated_at = Set(Some(rejected_at));
-            request_active.approved_by = Set(None);
-            request_active.approved_at = Set(None);
-            request_active.published_at = Set(None);
-            request_active.updated_at = Set(rejected_at);
-            return Ok(request_active.update(&self.db).await?);
-        }
-
-        let approved_at = Utc::now();
-        let mut request_active: RegistryPublishRequestActiveModel = request.clone().into();
-        request_active.status = Set(RegistryPublishRequestStatus::Approved);
+        let submitted_at = Utc::now();
+        let mut request_active: RegistryPublishRequestActiveModel = request.into();
+        request_active.status = Set(RegistryPublishRequestStatus::Submitted);
+        request_active.submitted_at = Set(Some(submitted_at));
         request_active.validation_warnings = Set(serde_json::to_value(&warnings)?);
-        request_active.validation_errors = Set(serde_json::json!([]));
-        request_active.rejected_by = Set(None);
-        request_active.rejection_reason = Set(None);
-        request_active.validated_at = Set(Some(approved_at));
-        request_active.approved_by = Set(Some(REGISTRY_VALIDATOR_ACTOR.to_string()));
-        request_active.approved_at = Set(Some(approved_at));
-        request_active.updated_at = Set(approved_at);
-        request_active.update(&self.db).await?;
-
-        self.get_publish_request(request_id).await?.ok_or_else(|| {
-            anyhow!("registry publish request '{request_id}' disappeared after validation")
-        })
+        request_active.updated_at = Set(submitted_at);
+        let request = request_active
+            .update(&self.db)
+            .await
+            .map_err(anyhow::Error::from)?;
+        self.record_governance_event(
+            &request.slug,
+            Some(&request.id),
+            None,
+            "artifact_uploaded",
+            actor,
+            None,
+            serde_json::json!({
+                "version": request.version.clone(),
+                "status": request_status_label(request.status.clone()),
+                "artifact_size": request.artifact_size,
+                "content_type": request.artifact_content_type.clone(),
+                "checksum_sha256": request.artifact_checksum_sha256.clone(),
+            }),
+        )
+        .await?;
+        Ok(request)
     }
 
-    pub async fn approve_publish_request(
+    pub async fn validate_publish_request(
+        &self,
+        request_id: &str,
+        actor: &str,
+    ) -> anyhow::Result<(registry_publish_request::Model, bool)> {
+        let request = self
+            .get_publish_request(request_id)
+            .await?
+            .ok_or_else(|| anyhow!("Registry publish request '{request_id}' was not found"))?;
+        self.ensure_actor_can_manage_publish_request(actor, &request, "validate")
+            .await?;
+
+        match request.status {
+            RegistryPublishRequestStatus::Draft => {
+                anyhow::bail!(
+                    "Registry publish request '{}' is still in draft status and must receive an artifact upload before validation",
+                    request_id
+                );
+            }
+            RegistryPublishRequestStatus::Approved
+            | RegistryPublishRequestStatus::Rejected
+            | RegistryPublishRequestStatus::Published => return Ok((request, false)),
+            RegistryPublishRequestStatus::Validating => return Ok((request, false)),
+            RegistryPublishRequestStatus::ArtifactUploaded
+            | RegistryPublishRequestStatus::Submitted => {}
+        }
+
+        let validating_at = Utc::now();
+        let mut request_active: RegistryPublishRequestActiveModel = request.into();
+        request_active.status = Set(RegistryPublishRequestStatus::Validating);
+        request_active.updated_at = Set(validating_at);
+        let request = request_active.update(&self.db).await?;
+        self.record_governance_event(
+            &request.slug,
+            Some(&request.id),
+            None,
+            "validation_queued",
+            actor,
+            None,
+            serde_json::json!({
+                "version": request.version.clone(),
+                "status": request_status_label(request.status.clone()),
+            }),
+        )
+        .await?;
+
+        Ok((request, true))
+    }
+
+    pub async fn run_publish_validation_job(
         &self,
         request_id: &str,
         actor: &str,
@@ -346,7 +423,89 @@ impl RegistryGovernanceService {
             .get_publish_request(request_id)
             .await?
             .ok_or_else(|| anyhow!("Registry publish request '{request_id}' was not found"))?;
-        ensure_actor_can_manage_publish_request(actor, &request, "approve")?;
+
+        match request.status {
+            RegistryPublishRequestStatus::Approved
+            | RegistryPublishRequestStatus::Rejected
+            | RegistryPublishRequestStatus::Published => return Ok(request),
+            RegistryPublishRequestStatus::Validating => {}
+            RegistryPublishRequestStatus::Draft
+            | RegistryPublishRequestStatus::ArtifactUploaded
+            | RegistryPublishRequestStatus::Submitted => {
+                anyhow::bail!(
+                    "Registry publish request '{}' is in status '{}' and is not ready for background validation",
+                    request_id,
+                    request_status_label(request.status.clone())
+                );
+            }
+        }
+
+        let artifact = match load_registry_artifact(&request).await {
+            Ok(artifact) => artifact,
+            Err(error) => {
+                let existing_warnings = deserialize_message_list(&request.validation_warnings);
+                let errors = vec![format!(
+                    "Validation job failed before bundle checks: {error}"
+                )];
+                return self
+                    .store_validation_rejection(request, actor, &existing_warnings, &errors)
+                    .await;
+            }
+        };
+
+        let validation = validate_registry_artifact_bundle(&request, &artifact);
+        let mut warnings = deserialize_message_list(&request.validation_warnings);
+        warnings.extend(validation.warnings);
+        let warnings = dedupe_message_list(warnings);
+
+        if !validation.errors.is_empty() {
+            let errors = dedupe_message_list(validation.errors);
+            return self
+                .store_validation_rejection(request, actor, &warnings, &errors)
+                .await;
+        }
+
+        let approved_at = Utc::now();
+        let mut request_active: RegistryPublishRequestActiveModel = request.into();
+        request_active.status = Set(RegistryPublishRequestStatus::Approved);
+        request_active.validation_warnings = Set(serde_json::to_value(&warnings)?);
+        request_active.validation_errors = Set(serde_json::json!([]));
+        request_active.rejected_by = Set(None);
+        request_active.rejection_reason = Set(None);
+        request_active.validated_at = Set(Some(approved_at));
+        request_active.approved_by = Set(Some(normalize_actor(actor)));
+        request_active.approved_at = Set(Some(approved_at));
+        request_active.updated_at = Set(approved_at);
+        let request = request_active.update(&self.db).await?;
+        self.record_governance_event(
+            &request.slug,
+            Some(&request.id),
+            None,
+            "validation_passed",
+            actor,
+            None,
+            serde_json::json!({
+                "version": request.version.clone(),
+                "status": request_status_label(request.status.clone()),
+                "warnings": warnings.clone(),
+            }),
+        )
+        .await?;
+        Ok(request)
+    }
+
+    pub async fn approve_publish_request(
+        &self,
+        request_id: &str,
+        actor: &str,
+        publisher: Option<&str>,
+    ) -> anyhow::Result<registry_publish_request::Model> {
+        let request = self
+            .get_publish_request(request_id)
+            .await?
+            .ok_or_else(|| anyhow!("Registry publish request '{request_id}' was not found"))?;
+        self.ensure_actor_can_review_publish_request(actor, &request, "approve")
+            .await?;
         if request.status != RegistryPublishRequestStatus::Approved {
             anyhow::bail!(
                 "Registry publish request '{}' is in status '{}' and cannot be approved",
@@ -369,16 +528,23 @@ impl RegistryGovernanceService {
         let checksum = request.artifact_checksum_sha256.clone().ok_or_else(|| {
             anyhow!("Registry publish request '{request_id}' is missing artifact_checksum_sha256")
         })?;
+        let effective_publisher = self
+            .resolve_effective_publisher(&request, actor, publisher)
+            .await?;
         let published_at = Utc::now();
-        self.upsert_release_from_request(
-            request_id,
-            actor,
-            checksum,
-            stored,
-            published_at,
-            &request,
-        )
-        .await?;
+        let release = self
+            .upsert_release_from_request(
+                request_id,
+                actor,
+                &effective_publisher,
+                checksum,
+                stored,
+                published_at,
+                &request,
+            )
+            .await?;
+        self.bind_registry_slug_owner(&request.slug, &effective_publisher, actor)
+            .await?;
 
         let mut request_active: RegistryPublishRequestActiveModel = request.into();
         request_active.status = Set(RegistryPublishRequestStatus::Published);
@@ -386,7 +552,27 @@ impl RegistryGovernanceService {
         request_active.approved_at = Set(Some(published_at));
         request_active.published_at = Set(Some(published_at));
         request_active.updated_at = Set(published_at);
-        Ok(request_active.update(&self.db).await?)
+        let request = request_active
+            .update(&self.db)
+            .await
+            .map_err(anyhow::Error::from)?;
+        self.record_governance_event(
+            &request.slug,
+            Some(&request.id),
+            Some(&release.id),
+            "release_published",
+            actor,
+            Some(&effective_publisher),
+            serde_json::json!({
+                "version": request.version.clone(),
+                "status": request_status_label(request.status.clone()),
+                "publisher": effective_publisher.clone(),
+                "checksum_sha256": release.checksum_sha256.clone(),
+                "release_status": release_status_label(release.status.clone()),
+            }),
+        )
+        .await?;
+        Ok(request)
     }
 
     pub async fn reject_publish_request(
@@ -399,7 +585,8 @@ impl RegistryGovernanceService {
             .get_publish_request(request_id)
             .await?
             .ok_or_else(|| anyhow!("Registry publish request '{request_id}' was not found"))?;
-        ensure_actor_can_manage_publish_request(actor, &request, "reject")?;
+        self.ensure_actor_can_review_publish_request(actor, &request, "reject")
+            .await?;
         if matches!(
             request.status,
             RegistryPublishRequestStatus::Published | RegistryPublishRequestStatus::Rejected
@@ -422,7 +609,26 @@ impl RegistryGovernanceService {
         request_active.rejection_reason = Set(Some(reason.trim().to_string()));
         request_active.validation_errors = Set(serde_json::to_value(dedupe_message_list(errors))?);
         request_active.updated_at = Set(rejected_at);
-        Ok(request_active.update(&self.db).await?)
+        let request = request_active
+            .update(&self.db)
+            .await
+            .map_err(anyhow::Error::from)?;
+        self.record_governance_event(
+            &request.slug,
+            Some(&request.id),
+            None,
+            "request_rejected",
+            actor,
+            None,
+            serde_json::json!({
+                "version": request.version.clone(),
+                "status": request_status_label(request.status.clone()),
+                "reason": request.rejection_reason.clone(),
+                "errors": deserialize_message_list(&request.validation_errors),
+            }),
+        )
+        .await?;
+        Ok(request)
     }
 
     pub async fn yank_release(
@@ -438,7 +644,8 @@ impl RegistryGovernanceService {
             .one(&self.db)
             .await?
             .ok_or_else(|| anyhow!("Published release '{slug}@{version}' was not found"))?;
-        ensure_actor_can_manage_release(actor, &release, "yank")?;
+        self.ensure_actor_can_manage_release(actor, &release, "yank")
+            .await?;
 
         let mut active: RegistryModuleReleaseActiveModel = release.into();
         active.status = Set(RegistryModuleReleaseStatus::Yanked);
@@ -446,7 +653,22 @@ impl RegistryGovernanceService {
         active.yanked_by = Set(Some(normalize_actor(actor)));
         active.yanked_at = Set(Some(Utc::now()));
         active.updated_at = Set(Utc::now());
-        Ok(active.update(&self.db).await?)
+        let release = active.update(&self.db).await?;
+        self.record_governance_event(
+            &release.slug,
+            release.request_id.as_deref(),
+            Some(&release.id),
+            "release_yanked",
+            actor,
+            Some(&release.publisher),
+            serde_json::json!({
+                "version": release.version.clone(),
+                "status": release_status_label(release.status.clone()),
+                "reason": release.yanked_reason.clone(),
+            }),
+        )
+        .await?;
+        Ok(release)
     }
 
     pub async fn apply_catalog_projection(
@@ -513,6 +735,9 @@ impl RegistryGovernanceService {
         &self,
         slug: &str,
     ) -> anyhow::Result<Option<RegistryModuleLifecycleSnapshot>> {
+        let owner_binding = RegistryModuleOwnerEntity::find_by_id(slug)
+            .one(&self.db)
+            .await?;
         let latest_request = RegistryPublishRequestEntity::find()
             .filter(registry_publish_request::Column::Slug.eq(slug))
             .order_by_desc(registry_publish_request::Column::CreatedAt)
@@ -523,16 +748,33 @@ impl RegistryGovernanceService {
             .order_by_desc(registry_module_release::Column::PublishedAt)
             .one(&self.db)
             .await?;
+        let recent_events = RegistryGovernanceEventEntity::find()
+            .filter(registry_governance_event::Column::Slug.eq(slug))
+            .order_by_desc(registry_governance_event::Column::CreatedAt)
+            .limit(10)
+            .all(&self.db)
+            .await?;
 
-        if latest_request.is_none() && latest_release.is_none() {
+        if owner_binding.is_none()
+            && latest_request.is_none()
+            && latest_release.is_none()
+            && recent_events.is_empty()
+        {
             return Ok(None);
         }
 
         Ok(Some(RegistryModuleLifecycleSnapshot {
+            owner_binding: owner_binding.map(|binding| RegistryModuleOwnerSnapshot {
+                owner_actor: binding.owner_actor,
+                bound_by: binding.bound_by,
+                bound_at: binding.bound_at.to_rfc3339(),
+                updated_at: binding.updated_at.to_rfc3339(),
+            }),
             latest_request: latest_request.map(|request| RegistryPublishRequestSnapshot {
                 id: request.id,
                 status: request_status_label(request.status).to_string(),
                 requested_by: request.requested_by,
+                publisher_identity: request.publisher_identity,
                 approved_by: request.approved_by,
                 rejected_by: request.rejected_by,
                 rejection_reason: request.rejection_reason,
@@ -552,13 +794,25 @@ impl RegistryGovernanceService {
                 yanked_by: release.yanked_by,
                 yanked_at: release.yanked_at.map(|value| value.to_rfc3339()),
             }),
+            recent_events: recent_events
+                .into_iter()
+                .map(|event| RegistryGovernanceEventSnapshot {
+                    id: event.id,
+                    event_type: event.event_type,
+                    actor: event.actor,
+                    publisher: event.publisher,
+                    details: event.details,
+                    created_at: event.created_at.to_rfc3339(),
+                })
+                .collect(),
         }))
     }
 
     async fn upsert_release_from_request(
         &self,
         request_id: &str,
-        actor: &str,
+        _actor: &str,
+        publisher: &str,
         checksum: String,
         stored: StoredRegistryArtifact,
         published_at: chrono::DateTime<Utc>,
@@ -572,7 +826,7 @@ impl RegistryGovernanceService {
 
         let marketplace = request.marketplace.clone();
         let ui_packages = request.ui_packages.clone();
-        let publisher = normalize_actor(actor);
+        let publisher = normalize_actor(publisher);
 
         if let Some(existing) = existing {
             let mut active: RegistryModuleReleaseActiveModel = existing.into();
@@ -630,6 +884,309 @@ impl RegistryGovernanceService {
         };
         Ok(active.insert(&self.db).await?)
     }
+
+    async fn ensure_actor_can_create_publish_request(
+        &self,
+        actor: &str,
+        publisher: Option<&str>,
+        slug: &str,
+    ) -> anyhow::Result<()> {
+        let actor = normalize_actor(actor);
+        if actor_is_registry_governance(&actor) {
+            return Ok(());
+        }
+
+        let owner = self.registry_slug_owner(slug).await?;
+        let requested_publisher = normalize_optional_actor(publisher);
+        if owner.as_ref().is_some_and(|owner| {
+            actor == owner.owner_actor
+                || requested_publisher.as_deref() == Some(owner.owner_actor.as_str())
+        }) {
+            return Ok(());
+        }
+
+        if owner.is_none()
+            && (legacy_actor_can_manage_registry_slug(&actor, slug)
+                || requested_publisher.as_deref().is_some_and(|publisher| {
+                    legacy_actor_can_manage_registry_slug(publisher, slug)
+                }))
+        {
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "Actor '{}' is not allowed to create registry publish requests for slug '{}'",
+            actor,
+            slug
+        )
+    }
+
+    async fn ensure_actor_can_manage_publish_request(
+        &self,
+        actor: &str,
+        request: &registry_publish_request::Model,
+        action: &str,
+    ) -> anyhow::Result<()> {
+        let actor = normalize_actor(actor);
+        let owner = self.registry_slug_owner(&request.slug).await?;
+        if actor_is_registry_governance(&actor)
+            || actor == request.requested_by
+            || request
+                .publisher_identity
+                .as_ref()
+                .is_some_and(|publisher| actor == publisher.as_str())
+            || owner
+                .as_ref()
+                .is_some_and(|owner| actor == owner.owner_actor)
+            || (owner.is_none() && legacy_actor_can_manage_registry_slug(&actor, &request.slug))
+        {
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "Actor '{}' is not allowed to {} registry publish request '{}' for slug '{}'",
+            actor,
+            action,
+            request.id,
+            request.slug
+        )
+    }
+
+    async fn ensure_actor_can_review_publish_request(
+        &self,
+        actor: &str,
+        request: &registry_publish_request::Model,
+        action: &str,
+    ) -> anyhow::Result<()> {
+        let actor = normalize_actor(actor);
+        let owner = self.registry_slug_owner(&request.slug).await?;
+        if actor_is_registry_governance(&actor)
+            || request
+                .publisher_identity
+                .as_ref()
+                .is_some_and(|publisher| actor == publisher.as_str())
+            || owner
+                .as_ref()
+                .is_some_and(|owner| actor == owner.owner_actor)
+            || (owner.is_none()
+                && request.publisher_identity.is_none()
+                && legacy_actor_can_manage_registry_slug(&actor, &request.slug))
+        {
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "Actor '{}' is not allowed to {} registry publish request '{}' for slug '{}'",
+            actor,
+            action,
+            request.id,
+            request.slug
+        )
+    }
+
+    async fn ensure_actor_can_manage_release(
+        &self,
+        actor: &str,
+        release: &registry_module_release::Model,
+        action: &str,
+    ) -> anyhow::Result<()> {
+        let actor = normalize_actor(actor);
+        let owner = self.registry_slug_owner(&release.slug).await?;
+        if actor_is_registry_governance(&actor)
+            || actor == release.publisher
+            || owner
+                .as_ref()
+                .is_some_and(|owner| actor == owner.owner_actor)
+            || (owner.is_none() && legacy_actor_can_manage_registry_slug(&actor, &release.slug))
+        {
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "Actor '{}' is not allowed to {} published release '{}@{}'",
+            actor,
+            action,
+            release.slug,
+            release.version
+        )
+    }
+
+    async fn resolve_effective_publisher(
+        &self,
+        request: &registry_publish_request::Model,
+        actor: &str,
+        publisher: Option<&str>,
+    ) -> anyhow::Result<String> {
+        if let Some(owner) = self.registry_slug_owner(&request.slug).await? {
+            return Ok(owner.owner_actor);
+        }
+
+        if let Some(publisher) = request.publisher_identity.clone() {
+            return Ok(publisher);
+        }
+
+        if let Some(publisher) = normalize_optional_actor(publisher) {
+            return Ok(publisher);
+        }
+
+        let actor = normalize_actor(actor);
+        if !actor_is_registry_governance(&actor) && actor != "anonymous" {
+            return Ok(actor);
+        }
+
+        Ok(format!("publisher:{}", request.slug))
+    }
+
+    async fn bind_registry_slug_owner(
+        &self,
+        slug: &str,
+        owner_actor: &str,
+        bound_by: &str,
+    ) -> anyhow::Result<registry_module_owner::Model> {
+        let owner_actor = normalize_actor(owner_actor);
+        let bound_by = normalize_actor(bound_by);
+        let now = Utc::now();
+
+        if let Some(existing) = RegistryModuleOwnerEntity::find_by_id(slug)
+            .one(&self.db)
+            .await?
+        {
+            if existing.owner_actor == owner_actor {
+                let mut active: RegistryModuleOwnerActiveModel = existing.into();
+                active.bound_by = Set(bound_by);
+                active.updated_at = Set(now);
+                return Ok(active.update(&self.db).await?);
+            }
+
+            if !actor_is_registry_governance(&bound_by) {
+                anyhow::bail!(
+                    "Actor '{}' is not allowed to rebind registry owner for slug '{}'",
+                    bound_by,
+                    slug
+                );
+            }
+
+            let mut active: RegistryModuleOwnerActiveModel = existing.into();
+            active.owner_actor = Set(owner_actor);
+            active.bound_by = Set(bound_by);
+            active.bound_at = Set(now);
+            active.updated_at = Set(now);
+            let binding = active.update(&self.db).await?;
+            self.record_governance_event(
+                slug,
+                None,
+                None,
+                "owner_bound",
+                &binding.bound_by,
+                Some(&binding.owner_actor),
+                serde_json::json!({
+                    "owner_actor": binding.owner_actor.clone(),
+                    "bound_by": binding.bound_by.clone(),
+                    "mode": "rebind",
+                }),
+            )
+            .await?;
+            return Ok(binding);
+        }
+
+        let active = RegistryModuleOwnerActiveModel {
+            slug: Set(slug.to_string()),
+            owner_actor: Set(owner_actor),
+            bound_by: Set(bound_by),
+            bound_at: Set(now),
+            updated_at: Set(now),
+        };
+        let binding = active.insert(&self.db).await?;
+        self.record_governance_event(
+            slug,
+            None,
+            None,
+            "owner_bound",
+            &binding.bound_by,
+            Some(&binding.owner_actor),
+            serde_json::json!({
+                "owner_actor": binding.owner_actor.clone(),
+                "bound_by": binding.bound_by.clone(),
+                "mode": "initial",
+            }),
+        )
+        .await?;
+        Ok(binding)
+    }
+
+    async fn registry_slug_owner(
+        &self,
+        slug: &str,
+    ) -> anyhow::Result<Option<registry_module_owner::Model>> {
+        Ok(RegistryModuleOwnerEntity::find_by_id(slug)
+            .one(&self.db)
+            .await?)
+    }
+
+    async fn store_validation_rejection(
+        &self,
+        request: registry_publish_request::Model,
+        actor: &str,
+        warnings: &[String],
+        errors: &[String],
+    ) -> anyhow::Result<registry_publish_request::Model> {
+        let rejected_at = Utc::now();
+        let errors = dedupe_message_list(errors.to_vec());
+        let warnings = dedupe_message_list(warnings.to_vec());
+        let mut request_active: RegistryPublishRequestActiveModel = request.into();
+        request_active.status = Set(RegistryPublishRequestStatus::Rejected);
+        request_active.validation_warnings = Set(serde_json::to_value(&warnings)?);
+        request_active.validation_errors = Set(serde_json::to_value(&errors)?);
+        request_active.rejected_by = Set(Some(normalize_actor(actor)));
+        request_active.rejection_reason = Set(errors.first().cloned());
+        request_active.validated_at = Set(Some(rejected_at));
+        request_active.approved_by = Set(None);
+        request_active.approved_at = Set(None);
+        request_active.published_at = Set(None);
+        request_active.updated_at = Set(rejected_at);
+        let request = request_active.update(&self.db).await?;
+        self.record_governance_event(
+            &request.slug,
+            Some(&request.id),
+            None,
+            "validation_failed",
+            actor,
+            None,
+            serde_json::json!({
+                "version": request.version.clone(),
+                "status": request_status_label(request.status.clone()),
+                "reason": request.rejection_reason.clone(),
+                "warnings": warnings,
+                "errors": errors,
+            }),
+        )
+        .await?;
+        Ok(request)
+    }
+
+    async fn record_governance_event(
+        &self,
+        slug: &str,
+        request_id: Option<&str>,
+        release_id: Option<&str>,
+        event_type: &str,
+        actor: &str,
+        publisher: Option<&str>,
+        details: serde_json::Value,
+    ) -> anyhow::Result<registry_governance_event::Model> {
+        let active = RegistryGovernanceEventActiveModel {
+            id: Set(format!("rge_{}", uuid::Uuid::new_v4().simple())),
+            slug: Set(slug.to_string()),
+            request_id: Set(request_id.map(ToString::to_string)),
+            release_id: Set(release_id.map(ToString::to_string)),
+            event_type: Set(event_type.to_string()),
+            actor: Set(normalize_actor(actor)),
+            publisher: Set(normalize_optional_actor(publisher)),
+            details: Set(details),
+            created_at: Set(Utc::now()),
+        };
+        Ok(active.insert(&self.db).await?)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -637,6 +1194,31 @@ struct StoredRegistryArtifact {
     artifact_path: String,
     artifact_url: String,
     artifact_size: i64,
+}
+
+async fn load_registry_artifact(
+    request: &registry_publish_request::Model,
+) -> anyhow::Result<RegistryArtifactUpload> {
+    let artifact_path = request.artifact_path.as_deref().ok_or_else(|| {
+        anyhow!(
+            "Registry publish request '{}' is missing artifact_path",
+            request.id
+        )
+    })?;
+    let bytes = tokio::fs::read(artifact_path).await.with_context(|| {
+        format!(
+            "failed to read registry artifact for request '{}' from {}",
+            request.id, artifact_path
+        )
+    })?;
+
+    Ok(RegistryArtifactUpload {
+        content_type: request
+            .artifact_content_type
+            .clone()
+            .unwrap_or_else(|| "application/octet-stream".to_string()),
+        bytes: bytes::Bytes::from(bytes),
+    })
 }
 
 async fn store_registry_artifact(
@@ -680,6 +1262,13 @@ fn normalize_actor(value: &str) -> String {
     } else {
         actor.to_string()
     }
+}
+
+fn normalize_optional_actor(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(normalize_actor)
 }
 
 fn dedupe_message_list(values: Vec<String>) -> Vec<String> {
@@ -750,9 +1339,11 @@ pub fn request_ui_packages(
 
 pub fn actor_can_manage_registry_slug(actor: &str, slug: &str) -> bool {
     let actor = normalize_actor(actor);
-    actor_is_registry_governance(&actor)
-        || actor == "publisher:*"
-        || actor == format!("publisher:{slug}")
+    actor_is_registry_governance(&actor) || legacy_actor_can_manage_registry_slug(&actor, slug)
+}
+
+fn legacy_actor_can_manage_registry_slug(actor: &str, slug: &str) -> bool {
+    actor == "publisher:*" || actor == format!("publisher:{slug}")
 }
 
 fn validate_registry_artifact_bundle(
@@ -1303,50 +1894,6 @@ fn validate_toml_workspace_aware_string_field(
     ));
 }
 
-fn ensure_actor_can_manage_publish_request(
-    actor: &str,
-    request: &registry_publish_request::Model,
-    action: &str,
-) -> anyhow::Result<()> {
-    let actor = normalize_actor(actor);
-    if actor_is_registry_governance(&actor)
-        || actor == request.requested_by
-        || actor_can_manage_registry_slug(&actor, &request.slug)
-    {
-        return Ok(());
-    }
-
-    anyhow::bail!(
-        "Actor '{}' is not allowed to {} registry publish request '{}' for slug '{}'",
-        actor,
-        action,
-        request.id,
-        request.slug
-    )
-}
-
-fn ensure_actor_can_manage_release(
-    actor: &str,
-    release: &registry_module_release::Model,
-    action: &str,
-) -> anyhow::Result<()> {
-    let actor = normalize_actor(actor);
-    if actor_is_registry_governance(&actor)
-        || actor == release.publisher
-        || actor_can_manage_registry_slug(&actor, &release.slug)
-    {
-        return Ok(());
-    }
-
-    anyhow::bail!(
-        "Actor '{}' is not allowed to {} published release '{}@{}'",
-        actor,
-        action,
-        release.slug,
-        release.version
-    )
-}
-
 fn actor_is_registry_governance(actor: &str) -> bool {
     actor.starts_with("system:")
         || actor.starts_with("xtask:")
@@ -1435,6 +1982,7 @@ mod tests {
             }),
             status: RegistryPublishRequestStatus::Draft,
             requested_by: "xtask:module-publish".to_string(),
+            publisher_identity: Some("publisher:blog".to_string()),
             approved_by: None,
             rejected_by: None,
             rejection_reason: None,

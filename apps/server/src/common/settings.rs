@@ -1,5 +1,8 @@
+use ipnet::IpNet;
+use rustok_core::tenant_validation::TenantIdentifierValidator;
 use rustok_iggy::IggyConfig;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use uuid::Uuid;
 
 #[cfg(feature = "mod-media")]
@@ -217,6 +220,10 @@ pub struct TenantSettings {
     pub header_name: String,
     #[serde(default = "default_tenant_id")]
     pub default_id: Uuid,
+    #[serde(default)]
+    pub fallback_mode: TenantFallbackMode,
+    #[serde(default)]
+    pub base_domains: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -333,6 +340,16 @@ pub struct RuntimeSettings {
     pub host_mode: RuntimeHostMode,
     #[serde(default)]
     pub guardrails: RuntimeGuardrailSettings,
+    #[serde(default)]
+    pub request_trust: RequestTrustSettings,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TenantFallbackMode {
+    #[default]
+    Disabled,
+    DefaultTenant,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
@@ -341,6 +358,22 @@ pub enum RuntimeHostMode {
     #[default]
     Full,
     RegistryOnly,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RequestTrustSettings {
+    #[serde(default)]
+    pub forwarded_headers_mode: ForwardedHeadersMode,
+    #[serde(default)]
+    pub trusted_proxy_cidrs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ForwardedHeadersMode {
+    #[default]
+    Ignore,
+    TrustedOnly,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -390,6 +423,8 @@ impl Default for TenantSettings {
             resolution: default_resolution(),
             header_name: default_header_name(),
             default_id: default_tenant_id(),
+            fallback_mode: TenantFallbackMode::Disabled,
+            base_domains: Vec::new(),
         }
     }
 }
@@ -494,6 +529,16 @@ impl Default for RuntimeSettings {
         Self {
             host_mode: RuntimeHostMode::Full,
             guardrails: RuntimeGuardrailSettings::default(),
+            request_trust: RequestTrustSettings::default(),
+        }
+    }
+}
+
+impl Default for RequestTrustSettings {
+    fn default() -> Self {
+        Self {
+            forwarded_headers_mode: ForwardedHeadersMode::Ignore,
+            trusted_proxy_cidrs: Vec::new(),
         }
     }
 }
@@ -535,6 +580,39 @@ impl RustokSettings {
 
         if let Ok(raw_host_mode) = std::env::var("RUSTOK_RUNTIME_HOST_MODE") {
             parsed.runtime.host_mode = parse_runtime_host_mode(&raw_host_mode)?;
+        }
+
+        parsed.tenant.header_name = parsed.tenant.header_name.trim().to_string();
+        if parsed.tenant.header_name.is_empty() {
+            parsed.tenant.header_name = default_header_name();
+        }
+
+        parsed.tenant.base_domains = parsed
+            .tenant
+            .base_domains
+            .iter()
+            .map(|value| value.trim().trim_end_matches('.').to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect();
+
+        for base_domain in &parsed.tenant.base_domains {
+            TenantIdentifierValidator::validate_host(base_domain).map_err(|error| {
+                serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("invalid rustok.tenant.base_domains entry `{base_domain}`: {error}"),
+                ))
+            })?;
+        }
+
+        for cidr in &parsed.runtime.request_trust.trusted_proxy_cidrs {
+            IpNet::from_str(cidr.trim()).map_err(|error| {
+                serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "invalid rustok.runtime.request_trust.trusted_proxy_cidrs entry `{cidr}`: {error}"
+                    ),
+                ))
+            })?;
         }
 
         if parsed.events.relay_retry_policy.max_attempts <= 0 {

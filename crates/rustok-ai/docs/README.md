@@ -23,6 +23,7 @@
 - typed request/response model для chat runs;
 - `AiRuntime` с request/response loop, tool-call orchestration и error normalization;
 - `ToolExecutionPolicy` с выделением sensitive tool calls и approval boundary.
+- `AiRouter` и direct-dispatch слой для first-party verticals без обязательного MCP hop.
 
 ### MCP integration
 
@@ -50,6 +51,7 @@
 - Next.js admin UI package: `apps/next-admin/packages/rustok-ai`;
 - оба UI уже поддерживают provider registry с редактируемыми `capabilities` и `usage_policy`;
 - оба UI показывают execution metadata (`execution_mode`, `execution_path`) для session/run inspection;
+- оба UI поддерживают direct job surfaces для `alloy_code`, `image_asset` и `product_copy`;
 - оба host'а выступают только composition root:
   - `apps/admin` монтирует Leptos package;
   - `apps/next-admin` монтирует npm package `@rustok/ai-admin`.
@@ -60,6 +62,7 @@
 
 - orchestration runtime;
 - provider abstraction;
+- direct first-party execution registry;
 - chat/session/approval contracts;
 - server-side management service;
 - capability-owned admin UI packages.
@@ -80,7 +83,7 @@
 ## Что ещё не реализовано
 
 - token streaming как обязательный runtime path;
-- дополнительные provider families (`Anthropic`, `Gemini`, native adapters);
+- дополнительные provider families сверх уже реализованных (`Anthropic`, `Gemini`, richer native adapters);
 - удалённый MCP bootstrap beyond текущего Rustok server wiring;
 - отдельный marketplace/publish flow для AI artifacts.
 

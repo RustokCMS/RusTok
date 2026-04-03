@@ -96,10 +96,38 @@ pub struct MarketplaceModule {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct RegistryModuleLifecycle {
+    #[serde(default, rename = "ownerBinding")]
+    pub owner_binding: Option<RegistryOwnerLifecycle>,
     #[serde(default, rename = "latestRequest")]
     pub latest_request: Option<RegistryPublishRequestLifecycle>,
     #[serde(default, rename = "latestRelease")]
     pub latest_release: Option<RegistryReleaseLifecycle>,
+    #[serde(default, rename = "recentEvents")]
+    pub recent_events: Vec<RegistryGovernanceEventLifecycle>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryOwnerLifecycle {
+    #[serde(rename = "ownerActor")]
+    pub owner_actor: String,
+    #[serde(rename = "boundBy")]
+    pub bound_by: String,
+    #[serde(rename = "boundAt")]
+    pub bound_at: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct RegistryGovernanceEventLifecycle {
+    pub id: String,
+    #[serde(rename = "eventType")]
+    pub event_type: String,
+    pub actor: String,
+    pub publisher: Option<String>,
+    pub details: serde_json::Value,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -108,6 +136,8 @@ pub struct RegistryPublishRequestLifecycle {
     pub status: String,
     #[serde(rename = "requestedBy")]
     pub requested_by: String,
+    #[serde(rename = "publisherIdentity")]
+    pub publisher_identity: Option<String>,
     #[serde(rename = "approvedBy")]
     pub approved_by: Option<String>,
     #[serde(rename = "rejectedBy")]

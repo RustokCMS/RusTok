@@ -25,7 +25,10 @@ use tracing::{debug, warn};
 use rustok_cache::CacheService;
 
 use crate::auth::{decode_access_token, AuthConfig};
-use crate::common::settings::RateLimitBackendKind;
+use crate::common::{
+    extract_effective_client_ip, peer_ip_from_extensions,
+    settings::{RateLimitBackendKind, RequestTrustSettings},
+};
 
 /// Configuration for rate limiting
 #[derive(Clone, Debug)]
@@ -459,10 +462,16 @@ pub struct RateLimitMiddlewareState {
 
 #[derive(Clone)]
 pub struct PathRateLimitMiddlewareState {
-    pub limiter: Arc<RateLimiter>,
-    pub prefixes: Arc<Vec<&'static str>>,
+    pub policies: Arc<Vec<PathRateLimitPolicy>>,
     pub auth_config: Option<AuthConfig>,
     pub trusted_auth_dimensions: bool,
+    pub request_trust: RequestTrustSettings,
+}
+
+#[derive(Clone)]
+pub struct PathRateLimitPolicy {
+    pub limiter: Arc<RateLimiter>,
+    pub prefixes: Arc<Vec<&'static str>>,
 }
 
 #[derive(Debug, Clone)]
@@ -526,30 +535,40 @@ struct TrustedRateLimitClaims {
 /// User-scoped rate limiting must be implemented after JWT verification using
 /// the verified claims from a trusted middleware layer.
 fn extract_client_id(headers: &HeaderMap) -> String {
-    if let Some(forwarded) = headers.get("x-forwarded-for") {
-        if let Ok(forwarded_str) = forwarded.to_str() {
-            if let Some(first_ip) = forwarded_str.split(',').next() {
-                let ip = first_ip.trim();
-                if IpAddr::from_str(ip).is_ok() {
-                    return format!("ip:{}", ip);
-                }
-            }
-        }
-    }
-
-    if let Some(real_ip) = headers.get("x-real-ip") {
-        if let Ok(ip_str) = real_ip.to_str() {
-            if IpAddr::from_str(ip_str).is_ok() {
-                return format!("ip:{}", ip_str);
-            }
-        }
-    }
-
-    "ip:unknown".to_string()
+    headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| IpAddr::from_str(value).is_ok())
+        .map(|value| format!("ip:{value}"))
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|value| IpAddr::from_str(value).is_ok())
+                .map(|value| format!("ip:{value}"))
+        })
+        .unwrap_or_else(|| "ip:unknown".to_string())
 }
 
 pub fn extract_client_id_pub(headers: &HeaderMap) -> String {
     extract_client_id(headers)
+}
+
+fn extract_client_id_for_request(
+    headers: &HeaderMap,
+    request: &Request,
+    request_trust: &RequestTrustSettings,
+) -> String {
+    extract_effective_client_ip(
+        headers,
+        peer_ip_from_extensions(request.extensions()),
+        request_trust,
+    )
+    .map(|ip| format!("ip:{ip}"))
+    .unwrap_or_else(|| "ip:unknown".to_string())
 }
 
 fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -579,10 +598,12 @@ fn extract_trusted_rate_limit_claims(
 
 fn build_rate_limit_key(
     headers: &HeaderMap,
+    request: &Request,
     auth_config: Option<&AuthConfig>,
     trusted_auth_dimensions: bool,
+    request_trust: &RequestTrustSettings,
 ) -> String {
-    let mut key = extract_client_id(headers);
+    let mut key = extract_client_id_for_request(headers, request, request_trust);
 
     if !trusted_auth_dimensions {
         return key;
@@ -651,8 +672,10 @@ pub async fn rate_limit_middleware(
 ) -> Result<Response, impl IntoResponse> {
     let rate_limit_key = build_rate_limit_key(
         &headers,
+        &request,
         state.auth_config.as_ref(),
         state.trusted_auth_dimensions,
+        &RequestTrustSettings::default(),
     );
 
     debug!(rate_limit_key = %rate_limit_key, "Checking rate limit");
@@ -689,21 +712,31 @@ pub async fn rate_limit_for_paths(
     next: Next,
 ) -> Result<Response, impl IntoResponse> {
     let path = request.uri().path().to_owned();
-    let should_limit = state.prefixes.iter().any(|prefix| path.starts_with(prefix));
-
-    if !should_limit {
+    let Some(policy) = state.policies.iter().find(|policy| {
+        policy
+            .prefixes
+            .iter()
+            .any(|prefix| path.starts_with(prefix))
+    }) else {
         return Ok(next.run(request).await);
-    }
+    };
 
     let rate_limit_key = build_rate_limit_key(
         &headers,
+        &request,
         state.auth_config.as_ref(),
         state.trusted_auth_dimensions,
+        &state.request_trust,
     );
 
-    debug!(rate_limit_key = %rate_limit_key, path = %path, "Checking rate limit for auth path");
+    debug!(
+        rate_limit_key = %rate_limit_key,
+        path = %path,
+        namespace = policy.limiter.namespace(),
+        "Checking rate limit for matched path policy"
+    );
 
-    match state.limiter.check_rate_limit(&rate_limit_key).await {
+    match policy.limiter.check_rate_limit(&rate_limit_key).await {
         Ok(info) => {
             let mut response = next.run(request).await;
             apply_rate_limit_headers(response.headers_mut(), &info);
@@ -711,11 +744,11 @@ pub async fn rate_limit_for_paths(
             Ok(response)
         }
         Err(RateLimitCheckError::Exceeded(exceeded)) => {
-            record_rate_limit_exceeded(state.limiter.namespace());
+            record_rate_limit_exceeded(policy.limiter.namespace());
             Err(rate_limited_response(&exceeded))
         }
         Err(RateLimitCheckError::BackendUnavailable(reason)) => {
-            record_rate_limit_backend_unavailable(state.limiter.namespace());
+            record_rate_limit_backend_unavailable(policy.limiter.namespace());
             Err(rate_limit_backend_unavailable_response(&reason))
         }
     }
@@ -734,7 +767,10 @@ pub async fn cleanup_task(limiter: Arc<RateLimiter>) {
 mod tests {
     use super::*;
     use crate::auth::{encode_access_token, encode_oauth_access_token, AuthConfig};
+    use crate::common::settings::ForwardedHeadersMode;
+    use axum::body::Body;
     use rustok_core::UserRole;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use uuid::Uuid;
 
     fn test_auth_config() -> AuthConfig {
@@ -742,6 +778,24 @@ mod tests {
             .with_expiration(3600, 3600)
             .with_issuer("rustok")
             .with_audience("rustok-admin")
+    }
+
+    fn trusted_request_trust() -> RequestTrustSettings {
+        RequestTrustSettings {
+            forwarded_headers_mode: ForwardedHeadersMode::TrustedOnly,
+            trusted_proxy_cidrs: vec!["10.0.0.0/8".to_string()],
+        }
+    }
+
+    fn request_with_peer_ip(peer_ip: IpAddr) -> Request {
+        let mut request = Request::builder()
+            .uri("/api/test")
+            .body(Body::empty())
+            .expect("request");
+        request
+            .extensions_mut()
+            .insert(SocketAddr::from((peer_ip, 443)));
+        request
     }
 
     #[tokio::test]
@@ -884,10 +938,16 @@ mod tests {
 
     #[test]
     fn build_rate_limit_key_uses_ip_only_without_trusted_dimensions() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "1.2.3.4".parse().unwrap());
+        let headers = HeaderMap::new();
+        let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)));
 
-        let key = build_rate_limit_key(&headers, Some(&test_auth_config()), false);
+        let key = build_rate_limit_key(
+            &headers,
+            &request,
+            Some(&test_auth_config()),
+            false,
+            &RequestTrustSettings::default(),
+        );
         assert_eq!(key, "ip:1.2.3.4");
     }
 
@@ -896,8 +956,15 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "1.2.3.4".parse().unwrap());
         headers.insert(header::AUTHORIZATION, "Bearer broken".parse().unwrap());
+        let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10)));
 
-        let key = build_rate_limit_key(&headers, Some(&test_auth_config()), true);
+        let key = build_rate_limit_key(
+            &headers,
+            &request,
+            Some(&test_auth_config()),
+            true,
+            &trusted_request_trust(),
+        );
         assert_eq!(key, "ip:1.2.3.4");
     }
 
@@ -920,8 +987,15 @@ mod tests {
             header::AUTHORIZATION,
             format!("Bearer {token}").parse().unwrap(),
         );
+        let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10)));
 
-        let key = build_rate_limit_key(&headers, Some(&config), true);
+        let key = build_rate_limit_key(
+            &headers,
+            &request,
+            Some(&config),
+            true,
+            &trusted_request_trust(),
+        );
         assert_eq!(key, format!("ip:1.2.3.4|tenant:{tenant_id}"));
     }
 
@@ -948,12 +1022,36 @@ mod tests {
             header::AUTHORIZATION,
             format!("Bearer {token}").parse().unwrap(),
         );
+        let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10)));
 
-        let key = build_rate_limit_key(&headers, Some(&config), true);
+        let key = build_rate_limit_key(
+            &headers,
+            &request,
+            Some(&config),
+            true,
+            &trusted_request_trust(),
+        );
         assert_eq!(
             key,
             format!("ip:1.2.3.4|tenant:{tenant_id}|oauth_app:{client_id}")
         );
+    }
+
+    #[test]
+    fn build_rate_limit_key_ignores_spoofed_forwarded_ip_for_untrusted_peer() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "203.0.113.8".parse().unwrap());
+        let request = request_with_peer_ip(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)));
+
+        let key = build_rate_limit_key(
+            &headers,
+            &request,
+            Some(&test_auth_config()),
+            false,
+            &trusted_request_trust(),
+        );
+
+        assert_eq!(key, "ip:192.168.1.50");
     }
 
     #[test]

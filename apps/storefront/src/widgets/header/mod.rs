@@ -3,6 +3,7 @@ use leptos::prelude::*;
 
 #[component]
 pub fn Header(
+    locale: String,
     nav_home: &'static str,
     nav_catalog: &'static str,
     nav_about: &'static str,
@@ -10,11 +11,15 @@ pub fn Header(
     nav_language: &'static str,
     cta_primary: &'static str,
 ) -> impl IntoView {
+    let home_href = storefront_root_for_locale(locale.as_str());
+    let english_href = storefront_root_for_locale("en");
+    let russian_href = storefront_root_for_locale("ru");
+
     view! {
         <header class="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
             <div class="container-app flex h-14 w-full items-center px-4">
                 <div class="flex-1">
-                    <a class="text-xl font-bold text-foreground hover:text-primary transition-colors" href="/">
+                    <a class="text-xl font-bold text-foreground hover:text-primary transition-colors" href=home_href>
                         "RusToK"
                     </a>
                 </div>
@@ -32,12 +37,12 @@ pub fn Header(
                             </summary>
                             <ul class="absolute right-0 mt-1 w-32 rounded-md border border-border bg-popover p-1 shadow-md z-50">
                                 <li>
-                                    <a class="block rounded px-3 py-1.5 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors" href="/?lang=en">
+                                    <a class="block rounded px-3 py-1.5 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors" href=english_href.clone()>
                                         "English"
                                     </a>
                                 </li>
                                 <li>
-                                    <a class="block rounded px-3 py-1.5 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors" href="/?lang=ru">
+                                    <a class="block rounded px-3 py-1.5 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors" href=russian_href.clone()>
                                         "Русский"
                                     </a>
                                 </li>
@@ -53,4 +58,8 @@ pub fn Header(
             </div>
         </header>
     }
+}
+
+fn storefront_root_for_locale(locale: &str) -> String {
+    format!("/{}", locale.trim().to_lowercase())
 }

@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::entities::module::{MarketplaceModule, ModuleInfo};
-use crate::{t, t_string, use_i18n};
+use crate::{t, t_string, use_i18n, Locale};
 
 fn short_checksum(value: Option<&str>) -> Option<String> {
     let value = value?;
@@ -9,6 +9,13 @@ fn short_checksum(value: Option<&str>) -> Option<String> {
         Some(format!("{}...", &value[..12]))
     } else {
         Some(value.to_string())
+    }
+}
+
+fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
+    match locale {
+        Locale::ru => ru,
+        _ => en,
     }
 }
 
@@ -28,6 +35,7 @@ pub fn ModuleCard(
     #[prop(default = None)] on_uninstall: Option<Callback<String>>,
 ) -> impl IntoView {
     let i18n = use_i18n();
+    let locale = i18n.get_locale();
     let is_core = module.is_core();
     let module_name = module.name.clone();
     let module_description = module.description.clone();
@@ -101,20 +109,20 @@ pub fn ModuleCard(
                         {(!is_core).then(|| view! {
                             <Show when=move || !platform_installed.get()>
                                 <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-                                    "Not installed"
+                                    {tr(locale, "Not installed", "Не установлен")}
                                 </span>
                             </Show>
                         })}
                         {(!is_core).then(|| view! {
                             <Show when=move || platform_installed.get() && platform_version.get().is_some()>
                                 <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground">
-                                    {move || format!("Manifest v{}", platform_version.get().unwrap_or_default())}
+                                    {move || format!("{} v{}", tr(locale, "Manifest", "Manifest"), platform_version.get().unwrap_or_default())}
                                 </span>
                             </Show>
                         })}
                         <Show when=move || update_available.get()>
                             <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                                {move || format!("Update v{}", recommended_version.get().unwrap_or_default())}
+                                {move || format!("{} v{}", tr(locale, "Update", "Обновление"), recommended_version.get().unwrap_or_default())}
                             </span>
                         </Show>
                         <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
@@ -135,13 +143,17 @@ pub fn ModuleCard(
                     {catalog_module_value.as_ref().map(|catalog| {
                         view! {
                             <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                {if catalog.compatible { "Compatible" } else { "Compatibility risk" }}
+                                {if catalog.compatible {
+                                    tr(locale, "Compatible", "Совместим")
+                                } else {
+                                    tr(locale, "Compatibility risk", "Риск совместимости")
+                                }}
                             </span>
                         }
                     })}
                     {catalog_module_value.as_ref().is_some_and(|catalog| catalog.signature_present).then(|| view! {
                         <span class="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-secondary-foreground">
-                            "Signed"
+                            {tr(locale, "Signed", "Подписан")}
                         </span>
                     })}
                     {catalog_module_value
@@ -162,7 +174,7 @@ pub fn ModuleCard(
                         .map(|surface| {
                             view! {
                                 <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                    {format!("Primary: {}", surface.replace('-', " "))}
+                                    {format!("{}: {}", tr(locale, "Primary", "Primary"), surface.replace('-', " "))}
                                 </span>
                             }
                         })
@@ -172,7 +184,7 @@ pub fn ModuleCard(
                         .map(|surface| {
                             view! {
                                 <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                    {format!("Showcase: {}", surface.replace('-', " "))}
+                                    {format!("{}: {}", tr(locale, "Showcase", "Showcase"), surface.replace('-', " "))}
                                 </span>
                             }
                         })
@@ -183,13 +195,13 @@ pub fn ModuleCard(
                     let publisher = catalog
                         .publisher
                         .clone()
-                        .unwrap_or_else(|| "Workspace / unknown".to_string());
+                        .unwrap_or_else(|| tr(locale, "Workspace / unknown", "Workspace / неизвестно").to_string());
                     let checksum = short_checksum(catalog.checksum_sha256.as_deref());
                     let version_trail = catalog.versions.into_iter().take(3).collect::<Vec<_>>();
                     view! {
                         <div class="grid gap-2 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs">
                             <div class="flex flex-wrap items-center gap-2">
-                                <span class="text-muted-foreground">"Publisher:"</span>
+                                <span class="text-muted-foreground">{format!("{}:", tr(locale, "Publisher", "Издатель"))}</span>
                                 <span>{publisher}</span>
                                 {checksum.map(|checksum| view! {
                                     <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-mono font-medium text-muted-foreground">
@@ -198,23 +210,23 @@ pub fn ModuleCard(
                                 })}
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
-                                <span class="text-muted-foreground">"RusTok:"</span>
+                                <span class="text-muted-foreground">{format!("{}:", tr(locale, "RusTok", "RusTok"))}</span>
                                 <span>
                                     {format!(
                                         "{}{}",
-                                        catalog.rustok_min_version.as_ref().map(|value| format!(">= {}", value)).unwrap_or_else(|| "no min".to_string()),
-                                        catalog.rustok_max_version.as_ref().map(|value| format!(", <= {}", value)).unwrap_or_else(|| ", no max".to_string())
+                                        catalog.rustok_min_version.as_ref().map(|value| format!(">= {}", value)).unwrap_or_else(|| tr(locale, "no min", "без min").to_string()),
+                                        catalog.rustok_max_version.as_ref().map(|value| format!(", <= {}", value)).unwrap_or_else(|| format!(", {}", tr(locale, "no max", "без max")))
                                     )}
                                 </span>
                             </div>
                             {(!version_trail.is_empty()).then(|| {
                                 view! {
                                     <div class="flex flex-wrap items-center gap-2">
-                                        <span class="text-muted-foreground">"Versions:"</span>
+                                        <span class="text-muted-foreground">{format!("{}:", tr(locale, "Versions", "Версии"))}</span>
                                         {version_trail.into_iter().map(|version| {
                                             view! {
                                                 <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 font-medium text-muted-foreground">
-                                                    {format!("v{}{}", version.version, if version.yanked { " yanked" } else { "" })}
+                                                    {format!("v{}{}", version.version, if version.yanked { format!(" {}", tr(locale, "yanked", "отозван")) } else { String::new() })}
                                                 </span>
                                             }
                                         }).collect_view()}
@@ -247,7 +259,7 @@ pub fn ModuleCard(
                                 <span class="text-xs text-muted-foreground">
                                     {move || {
                                         if !platform_installed.get() {
-                                            "Unavailable".to_string()
+                                            tr(locale, "Unavailable", "Недоступно").to_string()
                                         } else if tenant_enabled.get() {
                                             t_string!(i18n, modules.enabled).to_string()
                                         } else {
@@ -305,18 +317,18 @@ pub fn ModuleCard(
                                     }
                                 }
                             >
-                                "Details"
+                                {tr(locale, "Details", "Детали")}
                             </button>
                             <div class="flex items-center gap-3">
                                 <div class="text-xs text-muted-foreground">
                                     {move || {
                                         if platform_installed.get() {
                                             match platform_version.get() {
-                                                Some(version) => format!("Installed in platform manifest as v{}", version),
-                                                None => "Installed in platform manifest".to_string(),
+                                                Some(version) => format!("{} v{}", tr(locale, "Installed in platform manifest as", "Установлен в platform manifest как"), version),
+                                                None => tr(locale, "Installed in platform manifest", "Установлен в platform manifest").to_string(),
                                             }
                                         } else {
-                                            "Missing from platform manifest".to_string()
+                                            tr(locale, "Missing from platform manifest", "Отсутствует в platform manifest").to_string()
                                         }
                                     }}
                                 </div>
@@ -337,7 +349,7 @@ pub fn ModuleCard(
                                                     }
                                                 }
                                             >
-                                                {move || if platform_loading.get() { "Queueing..." } else { "Install" }}
+                                                {move || if platform_loading.get() { tr(locale, "Queueing...", "Постановка в очередь...") } else { tr(locale, "Install", "Установить") }}
                                             </button>
                                         }
                                     }
@@ -355,7 +367,7 @@ pub fn ModuleCard(
                                             }
                                         }
                                     >
-                                        {move || if platform_loading.get() { "Queueing..." } else { "Uninstall" }}
+                                        {move || if platform_loading.get() { tr(locale, "Queueing...", "Постановка в очередь...") } else { tr(locale, "Uninstall", "Удалить") }}
                                     </button>
                                         }
                                     }
@@ -377,10 +389,10 @@ pub fn ModuleCard(
                                     }
                                 }
                             >
-                                "Details"
+                                {tr(locale, "Details", "Детали")}
                             </button>
                             <span class="text-xs text-muted-foreground">
-                                "Built into the platform manifest"
+                                {tr(locale, "Built into the platform manifest", "Встроен в platform manifest")}
                             </span>
                         </div>
                     }

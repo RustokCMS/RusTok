@@ -314,3 +314,11 @@ cargo test -p rustok-core security
 - [OWASP Top 10 2021](https://owasp.org/Top10/)
 - [OWASP Secure Headers](https://owasp.org/www-project-secure-headers/)
 - [OWASP Testing Guide](https://owasp.org/www-project-web-security-testing-guide/)
+
+## RusToK runtime notes
+
+- `Forwarded`, `X-Forwarded-Host`, `X-Forwarded-For`, and `X-Forwarded-Proto` are untrusted by default. Production deployments must explicitly configure `settings.rustok.runtime.request_trust.forwarded_headers_mode=trusted_only` plus `trusted_proxy_cidrs` before any middleware may consume forwarded headers.
+- Tenant, channel, OAuth secure-cookie detection, and HTTP rate limiting all share the same request-trust helper; per-feature ad hoc parsing of forwarded headers is no longer allowed.
+- `settings.rustok.tenant.resolution=header` must be paired with an explicit fallback policy. Production-safe default is `fallback_mode=disabled`, which turns a missing tenant header into `400`.
+- Permission-gated REST handlers must distinguish `403 Forbidden` from RBAC backend failure. Denied access is a client-visible authorization result; RBAC storage/cache errors remain `500`.
+- CSP is surface-scoped: API/operator routes keep a strict policy, while embedded UI routes must use a policy compatible with shipped JS/CSS assets.

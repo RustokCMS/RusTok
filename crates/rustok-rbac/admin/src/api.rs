@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 use crate::model::RbacAdminBootstrap;
+#[cfg(feature = "ssr")]
+use crate::model::{RbacHostSurfaceLink, RbacModulePermissionGroup};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {

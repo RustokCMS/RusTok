@@ -139,3 +139,9 @@ cargo check -p rustok-server --bin rustok-server
 
 - [`runtime-guardrails.md`](/C:/проекты/RusTok/docs/guides/runtime-guardrails.md)
 - [`principles.md`](/C:/Users/user/Documents/New%20project/RusTok/docs/architecture/principles.md)
+
+## Trusted proxy contract
+
+- By default the limiter keys requests by the real peer/socket IP and falls back to `ip:unknown`.
+- `Forwarded` / `X-Forwarded-*` participate in IP derivation only when `settings.rustok.runtime.request_trust.forwarded_headers_mode=trusted_only` and the peer IP matches `trusted_proxy_cidrs`.
+- The middleware now selects exactly one policy per request in priority order `oauth -> auth -> api`, so `/api/auth/*` no longer consumes multiple limiter buckets for a single call.

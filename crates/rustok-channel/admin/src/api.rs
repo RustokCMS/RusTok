@@ -8,6 +8,10 @@ use crate::model::{
     ChannelModuleBindingRecord, ChannelOauthAppRecord, ChannelRecord, ChannelTargetRecord,
     CreateChannelPayload, CreateChannelTargetPayload,
 };
+#[cfg(feature = "ssr")]
+use crate::model::{
+    AvailableModuleItem, AvailableOauthAppItem, ChannelDetail, ResolvedChannelContext,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {

@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+#[cfg(feature = "ssr")]
+use sea_orm::ConnectionTrait;
 
 use crate::model::{
     AiAdminBootstrap, AiChatRunPayload, AiChatSessionDetailPayload, AiProviderProfilePayload,
@@ -215,6 +217,7 @@ pub async fn start_session(
     provider_profile_id: Option<String>,
     task_profile_id: Option<String>,
     tool_profile_id: Option<String>,
+    locale: Option<String>,
     initial_message: Option<String>,
 ) -> Result<AiSendMessageResultPayload, ApiError> {
     ai_start_session_native(
@@ -222,7 +225,28 @@ pub async fn start_session(
         provider_profile_id,
         task_profile_id,
         tool_profile_id,
+        locale,
         initial_message,
+    )
+    .await
+    .map_err(Into::into)
+}
+
+pub async fn run_task_job(
+    title: String,
+    provider_profile_id: Option<String>,
+    task_profile_id: String,
+    execution_mode: Option<String>,
+    locale: Option<String>,
+    task_input_json: String,
+) -> Result<AiSendMessageResultPayload, ApiError> {
+    ai_run_task_job_native(
+        title,
+        provider_profile_id,
+        task_profile_id,
+        execution_mode,
+        locale,
+        task_input_json,
     )
     .await
     .map_err(Into::into)
@@ -360,7 +384,7 @@ async fn ai_create_provider_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::create_provider_profile(
             &app_ctx.db,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             rustok_ai::CreateAiProviderProfileInput {
                 slug,
                 display_name,
@@ -457,7 +481,7 @@ async fn ai_update_provider_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::update_provider_profile(
             &app_ctx.db,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             parse_uuid(&id, "id")?,
             rustok_ai::UpdateAiProviderProfileInput {
                 display_name,
@@ -511,7 +535,7 @@ async fn ai_deactivate_provider_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::deactivate_provider_profile(
             &app_ctx.db,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             parse_uuid(&id, "id")?,
         )
         .await
@@ -543,7 +567,7 @@ async fn ai_create_tool_profile_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::create_tool_profile(
             &app_ctx.db,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             rustok_ai::CreateAiToolProfileInput {
                 slug,
                 display_name,
@@ -591,7 +615,7 @@ async fn ai_update_tool_profile_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::update_tool_profile(
             &app_ctx.db,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             parse_uuid(&id, "id")?,
             rustok_ai::UpdateAiToolProfileInput {
                 display_name,
@@ -643,7 +667,7 @@ async fn ai_create_task_profile_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::create_task_profile(
             &app_ctx.db,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             rustok_ai::CreateAiTaskProfileInput {
                 slug,
                 display_name,
@@ -708,7 +732,7 @@ async fn ai_update_task_profile_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::update_task_profile(
             &app_ctx.db,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             parse_uuid(&id, "id")?,
             rustok_ai::UpdateAiTaskProfileInput {
                 display_name,
@@ -759,6 +783,7 @@ async fn ai_start_session_native(
     provider_profile_id: Option<String>,
     task_profile_id: Option<String>,
     tool_profile_id: Option<String>,
+    locale: Option<String>,
     initial_message: Option<String>,
 ) -> Result<AiSendMessageResultPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -770,7 +795,7 @@ async fn ai_start_session_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::start_chat_session(
             &app_ctx,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             rustok_ai::StartAiChatSessionInput {
                 title,
                 provider_profile_id: parse_optional_uuid(
@@ -781,6 +806,7 @@ async fn ai_start_session_native(
                 tool_profile_id: parse_optional_uuid(tool_profile_id, "tool_profile_id")?,
                 execution_mode: None,
                 override_config: rustok_ai::ExecutionOverride::default(),
+                locale,
                 initial_message,
                 metadata: serde_json::json!({}),
             },
@@ -796,7 +822,60 @@ async fn ai_start_session_native(
             provider_profile_id,
             task_profile_id,
             tool_profile_id,
+            locale,
             initial_message,
+        );
+        Err(ServerFnError::new("SSR only"))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "ai/run-task-job")]
+async fn ai_run_task_job_native(
+    title: String,
+    provider_profile_id: Option<String>,
+    task_profile_id: String,
+    execution_mode: Option<String>,
+    locale: Option<String>,
+    task_input_json: String,
+) -> Result<AiSendMessageResultPayload, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let auth = leptos_axum::extract::<rustok_api::AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        ensure_ai_session_run_permission(&auth.permissions)?;
+        let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
+        let task_input_json = serde_json::from_str(&task_input_json)
+            .map_err(|err| ServerFnError::new(err.to_string()))?;
+        let item = rustok_ai::AiManagementService::run_task_job(
+            &app_ctx,
+            &operator(&auth, &app_ctx.db).await?,
+            rustok_ai::RunAiTaskJobInput {
+                title,
+                provider_profile_id: parse_optional_uuid(provider_profile_id, "provider_profile_id")?,
+                task_profile_id: parse_uuid(&task_profile_id, "task_profile_id")?,
+                execution_mode: execution_mode
+                    .as_deref()
+                    .map(parse_execution_mode)
+                    .transpose()?,
+                locale,
+                task_input_json,
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .map_err(server_error)?;
+        Ok(map_send_result(item))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (
+            title,
+            provider_profile_id,
+            task_profile_id,
+            execution_mode,
+            locale,
+            task_input_json,
         );
         Err(ServerFnError::new("SSR only"))
     }
@@ -816,7 +895,7 @@ async fn ai_send_message_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::send_chat_message(
             &app_ctx,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             parse_uuid(&session_id, "session_id")?,
             rustok_ai::SendAiChatMessageInput { content },
         )
@@ -846,7 +925,7 @@ async fn ai_resume_approval_native(
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::resume_approval(
             &app_ctx,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             parse_uuid(&approval_id, "approval_id")?,
             rustok_ai::ResumeAiApprovalInput { approved, reason },
         )
@@ -872,7 +951,7 @@ async fn ai_cancel_run_native(run_id: String) -> Result<AiChatRunPayload, Server
         let app_ctx = leptos::prelude::expect_context::<loco_rs::app::AppContext>();
         let item = rustok_ai::AiManagementService::cancel_run(
             &app_ctx.db,
-            &operator(&auth),
+            &operator(&auth, &app_ctx.db).await?,
             parse_uuid(&run_id, "run_id")?,
         )
         .await
@@ -981,12 +1060,48 @@ fn ensure_ai_overview_permission(
 }
 
 #[cfg(feature = "ssr")]
-fn operator(auth: &rustok_api::AuthContext) -> rustok_ai::AiOperatorContext {
-    rustok_ai::AiOperatorContext {
+async fn operator(
+    auth: &rustok_api::AuthContext,
+    db: &sea_orm::DatabaseConnection,
+) -> Result<rustok_ai::AiOperatorContext, ServerFnError> {
+    let backend = db.get_database_backend();
+    let statement = match backend {
+        sea_orm::DbBackend::Sqlite => sea_orm::Statement::from_sql_and_values(
+            backend,
+            r#"
+            SELECT roles.slug AS slug
+            FROM roles
+            INNER JOIN user_roles ON user_roles.role_id = roles.id
+            WHERE user_roles.user_id = ?1 AND roles.tenant_id = ?2
+            "#,
+            vec![auth.user_id.into(), auth.tenant_id.into()],
+        ),
+        _ => sea_orm::Statement::from_sql_and_values(
+            backend,
+            r#"
+            SELECT roles.slug AS slug
+            FROM roles
+            INNER JOIN user_roles ON user_roles.role_id = roles.id
+            WHERE user_roles.user_id = $1 AND roles.tenant_id = $2
+            "#,
+            vec![auth.user_id.into(), auth.tenant_id.into()],
+        ),
+    };
+    let role_slugs = db
+        .query_all(statement)
+        .await
+        .map_err(server_error)?
+        .into_iter()
+        .filter_map(|row| row.try_get::<String>("", "slug").ok())
+        .collect();
+
+    Ok(rustok_ai::AiOperatorContext {
         tenant_id: auth.tenant_id,
         user_id: auth.user_id,
         permissions: auth.permissions.clone(),
-    }
+        role_slugs,
+        preferred_locale: None,
+    })
 }
 
 #[cfg(feature = "ssr")]
@@ -1080,6 +1195,8 @@ fn map_session_summary(value: rustok_ai::AiChatSessionSummary) -> AiChatSessionS
             .tool_profile_id
             .map(|value: uuid::Uuid| value.to_string()),
         execution_mode: value.execution_mode.slug().to_string(),
+        requested_locale: value.requested_locale,
+        resolved_locale: value.resolved_locale,
         status: value.status,
         latest_run_status: value.latest_run_status,
         pending_approvals: value.pending_approvals as i32,
@@ -1126,6 +1243,8 @@ fn map_run(value: rustok_ai::AiChatRunRecord) -> AiChatRunPayload {
         model: value.model,
         execution_mode: value.execution_mode.slug().to_string(),
         execution_path: value.execution_path.slug().to_string(),
+        requested_locale: value.requested_locale,
+        resolved_locale: value.resolved_locale,
         temperature: value.temperature,
         max_tokens: value.max_tokens,
         error_message: value.error_message,

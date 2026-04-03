@@ -203,6 +203,7 @@ pub struct RegistryPublishRequestLifecycle {
     pub id: String,
     pub status: String,
     pub requested_by: String,
+    pub publisher_identity: Option<String>,
     pub approved_by: Option<String>,
     pub rejected_by: Option<String>,
     pub rejection_reason: Option<String>,
@@ -226,9 +227,29 @@ pub struct RegistryReleaseLifecycle {
 }
 
 #[derive(SimpleObject, Clone)]
+pub struct RegistryOwnerLifecycle {
+    pub owner_actor: String,
+    pub bound_by: String,
+    pub bound_at: String,
+    pub updated_at: String,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct RegistryGovernanceEventLifecycle {
+    pub id: String,
+    pub event_type: String,
+    pub actor: String,
+    pub publisher: Option<String>,
+    pub details: serde_json::Value,
+    pub created_at: String,
+}
+
+#[derive(SimpleObject, Clone)]
 pub struct RegistryModuleLifecycle {
+    pub owner_binding: Option<RegistryOwnerLifecycle>,
     pub latest_request: Option<RegistryPublishRequestLifecycle>,
     pub latest_release: Option<RegistryReleaseLifecycle>,
+    pub recent_events: Vec<RegistryGovernanceEventLifecycle>,
 }
 
 #[derive(SimpleObject, Clone)]

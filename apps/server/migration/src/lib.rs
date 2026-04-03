@@ -23,6 +23,11 @@ mod m20260320_000001_create_mcp_scaffold_drafts;
 mod m20260403_000001_create_ai_control_plane_tables;
 mod m20260403_000002_create_registry_publish_tables;
 mod m20260403_000003_expand_ai_control_plane_for_multiprovider;
+mod m20260403_000004_expand_ai_control_plane_for_direct_locale;
+mod m20260403_000005_create_registry_module_owners;
+mod m20260403_000006_add_sessions_active_lookup_index;
+mod m20260403_000007_create_registry_governance_events;
+mod m20260403_000008_add_registry_publish_request_publisher_identity;
 
 pub struct Migrator;
 
@@ -50,6 +55,11 @@ impl MigratorTrait for Migrator {
             Box::new(m20260403_000001_create_ai_control_plane_tables::Migration),
             Box::new(m20260403_000002_create_registry_publish_tables::Migration),
             Box::new(m20260403_000003_expand_ai_control_plane_for_multiprovider::Migration),
+            Box::new(m20260403_000004_expand_ai_control_plane_for_direct_locale::Migration),
+            Box::new(m20260403_000005_create_registry_module_owners::Migration),
+            Box::new(m20260403_000006_add_sessions_active_lookup_index::Migration),
+            Box::new(m20260403_000007_create_registry_governance_events::Migration),
+            Box::new(m20260403_000008_add_registry_publish_request_publisher_identity::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into

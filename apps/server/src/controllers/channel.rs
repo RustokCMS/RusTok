@@ -1,11 +1,12 @@
 use axum::{
     extract::{Path, State},
+    http::StatusCode,
     response::Response,
     routing::{delete, get, patch, post},
     Extension, Json,
 };
 use loco_rs::app::AppContext;
-use loco_rs::controller::{format, Routes};
+use loco_rs::controller::{format, ErrorDetail, Routes};
 use rustok_channel::{
     BindChannelModuleInput, BindChannelOauthAppInput, ChannelDetailResponse, ChannelResponse,
     ChannelService, ChannelTargetResponse, CreateChannelInput, CreateChannelTargetInput,
@@ -18,6 +19,7 @@ use uuid::Uuid;
 use crate::context::OptionalChannel;
 use crate::error::{Error, Result};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
+use crate::middleware::channel::invalidate_tenant_channel_cache;
 use crate::models::oauth_apps;
 use crate::services::rbac_service::RbacService;
 
@@ -115,6 +117,7 @@ async fn create_channel(
         })
         .await
         .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
 
     format::json(channel)
 }
@@ -134,6 +137,7 @@ async fn create_target(
         .add_target(channel_id, input)
         .await
         .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
 
     format::json(target)
 }
@@ -152,6 +156,7 @@ async fn set_default_channel(
         .set_default_channel(channel_id)
         .await
         .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
 
     format::json(channel)
 }
@@ -171,6 +176,7 @@ async fn update_target(
         .update_target(channel_id, target_id, input)
         .await
         .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
 
     format::json(target)
 }
@@ -189,6 +195,7 @@ async fn delete_target(
         .delete_target(channel_id, target_id)
         .await
         .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
 
     format::json(target)
 }
@@ -208,6 +215,7 @@ async fn bind_module(
         .bind_module(channel_id, input)
         .await
         .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
 
     format::json(binding)
 }
@@ -236,6 +244,7 @@ async fn bind_oauth_app(
         .bind_oauth_app(channel_id, input)
         .await
         .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
 
     format::json(binding)
 }
@@ -254,6 +263,7 @@ async fn delete_module_binding(
         .remove_module_binding(channel_id, binding_id)
         .await
         .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
 
     format::json(binding)
 }
@@ -272,6 +282,7 @@ async fn delete_oauth_app_binding(
         .revoke_oauth_app_binding(channel_id, binding_id)
         .await
         .map_err(internal_error)?;
+    invalidate_tenant_channel_cache(&ctx, tenant.id).await;
 
     format::json(binding)
 }
@@ -288,11 +299,19 @@ async fn ensure_channel_manage_access(
         &[Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE],
     )
     .await
-    .map_err(internal_error)?;
+    .map_err(|error| {
+        tracing::error!(
+            tenant_id = %tenant_id,
+            user_id = %user_id,
+            %error,
+            "Failed to evaluate RBAC permissions for channel management"
+        );
+        Error::InternalServerError
+    })?;
 
     if !allowed {
-        return Err(Error::Unauthorized(
-            "Permission denied: settings:manage or modules:manage required".to_string(),
+        return Err(forbidden_error(
+            "Permission denied: settings:manage or modules:manage required",
         ));
     }
 
@@ -317,6 +336,14 @@ async fn ensure_channel_belongs_to_tenant(
 
 fn internal_error(error: impl std::fmt::Display) -> Error {
     Error::Message(error.to_string())
+}
+
+fn forbidden_error(description: impl Into<String>) -> Error {
+    let description = description.into();
+    Error::CustomError(
+        StatusCode::FORBIDDEN,
+        ErrorDetail::new("forbidden", description.as_str()),
+    )
 }
 
 pub fn routes() -> Routes {

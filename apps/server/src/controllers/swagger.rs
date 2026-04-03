@@ -115,6 +115,7 @@ use utoipa::OpenApi;
         crate::controllers::marketplace_registry::publish,
         crate::controllers::marketplace_registry::publish_status,
         crate::controllers::marketplace_registry::upload_publish_artifact,
+        crate::controllers::marketplace_registry::validate_publish_request_step,
         crate::controllers::marketplace_registry::approve_publish_request,
         crate::controllers::marketplace_registry::reject_publish_request,
         crate::controllers::marketplace_registry::yank,

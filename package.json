@@ -1,7 +1,8 @@
 {
   "scripts": {
     "format:next-admin": "cd apps/next-admin && node_modules\\.bin\\prettier.cmd --write packages/search/src/index.tsx",
-    "format:next-admin:check": "cd apps/next-admin && node_modules\\.bin\\prettier.cmd --check packages/search/src/index.tsx"
+    "format:next-admin:check": "cd apps/next-admin && node_modules\\.bin\\prettier.cmd --check packages/search/src/index.tsx",
+    "verify:i18n:ui": "node scripts/verify/verify-ui-i18n-parity.mjs"
   },
   "dependencies": {
     "sharp": "^0.34.5"

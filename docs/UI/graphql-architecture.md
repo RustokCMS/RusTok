@@ -62,6 +62,8 @@ GraphQL остаётся:
 - транспортом для Next.js UI;
 - fallback-веткой для Leptos, пока native coverage не полная;
 - transport surface для persisted queries и совместимости со старыми модулями.
+- security boundary для чувствительных admin-операций задаётся сервером по AST/root fields, а не по client-supplied `operationName`.
+- telemetry по persisted hashes допустима, но allow/deny policy должна жить в shared server/runtime contract и shared GraphQL adapters, а не в app-specific экранах.
 
 ## Что обязаны делать новые Leptos модули
 
@@ -95,6 +97,8 @@ GraphQL остаётся:
 - Регистрировать `/api/fn/*` через `leptos_axum::handle_server_fns()`.
 - Сохранять `/api/graphql` как отдельный живой route.
 - Не трактовать внедрение server functions как повод убирать GraphQL schema/resolvers.
+- Для sensitive admin GraphQL documents применять server-side policy независимо от того, пришёл запрос из host app или из module-owned UI package.
+- Если вводится approved-document/APQ режим, он должен подключаться через shared GraphQL transport adapters для `apps/next-*` и GraphQL fallback в Leptos, а не через разрозненный app-level код.
 
 ## Что запрещено
 

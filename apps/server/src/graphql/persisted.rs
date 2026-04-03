@@ -1,3 +1,6 @@
+/// Catalog of client-shipped admin persisted hashes observed in the current UI fleet.
+///
+/// This list is telemetry-only. It is not an authorization or allow/deny source of truth.
 use std::collections::HashSet;
 
 use once_cell::sync::Lazy;
@@ -11,6 +14,6 @@ pub static ADMIN_PERSISTED_QUERY_HASHES: Lazy<HashSet<&'static str>> = Lazy::new
     ])
 });
 
-pub fn is_admin_persisted_hash(hash: &str) -> bool {
+pub fn is_cataloged_admin_hash(hash: &str) -> bool {
     ADMIN_PERSISTED_QUERY_HASHES.contains(hash)
 }

@@ -12,7 +12,6 @@ use crate::auth::{
 };
 use crate::context::infer_user_role_from_permissions;
 use crate::models::{sessions, users};
-use rustok_core::{i18n::translate, Locale};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::rbac_service::RbacService;
@@ -65,7 +64,7 @@ impl From<AuthLifecycleError> for Error {
             }
             AuthLifecycleError::UserInactive => Error::Unauthorized("User is inactive".into()),
             AuthLifecycleError::InvalidRefreshToken => {
-                Error::Unauthorized(translate(Locale::En, "auth.invalid_refresh_token"))
+                Error::Unauthorized("Invalid refresh token".into())
             }
             AuthLifecycleError::SessionExpired => Error::Unauthorized("Session expired".into()),
             AuthLifecycleError::UserNotFound => Error::Unauthorized("User not found".into()),

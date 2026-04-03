@@ -62,6 +62,8 @@ type SessionSummary = {
   taskProfileId?: string | null;
   toolProfileId?: string | null;
   executionMode: string;
+  requestedLocale?: string | null;
+  resolvedLocale: string;
   status: string;
   latestRunStatus?: string | null;
   pendingApprovals: number;
@@ -84,6 +86,8 @@ type SessionDetail = {
     model: string;
     executionMode: string;
     executionPath: string;
+    requestedLocale?: string | null;
+    resolvedLocale: string;
     errorMessage?: string | null;
     decisionTrace: string;
   }>;
@@ -118,14 +122,14 @@ const BOOTSTRAP_QUERY = `
     }
     aiTaskProfiles { id slug displayName description targetCapability systemPrompt allowedProviderProfileIds preferredProviderProfileIds fallbackStrategy toolProfileId defaultExecutionMode isActive }
     aiToolProfiles { id slug displayName description allowedTools deniedTools sensitiveTools isActive }
-    aiChatSessions { id title providerProfileId taskProfileId toolProfileId executionMode status latestRunStatus pendingApprovals }
+    aiChatSessions { id title providerProfileId taskProfileId toolProfileId executionMode requestedLocale resolvedLocale status latestRunStatus pendingApprovals }
   }
 `;
 
 const SESSION_QUERY = `
   query AiSession($id: UUID!) {
     aiChatSession(id: $id) {
-      session { id title providerProfileId taskProfileId toolProfileId executionMode status latestRunStatus pendingApprovals }
+      session { id title providerProfileId taskProfileId toolProfileId executionMode requestedLocale resolvedLocale status latestRunStatus pendingApprovals }
       providerProfile {
         id slug displayName providerKind baseUrl model temperature maxTokens hasSecret isActive capabilities
         usagePolicy { allowedTaskProfiles deniedTaskProfiles restrictedRoleSlugs }
@@ -133,7 +137,7 @@ const SESSION_QUERY = `
       taskProfile { id slug displayName description targetCapability systemPrompt allowedProviderProfileIds preferredProviderProfileIds fallbackStrategy toolProfileId defaultExecutionMode isActive }
       toolProfile { id slug displayName description allowedTools deniedTools sensitiveTools isActive }
       messages { id role content }
-      runs { id taskProfileId status model executionMode executionPath errorMessage decisionTrace }
+      runs { id taskProfileId status model executionMode executionPath requestedLocale resolvedLocale errorMessage decisionTrace }
       toolTraces { toolName status durationMs }
       approvals { id toolName reason status }
     }
@@ -212,6 +216,15 @@ const START_SESSION_MUTATION = `
   }
 `;
 
+const RUN_TASK_JOB_MUTATION = `
+  mutation RunAiTaskJob($input: RunAiTaskJobInputGql!) {
+    runAiTaskJob(input: $input) {
+      session { session { id title status latestRunStatus pendingApprovals } }
+      run { id status }
+    }
+  }
+`;
+
 const SEND_MESSAGE_MUTATION = `
   mutation SendAiChatMessage($sessionId: UUID!, $content: String!) {
     sendAiChatMessage(sessionId: $sessionId, content: $content) {
@@ -265,7 +278,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
     apiKeySecret: '',
     temperature: '0.2',
     maxTokens: '1024',
-    capabilities: 'TEXT_GENERATION,STRUCTURED_GENERATION,CODE_GENERATION',
+    capabilities: 'TEXT_GENERATION,STRUCTURED_GENERATION,IMAGE_GENERATION,CODE_GENERATION',
     allowedTaskProfiles: '',
     deniedTaskProfiles: '',
     restrictedRoleSlugs: '',
@@ -303,7 +316,60 @@ export function AiAdminPage(props: AiAdminPageProps) {
     providerProfileId: '',
     taskProfileId: '',
     toolProfileId: '',
+    locale: 'en',
     initialMessage: ''
+  });
+
+  const [alloyForm, setAlloyForm] = React.useState({
+    title: 'Alloy Assist',
+    locale: 'en',
+    operation: 'list_scripts',
+    scriptId: '',
+    scriptName: '',
+    scriptSource: '',
+    runtimePayloadJson: '',
+    assistantPrompt: ''
+  });
+
+  const [imageForm, setImageForm] = React.useState({
+    title: 'Media Image',
+    locale: 'en',
+    prompt: '',
+    negativePrompt: '',
+    fileName: '',
+    mediaTitle: '',
+    altText: '',
+    caption: '',
+    size: '1024x1024',
+    assistantPrompt: ''
+  });
+  const [productForm, setProductForm] = React.useState({
+    title: 'Product Copy',
+    locale: 'en',
+    productId: '',
+    sourceLocale: '',
+    sourceTitle: '',
+    sourceDescription: '',
+    sourceMetaTitle: '',
+    sourceMetaDescription: '',
+    copyInstructions: '',
+    assistantPrompt: ''
+  });
+  const [blogForm, setBlogForm] = React.useState({
+    title: 'Blog Draft',
+    locale: 'en',
+    postId: '',
+    sourceLocale: '',
+    sourceTitle: '',
+    sourceBody: '',
+    sourceExcerpt: '',
+    sourceSeoTitle: '',
+    sourceSeoDescription: '',
+    tags: '',
+    categoryId: '',
+    featuredImageUrl: '',
+    copyInstructions: '',
+    assistantPrompt: ''
   });
 
   const [reply, setReply] = React.useState('');
@@ -340,7 +406,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
       apiKeySecret: '',
       temperature: '0.2',
       maxTokens: '1024',
-      capabilities: 'TEXT_GENERATION,STRUCTURED_GENERATION,CODE_GENERATION',
+      capabilities: 'TEXT_GENERATION,STRUCTURED_GENERATION,IMAGE_GENERATION,CODE_GENERATION',
       allowedTaskProfiles: '',
       deniedTaskProfiles: '',
       restrictedRoleSlugs: '',
@@ -931,6 +997,300 @@ export function AiAdminPage(props: AiAdminPageProps) {
           </div>
 
           <div className='space-y-6'>
+            <Card title='Blog Draft'>
+              <form
+                className='space-y-3'
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (!sessionForm.taskProfileId) {
+                    setError('Select the `blog_draft` task profile before generating blog draft content.');
+                    return;
+                  }
+                  const taskInputJson = JSON.stringify({
+                    post_id: blogForm.postId || null,
+                    source_locale: blogForm.sourceLocale || null,
+                    source_title: blogForm.sourceTitle || null,
+                    source_body: blogForm.sourceBody || null,
+                    source_excerpt: blogForm.sourceExcerpt || null,
+                    source_seo_title: blogForm.sourceSeoTitle || null,
+                    source_seo_description: blogForm.sourceSeoDescription || null,
+                    tags: splitCsv(blogForm.tags),
+                    category_id: blogForm.categoryId || null,
+                    featured_image_url: blogForm.featuredImageUrl || null,
+                    copy_instructions: blogForm.copyInstructions || null,
+                    assistant_prompt: blogForm.assistantPrompt || null
+                  });
+                  const started = await gql<
+                    { runAiTaskJob: { session: { session: { id: string; title: string } } } },
+                    { input: Record<string, unknown> }
+                  >(
+                    RUN_TASK_JOB_MUTATION,
+                    {
+                      input: {
+                        title: blogForm.title,
+                        providerProfileId: sessionForm.providerProfileId || null,
+                        taskProfileId: sessionForm.taskProfileId,
+                        executionMode: 'DIRECT',
+                        locale: blogForm.locale || null,
+                        taskInputJson,
+                        metadata: '{}'
+                      }
+                    },
+                    props
+                  ).catch((err: Error) => {
+                    setError(err.message);
+                    return null;
+                  });
+                  if (!started) return;
+                  const id = started.runAiTaskJob.session.session.id;
+                  setFeedback(`Blog draft job \`${started.runAiTaskJob.session.session.title}\` completed.`);
+                  await loadBootstrap();
+                  await loadSession(id);
+                }}
+              >
+                <Input label='Job title' value={blogForm.title} onChange={(title) => setBlogForm((current) => ({ ...current, title }))} />
+                <Input label='Locale' value={blogForm.locale} onChange={(locale) => setBlogForm((current) => ({ ...current, locale }))} />
+                <Input label='Existing post id' value={blogForm.postId} onChange={(postId) => setBlogForm((current) => ({ ...current, postId }))} />
+                <Input label='Source locale' value={blogForm.sourceLocale} onChange={(sourceLocale) => setBlogForm((current) => ({ ...current, sourceLocale }))} />
+                <Input label='Source title override' value={blogForm.sourceTitle} onChange={(sourceTitle) => setBlogForm((current) => ({ ...current, sourceTitle }))} />
+                <Input label='Source body override' value={blogForm.sourceBody} onChange={(sourceBody) => setBlogForm((current) => ({ ...current, sourceBody }))} />
+                <Input label='Source excerpt override' value={blogForm.sourceExcerpt} onChange={(sourceExcerpt) => setBlogForm((current) => ({ ...current, sourceExcerpt }))} />
+                <Input label='Source SEO title override' value={blogForm.sourceSeoTitle} onChange={(sourceSeoTitle) => setBlogForm((current) => ({ ...current, sourceSeoTitle }))} />
+                <Input label='Source SEO description override' value={blogForm.sourceSeoDescription} onChange={(sourceSeoDescription) => setBlogForm((current) => ({ ...current, sourceSeoDescription }))} />
+                <Input label='Tags (csv)' value={blogForm.tags} onChange={(tags) => setBlogForm((current) => ({ ...current, tags }))} />
+                <Input label='Category id' value={blogForm.categoryId} onChange={(categoryId) => setBlogForm((current) => ({ ...current, categoryId }))} />
+                <Input label='Featured image URL' value={blogForm.featuredImageUrl} onChange={(featuredImageUrl) => setBlogForm((current) => ({ ...current, featuredImageUrl }))} />
+                <Input label='Copy instructions' value={blogForm.copyInstructions} onChange={(copyInstructions) => setBlogForm((current) => ({ ...current, copyInstructions }))} />
+                <Input label='Assistant prompt' value={blogForm.assistantPrompt} onChange={(assistantPrompt) => setBlogForm((current) => ({ ...current, assistantPrompt }))} />
+                <div className='rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground'>
+                  Provider: {sessionForm.providerProfileId || 'optional'}
+                  <br />
+                  Task profile: {sessionForm.taskProfileId || 'select blog_draft'}
+                  <br />
+                  Mode: direct
+                </div>
+                <button className='rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground' type='submit'>
+                  Generate blog draft
+                </button>
+              </form>
+            </Card>
+
+            <Card title='Product Copy'>
+              <form
+                className='space-y-3'
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (!sessionForm.taskProfileId) {
+                    setError('Select the `product_copy` task profile before generating localized product copy.');
+                    return;
+                  }
+                  let normalizedProductId = '';
+                  try {
+                    normalizedProductId = productForm.productId.trim();
+                    if (!normalizedProductId) {
+                      throw new Error('Product id is required.');
+                    }
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'Product id is required.');
+                    return;
+                  }
+                  const taskInputJson = JSON.stringify({
+                    product_id: normalizedProductId,
+                    source_locale: productForm.sourceLocale || null,
+                    source_title: productForm.sourceTitle || null,
+                    source_description: productForm.sourceDescription || null,
+                    source_meta_title: productForm.sourceMetaTitle || null,
+                    source_meta_description: productForm.sourceMetaDescription || null,
+                    copy_instructions: productForm.copyInstructions || null,
+                    assistant_prompt: productForm.assistantPrompt || null
+                  });
+                  const started = await gql<
+                    { runAiTaskJob: { session: { session: { id: string; title: string } } } },
+                    { input: Record<string, unknown> }
+                  >(
+                    RUN_TASK_JOB_MUTATION,
+                    {
+                      input: {
+                        title: productForm.title,
+                        providerProfileId: sessionForm.providerProfileId || null,
+                        taskProfileId: sessionForm.taskProfileId,
+                        executionMode: 'DIRECT',
+                        locale: productForm.locale || null,
+                        taskInputJson,
+                        metadata: '{}'
+                      }
+                    },
+                    props
+                  ).catch((err: Error) => {
+                    setError(err.message);
+                    return null;
+                  });
+                  if (!started) return;
+                  const id = started.runAiTaskJob.session.session.id;
+                  setFeedback(`Product copy job \`${started.runAiTaskJob.session.session.title}\` completed.`);
+                  await loadBootstrap();
+                  await loadSession(id);
+                }}
+              >
+                <Input label='Job title' value={productForm.title} onChange={(title) => setProductForm((current) => ({ ...current, title }))} />
+                <Input label='Locale' value={productForm.locale} onChange={(locale) => setProductForm((current) => ({ ...current, locale }))} />
+                <Input label='Product id' value={productForm.productId} onChange={(productId) => setProductForm((current) => ({ ...current, productId }))} />
+                <Input label='Source locale' value={productForm.sourceLocale} onChange={(sourceLocale) => setProductForm((current) => ({ ...current, sourceLocale }))} />
+                <Input label='Source title override' value={productForm.sourceTitle} onChange={(sourceTitle) => setProductForm((current) => ({ ...current, sourceTitle }))} />
+                <Input label='Source description override' value={productForm.sourceDescription} onChange={(sourceDescription) => setProductForm((current) => ({ ...current, sourceDescription }))} />
+                <Input label='Source meta title override' value={productForm.sourceMetaTitle} onChange={(sourceMetaTitle) => setProductForm((current) => ({ ...current, sourceMetaTitle }))} />
+                <Input label='Source meta description override' value={productForm.sourceMetaDescription} onChange={(sourceMetaDescription) => setProductForm((current) => ({ ...current, sourceMetaDescription }))} />
+                <Input label='Copy instructions' value={productForm.copyInstructions} onChange={(copyInstructions) => setProductForm((current) => ({ ...current, copyInstructions }))} />
+                <Input label='Assistant prompt' value={productForm.assistantPrompt} onChange={(assistantPrompt) => setProductForm((current) => ({ ...current, assistantPrompt }))} />
+                <div className='rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground'>
+                  Provider: {sessionForm.providerProfileId || 'optional'}
+                  <br />
+                  Task profile: {sessionForm.taskProfileId || 'select product_copy'}
+                  <br />
+                  Mode: direct
+                </div>
+                <button className='rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground' type='submit'>
+                  Generate product copy
+                </button>
+              </form>
+            </Card>
+
+            <Card title='Media Image'>
+              <form
+                className='space-y-3'
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (!sessionForm.taskProfileId) {
+                    setError('Select the `image_asset` task profile before generating a media image.');
+                    return;
+                  }
+                  const taskInputJson = JSON.stringify({
+                    prompt: imageForm.prompt,
+                    negative_prompt: imageForm.negativePrompt || null,
+                    title: imageForm.mediaTitle || null,
+                    alt_text: imageForm.altText || null,
+                    caption: imageForm.caption || null,
+                    file_name: imageForm.fileName || null,
+                    size: imageForm.size || null,
+                    assistant_prompt: imageForm.assistantPrompt || null
+                  });
+                  const started = await gql<
+                    { runAiTaskJob: { session: { session: { id: string; title: string } } } },
+                    { input: Record<string, unknown> }
+                  >(
+                    RUN_TASK_JOB_MUTATION,
+                    {
+                      input: {
+                        title: imageForm.title,
+                        providerProfileId: sessionForm.providerProfileId || null,
+                        taskProfileId: sessionForm.taskProfileId,
+                        executionMode: 'DIRECT',
+                        locale: imageForm.locale || null,
+                        taskInputJson,
+                        metadata: '{}'
+                      }
+                    },
+                    props
+                  ).catch((err: Error) => {
+                    setError(err.message);
+                    return null;
+                  });
+                  if (!started) return;
+                  const id = started.runAiTaskJob.session.session.id;
+                  setFeedback(`Image job \`${started.runAiTaskJob.session.session.title}\` completed.`);
+                  await loadBootstrap();
+                  await loadSession(id);
+                }}
+              >
+                <Input label='Job title' value={imageForm.title} onChange={(title) => setImageForm((current) => ({ ...current, title }))} />
+                <Input label='Locale' value={imageForm.locale} onChange={(locale) => setImageForm((current) => ({ ...current, locale }))} />
+                <Input label='Prompt' value={imageForm.prompt} onChange={(prompt) => setImageForm((current) => ({ ...current, prompt }))} />
+                <Input label='Negative prompt' value={imageForm.negativePrompt} onChange={(negativePrompt) => setImageForm((current) => ({ ...current, negativePrompt }))} />
+                <Input label='File name' value={imageForm.fileName} onChange={(fileName) => setImageForm((current) => ({ ...current, fileName }))} />
+                <Input label='Media title' value={imageForm.mediaTitle} onChange={(mediaTitle) => setImageForm((current) => ({ ...current, mediaTitle }))} />
+                <Input label='Alt text' value={imageForm.altText} onChange={(altText) => setImageForm((current) => ({ ...current, altText }))} />
+                <Input label='Caption' value={imageForm.caption} onChange={(caption) => setImageForm((current) => ({ ...current, caption }))} />
+                <Input label='Size' value={imageForm.size} onChange={(size) => setImageForm((current) => ({ ...current, size }))} />
+                <Input label='Assistant prompt' value={imageForm.assistantPrompt} onChange={(assistantPrompt) => setImageForm((current) => ({ ...current, assistantPrompt }))} />
+                <div className='rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground'>
+                  Provider: {sessionForm.providerProfileId || 'optional'}
+                  <br />
+                  Task profile: {sessionForm.taskProfileId || 'select image_asset'}
+                  <br />
+                  Mode: direct
+                </div>
+                <button className='rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground' type='submit'>
+                  Generate media image
+                </button>
+              </form>
+            </Card>
+
+            <Card title='Alloy Assist'>
+              <form
+                className='space-y-3'
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (!sessionForm.taskProfileId) {
+                    setError('Select the `alloy_code` task profile before running Alloy Assist.');
+                    return;
+                  }
+                  const taskInputJson = JSON.stringify({
+                    operation: alloyForm.operation,
+                    script_id: alloyForm.scriptId || null,
+                    script_name: alloyForm.scriptName || null,
+                    script_source: alloyForm.scriptSource || null,
+                    runtime_payload_json: alloyForm.runtimePayloadJson || null,
+                    assistant_prompt: alloyForm.assistantPrompt || null
+                  });
+                  const started = await gql<
+                    { runAiTaskJob: { session: { session: { id: string; title: string } } } },
+                    { input: Record<string, unknown> }
+                  >(
+                    RUN_TASK_JOB_MUTATION,
+                    {
+                      input: {
+                        title: alloyForm.title,
+                        providerProfileId: sessionForm.providerProfileId || null,
+                        taskProfileId: sessionForm.taskProfileId,
+                        executionMode: 'DIRECT',
+                        locale: alloyForm.locale || null,
+                        taskInputJson,
+                        metadata: '{}'
+                      }
+                    },
+                    props
+                  ).catch((err: Error) => {
+                    setError(err.message);
+                    return null;
+                  });
+                  if (!started) return;
+                  const id = started.runAiTaskJob.session.session.id;
+                  setFeedback(`Alloy job \`${started.runAiTaskJob.session.session.title}\` completed.`);
+                  await loadBootstrap();
+                  await loadSession(id);
+                }}
+              >
+                <Input label='Job title' value={alloyForm.title} onChange={(title) => setAlloyForm((current) => ({ ...current, title }))} />
+                <Input label='Locale' value={alloyForm.locale} onChange={(locale) => setAlloyForm((current) => ({ ...current, locale }))} />
+                <Input label='Operation' value={alloyForm.operation} onChange={(operation) => setAlloyForm((current) => ({ ...current, operation }))} />
+                <Input label='Script id' value={alloyForm.scriptId} onChange={(scriptId) => setAlloyForm((current) => ({ ...current, scriptId }))} />
+                <Input label='Script name' value={alloyForm.scriptName} onChange={(scriptName) => setAlloyForm((current) => ({ ...current, scriptName }))} />
+                <Input label='Assistant prompt' value={alloyForm.assistantPrompt} onChange={(assistantPrompt) => setAlloyForm((current) => ({ ...current, assistantPrompt }))} />
+                <Input label='Script source' value={alloyForm.scriptSource} onChange={(scriptSource) => setAlloyForm((current) => ({ ...current, scriptSource }))} />
+                <Input label='Runtime payload JSON' value={alloyForm.runtimePayloadJson} onChange={(runtimePayloadJson) => setAlloyForm((current) => ({ ...current, runtimePayloadJson }))} />
+                <div className='rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground'>
+                  Provider: {sessionForm.providerProfileId || 'optional'}
+                  <br />
+                  Task profile: {sessionForm.taskProfileId || 'select alloy_code'}
+                  <br />
+                  Mode: direct
+                </div>
+                <button className='rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground' type='submit'>
+                  Run Alloy job
+                </button>
+              </form>
+            </Card>
+
             <Card title='New Session'>
               <form
                 className='space-y-3'
@@ -947,6 +1307,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                         providerProfileId: sessionForm.providerProfileId || null,
                         taskProfileId: sessionForm.taskProfileId || null,
                         toolProfileId: sessionForm.toolProfileId || null,
+                        locale: sessionForm.locale || null,
                         initialMessage: sessionForm.initialMessage || null,
                         metadata: '{}'
                       }
@@ -964,6 +1325,7 @@ export function AiAdminPage(props: AiAdminPageProps) {
                 }}
               >
                 <Input label='Title' value={sessionForm.title} onChange={(title) => setSessionForm((current) => ({ ...current, title }))} />
+                <Input label='Locale' value={sessionForm.locale} onChange={(locale) => setSessionForm((current) => ({ ...current, locale }))} />
                 <Input label='Initial message' value={sessionForm.initialMessage} onChange={(initialMessage) => setSessionForm((current) => ({ ...current, initialMessage }))} />
                 <div className='rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground'>
                   Provider: {sessionForm.providerProfileId || 'not selected'}
@@ -1002,6 +1364,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
               <div className='space-y-5'>
                 <div className='rounded-lg border border-border px-3 py-3 text-sm'>
                   <div className='font-medium'>{detail.session.title}</div>
+                  <div className='text-muted-foreground'>
+                    locale: {detail.session.requestedLocale ?? 'auto'} -&gt; {detail.session.resolvedLocale}
+                  </div>
                   <div className='text-muted-foreground'>
                     provider: {detail.providerProfile.displayName} · model: {detail.providerProfile.model} · mode: {detail.session.executionMode}
                   </div>
@@ -1097,6 +1462,9 @@ export function AiAdminPage(props: AiAdminPageProps) {
                   {detail.runs.map((run) => (
                     <div key={run.id} className='rounded-lg border border-border px-3 py-3 text-sm'>
                       <div className='font-medium'>{run.model}</div>
+                      <div className='text-muted-foreground'>
+                        locale: {run.requestedLocale ?? 'auto'} -&gt; {run.resolvedLocale}
+                      </div>
                       <div className='text-muted-foreground'>
                         {run.status} · {run.executionMode} · path {run.executionPath}
                       </div>

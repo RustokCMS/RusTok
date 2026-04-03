@@ -130,12 +130,31 @@ pub struct ProviderChatRequest {
     pub tools: Vec<ToolDefinition>,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    pub locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderChatResponse {
     pub assistant_message: ChatMessage,
     pub finish_reason: Option<String>,
+    #[serde(default)]
+    pub raw_payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderImageRequest {
+    pub model: String,
+    pub prompt: String,
+    pub negative_prompt: Option<String>,
+    pub size: Option<String>,
+    pub locale: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderImageResponse {
+    pub bytes: Vec<u8>,
+    pub mime_type: String,
+    pub revised_prompt: Option<String>,
     #[serde(default)]
     pub raw_payload: serde_json::Value,
 }
@@ -207,6 +226,26 @@ pub struct AiRunRequest {
     pub override_config: ExecutionOverride,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectExecutionTarget {
+    Alloy,
+    Media,
+    Commerce,
+    Blog,
+}
+
+impl DirectExecutionTarget {
+    pub const fn slug(&self) -> &'static str {
+        match self {
+            Self::Alloy => "alloy",
+            Self::Media => "media",
+            Self::Commerce => "commerce",
+            Self::Blog => "blog",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AiRunDecisionTrace {
     pub task_profile_id: Option<Uuid>,
@@ -216,6 +255,9 @@ pub struct AiRunDecisionTrace {
     pub provider_kind: Option<ProviderKind>,
     pub selected_model: Option<String>,
     pub execution_mode: Option<ExecutionMode>,
+    pub execution_target: Option<String>,
+    pub requested_locale: Option<String>,
+    pub resolved_locale: Option<String>,
     #[serde(default)]
     pub reasons: Vec<String>,
     pub used_override: bool,
@@ -230,6 +272,7 @@ pub struct RuntimeRequest {
     pub max_turns: usize,
     pub execution_mode: ExecutionMode,
     pub system_prompt: Option<String>,
+    pub locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -248,4 +291,81 @@ pub enum RuntimeOutcome {
         traces: Vec<ToolTrace>,
         error_message: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AiAlloyOperation {
+    ListScripts,
+    GetScript,
+    ValidateScript,
+    RunScript,
+}
+
+impl AiAlloyOperation {
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::ListScripts => "list_scripts",
+            Self::GetScript => "get_script",
+            Self::ValidateScript => "validate_script",
+            Self::RunScript => "run_script",
+        }
+    }
+}
+
+impl Default for AiAlloyOperation {
+    fn default() -> Self {
+        Self::ListScripts
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiAlloyTaskInput {
+    pub operation: AiAlloyOperation,
+    pub script_id: Option<Uuid>,
+    pub script_name: Option<String>,
+    pub script_source: Option<String>,
+    pub runtime_payload_json: Option<String>,
+    pub assistant_prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiImageAssetTaskInput {
+    pub prompt: String,
+    pub negative_prompt: Option<String>,
+    pub title: Option<String>,
+    pub alt_text: Option<String>,
+    pub caption: Option<String>,
+    pub file_name: Option<String>,
+    pub size: Option<String>,
+    pub assistant_prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiProductCopyTaskInput {
+    pub product_id: Uuid,
+    pub source_locale: Option<String>,
+    pub source_title: Option<String>,
+    pub source_description: Option<String>,
+    pub source_meta_title: Option<String>,
+    pub source_meta_description: Option<String>,
+    pub copy_instructions: Option<String>,
+    pub assistant_prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiBlogDraftTaskInput {
+    pub post_id: Option<Uuid>,
+    pub source_locale: Option<String>,
+    pub source_title: Option<String>,
+    pub source_body: Option<String>,
+    pub source_excerpt: Option<String>,
+    pub source_seo_title: Option<String>,
+    pub source_seo_description: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub category_id: Option<Uuid>,
+    pub featured_image_url: Option<String>,
+    pub copy_instructions: Option<String>,
+    pub assistant_prompt: Option<String>,
 }

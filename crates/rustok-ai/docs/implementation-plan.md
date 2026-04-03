@@ -1,7 +1,7 @@
 # План реализации `rustok-ai`
 
 Статус: multiprovider/routing foundation implemented.
-Текущее состояние: `OpenAI-compatible + Anthropic + Gemini providers + task profiles + hybrid direct/MCP execution metadata + RBAC-first AI permissions + dual admin UI packages`.
+Текущее состояние: `OpenAI-compatible + Anthropic + Gemini providers + task profiles + hybrid direct/MCP execution metadata + RBAC-first AI permissions + dual admin UI packages + direct first-party verticals`.
 
 ## Состояние на 2026-04-03
 
@@ -18,6 +18,10 @@
 - добавлены GraphQL queries/mutations для providers, tool profiles, sessions, traces и approvals;
 - добавлен Leptos admin package `crates/rustok-ai/admin`;
 - добавлен Next.js admin package `apps/next-admin/packages/rustok-ai`;
+- добавлен real direct execution path для first-party verticals без обязательного MCP hop;
+- реализованы direct verticals `alloy_code`, `image_asset`, `product_copy`;
+- `product_copy` пишет локализованные переводы товаров напрямую через `rustok-commerce::CatalogService`;
+- multilingual contract принимает arbitrary BCP-47-style locale tags, а tenant locale policy применяется к content-bearing задачам вроде `product_copy`;
 - `apps/admin` и `apps/next-admin` оставлены в роли host/composition root.
 
 ## Реализованный MVP-контур
@@ -60,6 +64,7 @@
 - [x] session/run execution metadata in admin UI
 - [x] tool trace panel
 - [x] approval actions approve/reject
+- [x] direct job surfaces для `alloy_code`, `image_asset`, `product_copy`
 
 ## Зафиксированные архитектурные решения
 
@@ -72,7 +77,8 @@
 ## Что отложено после MVP
 
 - [ ] token streaming / incremental assistant output
-- [ ] дополнительные provider families кроме `OpenAI-compatible`
+- [ ] более глубокие domain-direct verticals beyond Alloy/Media/Commerce copy
+- [ ] дополнительные provider families beyond текущих `OpenAI-compatible`, `Anthropic`, `Gemini`
 - [ ] richer provider routing / fallback / multi-model policy
 - [ ] полноценный remote MCP bootstrap за пределами текущего server wiring
 - [ ] отдельные publish/export workflows для AI artifacts
@@ -86,7 +92,8 @@
 - [x] `cargo check -p migration`
 - [x] `cargo check -p rustok-server`
 - [x] `cargo check -p rustok-ai-admin --features ssr`
-- [ ] Next.js host build/typecheck после `npm install`
+- [x] `cargo check -p rustok-admin`
+- [x] `cmd /c npx.cmd tsc --noEmit --incremental false -p tsconfig.json` в `apps/next-admin`
 
 ## Связанные документы
 

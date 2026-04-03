@@ -35,7 +35,7 @@
 - `leptos_i18n` 0.6 (feature `ssr`) вЂ” compile-time РјРЅРѕРіРѕСЏР·С‹С‡РЅРѕСЃС‚СЊ С‡РµСЂРµР· `t_string!()` РјР°РєСЂРѕСЃ;
 - `leptos_i18n_build` вЂ” РєРѕРґРѕРіРµРЅРµСЂР°С†РёСЏ i18n-РјРѕРґСѓР»СЏ РёР· `locales/*.json` С‡РµСЂРµР· `build.rs`;
 - С„Р°Р№Р»С‹ Р»РѕРєР°Р»РµР№: `locales/en.json`, `locales/ru.json`;
-- РІС‹Р±РѕСЂ СЏР·С‹РєР°: query-РїР°СЂР°РјРµС‚СЂ `?lang=ru`.
+- РІС‹Р±РѕСЂ СЏР·С‹РєР°: locale-prefixed host routes `/{locale}` Рё `/{locale}/modules/{route_segment}`; legacy query-РїР°СЂР°РјРµС‚СЂ `?lang=ru` РѕСЃС‚Р°С‘С‚СЃСЏ backward-compatible fallback РґР»СЏ СЃС‚Р°СЂС‹С… СЃСЃС‹Р»РѕРє.
 
 ### Внутренние crates
 

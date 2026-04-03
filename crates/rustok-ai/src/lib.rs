@@ -1,4 +1,6 @@
 #[cfg(feature = "server")]
+pub mod direct;
+#[cfg(feature = "server")]
 pub mod entities;
 pub mod error;
 pub mod mcp;
@@ -13,10 +15,12 @@ pub mod service;
 pub use error::{AiError, AiResult};
 pub use mcp::{McpClientAdapter, ToolExecutionResult};
 pub use model::{
-    AiProviderConfig, AiRunDecisionTrace, AiRunRequest, ChatMessage, ChatMessageRole,
-    ExecutionMode, ExecutionOverride, PendingApproval, ProviderCapability, ProviderChatRequest,
-    ProviderChatResponse, ProviderKind, ProviderTestResult, ProviderUsagePolicy, RuntimeOutcome,
-    RuntimeRequest, TaskProfile, ToolCall, ToolDefinition, ToolTrace,
+    AiAlloyOperation, AiAlloyTaskInput, AiBlogDraftTaskInput, AiImageAssetTaskInput,
+    AiProductCopyTaskInput, AiProviderConfig, AiRunDecisionTrace, AiRunRequest, ChatMessage,
+    ChatMessageRole, DirectExecutionTarget, ExecutionMode, ExecutionOverride, PendingApproval,
+    ProviderCapability, ProviderChatRequest, ProviderChatResponse, ProviderImageRequest,
+    ProviderImageResponse, ProviderKind, ProviderTestResult, ProviderUsagePolicy,
+    RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall, ToolDefinition, ToolTrace,
 };
 pub use policy::ToolExecutionPolicy;
 pub use provider::{
@@ -30,6 +34,12 @@ pub use service::{
     AiChatSessionSummary, AiManagementService, AiOperatorContext, AiProviderProfileRecord,
     AiSendMessageResult, AiTaskProfileRecord, AiToolProfileRecord, CreateAiProviderProfileInput,
     CreateAiTaskProfileInput, CreateAiToolProfileInput, ResumeAiApprovalInput,
-    SendAiChatMessageInput, SharedAiModuleRegistry, StartAiChatSessionInput,
+    RunAiTaskJobInput, SendAiChatMessageInput, SharedAiModuleRegistry, StartAiChatSessionInput,
     UpdateAiProviderProfileInput, UpdateAiTaskProfileInput, UpdateAiToolProfileInput,
+};
+#[cfg(feature = "server")]
+pub use direct::{
+    AlloyScriptAssistHandler, DirectExecutionRegistry, DirectExecutionRequest,
+    BlogDraftHandler, DirectExecutionResult, DirectTaskHandler, MediaImageAssetHandler,
+    ProductCopyHandler,
 };

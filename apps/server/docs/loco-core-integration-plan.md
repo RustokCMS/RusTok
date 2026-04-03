@@ -65,10 +65,10 @@ RusToK использует Loco RS как server/runtime framework, а плат
 - request locale resolution chain в server runtime;
 - `RequestContext.locale` как effective locale;
 - locale fallback на read paths и GraphQL.
+- locale-prefixed storefront routing (`/{locale}` и `/{locale}/modules/{route_segment}`) с backward-compatible fallback на legacy `?lang=`.
 
 Осталось:
 
-- storefront URL locale routing;
 - более полный outbound locale propagation;
 - trait-based module translation bundles, если этот контракт будет закреплён.
 

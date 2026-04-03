@@ -17,6 +17,7 @@ fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
     view! {
         <div class="min-h-screen bg-background text-foreground">
             <Header
+                locale=locale.clone()
                 nav_home=strings.nav_home
                 nav_catalog=strings.nav_catalog
                 nav_about=strings.nav_about
