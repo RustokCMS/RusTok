@@ -81,6 +81,7 @@ pub fn create_orchestrator_with_engine<R: ScriptRegistry>(
 mod tests {
     use super::*;
     use std::sync::Arc;
+    use rhai::Dynamic;
 
     #[test]
     fn test_simple_script() {
@@ -116,9 +117,9 @@ mod tests {
     fn test_entity_access() {
         let engine = create_default_engine();
 
-        let mut deal = std::collections::HashMap::new();
-        deal.insert("amount".to_string(), (50000_i64).into());
-        deal.insert("name".to_string(), "Big Deal".into());
+        let mut deal: std::collections::HashMap<String, Dynamic> = std::collections::HashMap::new();
+        deal.insert("amount".to_string(), Dynamic::from(50000_i64));
+        deal.insert("name".to_string(), Dynamic::from("Big Deal"));
 
         let entity = EntityProxy::new("1", "deal", deal);
         let ctx = ExecutionContext::new(ExecutionPhase::Before).with_entity_proxy(entity);
@@ -244,9 +245,9 @@ mod tests {
     fn test_entity_changes() {
         let engine = create_default_engine();
 
-        let data = std::collections::HashMap::from([
-            ("amount".to_string(), 1000_i64.into()),
-            ("status".to_string(), "pending".into()),
+        let data: std::collections::HashMap<String, Dynamic> = std::collections::HashMap::from([
+            ("amount".to_string(), Dynamic::from(1000_i64)),
+            ("status".to_string(), Dynamic::from("pending")),
         ]);
 
         let entity = EntityProxy::new("1", "order", data);
@@ -294,7 +295,7 @@ mod tests {
         script.activate();
         storage.save(script).await.unwrap();
 
-        let data = std::collections::HashMap::from([("value".to_string(), 100_i64.into())]);
+        let data: std::collections::HashMap<String, Dynamic> = std::collections::HashMap::from([("value".to_string(), Dynamic::from(100_i64))]);
         let entity = EntityProxy::new("test-1", "test", data);
 
         let outcome = orchestrator
