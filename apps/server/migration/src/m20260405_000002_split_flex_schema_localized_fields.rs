@@ -63,14 +63,14 @@ impl MigrationTrait for Migration {
                 r#"
 INSERT INTO flex_schema_translations (schema_id, locale, name, description, created_at, updated_at)
 SELECT
-    schema.id,
+    flex_schema.id,
     COALESCE(NULLIF(tenant.default_locale, ''), 'en'),
-    schema.name,
-    schema.description,
-    schema.created_at,
-    schema.updated_at
-FROM flex_schemas AS schema
-INNER JOIN tenants AS tenant ON tenant.id = schema.tenant_id
+    flex_schema.name,
+    flex_schema.description,
+    flex_schema.created_at,
+    flex_schema.updated_at
+FROM flex_schemas AS flex_schema
+INNER JOIN tenants AS tenant ON tenant.id = flex_schema.tenant_id
 ON CONFLICT (schema_id, locale) DO NOTHING;
 "#,
             )
@@ -107,7 +107,7 @@ ON CONFLICT (schema_id, locale) DO NOTHING;
             .get_connection()
             .execute_unprepared(
                 r#"
-UPDATE flex_schemas AS schema
+UPDATE flex_schemas AS flex_schema
 SET
     name = chosen.name,
     description = chosen.description
@@ -117,8 +117,8 @@ FROM (
         translation.name,
         translation.description
     FROM flex_schema_translations AS translation
-    INNER JOIN flex_schemas AS source_schema ON source_schema.id = translation.schema_id
-    INNER JOIN tenants AS tenant ON tenant.id = source_schema.tenant_id
+    INNER JOIN flex_schemas AS source_flex_schema ON source_flex_schema.id = translation.schema_id
+    INNER JOIN tenants AS tenant ON tenant.id = source_flex_schema.tenant_id
     ORDER BY
         translation.schema_id,
         CASE
@@ -128,7 +128,7 @@ FROM (
         END,
         translation.locale
 ) AS chosen
-WHERE schema.id = chosen.schema_id;
+WHERE flex_schema.id = chosen.schema_id;
 "#,
             )
             .await?;
