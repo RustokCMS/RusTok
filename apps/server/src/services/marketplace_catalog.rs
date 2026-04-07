@@ -536,7 +536,39 @@ pub struct RegistryPublishStatusResponse {
     pub warnings: Vec<String>,
     #[serde(default)]
     pub errors: Vec<String>,
+    #[serde(default, rename = "followUpGates")]
+    pub follow_up_gates: Vec<RegistryPublishStatusFollowUpGate>,
+    #[serde(default, rename = "validationStages")]
+    pub validation_stages: Vec<RegistryPublishStatusValidationStage>,
+    #[serde(default, rename = "approvalOverrideRequired")]
+    pub approval_override_required: bool,
+    #[serde(default, rename = "approvalOverrideReasonCodes")]
+    pub approval_override_reason_codes: Vec<String>,
     pub next_step: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPublishStatusFollowUpGate {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegistryPublishStatusValidationStage {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    #[serde(rename = "attemptNumber")]
+    pub attempt_number: i32,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+    #[serde(rename = "startedAt")]
+    pub started_at: Option<String>,
+    #[serde(rename = "finishedAt")]
+    pub finished_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -556,6 +588,7 @@ pub struct RegistryValidationStageReportRequest {
     pub stage: String,
     pub status: String,
     pub detail: Option<String>,
+    pub reason_code: Option<String>,
     #[serde(default)]
     pub requeue: bool,
 }
@@ -567,6 +600,7 @@ pub struct RegistryPublishDecisionRequest {
     #[serde(default)]
     pub dry_run: bool,
     pub reason: Option<String>,
+    pub reason_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -578,6 +612,7 @@ pub struct RegistryOwnerTransferRequest {
     pub slug: String,
     pub new_owner_actor: String,
     pub reason: Option<String>,
+    pub reason_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -633,6 +668,7 @@ pub struct RegistryYankRequest {
     pub slug: String,
     pub version: String,
     pub reason: Option<String>,
+    pub reason_code: Option<String>,
 }
 
 #[async_trait]

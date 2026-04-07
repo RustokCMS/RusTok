@@ -43,6 +43,49 @@ const REGISTRY_ARTIFACT_BUNDLE_TYPE: &str = "rustok-module-publish-bundle";
 const REGISTRY_VALIDATION_FOLLOW_UP_GATES: &[&str] =
     &["compile_smoke", "targeted_tests", "security_policy_review"];
 const REGISTRY_VALIDATION_LOAD_RETRY_DELAYS_SECONDS: &[u64] = &[1, 3, 5];
+pub const REGISTRY_YANK_REASON_CODES: &[&str] = &[
+    "security",
+    "legal",
+    "malware",
+    "critical_regression",
+    "rollback",
+    "other",
+];
+pub const REGISTRY_REJECT_REASON_CODES: &[&str] = &[
+    "policy_mismatch",
+    "quality_gate_failed",
+    "ownership_mismatch",
+    "security_risk",
+    "legal",
+    "other",
+];
+pub const REGISTRY_OWNER_TRANSFER_REASON_CODES: &[&str] = &[
+    "maintenance_handoff",
+    "team_restructure",
+    "publisher_rotation",
+    "security_emergency",
+    "governance_override",
+    "other",
+];
+pub const REGISTRY_APPROVE_OVERRIDE_REASON_CODES: &[&str] = &[
+    "manual_review_complete",
+    "trusted_first_party",
+    "expedited_release",
+    "governance_override",
+    "other",
+];
+pub const REGISTRY_VALIDATION_STAGE_REASON_CODES: &[&str] = &[
+    "local_runner_passed",
+    "manual_review_complete",
+    "build_failure",
+    "test_failure",
+    "policy_preflight_failed",
+    "security_findings",
+    "policy_exception",
+    "license_issue",
+    "manual_override",
+    "other",
+];
 
 #[derive(Debug, Clone)]
 pub struct RegistryArtifactUpload {
@@ -148,6 +191,13 @@ pub struct RegistryModuleLifecycleSnapshot {
     pub recent_events: Vec<RegistryGovernanceEventSnapshot>,
     pub follow_up_gates: Vec<RegistryFollowUpGateSnapshot>,
     pub validation_stages: Vec<RegistryValidationStageSnapshot>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryPublishRequestFollowUpSnapshot {
+    pub follow_up_gates: Vec<RegistryFollowUpGateSnapshot>,
+    pub validation_stages: Vec<RegistryValidationStageSnapshot>,
+    pub approval_override_required: bool,
 }
 
 #[derive(Debug, Default)]
@@ -750,10 +800,27 @@ impl RegistryGovernanceService {
         stage_key: &str,
         status: &str,
         detail: Option<&str>,
+        reason_code: Option<&str>,
         requeue: bool,
     ) -> anyhow::Result<RegistryValidationStageMutationResult> {
         let stage_key = normalize_validation_stage_key(stage_key)?;
         let requested_status = parse_validation_stage_status(status)?;
+        let normalized_reason_code = reason_code
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        if let Some(reason_code) = normalized_reason_code.as_deref() {
+            if !REGISTRY_VALIDATION_STAGE_REASON_CODES
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+            {
+                anyhow::bail!(
+                    "Validation stage reason_code '{}' is not supported; expected one of {}",
+                    reason_code,
+                    REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
+                );
+            }
+        }
         if requeue && requested_status != RegistryValidationStageStatus::Queued {
             anyhow::bail!(
                 "Validation stage requeue for '{}' requires status 'queued'",
@@ -816,6 +883,7 @@ impl RegistryGovernanceService {
                 actor,
                 requested_status,
                 &detail,
+                normalized_reason_code.as_deref(),
             )
             .await?
         };
@@ -828,6 +896,8 @@ impl RegistryGovernanceService {
         request_id: &str,
         actor: &str,
         publisher: Option<&str>,
+        reason: Option<&str>,
+        reason_code: Option<&str>,
     ) -> anyhow::Result<registry_publish_request::Model> {
         let request = self
             .get_publish_request(request_id)
@@ -857,9 +927,65 @@ impl RegistryGovernanceService {
         let checksum = request.artifact_checksum_sha256.clone().ok_or_else(|| {
             anyhow!("Registry publish request '{request_id}' is missing artifact_checksum_sha256")
         })?;
+        let latest_validation_stages = self
+            .latest_validation_stages_for_request(&request.id)
+            .await?;
+        let override_stages = latest_validation_stages
+            .iter()
+            .filter(|stage| stage.status != RegistryValidationStageStatus::Passed)
+            .cloned()
+            .collect::<Vec<_>>();
         let effective_publisher = self
             .resolve_effective_publisher(&request, actor, publisher)
             .await?;
+        if !override_stages.is_empty() {
+            let reason = reason
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Registry publish request '{}' still has non-passed follow-up validation stages; approval override requires a non-empty reason",
+                        request_id
+                    )
+                })?;
+            let reason_code = reason_code
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Registry publish request '{}' still has non-passed follow-up validation stages; approval override requires a non-empty reason_code",
+                        request_id
+                    )
+                })?;
+            if !REGISTRY_APPROVE_OVERRIDE_REASON_CODES
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+            {
+                anyhow::bail!(
+                    "Registry publish approval override reason_code '{}' is not supported; expected one of {}",
+                    reason_code,
+                    REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
+                );
+            }
+            self.record_governance_event(
+                &request.slug,
+                Some(&request.id),
+                None,
+                "publish_approval_override",
+                actor,
+                Some(&effective_publisher),
+                serde_json::json!({
+                    "version": request.version.clone(),
+                    "reason": reason,
+                    "reason_code": reason_code.to_ascii_lowercase(),
+                    "validation_stages": override_stages
+                        .iter()
+                        .map(validation_stage_details_value)
+                        .collect::<Vec<_>>(),
+                }),
+            )
+            .await?;
+        }
         let published_at = Utc::now();
         let release = self
             .upsert_release_from_request(
@@ -909,6 +1035,7 @@ impl RegistryGovernanceService {
         request_id: &str,
         actor: &str,
         reason: &str,
+        reason_code: &str,
     ) -> anyhow::Result<registry_publish_request::Model> {
         let request = self
             .get_publish_request(request_id)
@@ -953,6 +1080,7 @@ impl RegistryGovernanceService {
                 "version": request.version.clone(),
                 "status": request_status_label(request.status.clone()),
                 "reason": request.rejection_reason.clone(),
+                "reason_code": reason_code.trim(),
                 "errors": deserialize_message_list(&request.validation_errors),
             }),
         )
@@ -965,6 +1093,7 @@ impl RegistryGovernanceService {
         slug: &str,
         version: &str,
         reason: &str,
+        reason_code: &str,
         actor: &str,
     ) -> anyhow::Result<registry_module_release::Model> {
         let release = RegistryModuleReleaseEntity::find()
@@ -993,6 +1122,7 @@ impl RegistryGovernanceService {
             serde_json::json!({
                 "version": release.version.clone(),
                 "status": release_status_label(release.status.clone()),
+                "reason_code": reason_code.trim(),
                 "reason": release.yanked_reason.clone(),
             }),
         )
@@ -1005,6 +1135,7 @@ impl RegistryGovernanceService {
         slug: &str,
         new_owner_actor: &str,
         reason: &str,
+        reason_code: &str,
         actor: &str,
     ) -> anyhow::Result<registry_module_owner::Model> {
         let existing = self
@@ -1050,6 +1181,7 @@ impl RegistryGovernanceService {
                 "new_owner_actor": binding.owner_actor.clone(),
                 "bound_by": binding.bound_by.clone(),
                 "reason": reason.trim(),
+                "reason_code": reason_code.trim(),
             }),
         )
         .await?;
@@ -1210,6 +1342,27 @@ impl RegistryGovernanceService {
             follow_up_gates,
             validation_stages,
         }))
+    }
+
+    pub async fn publish_request_follow_up_snapshot(
+        &self,
+        request: &registry_publish_request::Model,
+    ) -> anyhow::Result<RegistryPublishRequestFollowUpSnapshot> {
+        let validation_stage_rows = self.validation_stage_rows(&request.id).await?;
+        let validation_stages =
+            derive_validation_stage_snapshots(Some(request), &[], &validation_stage_rows);
+        let follow_up_gates =
+            derive_follow_up_gate_snapshots(Some(request), &[], &validation_stages);
+        let approval_override_required = request.status == RegistryPublishRequestStatus::Approved
+            && validation_stages
+                .iter()
+                .any(|stage| !stage.status.eq_ignore_ascii_case("passed"));
+
+        Ok(RegistryPublishRequestFollowUpSnapshot {
+            follow_up_gates,
+            validation_stages,
+            approval_override_required,
+        })
     }
 
     async fn upsert_release_from_request(
@@ -1743,6 +1896,19 @@ impl RegistryGovernanceService {
             .await?)
     }
 
+    async fn latest_validation_stages_for_request(
+        &self,
+        request_id: &str,
+    ) -> anyhow::Result<Vec<registry_validation_stage::Model>> {
+        let mut latest = HashMap::<String, registry_validation_stage::Model>::new();
+        for stage in self.validation_stage_rows(request_id).await? {
+            latest.entry(stage.stage_key.clone()).or_insert(stage);
+        }
+        let mut stages = latest.into_values().collect::<Vec<_>>();
+        stages.sort_by(|left, right| left.stage_key.cmp(&right.stage_key));
+        Ok(stages)
+    }
+
     async fn latest_validation_stage(
         &self,
         request_id: &str,
@@ -1846,6 +2012,7 @@ impl RegistryGovernanceService {
             "validation_stage_queued",
             detail,
             None,
+            None,
         )
         .await?;
         self.record_follow_up_gate_event(
@@ -1855,6 +2022,7 @@ impl RegistryGovernanceService {
             "follow_up_gate_queued",
             "pending",
             detail,
+            None,
         )
         .await?;
         Ok(stage)
@@ -1867,6 +2035,7 @@ impl RegistryGovernanceService {
         actor: &str,
         status: RegistryValidationStageStatus,
         detail: &str,
+        reason_code: Option<&str>,
     ) -> anyhow::Result<registry_validation_stage::Model> {
         ensure_validation_stage_transition_allowed(&stage.status, &status, &stage.stage_key)?;
 
@@ -1898,8 +2067,16 @@ impl RegistryGovernanceService {
         }
         let stage = active.update(&self.db).await?;
         let event_type = validation_stage_event_type(&status);
-        self.record_validation_stage_event(request, actor, &stage, event_type, detail, None)
-            .await?;
+        self.record_validation_stage_event(
+            request,
+            actor,
+            &stage,
+            event_type,
+            detail,
+            reason_code,
+            None,
+        )
+        .await?;
         match &status {
             RegistryValidationStageStatus::Passed => {
                 self.record_follow_up_gate_event(
@@ -1909,6 +2086,7 @@ impl RegistryGovernanceService {
                     "follow_up_gate_passed",
                     "passed",
                     detail,
+                    reason_code,
                 )
                 .await?;
             }
@@ -1920,6 +2098,7 @@ impl RegistryGovernanceService {
                     "follow_up_gate_failed",
                     "failed",
                     detail,
+                    reason_code,
                 )
                 .await?;
             }
@@ -1935,6 +2114,7 @@ impl RegistryGovernanceService {
         stage: &registry_validation_stage::Model,
         event_type: &str,
         detail: &str,
+        reason_code: Option<&str>,
         extra: Option<serde_json::Value>,
     ) -> anyhow::Result<registry_governance_event::Model> {
         let mut details = serde_json::json!({
@@ -1949,6 +2129,9 @@ impl RegistryGovernanceService {
             "started_at": stage.started_at.as_ref().map(|value| value.to_rfc3339()),
             "finished_at": stage.finished_at.as_ref().map(|value| value.to_rfc3339()),
         });
+        if let Some(reason_code) = reason_code {
+            details["reason_code"] = serde_json::Value::String(reason_code.to_string());
+        }
         if let Some(extra) = extra {
             merge_json_object(&mut details, extra);
         }
@@ -1972,7 +2155,16 @@ impl RegistryGovernanceService {
         event_type: &str,
         status: &str,
         detail: &str,
+        reason_code: Option<&str>,
     ) -> anyhow::Result<registry_governance_event::Model> {
+        let mut details = serde_json::json!({
+            "gate": stage_key,
+            "status": status,
+            "detail": detail,
+        });
+        if let Some(reason_code) = reason_code {
+            details["reason_code"] = serde_json::Value::String(reason_code.to_string());
+        }
         self.record_governance_event(
             &request.slug,
             Some(&request.id),
@@ -1980,11 +2172,7 @@ impl RegistryGovernanceService {
             event_type,
             actor,
             None,
-            serde_json::json!({
-                "gate": stage_key,
-                "status": status,
-                "detail": detail,
-            }),
+            details,
         )
         .await
     }
@@ -3494,6 +3682,7 @@ mod tests {
                 "compile_smoke",
                 "failed",
                 Some("Compile smoke failed in CI."),
+                None,
                 false,
             )
             .await
@@ -3508,6 +3697,7 @@ mod tests {
                 "compile_smoke",
                 "queued",
                 Some("Compile smoke queued again after fixes."),
+                None,
                 true,
             )
             .await

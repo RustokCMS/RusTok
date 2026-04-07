@@ -104,6 +104,9 @@ curl -i http://127.0.0.1:5150/api/openapi.json
 
 Для автоматизированной локальной проверки тот же runtime contract покрыт в
 `scripts/verify/verify-deployment-profiles.sh` и `scripts/verify/verify-deployment-profiles.ps1`.
+Если нужно прогнать тот же smoke уже против внешнего dedicated host, эти же скрипты теперь
+понимают `RUSTOK_REGISTRY_BASE_URL`, optional `RUSTOK_REGISTRY_SMOKE_SLUG` и optional
+`RUSTOK_REGISTRY_EVIDENCE_DIR`.
 
 ## Production rollout для `modules.rustok.dev`
 
@@ -124,6 +127,56 @@ curl -i http://127.0.0.1:5150/api/openapi.json
 6. Проверить `GET /api/openapi.json` и убедиться, что в spec нет `/v2/catalog/*`, `/api/graphql`, `/api/auth/*`.
 7. Проверить negative smoke: `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/owner-transfer`, `POST /v2/catalog/yank`, `GET /api/graphql`, `GET /admin` должны давать `404`.
 
+Provider-agnostic edge/runtime invariants для этого host:
+
+- edge/CDN/reverse proxy не должны переписывать path prefix и query string для `/v1/catalog*`, `/health/*`, `/metrics`, `/api/openapi.*`;
+- edge не должен вырезать `ETag`, `Cache-Control`, `If-None-Match` и `X-Total-Count`, потому что это часть live V1 contract;
+- edge не должен подменять API-ответы собственными HTML error pages для `404` на write/admin paths;
+- `GET /v1/catalog*` можно кэшировать только с уважением к origin headers; `/health/*` и `/api/openapi.*` не должны превращаться в долгоживущий CDN cache;
+- TLS termination/HSTS и redirect policy должны быть настроены на edge, но без path rewrites и без downgrade на `http`;
+- WAF/rate-limit layer не должен инжектить auth headers и не должен превращать expected `404` на write-path в provider-specific `401/403`, иначе теряется внешний reduced-surface contract.
+
+Канонический automated smoke для уже развёрнутого host:
+
+```bash
+export RUSTOK_REGISTRY_BASE_URL="https://modules.rustok.dev"
+export RUSTOK_REGISTRY_SMOKE_SLUG="blog"
+export RUSTOK_REGISTRY_EVIDENCE_DIR="./tmp/modules-rustok-dev-smoke"
+./scripts/verify/verify-deployment-profiles.sh
+```
+
+```powershell
+$env:RUSTOK_REGISTRY_BASE_URL="https://modules.rustok.dev"
+$env:RUSTOK_REGISTRY_SMOKE_SLUG="blog"
+$env:RUSTOK_REGISTRY_EVIDENCE_DIR="C:\tmp\modules-rustok-dev-smoke"
+./scripts/verify/verify-deployment-profiles.ps1
+```
+
+Этот external smoke не заменяет локальную build/profile matrix, а дополняет её:
+
+- проверяет `/health/ready` и `/health/runtime` уже на публичном host;
+- проверяет `/health/modules` как live marker для зарегистрированного `ModuleRegistry` даже на reduced host;
+- проверяет `GET /v1/catalog?limit=1` и `GET /v1/catalog/{slug}` на live instance;
+- проверяет `ETag`, `Cache-Control` и `X-Total-Count`;
+- проверяет reduced OpenAPI (`/api/openapi.json` и `/api/openapi.yaml`) на отсутствие write/API/UI surface;
+- проверяет, что `POST /v2/catalog/*`, `POST /v2/catalog/owner-transfer`, `POST /v2/catalog/yank` и `GET /admin` реально дают `404`.
+
+Минимальный evidence package после rollout:
+
+- сохранить stdout/stderr external smoke из `scripts/verify/verify-deployment-profiles.sh` или `.ps1`;
+- сохранить ответ `/health/runtime` как rollout snapshot для этого release;
+- сохранить snapshot `GET /api/openapi.json` как доказательство reduced surface;
+- зафиксировать artifact identifier / build SHA / image tag и timestamp smoke-проверки;
+- если перед host стоит CDN/WAF, отдельно отметить effective cache/TLS policy и отсутствие path rewrites для catalog endpoints.
+
+Если задан `RUSTOK_REGISTRY_EVIDENCE_DIR`, verify-скрипт автоматически сохраняет туда как минимум:
+
+- `runtime-headers.txt` и `runtime-body.json`;
+- `catalog-headers.txt` и `catalog-body.json`;
+- `openapi-headers.txt` и `openapi-body.json`;
+- `openapi-yaml-headers.txt` и `openapi-yaml-body.yaml`;
+- `registry-smoke-metadata.txt` с `base_url`, `smoke_slug` и UTC timestamp.
+
 Минимальный acceptance после rollout:
 
 - `/health/ready` возвращает `200`;
@@ -134,6 +187,7 @@ curl -i http://127.0.0.1:5150/api/openapi.json
 - V2 write-path и monolith shell реально недоступны снаружи.
 
 Rollback для этого host остаётся обычным rollback deployment-артефакта или переключением трафика на предыдущий release. Важный инвариант: не переводить `modules.rustok.dev` в `full` runtime как временную меру, потому что это ломает контракт dedicated read-only catalog host.
+Отдельно для rollback/incident path: если smoke падает именно на reduced surface, сначала откатить deployment или traffic switch, а не чинить проблему временным включением full-host routes.
 
 ## Надёжность проверок
 

@@ -39,6 +39,14 @@ struct RegistryAutomatedCheckItem {
     detail: String,
 }
 
+const REGISTRY_APPROVE_OVERRIDE_REASON_CODES: &[&str] = &[
+    "manual_review_complete",
+    "trusted_first_party",
+    "expedited_release",
+    "governance_override",
+    "other",
+];
+
 fn tr(locale: Locale, en: &'static str, ru: &'static str) -> &'static str {
     match locale {
         Locale::ru => ru,
@@ -129,6 +137,89 @@ fn validation_feedback_badge_classes(status: &str) -> &'static str {
 
 fn status_eq(value: &str, expected: &str) -> bool {
     value.eq_ignore_ascii_case(expected)
+}
+
+fn validation_stage_requires_approval_override(status: &str) -> bool {
+    !status_eq(status, "passed")
+}
+
+fn approval_override_required(validation_stages: &[RegistryValidationStageLifecycle]) -> bool {
+    validation_stages
+        .iter()
+        .any(|stage| validation_stage_requires_approval_override(&stage.status))
+}
+
+fn approval_override_stage_labels(
+    validation_stages: &[RegistryValidationStageLifecycle],
+    locale: Locale,
+) -> Vec<String> {
+    validation_stages
+        .iter()
+        .filter(|stage| validation_stage_requires_approval_override(&stage.status))
+        .map(|stage| {
+            format!(
+                "{} ({})",
+                follow_up_gate_label(&stage.key, locale),
+                humanize_token(&stage.status)
+            )
+        })
+        .collect()
+}
+
+fn approval_override_warning_lines(
+    validation_stages: &[RegistryValidationStageLifecycle],
+    locale: Locale,
+) -> Vec<String> {
+    let pending_stage_labels = approval_override_stage_labels(validation_stages, locale);
+    if pending_stage_labels.is_empty() {
+        return Vec::new();
+    }
+
+    vec![
+        format!(
+            "{}: {}.",
+            tr(
+                locale,
+                "Live approve now requires an explicit override because these follow-up stages are not passed",
+                "Для live approve теперь нужен явный override, потому что эти follow-up stages ещё не пройдены"
+            ),
+            pending_stage_labels.join(", ")
+        ),
+        format!(
+            "{}: {}.",
+            tr(
+                locale,
+                "Fill both Reason and Reason code before approving, or mark the remaining stages as passed first",
+                "Перед approve заполните и Reason, и Reason code, либо сначала переведите оставшиеся stages в passed"
+            ),
+            REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
+        ),
+    ]
+}
+
+fn validation_stage_has_local_xtask_runner(stage_key: &str) -> bool {
+    matches!(
+        stage_key,
+        "compile_smoke" | "targeted_tests" | "security_policy_review"
+    )
+}
+
+fn validation_stage_runner_xtask_hint(
+    module_slug: &str,
+    request_id: &str,
+    stage_key: &str,
+) -> String {
+    if stage_key.eq_ignore_ascii_case("security_policy_review") {
+        format!(
+            "cargo xtask module stage-run {} {} {} --confirm-manual-review --detail \"Manual security/policy review completed.\" --registry-url <registry-url>",
+            module_slug, request_id, stage_key
+        )
+    } else {
+        format!(
+            "cargo xtask module stage-run {} {} {} --registry-url <registry-url>",
+            module_slug, request_id, stage_key
+        )
+    }
 }
 
 fn registry_mutation_result_summary(result: &RegistryMutationResult, locale: Locale) -> String {
@@ -759,6 +850,7 @@ fn registry_next_action_lines(
     request: Option<&RegistryPublishRequestLifecycle>,
     release: Option<&RegistryReleaseLifecycle>,
     owner_binding: Option<&RegistryOwnerLifecycle>,
+    validation_stages: &[RegistryValidationStageLifecycle],
     locale: Locale,
 ) -> Vec<String> {
     let mut lines = Vec::new();
@@ -814,6 +906,26 @@ fn registry_next_action_lines(
             .to_string(),
         ),
         Some(status) if status_eq(status, "approved") => {
+            if approval_override_required(validation_stages) {
+                lines.push(format!(
+                    "{}: {}.",
+                    tr(
+                        locale,
+                        "Before live approve, either close the remaining follow-up stages or send an explicit approval override",
+                        "Перед live approve либо закройте оставшиеся follow-up stages, либо отправьте явный approval override"
+                    ),
+                    approval_override_stage_labels(validation_stages, locale).join(", ")
+                ));
+                lines.push(format!(
+                    "{}: {}.",
+                    tr(
+                        locale,
+                        "Supported approval override reason codes",
+                        "Допустимые reason code для approval override"
+                    ),
+                    REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
+                ));
+            }
             if let Some(owner) = owner_binding {
                 lines.push(format!(
                     "{}: {}.",
@@ -946,10 +1058,17 @@ fn registry_operator_command_lines(
             && (status_eq(&request.status, "approved") || status_eq(&request.status, "published"))
         {
             for stage in validation_stages {
-                lines.push(format!(
-                    "cargo xtask module stage {} {} <queued|running|passed|failed|blocked> --dry-run",
-                    request.id, stage.key
-                ));
+                if validation_stage_has_local_xtask_runner(&stage.key) {
+                    let mut command =
+                        validation_stage_runner_xtask_hint(&module.slug, &request.id, &stage.key);
+                    command.push_str(" --dry-run");
+                    lines.push(command);
+                } else {
+                    lines.push(format!(
+                        "cargo xtask module stage {} {} <queued|running|passed|failed|blocked> --dry-run",
+                        request.id, stage.key
+                    ));
+                }
             }
         }
     }
@@ -1047,7 +1166,7 @@ fn registry_live_api_action_lines(
             note: Some(
                 tr(
                     locale,
-                    "Finalize a validated request into a published release.",
+                    "Finalize a validated request into a published release. If follow-up validation stages are not all passed yet, include an explicit override reason and reason_code.",
                     "Финализирует провалидированный запрос в опубликованный релиз.",
                 )
                 .to_string(),
@@ -1055,8 +1174,8 @@ fn registry_live_api_action_lines(
             body_hint: Some(
                 tr(
                     locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false }",
-                    "{ \"schema_version\": 1, \"dry_run\": false }",
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<override-reason-when-follow-up-stages-are-not-passed>\", \"reason_code\": \"manual_review_complete\" }",
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<override-reason-when-follow-up-stages-are-not-passed>\", \"reason_code\": \"manual_review_complete\" }",
                 )
                 .to_string(),
             ),
@@ -1078,7 +1197,7 @@ fn registry_live_api_action_lines(
             note: Some(
                 tr(
                     locale,
-                    "Reject requires a governance reason in the request body.",
+                    "Reject requires both a governance reason and a structured reason_code in the request body.",
                     "Reject требует governance reason в теле запроса.",
                 )
                 .to_string(),
@@ -1086,8 +1205,8 @@ fn registry_live_api_action_lines(
             body_hint: Some(
                 tr(
                     locale,
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<governance-reason>\" }",
-                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<governance-reason>\" }",
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<governance-reason>\", \"reason_code\": \"policy_mismatch\" }",
+                    "{ \"schema_version\": 1, \"dry_run\": false, \"reason\": \"<governance-reason>\", \"reason_code\": \"policy_mismatch\" }",
                 )
                 .to_string(),
             ),
@@ -1095,7 +1214,7 @@ fn registry_live_api_action_lines(
             xtask_hint: None,
             write_path: true,
         });
-        if let Some(stage) = validation_stages.first() {
+        for stage in validation_stages {
             lines.push(RegistryLiveApiActionHint {
                 endpoint: format!("POST /v2/catalog/publish/{}/stages", request.id),
                 authority: registry_review_authority_label(owner_binding, locale),
@@ -1108,14 +1227,23 @@ fn registry_live_api_action_lines(
                     .to_string(),
                 ),
                 body_hint: Some(format!(
-                    "{{ \"schema_version\": 1, \"dry_run\": false, \"stage\": \"{}\", \"status\": \"passed\", \"detail\": \"External validation recorded by operator.\", \"requeue\": false }}",
-                    stage.key
+                    "{{ \"schema_version\": 1, \"dry_run\": false, \"stage\": \"{}\", \"status\": \"passed\", \"detail\": \"External validation recorded by operator.\", \"reason_code\": \"{}\", \"requeue\": false }}",
+                    stage.key,
+                    if stage.key.eq_ignore_ascii_case("security_policy_review") {
+                        "manual_review_complete"
+                    } else {
+                        "local_runner_passed"
+                    }
                 )),
                 header_hint: Some(actor_header_hint(true)),
-                xtask_hint: Some(format!(
-                    "cargo xtask module stage {} {} passed --detail \"External validation recorded by operator.\" --registry-url <registry-url>",
-                    request.id, stage.key
-                )),
+                xtask_hint: Some(if validation_stage_has_local_xtask_runner(&stage.key) {
+                    validation_stage_runner_xtask_hint(&module.slug, &request.id, &stage.key)
+                } else {
+                    format!(
+                        "cargo xtask module stage {} {} passed --detail \"External validation recorded by operator.\" --registry-url <registry-url>",
+                        request.id, stage.key
+                    )
+                }),
                 write_path: true,
             });
         }
@@ -1156,14 +1284,14 @@ fn registry_live_api_action_lines(
             body_hint: Some(
                 tr(
                     locale,
-                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"version\": \"<version>\", \"reason\": \"<yank-reason>\", \"dry_run\": false }",
-                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"version\": \"<version>\", \"reason\": \"<yank-reason>\", \"dry_run\": false }",
+                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"version\": \"<version>\", \"reason\": \"<yank-reason>\", \"reason_code\": \"rollback\", \"dry_run\": false }",
+                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"version\": \"<version>\", \"reason\": \"<yank-reason>\", \"reason_code\": \"rollback\", \"dry_run\": false }",
                 )
                 .to_string(),
             ),
             header_hint: Some(actor_header_hint(owner_binding.is_some())),
             xtask_hint: Some(format!(
-                "cargo xtask module yank {} {} --reason <yank-reason> --registry-url <registry-url>",
+                "cargo xtask module yank {} {} --reason <yank-reason> --reason-code <security|legal|malware|critical_regression|rollback|other> --registry-url <registry-url>",
                 module.slug,
                 release
                     .map(|value| value.version.as_str())
@@ -1218,7 +1346,7 @@ fn registry_live_api_action_lines(
             note: Some(
                 tr(
                     locale,
-                    "Use this before treating a new requested publisher as the canonical owner.",
+                    "Use this before treating a new requested publisher as the canonical owner; live owner transfer also requires a structured reason_code.",
                     "Используйте это до того, как считать нового requested publisher каноническим владельцем.",
                 )
                 .to_string(),
@@ -1226,14 +1354,14 @@ fn registry_live_api_action_lines(
             body_hint: Some(
                 tr(
                     locale,
-                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"new_owner_actor\": \"<actor>\", \"reason\": \"<transfer-reason>\", \"dry_run\": false }",
-                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"new_owner_actor\": \"<actor>\", \"reason\": \"<transfer-reason>\", \"dry_run\": false }",
+                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"new_owner_actor\": \"<actor>\", \"reason\": \"<transfer-reason>\", \"reason_code\": \"maintenance_handoff\", \"dry_run\": false }",
+                    "{ \"schema_version\": 1, \"slug\": \"<module-slug>\", \"new_owner_actor\": \"<actor>\", \"reason\": \"<transfer-reason>\", \"reason_code\": \"maintenance_handoff\", \"dry_run\": false }",
                 )
                 .to_string(),
             ),
             header_hint: Some(actor_header_hint(true)),
             xtask_hint: Some(format!(
-                "cargo xtask module owner-transfer {} <new-owner-actor> --reason <transfer-reason> --registry-url <registry-url>",
+                "cargo xtask module owner-transfer {} <new-owner-actor> --reason <transfer-reason> --reason-code <maintenance_handoff|team_restructure|publisher_rotation|security_emergency|governance_override|other> --registry-url <registry-url>",
                 module.slug
             )),
             write_path: true,
@@ -1344,6 +1472,7 @@ fn is_moderation_history_event_type(event_type: &str) -> bool {
     matches!(
         event_type,
         "release_published"
+            | "publish_approval_override"
             | "request_rejected"
             | "owner_transferred"
             | "release_yanked"
@@ -1374,6 +1503,7 @@ fn moderation_history_badge_label(event_type: &str, locale: Locale) -> String {
     };
     match event_type {
         "release_published" => tr(locale, "Approved", "Approved"),
+        "publish_approval_override" => tr(locale, "Approval override", "Approval override"),
         "request_rejected" => tr(locale, "Rejected", "Rejected"),
         "owner_transferred" => tr(locale, "Owner transfer", "Owner transfer"),
         "release_yanked" => tr(locale, "Yanked", "Yanked"),
@@ -1389,6 +1519,7 @@ fn moderation_history_badge_label(event_type: &str, locale: Locale) -> String {
 fn moderation_history_badge_status(event_type: &str) -> &'static str {
     match event_type {
         "release_published" => "published",
+        "publish_approval_override" => "info",
         "request_rejected" => "rejected",
         "release_yanked" => "yanked",
         "validation_stage_failed" => "failed",
@@ -1404,6 +1535,7 @@ fn moderation_history_context_lines(
 ) -> Vec<String> {
     let mut lines = Vec::new();
     let reason = governance_detail_string(&event.details, "reason");
+    let reason_code = governance_detail_string(&event.details, "reason_code");
     let detail = governance_detail_string(&event.details, "detail");
     let version = governance_detail_string(&event.details, "version");
     let stage_key = governance_event_stage_key(event);
@@ -1447,6 +1579,14 @@ fn moderation_history_context_lines(
 
     if let Some(reason) = reason {
         lines.push(format!("{}: {}", tr(locale, "Reason", "Reason"), reason));
+    }
+
+    if let Some(reason_code) = reason_code {
+        lines.push(format!(
+            "{}: {}",
+            tr(locale, "Reason code", "Reason code"),
+            humanize_token(&reason_code)
+        ));
     }
 
     if let Some(detail) = detail {
@@ -1534,6 +1674,7 @@ fn governance_event_summary(event: &RegistryGovernanceEventLifecycle, locale: Lo
     };
     let version = governance_detail_string(&event.details, "version");
     let reason = governance_detail_string(&event.details, "reason");
+    let reason_code = governance_detail_string(&event.details, "reason_code");
     let publisher =
         governance_detail_string(&event.details, "publisher").or_else(|| event.publisher.clone());
     let owner_actor = governance_detail_string(&event.details, "owner_actor");
@@ -1752,6 +1893,30 @@ fn governance_event_summary(event: &RegistryGovernanceEventLifecycle, locale: Lo
                     locale,
                     "Release was yanked from the active catalog.",
                     "Релиз отозван из активного каталога.",
+                )
+                .to_string()
+            }),
+        "publish_approval_override" => reason
+            .map(|value| {
+                let prefix = reason_code
+                    .as_deref()
+                    .map(|code| {
+                        format!(
+                            "{} ({})",
+                            tr(locale, "Approval override", "Approval override"),
+                            humanize_token(code)
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        tr(locale, "Approval override", "Approval override").to_string()
+                    });
+                format!("{prefix}: {value}")
+            })
+            .unwrap_or_else(|| {
+                tr(
+                    locale,
+                    "Publish approval used an explicit follow-up gate override.",
+                    "Publish approval used an explicit follow-up gate override.",
                 )
                 .to_string()
             }),
@@ -4161,6 +4326,7 @@ pub fn ModuleDetailPanel(
     let (governance_actor, set_governance_actor) = signal(default_actor);
     let (governance_publisher, set_governance_publisher) = signal(default_publisher);
     let (governance_reason, set_governance_reason) = signal(String::new());
+    let (governance_reason_code, set_governance_reason_code) = signal(String::new());
     let (governance_new_owner_actor, set_governance_new_owner_actor) =
         signal(default_new_owner_actor);
     let (governance_dry_run, set_governance_dry_run) = signal(false);
@@ -4280,6 +4446,11 @@ pub fn ModuleDetailPanel(
                             latest_registry_request.as_ref(),
                             latest_registry_release.as_ref(),
                             registry_owner_binding.as_ref(),
+                            module
+                                .registry_lifecycle
+                                .as_ref()
+                                .map(|lifecycle| lifecycle.validation_stages.as_slice())
+                                .unwrap_or(&[]),
                             locale,
                         );
                         let next_action_lines_for_show = next_action_lines.clone();
@@ -4408,6 +4579,13 @@ pub fn ModuleDetailPanel(
                             follow_up_gate_status_summary(&follow_up_gates, locale);
                         let validation_stage_summary =
                             validation_stage_status_summary(&validation_stages, locale);
+                        let approval_override_warning_items = latest_registry_request
+                            .as_ref()
+                            .filter(|request| status_eq(&request.status, "approved"))
+                            .map(|_| approval_override_warning_lines(&validation_stages, locale))
+                            .unwrap_or_default();
+                        let approval_override_warning_items_for_show =
+                            StoredValue::new(approval_override_warning_items.clone());
                         let validation_warning_items_for_show =
                             StoredValue::new(validation_warning_items.clone());
                         let validation_error_items_for_show =
@@ -4425,6 +4603,8 @@ pub fn ModuleDetailPanel(
                             || has_automated_check_items;
                         let show_follow_up_gates = !follow_up_gates.is_empty();
                         let show_validation_stages = !validation_stages.is_empty();
+                        let show_approval_override_warning =
+                            !approval_override_warning_items.is_empty();
                         let governance_hint = registry_governance_hint(&module, locale);
                         let checksum = short_checksum(module.checksum_sha256.as_deref());
                         let request_id = latest_registry_request.as_ref().map(|request| request.id.clone());
@@ -4529,6 +4709,10 @@ pub fn ModuleDetailPanel(
                                     .get_untracked()
                                     .trim()
                                     .to_string();
+                                let reason =
+                                    governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
                                 let token = access_token.get_untracked();
                                 let tenant = tenant_slug.get_untracked();
                                 spawn_local(async move {
@@ -4536,6 +4720,8 @@ pub fn ModuleDetailPanel(
                                         request_id,
                                         actor,
                                         (!publisher.is_empty()).then_some(publisher),
+                                        (!reason.is_empty()).then_some(reason),
+                                        (!reason_code.is_empty()).then_some(reason_code),
                                         dry_run,
                                         token,
                                         tenant,
@@ -4573,6 +4759,8 @@ pub fn ModuleDetailPanel(
                                 };
                                 let actor = governance_actor.get_untracked().trim().to_string();
                                 let reason = governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
                                 if actor.is_empty() {
                                     set_governance_error.set(Some(
@@ -4584,6 +4772,13 @@ pub fn ModuleDetailPanel(
                                 if reason.is_empty() {
                                     set_governance_error.set(Some(
                                         tr(locale, "Reason is required.", "Нужно указать причину.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if reason_code.is_empty() {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -4618,6 +4813,7 @@ pub fn ModuleDetailPanel(
                                         request_id,
                                         actor,
                                         reason,
+                                        reason_code,
                                         dry_run,
                                         token,
                                         tenant,
@@ -4649,6 +4845,8 @@ pub fn ModuleDetailPanel(
                                 let new_owner_actor =
                                     governance_new_owner_actor.get_untracked().trim().to_string();
                                 let reason = governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
                                 if actor.is_empty() {
                                     set_governance_error.set(Some(
@@ -4671,6 +4869,13 @@ pub fn ModuleDetailPanel(
                                 if reason.is_empty() {
                                     set_governance_error.set(Some(
                                         tr(locale, "Reason is required.", "Нужно указать причину.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if reason_code.is_empty() {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -4707,6 +4912,7 @@ pub fn ModuleDetailPanel(
                                         actor,
                                         new_owner_actor,
                                         reason,
+                                        reason_code,
                                         dry_run,
                                         token,
                                         tenant,
@@ -4737,6 +4943,8 @@ pub fn ModuleDetailPanel(
                             Callback::new(move |_| {
                                 let actor = governance_actor.get_untracked().trim().to_string();
                                 let reason = governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
                                 let dry_run = governance_dry_run.get_untracked();
                                 if actor.is_empty() {
                                     set_governance_error.set(Some(
@@ -4748,6 +4956,13 @@ pub fn ModuleDetailPanel(
                                 if reason.is_empty() {
                                     set_governance_error.set(Some(
                                         tr(locale, "Reason is required.", "Нужно указать причину.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if reason_code.is_empty() {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -4785,6 +5000,7 @@ pub fn ModuleDetailPanel(
                                         release_version.clone(),
                                         actor,
                                         reason,
+                                        reason_code,
                                         dry_run,
                                         token,
                                         tenant,
@@ -5574,6 +5790,18 @@ pub fn ModuleDetailPanel(
                                                     <span>{tr(locale, "Dry run", "Dry run")}</span>
                                                 </label>
                                             </div>
+                                            <Show when=move || show_approval_override_warning>
+                                                <div class="space-y-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-xs text-amber-900">
+                                                    <p class="font-medium">
+                                                        {tr(locale, "Approval override required", "Нужен approval override")}
+                                                    </p>
+                                                    <ul class="list-disc space-y-1 pl-4">
+                                                        {approval_override_warning_items_for_show.get_value().into_iter().map(|line| {
+                                                            view! { <li>{line}</li> }
+                                                        }).collect_view()}
+                                                    </ul>
+                                                </div>
+                                            </Show>
                                             <div class="grid gap-3 lg:grid-cols-2">
                                                 <Input
                                                     value=Signal::derive(move || governance_actor.get())
@@ -5593,6 +5821,12 @@ pub fn ModuleDetailPanel(
                                                     placeholder=tr(locale, "publisher:new-owner", "publisher:new-owner")
                                                     label=tr(locale, "New owner actor", "Новый владелец")
                                                 />
+                                                <Input
+                                                    value=Signal::derive(move || governance_reason_code.get())
+                                                    set_value=set_governance_reason_code
+                                                    placeholder=tr(locale, "manual_review_complete / policy_mismatch / maintenance_handoff / rollback", "manual_review_complete / policy_mismatch / maintenance_handoff / rollback")
+                                                    label=tr(locale, "Reason code", "Reason code")
+                                                />
                                                 <div class="flex flex-col gap-2">
                                                     <label class="text-sm font-medium leading-none">
                                                         {tr(locale, "Reason", "Причина")}
@@ -5600,7 +5834,7 @@ pub fn ModuleDetailPanel(
                                                     <textarea
                                                         class="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                                                         prop:value=move || governance_reason.get()
-                                                        placeholder=tr(locale, "Required for reject, owner transfer, and yank.", "Обязательно для reject, owner transfer и yank.")
+                                                        placeholder=tr(locale, "Required for reject, owner transfer, yank, and stage-aware approve override.", "Обязательно для reject, owner transfer, yank и stage-aware approve override.")
                                                         on:input=move |event| {
                                                             set_governance_reason.set(event_target_value(&event));
                                                         }
@@ -6403,7 +6637,7 @@ mod tests {
             }),
         );
 
-        let lines = validation_job_event_context_lines(&event, Locale::En);
+        let lines = validation_job_event_context_lines(&event, Locale::en);
 
         assert!(lines.iter().any(|line| line == "Job: rvj_123"));
         assert!(lines.iter().any(|line| line == "Attempt: 2"));
@@ -6417,9 +6651,31 @@ mod tests {
     }
 
     #[test]
+    fn moderation_history_context_lines_include_reason_code() {
+        let event = sample_event(
+            "request_rejected",
+            json!({
+                "version": "1.2.3",
+                "reason": "Ownership evidence is incomplete.",
+                "reason_code": "ownership_mismatch"
+            }),
+        );
+
+        let lines = moderation_history_context_lines(&event, Locale::en);
+
+        assert!(lines.iter().any(|line| line == "Version: v1.2.3"));
+        assert!(lines
+            .iter()
+            .any(|line| line == "Reason: Ownership evidence is incomplete."));
+        assert!(lines
+            .iter()
+            .any(|line| line == "Reason code: Ownership Mismatch"));
+    }
+
+    #[test]
     fn registry_review_policy_lines_drop_legacy_override_copy() {
         let owner = sample_owner("owner:module");
-        let lines = registry_review_policy_lines(None, None, Some(&owner), Locale::En);
+        let lines = registry_review_policy_lines(None, None, Some(&owner), Locale::en);
 
         assert_eq!(
             lines.first().map(String::as_str),

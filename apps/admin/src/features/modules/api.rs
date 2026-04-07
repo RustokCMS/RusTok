@@ -183,6 +183,7 @@ struct RegistryDecisionRequestPayload {
     #[serde(rename = "dry_run")]
     dry_run: bool,
     reason: Option<String>,
+    reason_code: Option<String>,
 }
 
 #[cfg(feature = "ssr")]
@@ -196,6 +197,7 @@ struct RegistryOwnerTransferPayload {
     #[serde(rename = "new_owner_actor")]
     new_owner_actor: String,
     reason: Option<String>,
+    reason_code: Option<String>,
 }
 
 #[cfg(feature = "ssr")]
@@ -208,6 +210,7 @@ struct RegistryYankPayload {
     slug: String,
     version: String,
     reason: Option<String>,
+    reason_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -3991,6 +3994,8 @@ async fn approve_registry_publish_request_native(
     request_id: String,
     actor: String,
     publisher: Option<String>,
+    reason: Option<String>,
+    reason_code: Option<String>,
     dry_run: bool,
 ) -> Result<RegistryMutationResult, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -4005,14 +4010,24 @@ async fn approve_registry_publish_request_native(
             &RegistryDecisionRequestPayload {
                 schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
                 dry_run,
-                reason: None,
+                reason,
+                reason_code,
             },
         )
         .await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, request_id, actor, publisher, dry_run);
+        let _ = (
+            token,
+            tenant,
+            request_id,
+            actor,
+            publisher,
+            reason,
+            reason_code,
+            dry_run,
+        );
         Err(ServerFnError::new(
             "admin/registry-approve-publish-request requires the `ssr` feature",
         ))
@@ -4026,6 +4041,7 @@ async fn reject_registry_publish_request_native(
     request_id: String,
     actor: String,
     reason: String,
+    reason_code: String,
     dry_run: bool,
 ) -> Result<RegistryMutationResult, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -4041,13 +4057,22 @@ async fn reject_registry_publish_request_native(
                 schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
                 dry_run,
                 reason: Some(reason),
+                reason_code: Some(reason_code),
             },
         )
         .await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, request_id, actor, reason, dry_run);
+        let _ = (
+            token,
+            tenant,
+            request_id,
+            actor,
+            reason,
+            reason_code,
+            dry_run,
+        );
         Err(ServerFnError::new(
             "admin/registry-reject-publish-request requires the `ssr` feature",
         ))
@@ -4062,6 +4087,7 @@ async fn transfer_registry_owner_native(
     actor: String,
     new_owner_actor: String,
     reason: String,
+    reason_code: String,
     dry_run: bool,
 ) -> Result<RegistryMutationResult, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -4079,13 +4105,23 @@ async fn transfer_registry_owner_native(
                 slug,
                 new_owner_actor,
                 reason: Some(reason),
+                reason_code: Some(reason_code),
             },
         )
         .await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, slug, actor, new_owner_actor, reason, dry_run);
+        let _ = (
+            token,
+            tenant,
+            slug,
+            actor,
+            new_owner_actor,
+            reason,
+            reason_code,
+            dry_run,
+        );
         Err(ServerFnError::new(
             "admin/registry-transfer-owner requires the `ssr` feature",
         ))
@@ -4100,6 +4136,7 @@ async fn yank_registry_release_native(
     version: String,
     actor: String,
     reason: String,
+    reason_code: String,
     dry_run: bool,
 ) -> Result<RegistryMutationResult, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -4117,13 +4154,23 @@ async fn yank_registry_release_native(
                 slug,
                 version,
                 reason: Some(reason),
+                reason_code: Some(reason_code),
             },
         )
         .await
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (token, tenant, slug, version, actor, reason, dry_run);
+        let _ = (
+            token,
+            tenant,
+            slug,
+            version,
+            actor,
+            reason,
+            reason_code,
+            dry_run,
+        );
         Err(ServerFnError::new(
             "admin/registry-yank-release requires the `ssr` feature",
         ))
@@ -4289,6 +4336,8 @@ pub async fn approve_registry_publish_request(
     request_id: String,
     actor: String,
     publisher: Option<String>,
+    reason: Option<String>,
+    reason_code: Option<String>,
     dry_run: bool,
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -4300,6 +4349,8 @@ pub async fn approve_registry_publish_request(
         request_id,
         actor,
         publisher,
+        reason,
+        reason_code,
         dry_run,
     )
     .await
@@ -4310,6 +4361,7 @@ pub async fn reject_registry_publish_request(
     request_id: String,
     actor: String,
     reason: String,
+    reason_code: String,
     dry_run: bool,
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -4321,6 +4373,7 @@ pub async fn reject_registry_publish_request(
         request_id,
         actor,
         reason,
+        reason_code,
         dry_run,
     )
     .await
@@ -4332,6 +4385,7 @@ pub async fn transfer_registry_owner(
     actor: String,
     new_owner_actor: String,
     reason: String,
+    reason_code: String,
     dry_run: bool,
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -4344,6 +4398,7 @@ pub async fn transfer_registry_owner(
         actor,
         new_owner_actor,
         reason,
+        reason_code,
         dry_run,
     )
     .await
@@ -4355,6 +4410,7 @@ pub async fn yank_registry_release(
     version: String,
     actor: String,
     reason: String,
+    reason_code: String,
     dry_run: bool,
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -4367,6 +4423,7 @@ pub async fn yank_registry_release(
         version,
         actor,
         reason,
+        reason_code,
         dry_run,
     )
     .await

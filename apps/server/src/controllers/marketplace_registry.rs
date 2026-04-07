@@ -27,12 +27,16 @@ use crate::services::marketplace_catalog::{
     registry_publish_status_path, registry_publish_validate_path, registry_yank_path,
     validate_registry_mutation_schema_version, RegistryCatalogModule, RegistryCatalogResponse,
     RegistryMutationResponse, RegistryOwnerTransferRequest, RegistryPublishDecisionRequest,
-    RegistryPublishRequest, RegistryPublishStatusResponse, RegistryPublishValidationRequest,
+    RegistryPublishRequest, RegistryPublishStatusFollowUpGate, RegistryPublishStatusResponse,
+    RegistryPublishStatusValidationStage, RegistryPublishValidationRequest,
     RegistryValidationStageReportRequest, RegistryYankRequest,
 };
 use crate::services::registry_governance::{
     release_status_label, request_status_label, validation_stage_status_label,
-    RegistryArtifactUpload, RegistryGovernanceService,
+    RegistryArtifactUpload, RegistryFollowUpGateSnapshot, RegistryGovernanceService,
+    RegistryValidationStageSnapshot, REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
+    REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
+    REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES,
 };
 
 #[derive(Debug, Default, Deserialize, ToSchema, utoipa::IntoParams)]
@@ -257,13 +261,30 @@ async fn publish_status(
     State(ctx): State<AppContext>,
     Path(request_id): Path<String>,
 ) -> Result<Json<RegistryPublishStatusResponse>, Error> {
-    let request = RegistryGovernanceService::new(ctx.db.clone())
+    let governance = RegistryGovernanceService::new(ctx.db.clone());
+    let request = governance
         .get_publish_request(&request_id)
         .await
         .map_err(|error| {
             Error::Message(format!("Failed to load registry publish request: {error}"))
         })?
         .ok_or(Error::NotFound)?;
+    let follow_up = governance
+        .publish_request_follow_up_snapshot(&request)
+        .await
+        .map_err(|error| {
+            Error::Message(format!(
+                "Failed to load registry publish request follow-up stages: {error}"
+            ))
+        })?;
+    let mut warnings = deserialize_message_list(&request.validation_warnings);
+    let next_step =
+        publish_request_status_next_step(&request, &request_id, &follow_up.validation_stages);
+    if follow_up.approval_override_required {
+        warnings.push(approval_override_warning_message(
+            &follow_up.validation_stages,
+        ));
+    }
 
     Ok(Json(RegistryPublishStatusResponse {
         schema_version: crate::services::marketplace_catalog::REGISTRY_MUTATION_SCHEMA_VERSION,
@@ -272,9 +293,24 @@ async fn publish_status(
         version: request.version,
         status: request_status_label(request.status.clone()).to_string(),
         accepted: publish_request_accepted(&request.status),
-        warnings: deserialize_message_list(&request.validation_warnings),
+        warnings,
         errors: deserialize_message_list(&request.validation_errors),
-        next_step: publish_request_next_step(&request.status, &request_id),
+        follow_up_gates: follow_up
+            .follow_up_gates
+            .into_iter()
+            .map(publish_status_follow_up_gate)
+            .collect(),
+        validation_stages: follow_up
+            .validation_stages
+            .iter()
+            .map(publish_status_validation_stage)
+            .collect(),
+        approval_override_required: follow_up.approval_override_required,
+        approval_override_reason_codes: REGISTRY_APPROVE_OVERRIDE_REASON_CODES
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+        next_step,
     }))
 }
 
@@ -526,6 +562,21 @@ async fn report_validation_stage(
     let actor = request_actor_from_headers(&headers);
 
     if request.dry_run {
+        let mut warnings = Vec::new();
+        let normalized_status = request.status.trim().to_ascii_lowercase();
+        if matches!(normalized_status.as_str(), "passed" | "failed" | "blocked")
+            && request
+                .reason_code
+                .as_deref()
+                .map(str::trim)
+                .is_none_or(|value| value.is_empty())
+        {
+            warnings.push(format!(
+                "Live validation stage status '{}' should include reason_code ({}).",
+                normalized_status,
+                REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
+            ));
+        }
         return Ok((
             StatusCode::OK,
             Json(RegistryMutationResponse {
@@ -535,10 +586,10 @@ async fn report_validation_stage(
                 dry_run: true,
                 accepted: true,
                 request_id: Some(request_id),
-                status: Some(request.status.trim().to_ascii_lowercase()),
+                status: Some(normalized_status),
                 slug: existing.slug,
                 version: existing.version,
-                warnings: Vec::new(),
+                warnings,
                 errors: Vec::new(),
                 next_step: Some(
                     "Dry-run preview only. Re-run with dry_run=false to persist the validation stage update."
@@ -555,6 +606,7 @@ async fn report_validation_stage(
             &request.stage,
             &request.status,
             request.detail.as_deref(),
+            request.reason_code.as_deref(),
             request.requeue,
         )
         .await
@@ -614,16 +666,43 @@ async fn approve_publish_request(
 ) -> Result<impl IntoResponse, Error> {
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
-    let existing = RegistryGovernanceService::new(ctx.db.clone())
+    validate_publish_approve_request(&request)?;
+    let governance = RegistryGovernanceService::new(ctx.db.clone());
+    let existing = governance
         .get_publish_request(&request_id)
         .await
         .map_err(|error| {
             Error::Message(format!("Failed to load registry publish request: {error}"))
         })?
         .ok_or(Error::NotFound)?;
+    let follow_up = governance
+        .publish_request_follow_up_snapshot(&existing)
+        .await
+        .map_err(|error| {
+            Error::Message(format!(
+                "Failed to load registry publish request follow-up stages: {error}"
+            ))
+        })?;
     let actor = request_actor_from_headers(&headers);
 
     if request.dry_run {
+        let mut warnings = vec![String::from(
+            "Dry-run preview only. Re-run with dry_run=false to finalize the publish request.",
+        )];
+        let next_step = if follow_up.approval_override_required {
+            warnings.push(approval_override_warning_message(
+                &follow_up.validation_stages,
+            ));
+            Some(approval_override_next_step(
+                &existing.id,
+                &follow_up.validation_stages,
+            ))
+        } else {
+            Some(
+                "Use the same endpoint with dry_run=false after artifact validation succeeds."
+                    .to_string(),
+            )
+        };
         return Ok((
             StatusCode::OK,
             Json(RegistryMutationResponse {
@@ -636,16 +715,22 @@ async fn approve_publish_request(
                 status: Some("dry_run".to_string()),
                 slug: existing.slug,
                 version: existing.version,
-                warnings: vec!["Dry-run preview only. Re-run with dry_run=false to finalize the publish request.".to_string()],
+                warnings,
                 errors: Vec::new(),
-                next_step: Some("Use the same endpoint with dry_run=false after artifact validation succeeds.".to_string()),
+                next_step,
             }),
         ));
     }
 
     let publisher = request_publisher_from_headers(&headers);
     let approved = RegistryGovernanceService::new(ctx.db.clone())
-        .approve_publish_request(&request_id, &actor, publisher.as_deref())
+        .approve_publish_request(
+            &request_id,
+            &actor,
+            publisher.as_deref(),
+            request.reason.as_deref(),
+            request.reason_code.as_deref(),
+        )
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -700,6 +785,7 @@ async fn reject_publish_request(
 ) -> Result<impl IntoResponse, Error> {
     validate_registry_mutation_schema_version(request.schema_version)
         .map_err(|error| Error::BadRequest(error.to_string()))?;
+    let warnings = validate_publish_reject_request(&request)?;
     let existing = RegistryGovernanceService::new(ctx.db.clone())
         .get_publish_request(&request_id)
         .await
@@ -707,17 +793,6 @@ async fn reject_publish_request(
             Error::Message(format!("Failed to load registry publish request: {error}"))
         })?
         .ok_or(Error::NotFound)?;
-    let reason = request
-        .reason
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            Error::BadRequest(
-                "Registry publish reject requires a non-empty reason for the governance audit trail"
-                    .to_string(),
-            )
-        })?;
     let actor = request_actor_from_headers(&headers);
 
     if request.dry_run {
@@ -733,15 +808,46 @@ async fn reject_publish_request(
                 status: Some("dry_run".to_string()),
                 slug: existing.slug,
                 version: existing.version,
-                warnings: vec!["Dry-run preview only. Re-run with dry_run=false to persist the governance rejection.".to_string()],
+                warnings: warnings
+                    .into_iter()
+                    .chain(std::iter::once(
+                        "Dry-run preview only. Re-run with dry_run=false to persist the governance rejection."
+                            .to_string(),
+                    ))
+                    .collect(),
                 errors: Vec::new(),
-                next_step: Some("Use the same endpoint with dry_run=false to reject the publish request.".to_string()),
+                next_step: Some(format!(
+                    "Use the same endpoint with dry_run=false, a non-empty reason, and a supported reason_code ({}) to reject the publish request.",
+                    REGISTRY_REJECT_REASON_CODES.join(", ")
+                )),
             }),
         ));
     }
+    let reason = request
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            Error::BadRequest(
+                "Live registry publish reject requires a non-empty reason for the governance audit trail"
+                    .to_string(),
+            )
+        })?;
+    let reason_code = request
+        .reason_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            Error::BadRequest(
+                "Live registry publish reject requires a non-empty reason_code for the policy audit trail"
+                    .to_string(),
+            )
+        })?;
 
     let rejected = RegistryGovernanceService::new(ctx.db.clone())
-        .reject_publish_request(&request_id, &actor, reason)
+        .reject_publish_request(&request_id, &actor, reason, reason_code)
         .await
         .map_err(map_registry_governance_error)?;
 
@@ -756,7 +862,7 @@ async fn reject_publish_request(
             status: Some(request_status_label(rejected.status.clone()).to_string()),
             slug: rejected.slug,
             version: rejected.version,
-            warnings: deserialize_message_list(&rejected.validation_warnings),
+            warnings,
             errors: deserialize_message_list(&rejected.validation_errors),
             next_step: publish_request_next_step(&rejected.status, &rejected.id),
         }),
@@ -806,9 +912,20 @@ async fn yank(
                         .to_string(),
                 )
             })?;
+        let reason_code = request
+            .reason_code
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                Error::BadRequest(
+                    "Live registry yank requires a non-empty reason_code for the policy audit trail"
+                        .to_string(),
+                )
+            })?;
         let actor = request_actor_from_headers(&headers);
         let release = RegistryGovernanceService::new(ctx.db.clone())
-            .yank_release(&request.slug, &request.version, reason, &actor)
+            .yank_release(&request.slug, &request.version, reason, reason_code, &actor)
             .await
             .map_err(map_registry_governance_error)?;
 
@@ -842,10 +959,10 @@ async fn yank(
             status: Some("dry_run".to_string()),
             slug: request.slug.clone(),
             version: request.version.clone(),
-            warnings,
-            errors: Vec::new(),
-            next_step: Some(
-                "Dry-run preview only. Re-run with dry_run=false and a non-empty reason to yank the published release."
+                warnings,
+                errors: Vec::new(),
+                next_step: Some(
+                "Dry-run preview only. Re-run with dry_run=false, a non-empty reason, and a supported reason_code to yank the published release."
                     .to_string(),
             ),
         }),
@@ -895,9 +1012,26 @@ async fn transfer_owner(
                         .to_string(),
                 )
             })?;
+        let reason_code = request
+            .reason_code
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                Error::BadRequest(
+                    "Live registry owner transfer requires a non-empty reason_code for the policy audit trail"
+                        .to_string(),
+                )
+            })?;
         let actor = request_actor_from_headers(&headers);
         let binding = RegistryGovernanceService::new(ctx.db.clone())
-            .transfer_registry_slug_owner(&request.slug, &request.new_owner_actor, reason, &actor)
+            .transfer_registry_slug_owner(
+                &request.slug,
+                &request.new_owner_actor,
+                reason,
+                reason_code,
+                &actor,
+            )
             .await
             .map_err(map_registry_governance_error)?;
 
@@ -934,8 +1068,10 @@ async fn transfer_owner(
             warnings,
             errors: Vec::new(),
             next_step: Some(
-                "Dry-run preview only. Re-run with dry_run=false and a non-empty reason to transfer the persisted owner binding."
-                    .to_string(),
+                format!(
+                    "Dry-run preview only. Re-run with dry_run=false, a non-empty reason, and a supported reason_code ({}) to transfer the persisted owner binding.",
+                    REGISTRY_OWNER_TRANSFER_REASON_CODES.join(", ")
+                ),
             ),
         }),
     ))
@@ -1236,8 +1372,91 @@ fn validate_yank_request(request: &RegistryYankRequest) -> Result<Vec<String>, E
                 .to_string(),
         );
     }
+    if request
+        .reason_code
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|value| value.is_empty())
+    {
+        warnings.push(
+            format!(
+                "No yank reason_code supplied; live yank requires one of {} for the policy audit trail.",
+                REGISTRY_YANK_REASON_CODES.join(", ")
+            ),
+        );
+    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
+        if !REGISTRY_YANK_REASON_CODES
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+        {
+            return Err(Error::BadRequest(format!(
+                "Registry yank reason_code '{}' is not supported; expected one of {}",
+                reason_code,
+                REGISTRY_YANK_REASON_CODES.join(", ")
+            )));
+        }
+    }
 
     Ok(warnings)
+}
+
+fn validate_publish_reject_request(
+    request: &RegistryPublishDecisionRequest,
+) -> Result<Vec<String>, Error> {
+    let mut warnings = Vec::new();
+    if request
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|reason| reason.is_empty())
+    {
+        warnings.push(
+            "No reject reason supplied; live reject requires a non-empty reason for the governance audit trail."
+                .to_string(),
+        );
+    }
+    if request
+        .reason_code
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|value| value.is_empty())
+    {
+        warnings.push(format!(
+            "No reject reason_code supplied; live reject requires one of {} for the policy audit trail.",
+            REGISTRY_REJECT_REASON_CODES.join(", ")
+        ));
+    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
+        if !REGISTRY_REJECT_REASON_CODES
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+        {
+            return Err(Error::BadRequest(format!(
+                "Registry publish reject reason_code '{}' is not supported; expected one of {}",
+                reason_code,
+                REGISTRY_REJECT_REASON_CODES.join(", ")
+            )));
+        }
+    }
+
+    Ok(warnings)
+}
+
+fn validate_publish_approve_request(request: &RegistryPublishDecisionRequest) -> Result<(), Error> {
+    if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
+        if !reason_code.is_empty()
+            && !REGISTRY_APPROVE_OVERRIDE_REASON_CODES
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+        {
+            return Err(Error::BadRequest(format!(
+                "Registry publish approval override reason_code '{}' is not supported; expected one of {}",
+                reason_code,
+                REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_validation_stage_report_request(
@@ -1264,6 +1483,33 @@ fn validate_validation_stage_report_request(
         return Err(Error::BadRequest(
             "Registry validation stage requeue requires status='queued'".to_string(),
         ));
+    }
+    if !request.dry_run
+        && matches!(status.as_str(), "passed" | "failed" | "blocked")
+        && request
+            .reason_code
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(|value| value.is_empty())
+    {
+        return Err(Error::BadRequest(format!(
+            "Live registry validation stage status '{}' requires reason_code; expected one of {}",
+            status,
+            REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
+        )));
+    }
+    if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
+        if !reason_code.is_empty()
+            && !REGISTRY_VALIDATION_STAGE_REASON_CODES
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+        {
+            return Err(Error::BadRequest(format!(
+                "Registry validation stage reason_code '{}' is not supported; expected one of {}",
+                reason_code,
+                REGISTRY_VALIDATION_STAGE_REASON_CODES.join(", ")
+            )));
+        }
     }
 
     Ok(())
@@ -1292,6 +1538,28 @@ fn validate_owner_transfer_request(
             "No transfer reason supplied; live owner transfer requires a non-empty reason for the governance audit trail."
                 .to_string(),
         );
+    }
+    if request
+        .reason_code
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|value| value.is_empty())
+    {
+        warnings.push(format!(
+            "No transfer reason_code supplied; live owner transfer requires one of {} for the policy audit trail.",
+            REGISTRY_OWNER_TRANSFER_REASON_CODES.join(", ")
+        ));
+    } else if let Some(reason_code) = request.reason_code.as_deref().map(str::trim) {
+        if !REGISTRY_OWNER_TRANSFER_REASON_CODES
+            .iter()
+            .any(|candidate| candidate.eq_ignore_ascii_case(reason_code))
+        {
+            return Err(Error::BadRequest(format!(
+                "Registry owner transfer reason_code '{}' is not supported; expected one of {}",
+                reason_code,
+                REGISTRY_OWNER_TRANSFER_REASON_CODES.join(", ")
+            )));
+        }
     }
 
     Ok(warnings)
@@ -1368,6 +1636,80 @@ fn publish_request_next_step(
             ))
         }
         crate::models::registry_publish_request::RegistryPublishRequestStatus::Published => None,
+    }
+}
+
+fn publish_request_status_next_step(
+    request: &crate::models::registry_publish_request::Model,
+    request_id: &str,
+    validation_stages: &[RegistryValidationStageSnapshot],
+) -> Option<String> {
+    if request.status
+        == crate::models::registry_publish_request::RegistryPublishRequestStatus::Approved
+        && validation_stages
+            .iter()
+            .any(|stage| !stage.status.eq_ignore_ascii_case("passed"))
+    {
+        return Some(approval_override_next_step(request_id, validation_stages));
+    }
+
+    publish_request_next_step(&request.status, request_id)
+}
+
+fn approval_override_next_step(
+    request_id: &str,
+    validation_stages: &[RegistryValidationStageSnapshot],
+) -> String {
+    format!(
+        "Mark the remaining follow-up stages as passed via POST {} or approve with an explicit override reason plus reason_code ({}). Pending stages: {}.",
+        registry_publish_stage_report_path().replace("{request_id}", request_id),
+        REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", "),
+        approval_override_stage_labels(validation_stages).join(", ")
+    )
+}
+
+fn approval_override_warning_message(
+    validation_stages: &[RegistryValidationStageSnapshot],
+) -> String {
+    format!(
+        "Approval override is required because these follow-up validation stages are not passed yet: {}. Live approve must include both reason and reason_code ({}).",
+        approval_override_stage_labels(validation_stages).join(", "),
+        REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join(", ")
+    )
+}
+
+fn approval_override_stage_labels(
+    validation_stages: &[RegistryValidationStageSnapshot],
+) -> Vec<String> {
+    validation_stages
+        .iter()
+        .filter(|stage| !stage.status.eq_ignore_ascii_case("passed"))
+        .map(|stage| format!("{} ({})", stage.key, stage.status.to_ascii_lowercase()))
+        .collect()
+}
+
+fn publish_status_follow_up_gate(
+    gate: RegistryFollowUpGateSnapshot,
+) -> RegistryPublishStatusFollowUpGate {
+    RegistryPublishStatusFollowUpGate {
+        key: gate.key,
+        status: gate.status,
+        detail: gate.detail,
+        updated_at: gate.updated_at,
+    }
+}
+
+fn publish_status_validation_stage(
+    stage: &RegistryValidationStageSnapshot,
+) -> RegistryPublishStatusValidationStage {
+    RegistryPublishStatusValidationStage {
+        key: stage.key.clone(),
+        status: stage.status.clone(),
+        detail: stage.detail.clone(),
+        attempt_number: stage.attempt_number,
+        updated_at: stage.updated_at.clone(),
+        started_at: stage.started_at.clone(),
+        finished_at: stage.finished_at.clone(),
     }
 }
 

@@ -20,9 +20,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
-use crate::extractors::auth::{
-    resolve_current_user_from_access_token, CurrentUser, OptionalCurrentUser,
-};
+use crate::extractors::auth::{resolve_current_user_from_access_token, OptionalCurrentUser};
 use crate::graphql::persisted::is_cataloged_admin_hash;
 use crate::graphql::AppSchema;
 use rustok_core::ModuleRegistry;

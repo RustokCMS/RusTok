@@ -218,6 +218,23 @@ Smoke-check поддерживаемых build surfaces:
 расползался между docs и фактическим runtime.
 Дополнительно для `registry-only` матрица уже держит `GET /v1/catalog/{slug}` detail-path,
 cache-contract через `ETag` / `If-None-Match` и negative smoke на write-route-ы
+`POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`,
+`POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/owner-transfer` и
+`POST /v2/catalog/yank`.
+
+Для уже развёрнутого dedicated host тот же скрипт теперь умеет optional external smoke:
+
+```bash
+RUSTOK_REGISTRY_BASE_URL=https://modules.rustok.dev \
+RUSTOK_REGISTRY_SMOKE_SLUG=blog \
+RUSTOK_REGISTRY_EVIDENCE_DIR=./tmp/modules-rustok-dev-smoke \
+./scripts/verify/verify-deployment-profiles.sh
+```
+
+PowerShell-вариант поддерживает тот же contract через env vars
+`RUSTOK_REGISTRY_BASE_URL`, optional `RUSTOK_REGISTRY_SMOKE_SLUG` и optional
+`RUSTOK_REGISTRY_EVIDENCE_DIR`. Если evidence dir задан, external smoke сохраняет туда
+`runtime-*`, `catalog-*`, `openapi-*` snapshots и `registry-smoke-metadata.txt`.
 `POST /v2/catalog/publish`, `POST /v2/catalog/owner-transfer` и `POST /v2/catalog/yank`.
 
 Для Windows / PowerShell используйте `./scripts/verify/verify-deployment-profiles.ps1`: он

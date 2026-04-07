@@ -1169,6 +1169,165 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn registry_publish_reject_endpoint_requires_live_reason_code() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for publish reject reason_code validation");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/reject", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "reason": "Ownership evidence is incomplete."
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("live reject request should complete");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("live reject error body should read");
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "unexpected live /v2/catalog/publish/{{request_id}}/reject response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        assert!(
+            String::from_utf8_lossy(&body).contains("reason_code"),
+            "reject error should mention missing reason_code: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn registry_publish_reject_endpoint_persists_reason_code_in_audit_event() {
+        let mut ctx = get_app_context().await;
+        Migrator::up(&ctx.db, None)
+            .await
+            .expect("server migrations should apply for publish reject reason_code audit");
+        ctx.config.settings = Some(serde_json::json!({
+            "rustok": {
+                "events": {
+                    "transport": "memory"
+                },
+                "rate_limit": {
+                    "enabled": false
+                }
+            }
+        }));
+
+        let approved = create_approved_publish_request(&ctx).await;
+        let base_router = App::routes(&ctx)
+            .to_router::<App>(ctx.clone(), axum::Router::new())
+            .expect("base router should build");
+        let response = base_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v2/catalog/publish/{}/reject", approved.id))
+                    .header("content-type", "application/json")
+                    .header("x-rustok-actor", "governance:moderator")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "schema_version": 1,
+                            "dry_run": false,
+                            "reason": "Ownership evidence is incomplete.",
+                            "reason_code": "ownership_mismatch"
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("live reject request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("live reject body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected live /v2/catalog/publish/{{request_id}}/reject response body: {}",
+            String::from_utf8_lossy(&body)
+        );
+        let payload: Value =
+            serde_json::from_slice(&body).expect("live reject response should be valid json");
+        assert_eq!(
+            payload.get("action").and_then(Value::as_str),
+            Some("reject")
+        );
+        assert_eq!(payload.get("dry_run").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            payload.get("status").and_then(Value::as_str),
+            Some("rejected")
+        );
+
+        let persisted_request = crate::models::registry_publish_request::Entity::find()
+            .filter(crate::models::registry_publish_request::Column::Id.eq(approved.id.clone()))
+            .one(&ctx.db)
+            .await
+            .expect("request lookup should succeed")
+            .expect("request should persist");
+        assert_eq!(
+            persisted_request.status,
+            crate::models::registry_publish_request::RegistryPublishRequestStatus::Rejected
+        );
+        assert_eq!(
+            persisted_request.rejection_reason.as_deref(),
+            Some("Ownership evidence is incomplete.")
+        );
+
+        let event = crate::models::registry_governance_event::Entity::find()
+            .filter(crate::models::registry_governance_event::Column::RequestId.eq(approved.id))
+            .filter(
+                crate::models::registry_governance_event::Column::EventType.eq("request_rejected"),
+            )
+            .order_by_desc(crate::models::registry_governance_event::Column::CreatedAt)
+            .one(&ctx.db)
+            .await
+            .expect("governance event lookup should succeed")
+            .expect("request_rejected event should persist");
+        assert_eq!(
+            event.details.get("reason_code").and_then(Value::as_str),
+            Some("ownership_mismatch")
+        );
+        assert_eq!(
+            event.details.get("reason").and_then(Value::as_str),
+            Some("Ownership evidence is incomplete.")
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn registry_only_host_mode_limits_exposed_surface() {
         let mut ctx = get_app_context().await;
         Migrator::up(&ctx.db, None)
