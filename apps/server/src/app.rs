@@ -1620,6 +1620,11 @@ mod tests {
             started_at: Set(None),
             finished_at: Set(None),
             last_error: Set(None),
+            claim_id: Set(None),
+            claimed_by: Set(None),
+            claim_expires_at: Set(None),
+            last_heartbeat_at: Set(None),
+            runner_kind: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
         }
