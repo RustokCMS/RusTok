@@ -12,9 +12,10 @@
 ## Короткий вывод
 
 - `Registry V1` уже существует как постоянный read-only catalog API.
-- `Registry V2` уже существует как первый рабочий write/governance контур, но пока без полноценного async validation pipeline и богатой модели ownership/moderation.
+- `Registry V2` уже существует как рабочий write/governance контур с persisted async validation jobs/stages, server-driven moderation policy и local-host runner; в остатке remote/sandboxed execution и более богатая модель moderation/release-management.
 - `DeploymentProfile` и `RuntimeHostMode` уже разделены в коде и должны оставаться независимыми осями.
 - Manifest-wired Leptos UI уже работает не только для канонических dual-surface модулей, но и для расширенного набора admin-only core/optional surfaces; live catalog/GraphQL/Admin contract теперь ещё и явно публикует `hasAdminUi` / `hasStorefrontUi` / `uiClassification`, так что surface-аудит больше не живёт только в prose-таблицах.
+- Волна базовой module-contract унификации фактически закрыта: на `2026-04-07` `cargo xtask module validate` проходит по всем path-модулям из `modules.toml` и уже проверяет manifest/docs/UI/runtime contracts fail-fast.
 
 ## Волны унификации модулей
 
@@ -29,21 +30,22 @@
 ### Волна 1. Contract completeness
 
 - Каждый path-модуль из `modules.toml` обязан иметь `rustok-module.toml`.
-- Каждый path-модуль обязан иметь `README.md`, `docs/README.md` и `docs/implementation-plan.md`.
+- Каждый path-модуль обязан иметь `README.md`, `docs/README.md` и `docs/implementation-plan.md`, причём root `README.md` обязан содержать `## Interactions`.
 - `docs/modules/_index.md` остаётся каноническим индексом ссылок на локальные module docs.
 - No-UI modules фиксируют явную `ui_classification`, а UI-модули проходят wiring validation по фактическому наличию subcrate.
+- `modules.toml.depends_on`, `[dependencies]` в `rustok-module.toml` и `RusToKModule::dependencies()` в runtime не должны расходиться.
 
 ### Волна 1.5. Исполнимый audit path
 
 - `cargo xtask module validate` больше не имеет skip-path для path-модулей без `rustok-module.toml`.
-- Validation включает docs minimum, dependency drift и broken module-doc links.
+- Validation включает docs minimum, root README contract, broken module-doc links, dependency drift, runtime dependency drift и manifest/UI wiring checks.
 - Обязательный Windows-native path состоит из `cargo xtask module validate`, `cargo xtask module test <slug>`, Node verification scripts и PowerShell-wrapper для architecture guard.
 
 ### Волна 2. Полный scoped-аудит
 
-- Все scoped modules из `modules.toml` проходят `cargo xtask module validate`.
-- Все scoped modules проходят `cargo xtask module test <slug>`.
-- Общие quality gates (`verify:i18n:*`, storefront route audit, architecture guard, deployment-profile smoke при необходимости) запускаются после module-contract remediation, а не вместо неё.
+- ✅ На `2026-04-07` все path-модули из `modules.toml` проходят `cargo xtask module validate`.
+- ⚠️ Полный регулярный прогон `cargo xtask module test <slug>` по всему graph остаётся частично ручным и всё ещё упирается в параллельную разработку соседних crate-ов.
+- ⚠️ Общие quality gates (`verify:i18n:*`, storefront route audit, architecture guard, deployment-profile smoke при необходимости) уже считаются post-remediation контуром, но ещё не сведены в один стабильный зелёный pipeline для всего workspace.
 
 ## Архитектурные инварианты
 
@@ -73,6 +75,7 @@
 ### 1. Manifest contract и module metadata
 
 - ✅ `rustok-module.toml` является каноническим manifest-контрактом для path-модулей.
+- ✅ `cargo xtask module validate` теперь fail-fast проверяет не только сам manifest, но и обязательные docs/README contracts, ссылки из `docs/modules/_index.md`, runtime dependency drift и manifest/UI wiring.
 - ✅ Парсятся и валидируются:
   - `[module]`
   - `[compatibility]`
@@ -145,6 +148,7 @@
 | `dual-surface` | `blog`, `commerce`, `forum`, `pages`, `search` | admin + storefront |
 | `admin-only core` | `channel`, `index`, `outbox`, `rbac`, `tenant` | осознанные module-owned admin slices |
 | `admin-only optional` | `comments`, `media`, `workflow` | осознанные module-owned admin slices |
+| `capability-only` | `alloy`, `auth`, `cache`, `cart`, `content`, `customer`, `email`, `fulfillment`, `inventory`, `order`, `payment`, `pricing`, `product`, `profiles`, `region`, `taxonomy` | path-модули без собственного UI, явно классифицированные через `ui_classification = "capability_only"` |
 
 Дополнительно:
 
@@ -218,6 +222,7 @@ Consumer path:
 - ✅ `GET /v2/catalog/publish/{request_id}`
 - ✅ `PUT /v2/catalog/publish/{request_id}/artifact`
 - ✅ `POST /v2/catalog/publish/{request_id}/validate`
+- ✅ `POST /v2/catalog/publish/{request_id}/stages`
 - ✅ `POST /v2/catalog/publish/{request_id}/approve`
 - ✅ `POST /v2/catalog/publish/{request_id}/reject`
 - ✅ `POST /v2/catalog/owner-transfer`
@@ -317,21 +322,21 @@ Governance first cut:
 - ⚠️ Точечные `cargo check` по релевантным пакетам уже проходят для большинства последних шагов.
 - ✅ `xtask` уже получил targeted unit coverage для V2 operator paths: publish/stage/owner-transfer/yank dry-run/live payload contracts, `requeue=true` contract, explicit `detail = null` stability, базовые argument-count guards, early CLI guards для empty request/stage ids, invalid semver и unknown slug, live-mode guards для missing `--registry-url` / missing `--reason`, `registry_url` env fallback/CLI precedence, `--reason`/`--detail` trimming, empty owner-transfer actor guard и loopback/no-proxy guardrails (включая IPv6 `::1`).
 - ✅ `cargo xtask module publish --auto-approve` теперь использует stage-aware status preflight и останавливается раньше live approve, если request требует override, а `--approve-reason` / `--approve-reason-code` не были переданы.
+- ✅ `apps/server` уже имеет targeted coverage для ключевых V2 lifecycle-переходов и reduced host: requeue/retry semantics validation jobs, materialization persisted `validation_stages`, stage requeue attempt numbering, `reason_code` contracts для reject/yank/owner-transfer/approve override и `registry_only` negative-surface smoke.
+- ✅ `apps/server::modules::manifest` уже покрывает manifest-driven UI/i18n guardrails: `ui_classification`, locale normalization, `default_locale ∈ supported_locales` и обязательность bundle files.
 - ⚠️ Полный workspace/test graph регулярно блокируется незавершённой параллельной разработкой в соседних crate-ах.
 - ⬜ Нужны более устойчивые targeted tests для:
-  - V2 lifecycle transitions, включая requeue/retry semantics
   - projection V2 → V1
-  - `registry_only` reduced surface
-  - manifest-wired UI и `[provides.*_ui.i18n]` guardrails
+  - full-host background validation runner и его observability/worker-attachment contract
+  - end-to-end contract между native/GraphQL consumers и server-driven `validationStages` / `governanceActions` / `moderationPolicy`
 
 ## Приоритет выполнения
 
-1. Вынести compile/test/security/policy checks в отдельный асинхронный orchestration-контур поверх уже существующего `validate`.
-2. Довести ownership/governance persistence и policy model до richer moderation capabilities.
-3. Закрыть production deployment path для `modules.rustok.dev`.
-4. Доработать moderation UX в `/modules` вокруг richer validation feedback и moderation decisions.
-5. Продолжить аудит и доводку manifest-wired UI / i18n coverage.
-6. Уплотнить targeted test coverage вокруг V1/V2 и reduced host.
+1. Довести ownership/governance policy layer до richer moderation и release-management решений beyond current approve/reject/owner-transfer/yank.
+2. Закрыть provider-specific production deployment path для `modules.rustok.dev`.
+3. Спроектировать и внедрить remote/sandboxed execution path для follow-up validation stages сверх текущего local workspace runner.
+4. Уплотнить targeted test coverage вокруг V2 → V1 projection, full-host validation runner и server-driven lifecycle contracts.
+5. Сохранить дисциплину manifest/docs/UI/i18n contracts для новых path-модулей и не допускать регрессий в wave 1/1.5.
 
 ## Критерии завершения
 
