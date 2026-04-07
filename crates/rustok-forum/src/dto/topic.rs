@@ -15,6 +15,8 @@ pub struct CreateTopicInput {
     #[serde(default = "default_content_format")]
     pub body_format: String,
     pub content_json: Option<Value>,
+    #[serde(default)]
+    pub metadata: Value,
     pub tags: Vec<String>,
     pub channel_slugs: Option<Vec<String>>,
 }
@@ -26,6 +28,7 @@ pub struct UpdateTopicInput {
     pub body: Option<String>,
     pub body_format: Option<String>,
     pub content_json: Option<Value>,
+    pub metadata: Option<Value>,
     pub tags: Option<Vec<String>>,
     pub channel_slugs: Option<Vec<String>>,
 }
@@ -67,6 +70,7 @@ pub struct TopicResponse {
     pub body: String,
     pub body_format: String,
     pub content_json: Option<Value>,
+    pub metadata: Value,
     pub status: String,
     pub tags: Vec<String>,
     pub channel_slugs: Vec<String>,
@@ -92,6 +96,7 @@ pub struct TopicListItem {
     pub author_id: Option<Uuid>,
     pub title: String,
     pub slug: String,
+    pub metadata: Value,
     pub status: String,
     pub channel_slugs: Vec<String>,
     pub vote_score: i32,
@@ -128,6 +133,7 @@ mod tests {
             body: body.into(),
             body_format: body_format.into(),
             content_json,
+            metadata: json!({}),
             status: "open".into(),
             tags: vec![],
             channel_slugs: vec![],

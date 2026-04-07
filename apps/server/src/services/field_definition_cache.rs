@@ -148,6 +148,7 @@ mod tests {
             field_type: "text".to_string(),
             label: json!({"en": field_key}),
             description: None,
+            is_localized: false,
             is_required: false,
             default_value: None,
             validation: None,

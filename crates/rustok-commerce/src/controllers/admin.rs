@@ -254,9 +254,10 @@ pub async fn show_product(
     state: State<AppContext>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: rustok_api::RequestContext,
     path: Path<Uuid>,
 ) -> Result<Json<ProductResponse>> {
-    super::products::show_product(state, tenant, auth, path).await
+    super::products::show_product(state, tenant, auth, request_context, path).await
 }
 
 /// Update admin ecommerce product
@@ -375,6 +376,7 @@ pub async fn list_orders(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: rustok_api::RequestContext,
     Query(params): Query<ListOrdersParams>,
 ) -> Result<Json<PaginatedResponse<OrderResponse>>> {
     ensure_permissions(
@@ -386,7 +388,7 @@ pub async fn list_orders(
     let pagination = params.pagination.unwrap_or_default();
     let (orders, total) =
         OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
-            .list_orders(
+            .list_orders_with_locale_fallback(
                 tenant.id,
                 rustok_order::dto::ListOrdersInput {
                     page: pagination.page,
@@ -394,6 +396,8 @@ pub async fn list_orders(
                     status: params.status,
                     customer_id: params.customer_id,
                 },
+                request_context.locale.as_str(),
+                Some(tenant.default_locale.as_str()),
             )
             .await
             .map_err(|err| Error::BadRequest(err.to_string()))?;
@@ -420,6 +424,7 @@ pub async fn show_order(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: rustok_api::RequestContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<AdminOrderDetailResponse>> {
     ensure_permissions(
@@ -429,7 +434,12 @@ pub async fn show_order(
     )?;
 
     let order = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx))
-        .get_order(tenant.id, id)
+        .get_order_with_locale_fallback(
+            tenant.id,
+            id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| match err {
             rustok_order::error::OrderError::OrderNotFound(_) => Error::NotFound,

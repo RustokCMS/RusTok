@@ -261,7 +261,7 @@ Governance first cut:
 ### Блок D. Тесты
 
 - ⚠️ Точечные `cargo check` по релевантным пакетам уже проходят для большинства последних шагов.
-- ✅ `xtask` уже получил targeted unit coverage для V2 operator paths: stage write-path dry-run/live serialization, `requeue=true` contract, explicit `detail = null` stability, CLI-side validation для unsupported status / invalid `--requeue`, `--reason`/`--detail` trimming, empty owner-transfer actor guard, owner-transfer live payload и loopback/no-proxy guardrails (включая IPv6 `::1`).
+- ✅ `xtask` уже получил targeted unit coverage для V2 operator paths: publish/stage/owner-transfer/yank dry-run/live payload contracts, `requeue=true` contract, explicit `detail = null` stability, базовые argument-count guards, early CLI guards для empty request/stage ids, invalid semver и unknown slug, live-mode guards для missing `--registry-url` / missing `--reason`, `registry_url` env fallback/CLI precedence, `--reason`/`--detail` trimming, empty owner-transfer actor guard и loopback/no-proxy guardrails (включая IPv6 `::1`).
 - ⚠️ Полный workspace/test graph регулярно блокируется незавершённой параллельной разработкой в соседних crate-ах.
 - ⬜ Нужны более устойчивые targeted tests для:
   - V2 lifecycle transitions, включая requeue/retry semantics

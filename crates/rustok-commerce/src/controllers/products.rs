@@ -178,6 +178,7 @@ pub async fn show_product(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: RequestContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ProductResponse>> {
     ensure_permissions(
@@ -188,7 +189,12 @@ pub async fn show_product(
 
     let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let product = service
-        .get_product(tenant.id, id)
+        .get_product_with_locale_fallback(
+            tenant.id,
+            id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 

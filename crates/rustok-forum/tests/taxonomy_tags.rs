@@ -104,6 +104,7 @@ async fn topic_tags_are_synced_into_forum_topic_tags_without_legacy_json() {
                 body: "Body".to_string(),
                 body_format: "markdown".to_string(),
                 content_json: None,
+                metadata: serde_json::json!({}),
                 tags: vec![
                     "rust".to_string(),
                     "backend".to_string(),
@@ -183,6 +184,7 @@ async fn topic_tag_sync_reuses_existing_global_taxonomy_term() {
                 body: "Body".to_string(),
                 body_format: "markdown".to_string(),
                 content_json: None,
+                metadata: serde_json::json!({}),
                 tags: vec!["rust".to_string(), "backend".to_string()],
                 channel_slugs: None,
             },

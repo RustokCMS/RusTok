@@ -2,6 +2,7 @@ use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 
 use crate::auth::hash_password;
+use crate::common::RequestContext;
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::common::require_module_enabled;
 use crate::graphql::errors::GraphQLError;
@@ -30,11 +31,13 @@ use crate::services::build_service::{BuildRequest, BuildService};
 ))]
 use crate::services::content_orchestration::content_orchestration_from_context;
 use crate::services::event_bus::event_bus_from_context;
+use crate::services::flex_attached_values::{
+    FlexAttachedValuesService, PreparedAttachedValuesWrite,
+};
 use crate::services::module_lifecycle::{
     ModuleLifecycleService, ToggleModuleError, UpdateModuleSettingsError,
 };
 use crate::services::rbac_service::RbacService;
-use crate::services::user_field_service::UserFieldService;
 use rustok_core::{ModuleRegistry, Permission};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -42,50 +45,82 @@ use uuid::Uuid;
 #[derive(Default)]
 pub struct RootMutation;
 
-/// Validate `custom_fields` against the active Flex schema for the tenant.
-///
-/// Applies defaults, strips unknown keys, then validates. Returns the processed metadata on success,
-/// or a [`FieldError`] listing all validation failures.
+fn map_custom_field_error(error: rustok_core::field_schema::FlexError) -> FieldError {
+    match error {
+        rustok_core::field_schema::FlexError::ValidationFailed(errors) => {
+            let messages: Vec<String> = errors
+                .iter()
+                .map(|e| format!("{}: {}", e.field_key, e.message))
+                .collect();
+            FieldError::new(format!(
+                "Custom field validation failed: {}",
+                messages.join("; ")
+            ))
+            .extend_with(|_, ext| {
+                ext.set("code", "CUSTOM_FIELD_VALIDATION_FAILED");
+                if let Ok(v) = serde_json::to_value(&errors) {
+                    if let Ok(gql_value) = async_graphql::Value::from_json(v) {
+                        ext.set("fields", gql_value);
+                    }
+                }
+            })
+        }
+        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
+    }
+}
+
+fn effective_request_locale(ctx: &Context<'_>, tenant: &TenantContext) -> String {
+    ctx.data_opt::<RequestContext>()
+        .map(|request| request.locale.clone())
+        .unwrap_or_else(|| tenant.default_locale.clone())
+}
+
+async fn prepare_user_custom_fields_write(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: uuid::Uuid,
+    locale: &str,
+    entity_id: Option<Uuid>,
+    existing_metadata: Option<&serde_json::Value>,
+    custom_fields: Option<serde_json::Value>,
+) -> Result<PreparedAttachedValuesWrite> {
+    let prepared = match (entity_id, existing_metadata) {
+        (Some(entity_id), Some(existing_metadata)) => {
+            FlexAttachedValuesService::prepare_update(
+                db,
+                tenant_id,
+                "user",
+                entity_id,
+                locale,
+                existing_metadata,
+                custom_fields,
+            )
+            .await
+        }
+        _ => {
+            FlexAttachedValuesService::prepare_create(db, tenant_id, "user", locale, custom_fields)
+                .await
+        }
+    };
+
+    prepared.map_err(map_custom_field_error)
+}
+
+#[cfg(test)]
 async fn validate_custom_fields(
     db: &sea_orm::DatabaseConnection,
     tenant_id: uuid::Uuid,
     custom_fields: Option<serde_json::Value>,
 ) -> Result<Option<serde_json::Value>> {
-    let schema = UserFieldService::get_schema(db, tenant_id)
-        .await
-        .map_err(|e| <FieldError as GraphQLError>::internal_error(&e.to_string()))?;
-
-    // Nothing to validate when no schema and no input
-    if schema.active_definitions().is_empty() {
-        return Ok(custom_fields);
-    }
-
-    let mut metadata = custom_fields.unwrap_or(serde_json::json!({}));
-
-    schema.apply_defaults(&mut metadata);
-    schema.strip_unknown(&mut metadata);
-
-    let errors = schema.validate(&metadata);
-    if !errors.is_empty() {
-        let messages: Vec<String> = errors
-            .iter()
-            .map(|e| format!("{}: {}", e.field_key, e.message))
-            .collect();
-        return Err(FieldError::new(format!(
-            "Custom field validation failed: {}",
-            messages.join("; ")
-        ))
-        .extend_with(|_, ext| {
-            ext.set("code", "CUSTOM_FIELD_VALIDATION_FAILED");
-            if let Ok(v) = serde_json::to_value(&errors) {
-                if let Ok(gql_value) = async_graphql::Value::from_json(v) {
-                    ext.set("fields", gql_value);
-                }
-            }
-        }));
-    }
-
-    Ok(Some(metadata))
+    Ok(prepare_user_custom_fields_write(
+        db,
+        tenant_id,
+        rustok_core::PLATFORM_FALLBACK_LOCALE,
+        None,
+        None,
+        custom_fields,
+    )
+    .await?
+    .metadata)
 }
 
 fn map_create_user_error(err: AuthLifecycleError) -> FieldError {
@@ -302,9 +337,16 @@ impl RootMutation {
             .map(Into::into)
             .unwrap_or(rustok_core::UserRole::Customer);
 
-        // Validate custom_fields before creating the user (fail fast)
-        let validated_metadata =
-            validate_custom_fields(&app_ctx.db, tenant.id, input.custom_fields).await?;
+        let locale = effective_request_locale(ctx, tenant);
+        let prepared_custom_fields = prepare_user_custom_fields_write(
+            &app_ctx.db,
+            tenant.id,
+            locale.as_str(),
+            None,
+            None,
+            input.custom_fields,
+        )
+        .await?;
 
         let status = input.status.map(Into::into);
         let mut user = AuthLifecycleService::create_user(
@@ -319,14 +361,29 @@ impl RootMutation {
         .await
         .map_err(map_create_user_error)?;
 
-        // Apply validated custom_fields to metadata
-        if let Some(metadata) = validated_metadata {
+        if let Some(metadata) = prepared_custom_fields.metadata {
             let mut active: users::ActiveModel = user.into();
             active.metadata = Set(metadata);
             user = active
                 .update(&app_ctx.db)
                 .await
                 .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        }
+
+        if let (Some(locale), Some(values)) = (
+            prepared_custom_fields.locale.as_deref(),
+            prepared_custom_fields.localized_values.as_ref(),
+        ) {
+            FlexAttachedValuesService::persist_localized_values(
+                &app_ctx.db,
+                tenant.id,
+                "user",
+                user.id,
+                locale,
+                values,
+            )
+            .await
+            .map_err(map_custom_field_error)?;
         }
 
         Ok(User::from(&user))
@@ -558,6 +615,8 @@ impl RootMutation {
             }
         }
 
+        let user_id = user.id;
+        let existing_metadata = user.metadata.clone();
         let mut model: users::ActiveModel = user.into();
 
         if let Some(email) = input.email {
@@ -581,11 +640,18 @@ impl RootMutation {
             model.password_hash = Set(password_hash);
         }
 
-        // Validate and apply custom_fields if provided
-        let validated_metadata =
-            validate_custom_fields(&app_ctx.db, tenant.id, input.custom_fields).await?;
+        let locale = effective_request_locale(ctx, tenant);
+        let prepared_custom_fields = prepare_user_custom_fields_write(
+            &app_ctx.db,
+            tenant.id,
+            locale.as_str(),
+            Some(user_id),
+            Some(&existing_metadata),
+            input.custom_fields,
+        )
+        .await?;
 
-        if let Some(metadata) = validated_metadata {
+        if let Some(metadata) = prepared_custom_fields.metadata {
             model.metadata = Set(metadata);
         }
 
@@ -604,6 +670,17 @@ impl RootMutation {
             RbacService::replace_user_role(&tx, &user.id, &tenant.id, role)
                 .await
                 .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+        }
+
+        if let (Some(locale), Some(values)) = (
+            prepared_custom_fields.locale.as_deref(),
+            prepared_custom_fields.localized_values.as_ref(),
+        ) {
+            FlexAttachedValuesService::persist_localized_values(
+                &tx, tenant.id, "user", user_id, locale, values,
+            )
+            .await
+            .map_err(map_custom_field_error)?;
         }
 
         tx.commit()
@@ -975,6 +1052,7 @@ mod tests {
         tenant_id: Uuid,
         field_key: &str,
         field_type: &str,
+        is_localized: bool,
         is_required: bool,
         default_value: Option<serde_json::Value>,
     ) -> UserFieldDefinitionActiveModel {
@@ -986,6 +1064,7 @@ mod tests {
             field_type: Set(field_type.to_string()),
             label: Set(serde_json::json!({"en": field_key})),
             description: Set(None),
+            is_localized: Set(is_localized),
             is_required: Set(is_required),
             default_value: Set(default_value),
             validation: Set(None),
@@ -1037,6 +1116,7 @@ mod tests {
             "department",
             "text",
             false,
+            false,
             Some(serde_json::json!("sales")),
         )])
         .await;
@@ -1055,6 +1135,7 @@ mod tests {
             tenant_id,
             "department",
             "text",
+            false,
             false,
             None,
         )])
@@ -1088,7 +1169,7 @@ mod tests {
     async fn validate_custom_fields_error_contains_field_details() {
         let tenant_id = Uuid::new_v4();
         let db = db_with_definitions(vec![field_definition_model(
-            tenant_id, "phone", "text", true, None,
+            tenant_id, "phone", "text", false, true, None,
         )])
         .await;
 
@@ -1125,6 +1206,7 @@ mod tests {
             "department",
             "text",
             false,
+            false,
             Some(serde_json::json!("sales")),
         )])
         .await;
@@ -1140,7 +1222,7 @@ mod tests {
     async fn validate_custom_fields_returns_graphql_error_for_required_field() {
         let tenant_id = Uuid::new_v4();
         let db = db_with_definitions(vec![field_definition_model(
-            tenant_id, "phone", "text", true, None,
+            tenant_id, "phone", "text", false, true, None,
         )])
         .await;
 
@@ -1158,5 +1240,36 @@ mod tests {
             .and_then(|value| value.as_str().map(ToOwned::to_owned))
             .unwrap_or_default();
         assert_eq!(code, "CUSTOM_FIELD_VALIDATION_FAILED");
+    }
+
+    #[tokio::test]
+    async fn prepare_user_custom_fields_write_splits_localized_values_from_metadata() {
+        let tenant_id = Uuid::new_v4();
+        let db = db_with_definitions(vec![
+            field_definition_model(tenant_id, "nickname", "text", false, false, None),
+            field_definition_model(tenant_id, "bio", "text", true, false, None),
+        ])
+        .await;
+
+        let prepared = prepare_user_custom_fields_write(
+            &db,
+            tenant_id,
+            "ru",
+            None,
+            None,
+            Some(serde_json::json!({"nickname": "neo", "bio": "Привет"})),
+        )
+        .await
+        .expect("custom fields should split successfully");
+
+        assert_eq!(
+            prepared.metadata,
+            Some(serde_json::json!({"nickname": "neo"}))
+        );
+        assert_eq!(
+            prepared.localized_values,
+            Some(serde_json::json!({"bio": "Привет"}))
+        );
+        assert_eq!(prepared.locale.as_deref(), Some("ru"));
     }
 }

@@ -44,7 +44,7 @@
 ## Архитектура и foundation
 
 - [Диаграмма платформы](./architecture/diagram.md)
-- [Database](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations
+- [Database](./architecture/database.md) — live DB/i18n storage contract: `base + translations + optional bodies`, `VARCHAR(32)` locale storage, `tenant_locales` policy layer, `flex` standalone schema translations, shared attached localized Flex values, live donor paths for `user`, `product`, `order`, and `topic`
 - [Channels](./architecture/channels.md)
 - [DataLoader](./architecture/dataloader.md)
 - [Event flow contract](./architecture/event-flow-contract.md)

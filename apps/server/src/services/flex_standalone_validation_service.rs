@@ -99,6 +99,7 @@ mod tests {
             field_type: FieldType::Text,
             label: HashMap::from([("en".to_string(), key.to_string())]),
             description: None,
+            is_localized: false,
             is_required: required,
             default_value: default,
             validation: None,

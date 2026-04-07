@@ -5,6 +5,7 @@ use rustok_core::{Permission, UserRole, UserStatus};
 use std::str::FromStr;
 use uuid::Uuid;
 
+use crate::common::RequestContext;
 use crate::graphql::common::PageInfo;
 use crate::graphql::loaders::TenantNameLoader;
 use crate::models::build::{BuildStage, BuildStatus, DeploymentProfile, Model as BuildModel};
@@ -14,6 +15,7 @@ use crate::modules::{
     module_setting_shape_value, BuildExecutionPlan, InstalledManifestModule, ModuleSettingSpec,
 };
 use crate::services::build_service::BuildEvent;
+use crate::services::flex_attached_values::FlexAttachedValuesService;
 use crate::services::rbac_service::RbacService;
 
 #[derive(SimpleObject, Clone)]
@@ -33,9 +35,8 @@ pub struct User {
     pub created_at: String,
     #[graphql(skip)]
     pub tenant_id: Uuid,
-    /// Custom fields stored in `users.metadata` — validated by the active
-    /// schema for this tenant. Returns `null` if metadata is missing/null.
-    pub custom_fields: Option<serde_json::Value>,
+    #[graphql(skip)]
+    pub metadata: serde_json::Value,
 }
 
 #[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
@@ -131,15 +132,31 @@ impl User {
         let loader = ctx.data::<DataLoader<TenantNameLoader>>()?;
         loader.load_one(self.tenant_id).await
     }
+
+    async fn custom_fields(&self, ctx: &Context<'_>) -> Result<Option<serde_json::Value>> {
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let tenant = ctx.data::<crate::context::TenantContext>()?;
+        let preferred_locale = ctx
+            .data_opt::<RequestContext>()
+            .map(|request| request.locale.as_str())
+            .unwrap_or(tenant.default_locale.as_str());
+
+        FlexAttachedValuesService::resolve_merged_payload(
+            &app_ctx.db,
+            self.tenant_id,
+            "user",
+            self.id,
+            &self.metadata,
+            preferred_locale,
+            tenant.default_locale.as_str(),
+        )
+        .await
+        .map_err(|err| err.to_string().into())
+    }
 }
 
 impl From<&users::Model> for User {
     fn from(model: &users::Model) -> Self {
-        let custom_fields = if model.metadata.is_object() {
-            Some(model.metadata.clone())
-        } else {
-            None
-        };
         Self {
             id: model.id,
             email: model.email.clone(),
@@ -147,7 +164,7 @@ impl From<&users::Model> for User {
             status: model.status.to_string(),
             created_at: model.created_at.to_rfc3339(),
             tenant_id: model.tenant_id,
-            custom_fields,
+            metadata: model.metadata.clone(),
         }
     }
 }

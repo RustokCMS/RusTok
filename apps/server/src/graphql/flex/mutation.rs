@@ -72,6 +72,7 @@ impl FlexMutation {
             field_type,
             label,
             description,
+            is_localized: input.is_localized,
             is_required: input.is_required,
             default_value: input.default_value,
             validation,
@@ -138,6 +139,7 @@ impl FlexMutation {
         let service_input = UpdateFieldDefinitionCommand {
             label,
             description,
+            is_localized: input.is_localized,
             is_required: input.is_required,
             default_value: input.default_value,
             validation,

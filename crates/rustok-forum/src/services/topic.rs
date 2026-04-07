@@ -1,6 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
+use flex::{
+    persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
+    resolve_attached_payload,
+};
 use sea_orm::{
     sea_query::{Expr, Query, SelectStatement},
     ActiveModelTrait,
@@ -8,6 +12,7 @@ use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait,
     QueryFilter, QueryOrder, Select, TransactionTrait,
 };
+use serde_json::Value;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -15,6 +20,7 @@ use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
     PLATFORM_FALLBACK_LOCALE,
 };
+use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
 use rustok_core::{prepare_content_payload, Action, Resource, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -34,6 +40,10 @@ use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 use crate::services::subscription::SubscriptionService;
 use crate::services::user_stats::UserStatsService;
 use crate::services::vote::{VoteService, VoteSummary};
+
+mod topic_field_definitions_storage {
+    rustok_core::define_field_definitions_entity!("topic_field_definitions");
+}
 
 pub struct TopicService {
     db: DatabaseConnection,
@@ -64,6 +74,9 @@ impl TopicService {
             "Topic body",
         )
         .map_err(ForumError::Validation)?;
+        let prepared_custom_fields = self
+            .prepare_topic_custom_fields_for_create(tenant_id, &locale, input.metadata.clone())
+            .await?;
 
         let txn = self.db.begin().await?;
         CategoryService::ensure_exists_in_tx(&txn, tenant_id, input.category_id).await?;
@@ -76,6 +89,10 @@ impl TopicService {
             category_id: Set(input.category_id),
             author_id: Set(security.user_id),
             status: Set(topic_status::OPEN.to_string()),
+            metadata: Set(prepared_custom_fields
+                .metadata
+                .clone()
+                .unwrap_or_else(|| serde_json::json!({}))),
             is_pinned: Set(false),
             is_locked: Set(false),
             reply_count: Set(0),
@@ -102,6 +119,15 @@ impl TopicService {
         }
         .insert(&txn)
         .await?;
+
+        if let (Some(persist_locale), Some(values)) = (
+            prepared_custom_fields.locale.as_deref(),
+            prepared_custom_fields.localized_values.as_ref(),
+        ) {
+            persist_localized_values(&txn, tenant_id, "topic", topic_id, persist_locale, values)
+                .await
+                .map_err(|error| ForumError::Validation(error.to_string()))?;
+        }
 
         self.sync_channel_access_in_tx(&txn, topic_id, input.channel_slugs.as_deref())
             .await?;
@@ -155,6 +181,15 @@ impl TopicService {
         let topic = self.find_topic(tenant_id, topic_id).await?;
         let translations = self.load_translations(topic_id).await?;
         let channel_slugs = self.load_channel_slugs(topic_id).await?;
+        let metadata = self
+            .resolve_topic_metadata(
+                tenant_id,
+                topic.id,
+                &topic.metadata,
+                &locale,
+                fallback_locale.as_deref(),
+            )
+            .await?;
         let tags = self
             .load_topic_tags(tenant_id, topic.id, &locale, fallback_locale.as_deref())
             .await?;
@@ -173,6 +208,7 @@ impl TopicService {
             translations,
             channel_slugs,
             tags,
+            metadata,
             vote_summary,
             is_subscribed,
             solution_reply_id,
@@ -197,12 +233,50 @@ impl TopicService {
             Action::Update,
             topic.author_id,
         )?;
+        let prepared_custom_fields = if let Some(metadata) = input.metadata.clone() {
+            Some(
+                self.prepare_topic_custom_fields_for_update(
+                    tenant_id,
+                    topic_id,
+                    &locale,
+                    &topic.metadata,
+                    metadata,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         let txn = self.db.begin().await?;
         let normalized_tags = input.tags.as_ref().map(|tags| normalize_tags(tags));
 
         let mut active: forum_topic::ActiveModel = topic.into();
         active.updated_at = Set(Utc::now().into());
+        if let Some(prepared_custom_fields) = prepared_custom_fields.as_ref() {
+            active.metadata = Set(prepared_custom_fields
+                .metadata
+                .clone()
+                .unwrap_or_else(|| serde_json::json!({})));
+        }
         active.update(&txn).await?;
+
+        if let Some(prepared_custom_fields) = prepared_custom_fields.as_ref() {
+            if let (Some(persist_locale), Some(values)) = (
+                prepared_custom_fields.locale.as_deref(),
+                prepared_custom_fields.localized_values.as_ref(),
+            ) {
+                persist_localized_values(
+                    &txn,
+                    tenant_id,
+                    "topic",
+                    topic_id,
+                    persist_locale,
+                    values,
+                )
+                .await
+                .map_err(|error| ForumError::Validation(error.to_string()))?;
+            }
+        }
 
         self.upsert_translation_in_tx(
             &txn,
@@ -677,6 +751,7 @@ impl TopicService {
         let translations_by_topic_id = self.load_translations_map_for_topics(&topic_ids).await?;
         let channels = self.load_channel_slugs_map(&topic_ids).await?;
         let solution_reply_ids = self.load_solution_reply_ids_map(&topic_ids).await?;
+        let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
         let vote_summaries = VoteService::new(self.db.clone())
             .topic_vote_summaries(tenant_id, &topic_ids, viewer_user_id)
             .await?;
@@ -684,56 +759,67 @@ impl TopicService {
             .topic_subscription_flags(tenant_id, &topic_ids, viewer_user_id)
             .await?;
 
-        Ok(topics
-            .into_iter()
-            .map(|topic| {
-                let localized = translations_by_topic_id
-                    .get(&topic.id)
-                    .cloned()
-                    .unwrap_or_default();
-                let resolved = resolve_by_locale_with_fallback(
-                    &localized,
+        let mut items = Vec::with_capacity(topics.len());
+        for topic in topics {
+            let localized = translations_by_topic_id
+                .get(&topic.id)
+                .cloned()
+                .unwrap_or_default();
+            let resolved = resolve_by_locale_with_fallback(
+                &localized,
+                locale,
+                fallback_locale,
+                |translation| translation.locale.as_str(),
+            );
+            let metadata = self
+                .resolve_topic_metadata_with_schema(
+                    tenant_id,
+                    topic.id,
+                    &topic.metadata,
                     locale,
                     fallback_locale,
-                    |translation| translation.locale.as_str(),
-                );
+                    &schema,
+                )
+                .await?;
 
-                TopicListItem {
-                    id: topic.id,
-                    requested_locale: locale.to_string(),
-                    locale: locale.to_string(),
-                    effective_locale: resolved.effective_locale,
-                    available_locales: available_locales_from(&localized, |translation| {
-                        translation.locale.as_str()
-                    }),
-                    category_id: topic.category_id,
-                    author_id: topic.author_id,
-                    title: resolved
-                        .item
-                        .map(|translation| translation.title.clone())
-                        .unwrap_or_default(),
-                    slug: resolved
-                        .item
-                        .and_then(|translation| translation.slug.clone())
-                        .unwrap_or_default(),
-                    status: topic.status.clone(),
-                    channel_slugs: channels.get(&topic.id).cloned().unwrap_or_default(),
-                    vote_score: vote_summaries
-                        .get(&topic.id)
-                        .map(|summary| summary.score)
-                        .unwrap_or_default(),
-                    current_user_vote: vote_summaries
-                        .get(&topic.id)
-                        .and_then(|summary| summary.current_user_vote),
-                    is_subscribed: subscription_flags.get(&topic.id).copied().unwrap_or(false),
-                    solution_reply_id: solution_reply_ids.get(&topic.id).copied(),
-                    is_pinned: topic.is_pinned,
-                    is_locked: topic.is_locked,
-                    reply_count: topic.reply_count,
-                    created_at: topic.created_at.to_rfc3339(),
-                }
-            })
-            .collect())
+            items.push(TopicListItem {
+                id: topic.id,
+                requested_locale: locale.to_string(),
+                locale: locale.to_string(),
+                effective_locale: resolved.effective_locale,
+                available_locales: available_locales_from(&localized, |translation| {
+                    translation.locale.as_str()
+                }),
+                category_id: topic.category_id,
+                author_id: topic.author_id,
+                title: resolved
+                    .item
+                    .map(|translation| translation.title.clone())
+                    .unwrap_or_default(),
+                slug: resolved
+                    .item
+                    .and_then(|translation| translation.slug.clone())
+                    .unwrap_or_default(),
+                metadata,
+                status: topic.status.clone(),
+                channel_slugs: channels.get(&topic.id).cloned().unwrap_or_default(),
+                vote_score: vote_summaries
+                    .get(&topic.id)
+                    .map(|summary| summary.score)
+                    .unwrap_or_default(),
+                current_user_vote: vote_summaries
+                    .get(&topic.id)
+                    .and_then(|summary| summary.current_user_vote),
+                is_subscribed: subscription_flags.get(&topic.id).copied().unwrap_or(false),
+                solution_reply_id: solution_reply_ids.get(&topic.id).copied(),
+                is_pinned: topic.is_pinned,
+                is_locked: topic.is_locked,
+                reply_count: topic.reply_count,
+                created_at: topic.created_at.to_rfc3339(),
+            });
+        }
+
+        Ok(items)
     }
 
     async fn upsert_translation_in_tx(
@@ -826,6 +912,108 @@ impl TopicService {
 
         Ok(())
     }
+
+    async fn prepare_topic_custom_fields_for_create(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        payload: Value,
+    ) -> ForumResult<flex::PreparedAttachedValuesWrite> {
+        let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
+        let (reserved_payload, flex_payload) = split_topic_metadata_payload(&schema, &payload);
+        prepare_attached_values_create(schema, Some(Value::Object(flex_payload)), locale)
+            .map(|mut prepared| {
+                prepared.metadata = Some(merge_reserved_topic_metadata(
+                    reserved_payload,
+                    prepared.metadata,
+                ));
+                prepared
+            })
+            .map_err(|error| ForumError::Validation(error.to_string()))
+    }
+
+    async fn prepare_topic_custom_fields_for_update(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        locale: &str,
+        existing_metadata: &Value,
+        payload: Value,
+    ) -> ForumResult<flex::PreparedAttachedValuesWrite> {
+        let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
+        let (reserved_payload, flex_payload) = split_topic_metadata_payload(&schema, &payload);
+        let (_, existing_flex_metadata) = split_topic_metadata_payload(&schema, existing_metadata);
+        prepare_attached_values_update(
+            &self.db,
+            tenant_id,
+            "topic",
+            topic_id,
+            schema,
+            locale,
+            &Value::Object(existing_flex_metadata),
+            Some(Value::Object(flex_payload)),
+        )
+        .await
+        .map(|mut prepared| {
+            prepared.metadata = Some(merge_reserved_topic_metadata(
+                reserved_payload,
+                prepared.metadata,
+            ));
+            prepared
+        })
+        .map_err(|error| ForumError::Validation(error.to_string()))
+    }
+
+    async fn resolve_topic_metadata(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        metadata: &Value,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<Value> {
+        let schema = load_topic_custom_fields_schema(&self.db, tenant_id).await?;
+        self.resolve_topic_metadata_with_schema(
+            tenant_id,
+            topic_id,
+            metadata,
+            locale,
+            fallback_locale,
+            &schema,
+        )
+        .await
+    }
+
+    async fn resolve_topic_metadata_with_schema(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        metadata: &Value,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        schema: &CustomFieldsSchema,
+    ) -> ForumResult<Value> {
+        let schema = CustomFieldsSchema::new(
+            schema
+                .active_definitions()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        resolve_attached_payload(
+            &self.db,
+            tenant_id,
+            "topic",
+            topic_id,
+            schema,
+            metadata,
+            locale,
+            fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE),
+        )
+        .await
+        .map(|payload| payload.unwrap_or_else(|| serde_json::json!({})))
+        .map_err(|error| ForumError::Validation(error.to_string()))
+    }
 }
 
 fn to_topic_response(
@@ -833,6 +1021,7 @@ fn to_topic_response(
     translations: Vec<forum_topic_translation::Model>,
     channel_slugs: Vec<String>,
     tags: Vec<String>,
+    metadata: Value,
     vote_summary: VoteSummary,
     is_subscribed: bool,
     solution_reply_id: Option<Uuid>,
@@ -878,6 +1067,7 @@ fn to_topic_response(
         body,
         body_format,
         content_json,
+        metadata,
         status: topic.status,
         tags,
         channel_slugs,
@@ -987,4 +1177,89 @@ fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|slug| !slug.is_empty())
         .map(|slug| slug.to_ascii_lowercase())
+}
+
+async fn load_topic_custom_fields_schema(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> ForumResult<CustomFieldsSchema> {
+    let rows = topic_field_definitions_storage::Entity::find()
+        .filter(topic_field_definitions_storage::Column::TenantId.eq(tenant_id))
+        .filter(topic_field_definitions_storage::Column::IsActive.eq(true))
+        .order_by_asc(topic_field_definitions_storage::Column::Position)
+        .all(db)
+        .await?;
+
+    let definitions = rows
+        .into_iter()
+        .filter_map(topic_field_definition_from_row)
+        .collect();
+
+    Ok(CustomFieldsSchema::new(definitions))
+}
+
+fn topic_field_definition_from_row(
+    row: topic_field_definitions_storage::Model,
+) -> Option<FieldDefinition> {
+    let field_type: FieldType =
+        serde_json::from_value(serde_json::Value::String(row.field_type.clone())).ok()?;
+    let label = serde_json::from_value(row.label).unwrap_or_default();
+    let description = row
+        .description
+        .and_then(|value| serde_json::from_value(value).ok());
+    let validation: Option<ValidationRule> = row
+        .validation
+        .and_then(|value| serde_json::from_value(value).ok());
+
+    Some(FieldDefinition {
+        field_key: row.field_key,
+        field_type,
+        label,
+        description,
+        is_localized: row.is_localized,
+        is_required: row.is_required,
+        default_value: row.default_value,
+        validation,
+        position: row.position,
+        is_active: row.is_active,
+    })
+}
+
+fn split_topic_metadata_payload(
+    schema: &CustomFieldsSchema,
+    metadata: &Value,
+) -> (
+    serde_json::Map<String, Value>,
+    serde_json::Map<String, Value>,
+) {
+    let known_keys = schema
+        .active_definitions()
+        .into_iter()
+        .map(|definition| definition.field_key.as_str())
+        .collect::<HashSet<_>>();
+    let mut reserved = serde_json::Map::new();
+    let mut custom_fields = serde_json::Map::new();
+
+    for (key, value) in metadata.as_object().cloned().unwrap_or_default() {
+        if known_keys.contains(key.as_str()) {
+            custom_fields.insert(key, value);
+        } else {
+            reserved.insert(key, value);
+        }
+    }
+
+    (reserved, custom_fields)
+}
+
+fn merge_reserved_topic_metadata(
+    mut reserved: serde_json::Map<String, Value>,
+    custom_fields: Option<Value>,
+) -> Value {
+    if let Some(custom_fields) = custom_fields.and_then(|value| value.as_object().cloned()) {
+        for (key, value) in custom_fields {
+            reserved.insert(key, value);
+        }
+    }
+
+    Value::Object(reserved)
 }

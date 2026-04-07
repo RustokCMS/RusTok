@@ -4,6 +4,8 @@
 > **Статус standalone mode:** Phase 5 — начат (добавлены transport-agnostic контракты в `crates/flex/src/standalone.rs`, event envelope helper-ы в `crates/flex/src/events.rs` и orchestration helper-ы `*_with_event()`; persistence/API ещё не реализованы).
 > Нереализованное → [`implementation-plan.md`](./implementation-plan.md)
 
+> **Важно по многоязычности:** для `flex` уже действует общий platform contract. `FieldDefinition.is_localized` является live-частью DB/runtime контракта; standalone schema copy (`name`, `description`) хранится в `flex_schema_translations`; attached-mode locale-aware values теперь имеют canonical storage-path в `flex_attached_localized_values`, а shared entity/helpers для этого path живут в `crates/flex`. Live write/read path уже проведён для `user`, `product`, `order` и `topic`; для `topic` donor payload теперь живёт в `forum_topics.metadata`, а locale-aware Flex values идут в parallel attached rows по тому же контракту.
+
 ---
 
 ## 0. Текущая архитектурная граница
@@ -74,12 +76,14 @@ rustok-content  ←✗→ flex
 
 ### Attached mode (реализовано, Phases 0–4)
 
-Кастомные поля прикрепляются к существующим сущностям через JSONB-колонку `metadata`:
+Кастомные поля прикрепляются к существующим сущностям через donor payload и, для `is_localized=true`,
+через parallel localized records:
 
 ```
 "Дай мне кастомные поля для users"
   → user_field_definitions (таблица определений)
-  + users.metadata (JSONB с данными)
+  + users.metadata (non-localized / legacy transitional data)
+  + flex_attached_localized_values (locale-aware attached values)
 ```
 
 ### Standalone mode (Phase 5, частично реализовано: контракты)
@@ -163,6 +167,7 @@ pub struct FieldDefinition {
     pub field_type: FieldType,
     pub label: HashMap<String, String>,                 // {"en": "Phone", "ru": "Телефон"}
     pub description: Option<HashMap<String, String>>,
+    pub is_localized: bool,
     pub is_required: bool,
     pub default_value: Option<serde_json::Value>,
     pub validation: Option<ValidationRule>,
@@ -347,15 +352,15 @@ if !errors.is_empty() {
 
 ## 7. Текущие потребители (attached mode)
 
-| Модуль | Таблица | entity_type | metadata column |
-|--------|---------|-------------|-----------------|
-| apps/server | `user_field_definitions` | `"user"` | `users.metadata` |
-| apps/server | `product_field_definitions` | `"product"` | `products.metadata` |
-| apps/server | `order_field_definitions` | `"order"` | `orders.metadata` |
+| Модуль | Таблица | entity_type | donor payload |
+|--------|---------|-------------|---------------|
+| apps/server | `user_field_definitions` | `"user"` | `users.metadata` + `flex_attached_localized_values` |
+| apps/server + `crates/flex` | `product_field_definitions` | `"product"` | `products.metadata` + `flex_attached_localized_values` |
+| apps/server + `crates/flex` | `order_field_definitions` | `"order"` | `orders.metadata` + `flex_attached_localized_values` |
 | apps/server | `node_field_definitions` | `"node"` | `nodes.metadata` |
-| apps/server | `topic_field_definitions` | `"topic"` | `nodes.metadata` (kind=topic) |
+| apps/server + `crates/flex` | `topic_field_definitions` | `"topic"` | `forum_topics.metadata` + `flex_attached_localized_values` |
 
-Все таблицы структурно идентичны, физически изолированы в своём модуле.
+Все таблицы определений структурно идентичны, физически изолированы в своём модуле. Для attached localized values canonical shared storage теперь живёт в `flex_attached_localized_values`, а shared entity/helpers вынесены в `crates/flex`; `user`, `product`, `order` и `topic` уже используют этот path в live read/write flow.
 
 ---
 

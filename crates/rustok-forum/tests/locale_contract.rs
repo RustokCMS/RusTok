@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use rustok_core::field_schema::FieldType;
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, ListTopicsFilter,
@@ -7,10 +8,17 @@ use rustok_forum::{
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::{
+    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    Schema, Set,
+};
 use sea_orm_migration::SchemaManager;
 use tokio::sync::broadcast;
 use uuid::Uuid;
+
+mod topic_field_definitions_storage {
+    rustok_core::define_field_definitions_entity!("topic_field_definitions");
+}
 
 async fn setup_forum_test_db() -> DatabaseConnection {
     let db_url = format!(
@@ -48,11 +56,95 @@ async fn setup() -> (
             .await
             .expect("forum migration should apply");
     }
+    ensure_topic_flex_schema(&db).await;
 
     let transport = MemoryTransport::new();
     let receiver = transport.subscribe();
     let event_bus = TransactionalEventBus::new(Arc::new(transport));
     (db, event_bus, receiver, Uuid::new_v4())
+}
+
+async fn ensure_topic_flex_schema(db: &DatabaseConnection) {
+    if db.get_database_backend() != DbBackend::Sqlite {
+        return;
+    }
+
+    let builder = db.get_database_backend();
+    let schema = Schema::new(builder);
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(topic_field_definitions_storage::Entity),
+    )
+    .await;
+    let attached_table = sea_orm::sea_query::Table::create()
+        .table(sea_orm::sea_query::Alias::new(
+            "flex_attached_localized_values",
+        ))
+        .if_not_exists()
+        .col(
+            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("id"))
+                .uuid()
+                .not_null()
+                .primary_key(),
+        )
+        .col(
+            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("tenant_id"))
+                .uuid()
+                .not_null(),
+        )
+        .col(
+            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("entity_type"))
+                .string_len(64)
+                .not_null(),
+        )
+        .col(
+            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("entity_id"))
+                .uuid()
+                .not_null(),
+        )
+        .col(
+            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("field_key"))
+                .string_len(128)
+                .not_null(),
+        )
+        .col(
+            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("locale"))
+                .string_len(32)
+                .not_null(),
+        )
+        .col(
+            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("value"))
+                .json_binary()
+                .not_null(),
+        )
+        .col(
+            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("created_at"))
+                .timestamp_with_time_zone()
+                .not_null()
+                .default(sea_orm::sea_query::Expr::current_timestamp()),
+        )
+        .col(
+            sea_orm::sea_query::ColumnDef::new(sea_orm::sea_query::Alias::new("updated_at"))
+                .timestamp_with_time_zone()
+                .not_null()
+                .default(sea_orm::sea_query::Expr::current_timestamp()),
+        )
+        .to_owned();
+    db.execute(builder.build(&attached_table))
+        .await
+        .expect("flex attached localized values table should be created");
+}
+
+async fn create_entity_table(
+    db: &DatabaseConnection,
+    builder: &DbBackend,
+    mut statement: sea_orm::sea_query::TableCreateStatement,
+) {
+    statement.if_not_exists();
+    db.execute(builder.build(&statement))
+        .await
+        .expect("test table should be created");
 }
 
 #[tokio::test]
@@ -155,6 +247,7 @@ async fn topic_list_exposes_requested_effective_and_available_locales() {
                 body: "English body".to_string(),
                 body_format: "markdown".to_string(),
                 content_json: None,
+                metadata: serde_json::json!({}),
                 tags: vec![],
                 channel_slugs: None,
             },
@@ -173,6 +266,7 @@ async fn topic_list_exposes_requested_effective_and_available_locales() {
                 body: Some("Русское тело".to_string()),
                 body_format: Some("markdown".to_string()),
                 content_json: None,
+                metadata: None,
                 tags: None,
                 channel_slugs: None,
             },
@@ -207,4 +301,136 @@ async fn topic_list_exposes_requested_effective_and_available_locales() {
     );
     assert_eq!(items[0].title, "Общая тема");
     assert_eq!(items[0].slug, "general-thread");
+}
+
+#[tokio::test]
+async fn topic_resolves_localized_flex_metadata_from_attached_values() {
+    let (db, event_bus, _events, tenant_id) = setup().await;
+    let category_service = CategoryService::new(db.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus);
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let string_field_type = serde_json::to_value(FieldType::Text)
+        .expect("field type should serialize")
+        .as_str()
+        .expect("field type should be string")
+        .to_string();
+
+    topic_field_definitions_storage::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        field_key: Set("summary".to_string()),
+        field_type: Set(string_field_type.clone()),
+        label: Set(serde_json::json!({ "en": "Summary", "ru": "Сводка" })),
+        description: Set(None),
+        is_localized: Set(true),
+        is_required: Set(false),
+        default_value: Set(None),
+        validation: Set(None),
+        position: Set(0),
+        is_active: Set(true),
+        created_at: sea_orm::ActiveValue::NotSet,
+        updated_at: sea_orm::ActiveValue::NotSet,
+    }
+    .insert(&db)
+    .await
+    .expect("localized field definition should be created");
+
+    topic_field_definitions_storage::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        field_key: Set("audience".to_string()),
+        field_type: Set(string_field_type),
+        label: Set(serde_json::json!({ "en": "Audience", "ru": "Аудитория" })),
+        description: Set(None),
+        is_localized: Set(false),
+        is_required: Set(false),
+        default_value: Set(None),
+        validation: Set(None),
+        position: Set(1),
+        is_active: Set(true),
+        created_at: sea_orm::ActiveValue::NotSet,
+        updated_at: sea_orm::ActiveValue::NotSet,
+    }
+    .insert(&db)
+    .await
+    .expect("shared field definition should be created");
+
+    let category = category_service
+        .create(
+            tenant_id,
+            admin.clone(),
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: "General".to_string(),
+                slug: "general".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await
+        .expect("category should be created");
+
+    let topic = topic_service
+        .create(
+            tenant_id,
+            admin.clone(),
+            CreateTopicInput {
+                locale: "en".to_string(),
+                category_id: category.id,
+                title: "Localized flex".to_string(),
+                slug: Some("localized-flex".to_string()),
+                body: "English body".to_string(),
+                body_format: "markdown".to_string(),
+                content_json: None,
+                metadata: serde_json::json!({
+                    "summary": "English summary",
+                    "audience": "everyone"
+                }),
+                tags: vec![],
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("topic should be created");
+
+    topic_service
+        .update(
+            tenant_id,
+            topic.id,
+            admin.clone(),
+            UpdateTopicInput {
+                locale: "ru".to_string(),
+                title: Some("Локализованный flex".to_string()),
+                body: Some("Русское тело".to_string()),
+                body_format: Some("markdown".to_string()),
+                content_json: None,
+                metadata: Some(serde_json::json!({
+                    "summary": "Русская сводка",
+                    "audience": "everyone"
+                })),
+                tags: None,
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("ru translation should be saved");
+
+    let en_topic = topic_service
+        .get_with_locale_fallback(tenant_id, admin.clone(), topic.id, "en", Some("ru"))
+        .await
+        .expect("en topic should load");
+    assert_eq!(en_topic.metadata["summary"], "English summary");
+    assert_eq!(en_topic.metadata["audience"], "everyone");
+
+    let fallback_topic = topic_service
+        .get_with_locale_fallback(tenant_id, admin, topic.id, "fr-FR", Some("ru"))
+        .await
+        .expect("fallback topic should load");
+    assert_eq!(fallback_topic.metadata["summary"], "Русская сводка");
+    assert_eq!(fallback_topic.metadata["audience"], "everyone");
 }

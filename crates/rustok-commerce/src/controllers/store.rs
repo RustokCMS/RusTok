@@ -229,7 +229,12 @@ pub async fn show_product(
     let service = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let public_channel_slug = public_channel_slug_from_request(&request_context);
     let mut product = service
-        .get_product(tenant.id, id)
+        .get_product_with_locale_fallback(
+            tenant.id,
+            id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
@@ -846,7 +851,12 @@ pub async fn get_order(
         .ok_or_else(|| Error::Unauthorized("Customer account required".to_string()))?;
     let service = OrderService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let order = service
-        .get_order(tenant.id, id)
+        .get_order_with_locale_fallback(
+            tenant.id,
+            id,
+            request_context.locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 

@@ -1,4 +1,8 @@
 use chrono::Utc;
+use flex::{
+    persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
+    resolve_attached_payload,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
     EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
@@ -9,7 +13,8 @@ use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::generate_id;
+use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
+use rustok_core::{generate_id, PLATFORM_FALLBACK_LOCALE};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
@@ -21,6 +26,10 @@ use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use crate::entities::product_tag;
 
 const PRODUCT_SCOPE_VALUE: &str = "product";
+
+mod product_field_definitions_storage {
+    rustok_core::define_field_definitions_entity!("product_field_definitions");
+}
 
 struct ProductTagState {
     tags: Vec<String>,
@@ -70,10 +79,23 @@ impl CatalogService {
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
 
+        let preferred_locale =
+            Self::preferred_product_locale_from_translations(&input.translations);
+        let prepared_custom_fields = self
+            .prepare_product_custom_fields_for_create(
+                tenant_id,
+                preferred_locale.as_str(),
+                input.metadata.clone(),
+            )
+            .await?;
+        let product_metadata = prepared_custom_fields
+            .metadata
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({}));
         let (normalized_metadata, normalized_tags) = Self::normalize_create_product_metadata(
             input.tags.clone(),
             input.shipping_profile_slug.clone(),
-            input.metadata.clone(),
+            product_metadata,
         );
 
         let txn = self.db.begin().await?;
@@ -103,6 +125,15 @@ impl CatalogService {
         };
         product.insert(&txn).await?;
         debug!("Product entity inserted");
+
+        if let (Some(locale), Some(values)) = (
+            prepared_custom_fields.locale.as_deref(),
+            prepared_custom_fields.localized_values.as_ref(),
+        ) {
+            persist_localized_values(&txn, tenant_id, "product", product_id, locale, values)
+                .await
+                .map_err(|error| CommerceError::Validation(error.to_string()))?;
+        }
 
         let translation_locales = Self::collect_translation_locales(&input.translations);
 
@@ -324,7 +355,13 @@ impl CatalogService {
             "Product created successfully"
         );
 
-        self.get_product(tenant_id, product_id).await
+        self.get_product_with_locale_fallback(
+            tenant_id,
+            product_id,
+            preferred_locale.as_str(),
+            None,
+        )
+        .await
     }
 
     #[instrument(skip(self))]
@@ -332,6 +369,18 @@ impl CatalogService {
         &self,
         tenant_id: Uuid,
         product_id: Uuid,
+    ) -> CommerceResult<ProductResponse> {
+        self.get_product_with_locale_fallback(tenant_id, product_id, PLATFORM_FALLBACK_LOCALE, None)
+            .await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_product_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
     ) -> CommerceResult<ProductResponse> {
         debug!(product_id = %product_id, "Fetching product");
 
@@ -546,17 +595,23 @@ impl CatalogService {
                 .push(translation);
         }
 
-        let tag_locale = translations
-            .first()
-            .map(|translation| translation.locale.as_str())
-            .unwrap_or("en");
+        let tag_locale = locale;
         let product_tags = self
             .load_product_tags(
                 tenant_id,
                 product_id,
                 tag_locale,
-                Some("en"),
+                fallback_locale.or(Some(PLATFORM_FALLBACK_LOCALE)),
                 &product.metadata,
+            )
+            .await?;
+        let resolved_metadata = self
+            .resolve_product_metadata(
+                tenant_id,
+                product_id,
+                &product.metadata,
+                locale,
+                fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE),
             )
             .await?;
 
@@ -571,7 +626,7 @@ impl CatalogService {
                 .clone()
                 .or_else(|| Self::extract_shipping_profile_slug(&product.metadata)),
             tags: product_tags.tags,
-            metadata: Self::strip_metadata_tags(product.metadata.clone()),
+            metadata: resolved_metadata,
             created_at: product.created_at.into(),
             updated_at: product.updated_at.into(),
             published_at: product.published_at.map(Into::into),
@@ -669,10 +724,33 @@ impl CatalogService {
         let mut product_active: entities::product::ActiveModel = product.into();
         product_active.updated_at = Set(Utc::now().into());
 
+        let preferred_locale = input
+            .translations
+            .as_deref()
+            .map(Self::preferred_product_locale_from_translations)
+            .unwrap_or_else(|| {
+                Self::preferred_product_locale_from_metadata(&existing_product.metadata)
+            });
+        let prepared_custom_fields = if let Some(metadata) = input.metadata.clone() {
+            Some(
+                self.prepare_product_custom_fields_for_update(
+                    tenant_id,
+                    product_id,
+                    preferred_locale.as_str(),
+                    &existing_product.metadata,
+                    metadata,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         let metadata_update = Self::normalize_update_product_metadata(
             input.tags.clone(),
             input.shipping_profile_slug.clone(),
-            input.metadata.clone(),
+            prepared_custom_fields
+                .as_ref()
+                .and_then(|prepared| prepared.metadata.clone()),
             existing_product.metadata.clone(),
         );
         let shipping_profile_input = input.shipping_profile_slug.clone();
@@ -696,6 +774,17 @@ impl CatalogService {
         }
 
         product_active.update(&txn).await?;
+
+        if let Some(prepared_custom_fields) = prepared_custom_fields.as_ref() {
+            if let (Some(locale), Some(values)) = (
+                prepared_custom_fields.locale.as_deref(),
+                prepared_custom_fields.localized_values.as_ref(),
+            ) {
+                persist_localized_values(&txn, tenant_id, "product", product_id, locale, values)
+                    .await
+                    .map_err(|error| CommerceError::Validation(error.to_string()))?;
+            }
+        }
 
         let translation_inputs = input.translations.clone();
 
@@ -767,7 +856,13 @@ impl CatalogService {
         txn.commit().await?;
         info!(product_id = %product_id, "Product updated successfully");
 
-        self.get_product(tenant_id, product_id).await
+        self.get_product_with_locale_fallback(
+            tenant_id,
+            product_id,
+            preferred_locale.as_str(),
+            None,
+        )
+        .await
     }
 
     #[instrument(skip(self))]
@@ -1076,6 +1171,108 @@ impl CatalogService {
         } else {
             options.join(" / ")
         }
+    }
+
+    async fn prepare_product_custom_fields_for_create(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        payload: Value,
+    ) -> CommerceResult<flex::PreparedAttachedValuesWrite> {
+        let schema = load_product_custom_fields_schema(&self.db, tenant_id).await?;
+        let (reserved_payload, flex_payload) = split_product_metadata_payload(&schema, &payload);
+        prepare_attached_values_create(schema, Some(Value::Object(flex_payload)), locale)
+            .map(|mut prepared| {
+                prepared.metadata = Some(merge_reserved_product_metadata(
+                    reserved_payload,
+                    prepared.metadata,
+                ));
+                prepared
+            })
+            .map_err(|error| CommerceError::Validation(error.to_string()))
+    }
+
+    async fn prepare_product_custom_fields_for_update(
+        &self,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+        existing_metadata: &Value,
+        payload: Value,
+    ) -> CommerceResult<flex::PreparedAttachedValuesWrite> {
+        let schema = load_product_custom_fields_schema(&self.db, tenant_id).await?;
+        let (reserved_payload, flex_payload) = split_product_metadata_payload(&schema, &payload);
+        let (_, existing_flex_metadata) =
+            split_product_metadata_payload(&schema, existing_metadata);
+        prepare_attached_values_update(
+            &self.db,
+            tenant_id,
+            "product",
+            product_id,
+            schema,
+            locale,
+            &Value::Object(existing_flex_metadata),
+            Some(Value::Object(flex_payload)),
+        )
+        .await
+        .map(|mut prepared| {
+            prepared.metadata = Some(merge_reserved_product_metadata(
+                reserved_payload,
+                prepared.metadata,
+            ));
+            prepared
+        })
+        .map_err(|error| CommerceError::Validation(error.to_string()))
+    }
+
+    async fn resolve_product_metadata(
+        &self,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        metadata: &Value,
+        locale: &str,
+        fallback_locale: &str,
+    ) -> CommerceResult<Value> {
+        let shared_metadata = Self::strip_metadata_tags(metadata.clone());
+        let schema = load_product_custom_fields_schema(&self.db, tenant_id).await?;
+        resolve_attached_payload(
+            &self.db,
+            tenant_id,
+            "product",
+            product_id,
+            schema,
+            &shared_metadata,
+            locale,
+            fallback_locale,
+        )
+        .await
+        .map(|payload| payload.unwrap_or_else(|| serde_json::json!({})))
+        .map_err(|error| CommerceError::Validation(error.to_string()))
+    }
+
+    fn preferred_product_locale_from_translations(
+        translations: &[ProductTranslationInput],
+    ) -> String {
+        translations
+            .iter()
+            .find_map(|translation| {
+                let trimmed = translation.locale.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            })
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
+    }
+
+    fn preferred_product_locale_from_metadata(metadata: &Value) -> String {
+        metadata
+            .get("locale")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| value.trim().to_string())
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
     }
 
     fn collect_translation_locales(translations: &[ProductTranslationInput]) -> Vec<String> {
@@ -1591,4 +1788,92 @@ impl CatalogService {
 
         Ok(available_by_variant)
     }
+}
+
+async fn load_product_custom_fields_schema(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> CommerceResult<CustomFieldsSchema> {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+
+    let rows = product_field_definitions_storage::Entity::find()
+        .filter(product_field_definitions_storage::Column::TenantId.eq(tenant_id))
+        .filter(product_field_definitions_storage::Column::IsActive.eq(true))
+        .order_by_asc(product_field_definitions_storage::Column::Position)
+        .all(db)
+        .await
+        .map_err(CommerceError::from)?;
+
+    let definitions = rows
+        .into_iter()
+        .filter_map(product_field_definition_from_row)
+        .collect();
+
+    Ok(CustomFieldsSchema::new(definitions))
+}
+
+fn product_field_definition_from_row(
+    row: product_field_definitions_storage::Model,
+) -> Option<FieldDefinition> {
+    let field_type: FieldType =
+        serde_json::from_value(serde_json::Value::String(row.field_type.clone())).ok()?;
+    let label = serde_json::from_value(row.label).unwrap_or_default();
+    let description = row
+        .description
+        .and_then(|value| serde_json::from_value(value).ok());
+    let validation: Option<ValidationRule> = row
+        .validation
+        .and_then(|value| serde_json::from_value(value).ok());
+
+    Some(FieldDefinition {
+        field_key: row.field_key,
+        field_type,
+        label,
+        description,
+        is_localized: row.is_localized,
+        is_required: row.is_required,
+        default_value: row.default_value,
+        validation,
+        position: row.position,
+        is_active: row.is_active,
+    })
+}
+
+fn split_product_metadata_payload(
+    schema: &CustomFieldsSchema,
+    metadata: &Value,
+) -> (
+    serde_json::Map<String, Value>,
+    serde_json::Map<String, Value>,
+) {
+    let known_keys = schema
+        .active_definitions()
+        .into_iter()
+        .map(|definition| definition.field_key.as_str())
+        .collect::<HashSet<_>>();
+    let mut reserved = serde_json::Map::new();
+    let mut custom_fields = serde_json::Map::new();
+
+    for (key, value) in metadata.as_object().cloned().unwrap_or_default() {
+        if known_keys.contains(key.as_str()) {
+            custom_fields.insert(key, value);
+        } else {
+            reserved.insert(key, value);
+        }
+    }
+
+    (reserved, custom_fields)
+}
+
+fn merge_reserved_product_metadata(
+    mut reserved: serde_json::Map<String, Value>,
+    custom_fields: Option<Value>,
+) -> Value {
+    if let Some(custom_fields) = custom_fields.and_then(|value| value.as_object().cloned()) {
+        for (key, value) in custom_fields {
+            reserved.insert(key, value);
+        }
+    }
+
+    Value::Object(reserved)
 }

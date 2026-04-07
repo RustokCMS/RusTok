@@ -7,13 +7,16 @@
 
 ## Текущий статус
 
+> **Важная пометка для следующих change set'ов:** старые планы, где multilingual copy живёт inline в base rows или в canonical JSON blobs, больше не актуальны.
+> Текущий live contract для `flex`: `FieldDefinition.is_localized` уже проведён через core/runtime/DB, registered attached consumers сейчас `user`/`product`/`order`/`topic`, standalone schema copy уже вынесен в `flex_schema_translations`, а attached-mode generic localized-value storage вынесен в shared `crates/flex` и пишет в `flex_attached_localized_values`. Live donor read/write path уже закрыт для `user`, `product`, `order` и `topic`. Следующий обязательный шаг — закрыть standalone entry values и cleanup/backfill legacy locale-aware JSON payload-ов, которые ещё могут встречаться как переходное состояние.
+
 | Фаза | Описание | Статус |
 |------|----------|--------|
 | Phase 0 | Core types & validation в `rustok-core` | ✅ Done |
 | Phase 1 | Migration helper, FlexError, FieldDefRegistry, events | ✅ Done |
 | Phase 2 | Users (первый потребитель) | ✅ Done |
 | Phase 3 | Admin API (GraphQL CRUD, RBAC, кеш, пагинация) | ✅ Done |
-| Phase 4 | Attached-mode consumers (`user`, `product`, `order`, `topic`) | 🔄 Частично готово, есть расхождения между docs, migrator wiring и donor write-path |
+| Phase 4 | Attached-mode consumers (`user`, `product`, `order`, `topic`) | ✅ Закрыто: docs/migrator/is_localized выровнены, generic localized-value storage есть, live donor read/write path закрыт для `user`, `product`, `order` и `topic` |
 | Phase 4.5 | Вынос в `crates/flex` | 🔄 Почти завершён, остаются verification/docs долги |
 | Phase 4.6 | Ghost-module manifest integration | ⬜ Не начат |
 | Phase 5 | Standalone mode | 🔄 Начат (контракты и adapter-layer есть; multilingual storage split для schema-level copy начат, live API surface ещё не опубликован) |
@@ -27,27 +30,36 @@ Flex в attached-mode уже умеет хранить field definitions и ма
 `entity_type`, но текущее состояние неравномерное:
 
 - `user` — полный путь schema CRUD + donor write-path validation живой.
-- `product` / `order` / `topic` — schema CRUD зарегистрирован в registry, но donor write-path parity
+- `product` — schema CRUD зарегистрирован в registry, donor write/read path теперь живой через shared attached localized storage.
+- `order` / `topic` — schema CRUD зарегистрирован в registry, donor write/read parity уже проведён через shared attached localized storage
   нужно отдельно подтвердить или явно задокументировать как pending.
 - `node` — фигурирует в модульной документации Flex как attached consumer, но в текущем registry/API
   route для `node` не смонтирован.
 
 ### Canonical scope / wiring
 
-- [ ] Зафиксировать канонический список live attached consumers
-  - В docs сейчас заявлены `user`, `product`, `order`, `node`, `topic`.
-  - В registry/API реально смонтированы `user`, `product`, `order`, `topic`.
-  - Нужно либо добавить `node` service/route, либо убрать `node` из live-contract документации.
-- [ ] Выправить migrator ownership для attached migrations
-  - `product_field_definitions` и `order_field_definitions` приезжают из owning crate migrations.
-  - `topic_field_definitions` лежит в `apps/server/migration`, но не подключён в `Migrator`.
-  - Нужно либо зарегистрировать server migration, либо перенести ownership migration в owning crate.
+- [x] Зафиксировать канонический список live attached consumers
+  - Live attached contract сейчас ограничен `user`, `product`, `order`, `topic`.
+  - `node` не считается live attached consumer до появления отдельного service/route и donor write-path.
+- [x] Выправить migrator ownership для attached migrations
+  - `product_field_definitions` и `order_field_definitions` продолжают приезжать из owning crate migrations.
+  - `topic_field_definitions` подключён в canonical server `Migrator`.
+- [x] Зафиксировать multilingual semantics field definitions
+  - `FieldDefinition.is_localized` теперь является обязательной частью core/runtime/DB контракта.
+  - GraphQL, registry DTO и attached persistence больше не должны трактовать localized/non-localized поля как неявную договорённость.
 
 ### Donor write-path parity
 
-- [ ] Подтвердить и зафиксировать donor write-path integration для `product`, `order`, `topic`
+- [x] Подтвердить и зафиксировать donor write-path integration для `order`, `topic`
+  - Override 2026-04-05: `topic` is no longer schema-only. Forum topics now use `forum_topics.metadata` plus `flex_attached_localized_values` under the same attached multilingual contract as `user`/`product`/`order`.
   - Для `user` validation/defaults/strip_unknown уже подключены в GraphQL mutation flow.
-  - Для остальных attached consumers нужно либо добавить аналогичный write-path, либо явно отметить current state как schema-only admin surface.
+  - Для `product` live read/write path уже подключён через shared attached localized storage в `crates/flex`.
+  - Для оставшихся attached consumers нужно либо добавить аналогичный write-path, либо явно отметить current state как schema-only admin surface.
+- [ ] Вынести localized attached values из canonical JSON path
+  - `is_localized = true` не должен в финальном состоянии означать хранение multilingual business value внутри donor `metadata`.
+  - Generic table `flex_attached_localized_values` уже введена, а shared entity/helpers теперь живут в `crates/flex`.
+  - `user` и `product` уже используют этот path в live read/write flow.
+  - Следующий срез: провести тот же parallel localized record contract через standalone entry values и убрать residual legacy JSON fallback там, где attached donors уже переведены.
 
 ### Тесты (integration pending)
 
@@ -190,6 +202,7 @@ CREATE INDEX idx_flex_entries_entity ON flex_entries (entity_type, entity_id);
 - [x] CRUD services *(добавлен SeaORM adapter `FlexStandaloneSeaOrmService` в `apps/server/src/services/flex_standalone_service.rs`, реализующий `flex::FlexStandaloneService` с tenant-scoped CRUD для schemas/entries)*
 - [~] Multilingual storage contract для standalone mode
   - schema-level localized copy (`name`, `description`) больше не считается base-row данными
+  - `flex_schema_translations` уже является live storage path для schema-level copy
   - entry payload `data` пока остаётся JSONB без split на localized/non-localized values
   - следующий обязательный шаг: явная semantics `localized/non-localized` для field definitions и parallel localized records для entry values
 - [~] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; в `crates/flex` добавлены transport-agnostic envelope helper-ы и orchestration helper-ы `*_with_event()`, emission wiring в adapters pending)*
@@ -262,3 +275,6 @@ CREATE INDEX idx_index_flex_search ON index_flex_entries USING GIN (search_vecto
 1. Обновить этот файл
 2. Обновить ссылки и статус в [`docs/modules/_index.md`](/docs/modules/_index.md) или [`docs/modules/registry.md`](/docs/modules/registry.md), если меняется состав/статус модуля
 3. Запустить `cargo test -p rustok-core` — тесты field_schema должны проходить
+> **Live status override (2026-04-05):** attached multilingual donor path уже реально закрыт для `user`, `product`, `order` и `topic` через shared `flex_attached_localized_values`.
+> `topic` больше не является schema-level consumer: forum topic donor payload теперь живёт в `forum_topics.metadata`, а locale-aware Flex values резолвятся по тому же effective locale contract, что и у остальных live donors.
+> Если нижележащие разделы старого плана говорят, что `order` ещё не переведён или что для `topic` уже существует donor metadata path, считать это устаревшим.

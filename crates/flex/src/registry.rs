@@ -20,6 +20,7 @@ pub struct FieldDefinitionView {
     pub field_type: String,
     pub label: JsonValue,
     pub description: Option<JsonValue>,
+    pub is_localized: bool,
     pub is_required: bool,
     pub default_value: Option<JsonValue>,
     pub validation: Option<JsonValue>,
@@ -36,6 +37,7 @@ pub struct CreateFieldDefinitionCommand {
     pub field_type: rustok_core::field_schema::FieldType,
     pub label: std::collections::HashMap<String, String>,
     pub description: Option<std::collections::HashMap<String, String>>,
+    pub is_localized: bool,
     pub is_required: bool,
     pub default_value: Option<JsonValue>,
     pub validation: Option<rustok_core::field_schema::ValidationRule>,
@@ -47,6 +49,7 @@ pub struct CreateFieldDefinitionCommand {
 pub struct UpdateFieldDefinitionCommand {
     pub label: Option<std::collections::HashMap<String, String>>,
     pub description: Option<std::collections::HashMap<String, String>>,
+    pub is_localized: Option<bool>,
     pub is_required: Option<bool>,
     pub default_value: Option<JsonValue>,
     pub validation: Option<rustok_core::field_schema::ValidationRule>,

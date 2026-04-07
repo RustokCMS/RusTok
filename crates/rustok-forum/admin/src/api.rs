@@ -46,6 +46,7 @@ struct CreateTopicInput<'a> {
     body: &'a str,
     body_format: &'a str,
     content_json: Option<serde_json::Value>,
+    metadata: Option<serde_json::Value>,
     tags: &'a [String],
 }
 
@@ -56,6 +57,7 @@ struct UpdateTopicInput<'a> {
     body: Option<&'a str>,
     body_format: Option<&'a str>,
     content_json: Option<serde_json::Value>,
+    metadata: Option<serde_json::Value>,
     tags: Option<&'a [String]>,
 }
 
@@ -334,6 +336,7 @@ pub async fn create_topic(
             body: draft.body.as_str(),
             body_format: draft.body_format.as_str(),
             content_json: None,
+            metadata: None,
             tags: draft.tags.as_slice(),
         }),
     )
@@ -358,6 +361,7 @@ pub async fn update_topic(
             body: Some(draft.body.as_str()),
             body_format: Some(draft.body_format.as_str()),
             content_json: None,
+            metadata: None,
             tags: Some(draft.tags.as_slice()),
         }),
     )

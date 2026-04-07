@@ -19,6 +19,8 @@ pub struct FieldDefinitionObject {
     pub label: JsonValue,
     /// Optional localised description.
     pub description: Option<JsonValue>,
+    /// Whether field values belong to locale-aware parallel records.
+    pub is_localized: bool,
     pub is_required: bool,
     /// Default value applied by `apply_defaults()`.
     pub default_value: Option<JsonValue>,
@@ -39,6 +41,7 @@ impl From<Model> for FieldDefinitionObject {
             field_type: m.field_type,
             label: m.label,
             description: m.description,
+            is_localized: m.is_localized,
             is_required: m.is_required,
             default_value: m.default_value,
             validation: m.validation,
@@ -58,6 +61,7 @@ impl From<FieldDefinitionView> for FieldDefinitionObject {
             field_type: m.field_type,
             label: m.label,
             description: m.description,
+            is_localized: m.is_localized,
             is_required: m.is_required,
             default_value: m.default_value,
             validation: m.validation,
@@ -84,6 +88,8 @@ pub struct CreateFieldDefinitionInput {
     pub label: JsonValue,
     pub description: Option<JsonValue>,
     #[graphql(default)]
+    pub is_localized: bool,
+    #[graphql(default)]
     pub is_required: bool,
     pub default_value: Option<JsonValue>,
     pub validation: Option<JsonValue>,
@@ -98,6 +104,7 @@ pub struct UpdateFieldDefinitionInput {
     pub entity_type: Option<String>,
     pub label: Option<JsonValue>,
     pub description: Option<JsonValue>,
+    pub is_localized: Option<bool>,
     pub is_required: Option<bool>,
     pub default_value: Option<JsonValue>,
     pub validation: Option<JsonValue>,

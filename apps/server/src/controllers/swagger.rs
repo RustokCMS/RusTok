@@ -481,8 +481,10 @@ mod tests {
         let openapi = build_openapi_document(&settings);
 
         assert!(openapi.paths.paths.contains_key("/v1/catalog"));
+        assert!(openapi.paths.paths.contains_key("/v1/catalog/{slug}"));
         assert!(openapi.paths.paths.contains_key("/metrics"));
         assert!(openapi.paths.paths.contains_key("/api/openapi.json"));
+        assert!(openapi.paths.paths.contains_key("/api/openapi.yaml"));
         assert!(!openapi.paths.paths.contains_key("/v2/catalog/publish"));
         assert!(!openapi
             .paths

@@ -26,6 +26,7 @@ async fn test_topic_lifecycle() -> TestResult<()> {
         body: "Hello, Forum!".to_string(),
         body_format: "markdown".to_string(),
         content_json: None,
+        metadata: serde_json::json!({}),
         tags: vec!["rust".to_string()],
         channel_slugs: None,
     };

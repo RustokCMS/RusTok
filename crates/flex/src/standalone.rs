@@ -461,6 +461,7 @@ mod tests {
             field_type: FieldType::Text,
             label: HashMap::from([("en".to_string(), "Label".to_string())]),
             description: None,
+            is_localized: false,
             is_required: false,
             default_value: None,
             validation: None,

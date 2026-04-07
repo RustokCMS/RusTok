@@ -4,6 +4,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use rustok_cart::error::CartError;
+use rustok_core::PLATFORM_FALLBACK_LOCALE;
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
@@ -162,6 +163,10 @@ impl CheckoutService {
                 return Err(stage_error("resolve_context")(error));
             }
         };
+        let order_metadata = merge_checkout_metadata(
+            input.metadata.clone(),
+            checkout_cart_context_metadata(&cart, &context),
+        );
         let checkout_result: CheckoutResult<CompleteCheckoutResponse> = async {
             let mut order = self
                 .order_service
@@ -185,7 +190,7 @@ impl CheckoutService {
                                 metadata: item.metadata.clone(),
                             })
                             .collect(),
-                        metadata: input.metadata.clone(),
+                        metadata: order_metadata.clone(),
                     },
                     cart.channel_id,
                     cart.channel_slug.clone(),
@@ -204,7 +209,12 @@ impl CheckoutService {
             } else {
                 order = self
                     .order_service
-                    .get_order(tenant_id, order.id)
+                    .get_order_with_locale_fallback(
+                        tenant_id,
+                        order.id,
+                        context.locale.as_str(),
+                        Some(context.default_locale.as_str()),
+                    )
                     .await
                     .map_err(stage_error("reload_order"))?;
             }
@@ -545,7 +555,14 @@ impl CheckoutService {
 
         let order = self
             .order_service
-            .get_order(tenant_id, order_id)
+            .get_order_with_locale_fallback(
+                tenant_id,
+                order_id,
+                cart.locale_code
+                    .as_deref()
+                    .unwrap_or(PLATFORM_FALLBACK_LOCALE),
+                None,
+            )
             .await
             .map_err(stage_error("load_order"))?;
         let is_completed_checkout =
@@ -753,6 +770,22 @@ fn merge_checkout_metadata(base: serde_json::Value, patch: serde_json::Value) ->
         }
         (_, patch) => patch,
     }
+}
+
+fn checkout_cart_context_metadata(
+    cart: &rustok_cart::dto::CartResponse,
+    context: &crate::dto::StoreContextResponse,
+) -> serde_json::Value {
+    serde_json::json!({
+        "cart_context": {
+            "region_id": cart.region_id,
+            "country_code": cart.country_code,
+            "locale": context.locale,
+            "currency_code": context.currency_code,
+            "selected_shipping_option_id": cart.selected_shipping_option_id,
+            "email": cart.email,
+        }
+    })
 }
 
 fn fulfillment_shim(

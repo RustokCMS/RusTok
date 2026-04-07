@@ -53,6 +53,7 @@ impl ForumMutation {
                         .body_format
                         .unwrap_or_else(|| CONTENT_FORMAT_MARKDOWN.to_string()),
                     content_json: input.content_json,
+                    metadata: input.metadata.unwrap_or_else(|| serde_json::json!({})),
                     tags: input.tags,
                     channel_slugs: input.channel_slugs,
                 },
@@ -67,32 +68,7 @@ impl ForumMutation {
         )
         .await?;
 
-        Ok(GqlForumTopic {
-            id: topic.id,
-            requested_locale: topic.requested_locale,
-            locale: topic.locale,
-            effective_locale: topic.effective_locale,
-            available_locales: topic.available_locales,
-            category_id: topic.category_id,
-            author_id: topic.author_id,
-            author_profile,
-            title: topic.title,
-            slug: topic.slug,
-            body: topic.body,
-            body_format: topic.body_format,
-            status: topic.status,
-            tags: topic.tags,
-            channel_slugs: topic.channel_slugs.clone(),
-            vote_score: topic.vote_score,
-            current_user_vote: topic.current_user_vote,
-            is_subscribed: topic.is_subscribed,
-            solution_reply_id: topic.solution_reply_id,
-            is_pinned: topic.is_pinned,
-            is_locked: topic.is_locked,
-            reply_count: topic.reply_count,
-            created_at: topic.created_at,
-            updated_at: topic.updated_at,
-        })
+        Ok(map_topic(topic, author_profile))
     }
 
     async fn update_forum_topic(
@@ -123,6 +99,7 @@ impl ForumMutation {
                     body: input.body,
                     body_format: input.body_format,
                     content_json: input.content_json,
+                    metadata: input.metadata,
                     tags: input.tags,
                     channel_slugs: input.channel_slugs,
                 },
@@ -137,32 +114,7 @@ impl ForumMutation {
         )
         .await?;
 
-        Ok(GqlForumTopic {
-            id: topic.id,
-            requested_locale: topic.requested_locale,
-            locale: topic.locale,
-            effective_locale: topic.effective_locale,
-            available_locales: topic.available_locales,
-            category_id: topic.category_id,
-            author_id: topic.author_id,
-            author_profile,
-            title: topic.title,
-            slug: topic.slug,
-            body: topic.body,
-            body_format: topic.body_format,
-            status: topic.status,
-            tags: topic.tags,
-            channel_slugs: topic.channel_slugs.clone(),
-            vote_score: topic.vote_score,
-            current_user_vote: topic.current_user_vote,
-            is_subscribed: topic.is_subscribed,
-            solution_reply_id: topic.solution_reply_id,
-            is_pinned: topic.is_pinned,
-            is_locked: topic.is_locked,
-            reply_count: topic.reply_count,
-            created_at: topic.created_at,
-            updated_at: topic.updated_at,
-        })
+        Ok(map_topic(topic, author_profile))
     }
 
     async fn delete_forum_topic(
@@ -320,32 +272,7 @@ impl ForumMutation {
         )
         .await?;
 
-        Ok(GqlForumTopic {
-            id: topic.id,
-            requested_locale: topic.requested_locale,
-            locale: topic.locale,
-            effective_locale: topic.effective_locale,
-            available_locales: topic.available_locales,
-            category_id: topic.category_id,
-            author_id: topic.author_id,
-            author_profile,
-            title: topic.title,
-            slug: topic.slug,
-            body: topic.body,
-            body_format: topic.body_format,
-            status: topic.status,
-            tags: topic.tags,
-            channel_slugs: topic.channel_slugs,
-            vote_score: topic.vote_score,
-            current_user_vote: topic.current_user_vote,
-            is_subscribed: topic.is_subscribed,
-            solution_reply_id: topic.solution_reply_id,
-            is_pinned: topic.is_pinned,
-            is_locked: topic.is_locked,
-            reply_count: topic.reply_count,
-            created_at: topic.created_at,
-            updated_at: topic.updated_at,
-        })
+        Ok(map_topic(topic, author_profile))
     }
 
     async fn clear_forum_topic_subscription(
@@ -388,32 +315,7 @@ impl ForumMutation {
         )
         .await?;
 
-        Ok(GqlForumTopic {
-            id: topic.id,
-            requested_locale: topic.requested_locale,
-            locale: topic.locale,
-            effective_locale: topic.effective_locale,
-            available_locales: topic.available_locales,
-            category_id: topic.category_id,
-            author_id: topic.author_id,
-            author_profile,
-            title: topic.title,
-            slug: topic.slug,
-            body: topic.body,
-            body_format: topic.body_format,
-            status: topic.status,
-            tags: topic.tags,
-            channel_slugs: topic.channel_slugs,
-            vote_score: topic.vote_score,
-            current_user_vote: topic.current_user_vote,
-            is_subscribed: topic.is_subscribed,
-            solution_reply_id: topic.solution_reply_id,
-            is_pinned: topic.is_pinned,
-            is_locked: topic.is_locked,
-            reply_count: topic.reply_count,
-            created_at: topic.created_at,
-            updated_at: topic.updated_at,
-        })
+        Ok(map_topic(topic, author_profile))
     }
 
     async fn create_forum_reply(
@@ -519,32 +421,7 @@ impl ForumMutation {
         )
         .await?;
 
-        Ok(GqlForumTopic {
-            id: topic.id,
-            requested_locale: topic.requested_locale,
-            locale: topic.locale,
-            effective_locale: topic.effective_locale,
-            available_locales: topic.available_locales,
-            category_id: topic.category_id,
-            author_id: topic.author_id,
-            author_profile,
-            title: topic.title,
-            slug: topic.slug,
-            body: topic.body,
-            body_format: topic.body_format,
-            status: topic.status,
-            tags: topic.tags,
-            channel_slugs: topic.channel_slugs,
-            vote_score: topic.vote_score,
-            current_user_vote: topic.current_user_vote,
-            is_subscribed: topic.is_subscribed,
-            solution_reply_id: topic.solution_reply_id,
-            is_pinned: topic.is_pinned,
-            is_locked: topic.is_locked,
-            reply_count: topic.reply_count,
-            created_at: topic.created_at,
-            updated_at: topic.updated_at,
-        })
+        Ok(map_topic(topic, author_profile))
     }
 
     async fn clear_forum_topic_vote(
@@ -587,32 +464,7 @@ impl ForumMutation {
         )
         .await?;
 
-        Ok(GqlForumTopic {
-            id: topic.id,
-            requested_locale: topic.requested_locale,
-            locale: topic.locale,
-            effective_locale: topic.effective_locale,
-            available_locales: topic.available_locales,
-            category_id: topic.category_id,
-            author_id: topic.author_id,
-            author_profile,
-            title: topic.title,
-            slug: topic.slug,
-            body: topic.body,
-            body_format: topic.body_format,
-            status: topic.status,
-            tags: topic.tags,
-            channel_slugs: topic.channel_slugs,
-            vote_score: topic.vote_score,
-            current_user_vote: topic.current_user_vote,
-            is_subscribed: topic.is_subscribed,
-            solution_reply_id: topic.solution_reply_id,
-            is_pinned: topic.is_pinned,
-            is_locked: topic.is_locked,
-            reply_count: topic.reply_count,
-            created_at: topic.created_at,
-            updated_at: topic.updated_at,
-        })
+        Ok(map_topic(topic, author_profile))
     }
 
     async fn set_forum_reply_vote(
@@ -781,32 +633,7 @@ impl ForumMutation {
         )
         .await?;
 
-        Ok(GqlForumTopic {
-            id: topic.id,
-            requested_locale: topic.requested_locale,
-            locale: topic.locale,
-            effective_locale: topic.effective_locale,
-            available_locales: topic.available_locales,
-            category_id: topic.category_id,
-            author_id: topic.author_id,
-            author_profile,
-            title: topic.title,
-            slug: topic.slug,
-            body: topic.body,
-            body_format: topic.body_format,
-            status: topic.status,
-            tags: topic.tags,
-            channel_slugs: topic.channel_slugs,
-            vote_score: topic.vote_score,
-            current_user_vote: topic.current_user_vote,
-            is_subscribed: topic.is_subscribed,
-            solution_reply_id: topic.solution_reply_id,
-            is_pinned: topic.is_pinned,
-            is_locked: topic.is_locked,
-            reply_count: topic.reply_count,
-            created_at: topic.created_at,
-            updated_at: topic.updated_at,
-        })
+        Ok(map_topic(topic, author_profile))
     }
 
     async fn clear_forum_topic_solution(
@@ -853,32 +680,7 @@ impl ForumMutation {
         )
         .await?;
 
-        Ok(GqlForumTopic {
-            id: topic.id,
-            requested_locale: topic.requested_locale,
-            locale: topic.locale,
-            effective_locale: topic.effective_locale,
-            available_locales: topic.available_locales,
-            category_id: topic.category_id,
-            author_id: topic.author_id,
-            author_profile,
-            title: topic.title,
-            slug: topic.slug,
-            body: topic.body,
-            body_format: topic.body_format,
-            status: topic.status,
-            tags: topic.tags,
-            channel_slugs: topic.channel_slugs,
-            vote_score: topic.vote_score,
-            current_user_vote: topic.current_user_vote,
-            is_subscribed: topic.is_subscribed,
-            solution_reply_id: topic.solution_reply_id,
-            is_pinned: topic.is_pinned,
-            is_locked: topic.is_locked,
-            reply_count: topic.reply_count,
-            created_at: topic.created_at,
-            updated_at: topic.updated_at,
-        })
+        Ok(map_topic(topic, author_profile))
     }
 
     async fn create_forum_category(
@@ -978,4 +780,37 @@ async fn load_author_profile(
         .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
     Ok(profile.map(Into::into))
+}
+
+fn map_topic(
+    topic: crate::TopicResponse,
+    author_profile: Option<GqlProfileSummary>,
+) -> GqlForumTopic {
+    GqlForumTopic {
+        id: topic.id,
+        requested_locale: topic.requested_locale,
+        locale: topic.locale,
+        effective_locale: topic.effective_locale,
+        available_locales: topic.available_locales,
+        category_id: topic.category_id,
+        author_id: topic.author_id,
+        author_profile,
+        title: topic.title,
+        slug: topic.slug,
+        body: topic.body,
+        body_format: topic.body_format,
+        metadata: topic.metadata,
+        status: topic.status,
+        tags: topic.tags,
+        channel_slugs: topic.channel_slugs,
+        vote_score: topic.vote_score,
+        current_user_vote: topic.current_user_vote,
+        is_subscribed: topic.is_subscribed,
+        solution_reply_id: topic.solution_reply_id,
+        is_pinned: topic.is_pinned,
+        is_locked: topic.is_locked,
+        reply_count: topic.reply_count,
+        created_at: topic.created_at,
+        updated_at: topic.updated_at,
+    }
 }

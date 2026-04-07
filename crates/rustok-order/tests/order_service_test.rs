@@ -1,12 +1,18 @@
+use chrono::Utc;
 use rust_decimal::Decimal;
 use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
 use rustok_order::error::OrderError;
 use rustok_order::services::OrderService;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use std::str::FromStr;
 use uuid::Uuid;
 
 mod support;
+
+mod order_field_definitions {
+    rustok_core::define_field_definitions_entity!("order_field_definitions");
+}
 
 async fn setup() -> OrderService {
     let db = setup_test_db().await;
@@ -22,6 +28,7 @@ fn create_order_input() -> CreateOrderInput {
             CreateOrderLineItemInput {
                 product_id: Some(Uuid::new_v4()),
                 variant_id: Some(Uuid::new_v4()),
+                shipping_profile_slug: "default".to_string(),
                 sku: Some("SKU-1".to_string()),
                 title: "Test product".to_string(),
                 quantity: 2,
@@ -31,6 +38,7 @@ fn create_order_input() -> CreateOrderInput {
             CreateOrderLineItemInput {
                 product_id: None,
                 variant_id: None,
+                shipping_profile_slug: "gift".to_string(),
                 sku: Some("SKU-2".to_string()),
                 title: "Gift wrap".to_string(),
                 quantity: 1,
@@ -167,4 +175,66 @@ async fn invalid_transition_is_rejected() {
         }
         other => panic!("expected invalid transition, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn localized_order_custom_fields_resolve_from_attached_values() {
+    let db = setup_test_db().await;
+    support::ensure_order_schema(&db).await;
+    let service = OrderService::new(db.clone(), mock_transactional_event_bus());
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let now = Utc::now();
+
+    order_field_definitions::ActiveModel {
+        id: Set(rustok_core::generate_id()),
+        tenant_id: Set(tenant_id),
+        field_key: Set("gift_message".to_string()),
+        field_type: Set("Text".to_string()),
+        label: Set(serde_json::json!({ "en": "Gift message" })),
+        description: Set(None),
+        is_localized: Set(true),
+        is_required: Set(false),
+        default_value: Set(None),
+        validation: Set(None),
+        position: Set(0),
+        is_active: Set(true),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(&db)
+    .await
+    .expect("field definition should insert");
+
+    let created = service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                metadata: serde_json::json!({
+                    "locale": "de-DE",
+                    "gift_message": "Danke",
+                    "source": "order-test"
+                }),
+                ..create_order_input()
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    assert_eq!(created.metadata["gift_message"], serde_json::json!("Danke"));
+    assert_eq!(created.metadata["source"], serde_json::json!("order-test"));
+
+    let storefront_view = service
+        .get_order_with_locale_fallback(tenant_id, created.id, "de-DE", Some("en"))
+        .await
+        .expect("order should load with locale fallback");
+    assert_eq!(
+        storefront_view.metadata["gift_message"],
+        serde_json::json!("Danke")
+    );
+    assert_eq!(
+        storefront_view.metadata["source"],
+        serde_json::json!("order-test")
+    );
 }

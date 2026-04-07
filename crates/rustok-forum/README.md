@@ -15,6 +15,8 @@
 - Own accepted-solution workflow for Q&A-style topics through forum-owned `forum_solutions`.
 - Own forum topic tag attachments through forum-owned `forum_topic_tags` while reusing
   `rustok-taxonomy` as the shared term dictionary.
+- Own forum topic donor payload in `forum_topics.metadata`, including the live attached-mode
+  Flex integration for locale-aware custom fields through parallel localized records.
 - Apply module-owned reply lifecycle rules, including pending replies for moderated categories and approved-only public storefront reads.
 - Own forum storage tables for categories, topics, translations, replies, and channel access.
 - Expose shared multilingual contract fields on forum read surfaces:
@@ -58,6 +60,11 @@
 - Topic tag write-paths now resolve existing global taxonomy tags before creating
   new forum-local terms, while forum responses still expose the same `Vec<String>`
   tag contract.
+- Topic metadata now participates in the same multilingual attached-value contract as
+  other live Flex donors: shared keys stay in `forum_topics.metadata`, locale-aware
+  keys persist in `flex_attached_localized_values`, and read surfaces resolve them
+  against the effective locale/fallback chain instead of treating topic custom fields
+  as a schema-only concern.
 
 ## Entry points
 

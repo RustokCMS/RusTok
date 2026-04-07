@@ -35,5 +35,6 @@ pub mod user_field_service;
 
 pub mod field_definition_cache;
 pub mod field_definition_registry_bootstrap;
+pub mod flex_attached_values;
 pub mod flex_standalone_service;
 pub mod flex_standalone_validation_service;

@@ -122,6 +122,7 @@ fn create_topic_input_fields() {
         body: "World".to_string(),
         body_format: "markdown".to_string(),
         content_json: None,
+        metadata: serde_json::json!({}),
         tags: vec!["tag1".to_string()],
         channel_slugs: None,
     };

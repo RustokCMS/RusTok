@@ -26,7 +26,11 @@ impl MigrationTrait for Migration {
                             .string_len(255)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(FlexSchemaTranslations::Description).text().null())
+                    .col(
+                        ColumnDef::new(FlexSchemaTranslations::Description)
+                            .text()
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(FlexSchemaTranslations::CreatedAt)
                             .timestamp_with_time_zone()

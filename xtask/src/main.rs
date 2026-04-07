@@ -2043,18 +2043,90 @@ fn to_pascal_case(s: &str) -> String {
 mod tests {
     use super::{
         auto_approve_argument, build_live_owner_transfer_registry_request,
-        build_live_validation_stage_registry_request, build_module_test_plan,
-        build_owner_transfer_registry_request, build_publish_registry_request,
-        build_validation_stage_registry_request, build_yank_registry_request, detail_argument,
-        module_owner_transfer_command, module_stage_command, reason_argument,
-        registry_endpoint_uses_loopback, resolve_workspace_inherited_string,
-        validate_module_publish_contract, validate_module_ui_surface_contract,
-        ModuleMarketplacePreview, ModuleOwnerTransferDryRunPreview, ModulePackageManifest,
-        ModulePublishDryRunPreview, ModuleUiPackagePreview, ModuleUiPackagesPreview,
-        ModuleValidationStageDryRunPreview, ModuleYankDryRunPreview,
-        REGISTRY_MUTATION_SCHEMA_VERSION,
+        build_live_publish_registry_request, build_live_validation_stage_registry_request,
+        build_module_test_plan, build_owner_transfer_registry_request,
+        build_publish_registry_request, build_validation_stage_registry_request,
+        build_yank_registry_request, detail_argument, module_owner_transfer_command,
+        module_publish_command, module_stage_command, module_test_command, module_yank_command,
+        reason_argument, registry_endpoint_uses_loopback, registry_url_argument,
+        resolve_workspace_inherited_string, validate_module_publish_contract,
+        validate_module_ui_surface_contract, workspace_root, ModuleMarketplacePreview,
+        ModuleOwnerTransferDryRunPreview, ModulePackageManifest, ModulePublishDryRunPreview,
+        ModuleUiPackagePreview, ModuleUiPackagesPreview, ModuleValidationStageDryRunPreview,
+        ModuleYankDryRunPreview, REGISTRY_MUTATION_SCHEMA_VERSION,
     };
-    use std::path::Path;
+    use std::{
+        env,
+        path::{Path, PathBuf},
+        sync::{Mutex, MutexGuard, OnceLock},
+    };
+
+    struct WorkspaceRootGuard {
+        previous_dir: PathBuf,
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl WorkspaceRootGuard {
+        fn enter() -> Self {
+            static WORKSPACE_CWD_GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+
+            let lock = WORKSPACE_CWD_GUARD
+                .get_or_init(|| Mutex::new(()))
+                .lock()
+                .expect("workspace cwd guard should lock");
+            let previous_dir = env::current_dir().expect("current dir should resolve");
+            env::set_current_dir(workspace_root()).expect("workspace root should be accessible");
+
+            Self {
+                previous_dir,
+                _lock: lock,
+            }
+        }
+    }
+
+    impl Drop for WorkspaceRootGuard {
+        fn drop(&mut self) {
+            env::set_current_dir(&self.previous_dir)
+                .expect("current dir should restore after xtask test");
+        }
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous_value: Option<String>,
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: Option<&str>) -> Self {
+            static ENV_VAR_GUARD: OnceLock<Mutex<()>> = OnceLock::new();
+
+            let lock = ENV_VAR_GUARD
+                .get_or_init(|| Mutex::new(()))
+                .lock()
+                .expect("env var guard should lock");
+            let previous_value = env::var(key).ok();
+            match value {
+                Some(value) => env::set_var(key, value),
+                None => env::remove_var(key),
+            }
+
+            Self {
+                key,
+                previous_value,
+                _lock: lock,
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous_value {
+                Some(value) => env::set_var(self.key, value),
+                None => env::remove_var(self.key),
+            }
+        }
+    }
 
     #[test]
     fn resolve_workspace_inherited_string_uses_workspace_package_value() {
@@ -2241,6 +2313,90 @@ mod tests {
     }
 
     #[test]
+    fn build_live_publish_registry_request_turns_off_dry_run() {
+        let preview = ModulePublishDryRunPreview {
+            slug: "blog".to_string(),
+            version: "1.2.3".to_string(),
+            crate_name: "rustok-blog".to_string(),
+            module_name: "Blog".to_string(),
+            module_description: "A blog module description long enough.".to_string(),
+            ownership: "first_party".to_string(),
+            trust_level: "verified".to_string(),
+            license: "MIT".to_string(),
+            manifest_path: "modules.toml".to_string(),
+            package_manifest_path: "crates/rustok-blog/rustok-module.toml".to_string(),
+            module_entry_type: Some("BlogModule".to_string()),
+            marketplace: ModuleMarketplacePreview {
+                category: Some("content".to_string()),
+                tags: vec!["content".to_string(), "editorial".to_string()],
+            },
+            ui_packages: ModuleUiPackagesPreview {
+                admin: Some(ModuleUiPackagePreview {
+                    crate_name: "rustok-blog-admin".to_string(),
+                    manifest_path: "crates/rustok-blog/admin/Cargo.toml".to_string(),
+                }),
+                storefront: Some(ModuleUiPackagePreview {
+                    crate_name: "rustok-blog-storefront".to_string(),
+                    manifest_path: "crates/rustok-blog/storefront/Cargo.toml".to_string(),
+                }),
+            },
+        };
+
+        let request_body = serde_json::to_value(build_live_publish_registry_request(&preview))
+            .expect("live publish request should serialize");
+
+        assert_eq!(request_body["dry_run"], false);
+        assert_eq!(request_body["module"]["slug"], "blog");
+    }
+
+    #[test]
+    fn module_publish_command_requires_slug() {
+        let error = module_publish_command(&[])
+            .expect_err("publish command without slug should fail immediately");
+
+        assert!(error
+            .to_string()
+            .contains("module publish requires a module slug"));
+    }
+
+    #[test]
+    fn module_publish_command_live_requires_registry_url() {
+        let _cwd_guard = WorkspaceRootGuard::enter();
+        let _env_guard = EnvVarGuard::set("RUSTOK_MODULE_REGISTRY_URL", None);
+        let args = vec!["blog".to_string()];
+
+        let error = module_publish_command(&args)
+            .expect_err("live publish should require registry url before any network call");
+
+        assert!(error
+            .to_string()
+            .contains("Live module publish requires --registry-url"));
+    }
+
+    #[test]
+    fn module_publish_command_rejects_unknown_slug() {
+        let _cwd_guard = WorkspaceRootGuard::enter();
+        let args = vec!["missing-module".to_string(), "--dry-run".to_string()];
+
+        let error = module_publish_command(&args)
+            .expect_err("unknown slug should fail before any network call");
+
+        assert!(error
+            .to_string()
+            .contains("Unknown module slug 'missing-module'"));
+    }
+
+    #[test]
+    fn module_test_command_requires_slug() {
+        let error =
+            module_test_command(&[]).expect_err("module test without slug should fail immediately");
+
+        assert!(error
+            .to_string()
+            .contains("module test requires a module slug"));
+    }
+
+    #[test]
     fn build_validation_stage_registry_request_serializes_stage_contract() {
         let preview = ModuleValidationStageDryRunPreview {
             action: "validation_stage".to_string(),
@@ -2403,6 +2559,18 @@ mod tests {
     }
 
     #[test]
+    fn module_stage_command_requires_request_stage_and_status() {
+        let args = vec!["rpr_test".to_string(), "compile_smoke".to_string()];
+
+        let error = module_stage_command(&args)
+            .expect_err("stage command without full argument set should fail immediately");
+
+        assert!(error
+            .to_string()
+            .contains("module stage requires a request id, stage key, and status"));
+    }
+
+    #[test]
     fn module_stage_command_rejects_requeue_without_queued_status() {
         let args = vec![
             "rpr_test".to_string(),
@@ -2417,6 +2585,81 @@ mod tests {
         assert!(error
             .to_string()
             .contains("module stage --requeue requires status 'queued'"));
+    }
+
+    #[test]
+    fn module_stage_command_rejects_empty_request_id() {
+        let args = vec![
+            "   ".to_string(),
+            "compile_smoke".to_string(),
+            "queued".to_string(),
+        ];
+
+        let error = module_stage_command(&args)
+            .expect_err("empty request id should fail before any registry lookup");
+
+        assert!(error
+            .to_string()
+            .contains("module stage requires a non-empty request id"));
+    }
+
+    #[test]
+    fn module_stage_command_rejects_empty_stage_key() {
+        let args = vec![
+            "rpr_test".to_string(),
+            "   ".to_string(),
+            "queued".to_string(),
+        ];
+
+        let error = module_stage_command(&args)
+            .expect_err("empty stage key should fail before any registry lookup");
+
+        assert!(error
+            .to_string()
+            .contains("module stage requires a non-empty stage key"));
+    }
+
+    #[test]
+    fn module_stage_command_live_requires_registry_url() {
+        let args = vec![
+            "rpr_test".to_string(),
+            "compile_smoke".to_string(),
+            "running".to_string(),
+        ];
+
+        let error = module_stage_command(&args)
+            .expect_err("live stage update should require registry url before any network call");
+
+        assert!(error
+            .to_string()
+            .contains("Live module stage update requires --registry-url"));
+    }
+
+    #[test]
+    fn registry_url_argument_prefers_cli_value_over_env() {
+        let _guard = EnvVarGuard::set("RUSTOK_MODULE_REGISTRY_URL", Some("http://env.example"));
+
+        assert_eq!(
+            registry_url_argument(&[
+                "--registry-url".to_string(),
+                "  http://cli.example  ".to_string(),
+            ]),
+            Some("http://cli.example".to_string())
+        );
+    }
+
+    #[test]
+    fn registry_url_argument_uses_trimmed_env_and_ignores_blank_values() {
+        let _guard = EnvVarGuard::set("RUSTOK_MODULE_REGISTRY_URL", Some("  http://env.example  "));
+        assert_eq!(
+            registry_url_argument(&[]),
+            Some("http://env.example".to_string())
+        );
+
+        drop(_guard);
+
+        let _guard = EnvVarGuard::set("RUSTOK_MODULE_REGISTRY_URL", Some("   "));
+        assert_eq!(registry_url_argument(&[]), None);
     }
 
     #[test]
@@ -2453,6 +2696,116 @@ mod tests {
         assert!(error
             .to_string()
             .contains("module owner-transfer requires a non-empty new owner actor"));
+    }
+
+    #[test]
+    fn module_owner_transfer_command_requires_slug_and_new_owner_actor() {
+        let args = vec!["blog".to_string()];
+
+        let error = module_owner_transfer_command(&args)
+            .expect_err("owner-transfer command without actor should fail immediately");
+
+        assert!(error
+            .to_string()
+            .contains("module owner-transfer requires a module slug and new owner actor"));
+    }
+
+    #[test]
+    fn module_owner_transfer_command_live_requires_reason() {
+        let _guard = WorkspaceRootGuard::enter();
+        let args = vec![
+            "blog".to_string(),
+            "publisher:forum".to_string(),
+            "--registry-url".to_string(),
+            "http://127.0.0.1:5150".to_string(),
+        ];
+
+        let error = module_owner_transfer_command(&args)
+            .expect_err("live owner-transfer should require reason before any network call");
+
+        assert!(error
+            .to_string()
+            .contains("Live module owner-transfer requires --reason <text>"));
+    }
+
+    #[test]
+    fn module_owner_transfer_command_live_requires_registry_url() {
+        let _cwd_guard = WorkspaceRootGuard::enter();
+        let _env_guard = EnvVarGuard::set("RUSTOK_MODULE_REGISTRY_URL", None);
+        let args = vec![
+            "blog".to_string(),
+            "publisher:forum".to_string(),
+            "--reason".to_string(),
+            "ownership move".to_string(),
+        ];
+
+        let error = module_owner_transfer_command(&args)
+            .expect_err("live owner-transfer should require registry url before any network call");
+
+        assert!(error
+            .to_string()
+            .contains("Live module owner-transfer requires --registry-url"));
+    }
+
+    #[test]
+    fn module_yank_command_live_requires_reason() {
+        let _guard = WorkspaceRootGuard::enter();
+        let args = vec![
+            "blog".to_string(),
+            "1.2.3".to_string(),
+            "--registry-url".to_string(),
+            "http://127.0.0.1:5150".to_string(),
+        ];
+
+        let error = module_yank_command(&args)
+            .expect_err("live yank should require reason before any network call");
+
+        assert!(error
+            .to_string()
+            .contains("Live module yank requires --reason <text>"));
+    }
+
+    #[test]
+    fn module_yank_command_requires_slug_and_version() {
+        let args = vec!["blog".to_string()];
+
+        let error = module_yank_command(&args)
+            .expect_err("yank command without version should fail immediately");
+
+        assert!(error
+            .to_string()
+            .contains("module yank requires a module slug and version"));
+    }
+
+    #[test]
+    fn module_yank_command_live_requires_registry_url() {
+        let _cwd_guard = WorkspaceRootGuard::enter();
+        let _env_guard = EnvVarGuard::set("RUSTOK_MODULE_REGISTRY_URL", None);
+        let args = vec![
+            "blog".to_string(),
+            "1.2.3".to_string(),
+            "--reason".to_string(),
+            "policy rollback".to_string(),
+        ];
+
+        let error = module_yank_command(&args)
+            .expect_err("live yank should require registry url before any network call");
+
+        assert!(error
+            .to_string()
+            .contains("Live module yank requires --registry-url"));
+    }
+
+    #[test]
+    fn module_yank_command_rejects_invalid_semver() {
+        let args = vec!["blog".to_string(), "not-a-version".to_string()];
+
+        let error = module_yank_command(&args)
+            .expect_err("invalid semver should fail before any manifest lookup");
+
+        assert!(error
+            .to_string()
+            .contains("module yank version 'not-a-version' is not valid semver"));
     }
 
     #[test]

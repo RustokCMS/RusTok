@@ -168,6 +168,7 @@ impl CommerceQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let locale = resolve_graphql_locale(ctx, None);
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
@@ -181,7 +182,12 @@ impl CommerceQuery {
                 other => async_graphql::Error::new(other.to_string()),
             })?;
         let order = match OrderService::new(db.clone(), event_bus.clone())
-            .get_order(tenant_id, id)
+            .get_order_with_locale_fallback(
+                tenant_id,
+                id,
+                locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
             .await
         {
             Ok(order) => order,
@@ -246,9 +252,16 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = resolve_graphql_locale(ctx, None);
 
         let order = match OrderService::new(db.clone(), event_bus.clone())
-            .get_order(tenant_id, id)
+            .get_order_with_locale_fallback(
+                tenant_id,
+                id,
+                locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+            )
             .await
         {
             Ok(order) => order,
@@ -286,6 +299,8 @@ impl CommerceQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = resolve_graphql_locale(ctx, None);
         let filter = filter.unwrap_or(OrdersFilter {
             status: None,
             customer_id: None,
@@ -295,7 +310,7 @@ impl CommerceQuery {
         let page = filter.page.unwrap_or(1).max(1);
         let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
         let (orders, total) = OrderService::new(db.clone(), event_bus.clone())
-            .list_orders(
+            .list_orders_with_locale_fallback(
                 tenant_id,
                 crate::dto::ListOrdersInput {
                     page,
@@ -303,6 +318,8 @@ impl CommerceQuery {
                     status: filter.status,
                     customer_id: filter.customer_id,
                 },
+                locale.as_str(),
+                Some(tenant.default_locale.as_str()),
             )
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
@@ -646,7 +663,15 @@ impl CommerceQuery {
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
         let service = CatalogService::new(db.clone(), event_bus.clone());
-        let product = match service.get_product(tenant_id, id).await {
+        let product = match service
+            .get_product_with_locale_fallback(
+                tenant_id,
+                id,
+                &locale,
+                Some(tenant.default_locale.as_str()),
+            )
+            .await
+        {
             Ok(product) => product,
             Err(CommerceError::ProductNotFound(_)) => return Ok(None),
             Err(err) => return Err(err.to_string().into()),
@@ -783,7 +808,15 @@ impl CommerceQuery {
         };
 
         let service = CatalogService::new(db.clone(), event_bus.clone());
-        let mut product = match service.get_product(tenant_id, product_id).await {
+        let mut product = match service
+            .get_product_with_locale_fallback(
+                tenant_id,
+                product_id,
+                &locale,
+                Some(tenant.default_locale.as_str()),
+            )
+            .await
+        {
             Ok(product) => product,
             Err(CommerceError::ProductNotFound(_)) => return Ok(None),
             Err(err) => return Err(err.to_string().into()),

@@ -108,6 +108,7 @@ mod tests {
             field_type: "text".to_string(),
             label: json!({"en": format!("k{idx}")}),
             description: None,
+            is_localized: false,
             is_required: false,
             default_value: None,
             validation: None,

@@ -12,6 +12,7 @@ rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
 rustok-commerce-foundation.workspace = true
+flex.workspace = true
 rustok-taxonomy.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true

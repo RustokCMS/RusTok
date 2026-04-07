@@ -10143,6 +10143,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "flex",
  "loco-rs",
  "rustok-api",
  "rustok-channel",
@@ -10363,6 +10364,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "flex",
  "rust_decimal",
  "rustok-core",
  "rustok-events",
@@ -10514,6 +10516,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "flex",
  "rust_decimal",
  "rustok-commerce-foundation",
  "rustok-core",

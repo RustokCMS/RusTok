@@ -113,6 +113,7 @@ impl UserFieldService {
                 .description
                 .as_ref()
                 .map(|d| serde_json::to_value(d).unwrap_or_default())),
+            is_localized: Set(input.is_localized),
             is_required: Set(input.is_required),
             default_value: Set(input.default_value.clone()),
             validation: Set(input
@@ -167,6 +168,9 @@ impl UserFieldService {
         }
         if let Some(desc) = input.description {
             model.description = Set(Some(serde_json::to_value(desc).unwrap_or_default()));
+        }
+        if let Some(is_localized) = input.is_localized {
+            model.is_localized = Set(is_localized);
         }
         if let Some(req) = input.is_required {
             model.is_required = Set(req);
@@ -318,6 +322,7 @@ mod tests {
             field_type: FieldType::Text,
             label: HashMap::from([("en".to_string(), "Label".to_string())]),
             description: None,
+            is_localized: false,
             is_required: false,
             default_value: None,
             validation: None,
@@ -334,6 +339,7 @@ mod tests {
             field_type: "text".to_string(),
             label: json!({"en": "Label"}),
             description: None,
+            is_localized: false,
             is_required: false,
             default_value: None,
             validation: None,
@@ -356,6 +362,7 @@ mod tests {
             field_type: Set(model.field_type),
             label: Set(model.label),
             description: Set(model.description),
+            is_localized: Set(model.is_localized),
             is_required: Set(model.is_required),
             default_value: Set(model.default_value),
             validation: Set(model.validation),
@@ -468,6 +475,7 @@ mod tests {
         insert_row(&db, existing).await;
 
         let input = crate::models::user_field_definitions::UpdateFieldDefinitionInput {
+            is_localized: Some(true),
             is_required: Some(true),
             ..Default::default()
         };
@@ -477,6 +485,7 @@ mod tests {
             .expect("update should succeed");
 
         assert!(model.is_required);
+        assert!(model.is_localized);
         assert_eq!(envelope.tenant_id, tenant_id);
         assert_eq!(envelope.actor_id, Some(actor_id));
         match envelope.event {

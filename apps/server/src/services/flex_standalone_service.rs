@@ -30,6 +30,7 @@ impl FlexStandaloneSeaOrmService {
         model: flex_schemas::Model,
         translation: Option<&flex_schema_translations::Model>,
     ) -> flex::FlexSchemaView {
+        let slug_fallback = model.slug.clone();
         let fields_config = model.parse_field_definitions().unwrap_or_default();
 
         flex::FlexSchemaView {
@@ -37,7 +38,7 @@ impl FlexStandaloneSeaOrmService {
             slug: model.slug,
             name: translation
                 .map(|row| row.name.clone())
-                .unwrap_or_else(|| model.slug.clone()),
+                .unwrap_or(slug_fallback),
             description: translation.and_then(|row| row.description.clone()),
             fields_config,
             settings: model.settings,
@@ -74,8 +75,7 @@ impl FlexStandaloneSeaOrmService {
     }
 
     async fn tenant_default_locale(&self, tenant_id: Uuid) -> Result<String, FlexError> {
-        let tenant = tenants::Entity::find_by_id(tenant_id)
-            .one(&self.db)
+        let tenant = tenants::Entity::find_by_id(&self.db, tenant_id)
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
@@ -491,19 +491,15 @@ mod tests {
     fn select_schema_translation_falls_back_to_en_then_first_available() {
         let translations = vec![translation("ru", "Russian"), translation("en", "English")];
 
-        let selected = FlexStandaloneSeaOrmService::select_schema_translation(
-            &translations,
-            "de-DE",
-        )
-        .expect("translation must be selected");
+        let selected =
+            FlexStandaloneSeaOrmService::select_schema_translation(&translations, "de-DE")
+                .expect("translation must be selected");
         assert_eq!(selected.locale, "en");
 
         let translations = vec![translation("ru", "Russian")];
-        let selected = FlexStandaloneSeaOrmService::select_schema_translation(
-            &translations,
-            "de-DE",
-        )
-        .expect("translation must be selected");
+        let selected =
+            FlexStandaloneSeaOrmService::select_schema_translation(&translations, "de-DE")
+                .expect("translation must be selected");
         assert_eq!(selected.locale, "ru");
     }
 }

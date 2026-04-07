@@ -1,15 +1,19 @@
 use chrono::Utc;
+use flex::{persist_localized_values, prepare_attached_values_create, resolve_attached_payload};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait,
 };
+use serde_json::Value;
+use std::collections::HashSet;
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::generate_id;
+use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
+use rustok_core::{generate_id, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
@@ -26,6 +30,10 @@ const STATUS_PAID: &str = "paid";
 const STATUS_SHIPPED: &str = "shipped";
 const STATUS_DELIVERED: &str = "delivered";
 const STATUS_CANCELLED: &str = "cancelled";
+
+mod order_field_definitions_storage {
+    rustok_core::define_field_definitions_entity!("order_field_definitions");
+}
 
 pub struct OrderService {
     db: DatabaseConnection,
@@ -70,6 +78,18 @@ impl OrderService {
         let channel_slug = channel_slug
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        let preferred_locale = Self::preferred_order_locale_from_metadata(&input.metadata);
+        let prepared_custom_fields = self
+            .prepare_order_custom_fields_for_create(
+                tenant_id,
+                preferred_locale.as_str(),
+                input.metadata.clone(),
+            )
+            .await?;
+        let order_metadata = prepared_custom_fields
+            .metadata
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({}));
 
         let mut total_amount = Decimal::ZERO;
         for item in &input.line_items {
@@ -90,7 +110,7 @@ impl OrderService {
             status: Set(STATUS_PENDING.to_string()),
             currency_code: Set(currency_code.clone()),
             total_amount: Set(total_amount),
-            metadata: Set(input.metadata.clone()),
+            metadata: Set(order_metadata),
             payment_id: Set(None),
             payment_method: Set(None),
             tracking_number: Set(None),
@@ -107,6 +127,15 @@ impl OrderService {
         }
         .insert(&txn)
         .await?;
+
+        if let (Some(locale), Some(values)) = (
+            prepared_custom_fields.locale.as_deref(),
+            prepared_custom_fields.localized_values.as_ref(),
+        ) {
+            persist_localized_values(&txn, tenant_id, "order", order_id, locale, values)
+                .await
+                .map_err(|error| OrderError::Validation(error.to_string()))?;
+        }
 
         for item in &input.line_items {
             entities::order_line_item::ActiveModel {
@@ -143,19 +172,43 @@ impl OrderService {
             .await?;
 
         txn.commit().await?;
-        self.get_order(tenant_id, order_id).await
+        self.get_order_with_locale_fallback(tenant_id, order_id, preferred_locale.as_str(), None)
+            .await
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id, order_id = %order_id))]
     pub async fn get_order(&self, tenant_id: Uuid, order_id: Uuid) -> OrderResult<OrderResponse> {
+        self.get_order_with_locale_fallback(tenant_id, order_id, PLATFORM_FALLBACK_LOCALE, None)
+            .await
+    }
+
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, order_id = %order_id, locale = %locale, fallback_locale = ?fallback_locale))]
+    pub async fn get_order_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        order_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> OrderResult<OrderResponse> {
         let order = self.load_order_model(tenant_id, order_id).await?;
-        self.build_response(order).await
+        self.build_response(order, locale, fallback_locale).await
     }
 
     pub async fn list_orders(
         &self,
         tenant_id: Uuid,
         input: ListOrdersInput,
+    ) -> OrderResult<(Vec<OrderResponse>, u64)> {
+        self.list_orders_with_locale_fallback(tenant_id, input, PLATFORM_FALLBACK_LOCALE, None)
+            .await
+    }
+
+    pub async fn list_orders_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        input: ListOrdersInput,
+        locale: &str,
+        fallback_locale: Option<&str>,
     ) -> OrderResult<(Vec<OrderResponse>, u64)> {
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
@@ -184,7 +237,7 @@ impl OrderService {
 
         let mut items = Vec::with_capacity(orders.len());
         for order in orders {
-            items.push(self.build_response(order).await?);
+            items.push(self.build_response(order, locale, fallback_locale).await?);
         }
 
         Ok((items, total))
@@ -278,6 +331,7 @@ impl OrderService {
         let existing = self
             .load_order_model_in_tx(&txn, tenant_id, order_id)
             .await?;
+        let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata);
         if existing.status != STATUS_SHIPPED {
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
@@ -313,7 +367,8 @@ impl OrderService {
             .await?;
 
         txn.commit().await?;
-        self.get_order(tenant_id, order_id).await
+        self.get_order_with_locale_fallback(tenant_id, order_id, preferred_locale.as_str(), None)
+            .await
     }
 
     pub async fn cancel_order(
@@ -327,6 +382,7 @@ impl OrderService {
         let existing = self
             .load_order_model_in_tx(&txn, tenant_id, order_id)
             .await?;
+        let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata);
         if !can_cancel(&existing.status) {
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
@@ -366,7 +422,8 @@ impl OrderService {
             .await?;
 
         txn.commit().await?;
-        self.get_order(tenant_id, order_id).await
+        self.get_order_with_locale_fallback(tenant_id, order_id, preferred_locale.as_str(), None)
+            .await
     }
 
     async fn transition_order<F>(
@@ -385,6 +442,7 @@ impl OrderService {
         let existing = self
             .load_order_model_in_tx(&txn, tenant_id, order_id)
             .await?;
+        let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata);
         if existing.status != expected_from {
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
@@ -411,7 +469,8 @@ impl OrderService {
         .await?;
 
         txn.commit().await?;
-        self.get_order(tenant_id, order_id).await
+        self.get_order_with_locale_fallback(tenant_id, order_id, preferred_locale.as_str(), None)
+            .await
     }
 
     async fn publish_status_changed<C>(
@@ -467,11 +526,25 @@ impl OrderService {
             .ok_or(OrderError::OrderNotFound(order_id))
     }
 
-    async fn build_response(&self, order: entities::order::Model) -> OrderResult<OrderResponse> {
+    async fn build_response(
+        &self,
+        order: entities::order::Model,
+        preferred_locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> OrderResult<OrderResponse> {
         let line_items = entities::order_line_item::Entity::find()
             .filter(entities::order_line_item::Column::OrderId.eq(order.id))
             .order_by_asc(entities::order_line_item::Column::CreatedAt)
             .all(&self.db)
+            .await?;
+        let resolved_metadata = self
+            .resolve_order_metadata(
+                order.tenant_id,
+                order.id,
+                preferred_locale,
+                fallback_locale,
+                &order.metadata,
+            )
             .await?;
 
         Ok(OrderResponse {
@@ -483,7 +556,7 @@ impl OrderService {
             status: order.status,
             currency_code: order.currency_code,
             total_amount: order.total_amount,
-            metadata: order.metadata,
+            metadata: resolved_metadata,
             payment_id: order.payment_id,
             payment_method: order.payment_method,
             tracking_number: order.tracking_number,
@@ -528,6 +601,90 @@ impl OrderService {
         }
         Ok(())
     }
+
+    async fn prepare_order_custom_fields_for_create(
+        &self,
+        tenant_id: Uuid,
+        locale: &str,
+        metadata: Value,
+    ) -> OrderResult<flex::PreparedAttachedValuesWrite> {
+        let schema = load_order_custom_fields_schema(&self.db, tenant_id).await?;
+        if schema.active_definitions().is_empty() {
+            return Ok(
+                prepare_attached_values_create(schema, Some(metadata), locale)
+                    .map_err(|error| OrderError::Validation(error.to_string()))?,
+            );
+        }
+
+        let (reserved_metadata, custom_fields) = split_order_metadata_payload(&schema, &metadata);
+        let prepared =
+            prepare_attached_values_create(schema, Some(Value::Object(custom_fields)), locale)
+                .map_err(|error| OrderError::Validation(error.to_string()))?;
+
+        Ok(flex::PreparedAttachedValuesWrite {
+            metadata: Some(merge_reserved_order_metadata(
+                reserved_metadata,
+                prepared.metadata,
+            )),
+            localized_values: prepared.localized_values,
+            locale: prepared.locale,
+        })
+    }
+
+    async fn resolve_order_metadata(
+        &self,
+        tenant_id: Uuid,
+        order_id: Uuid,
+        preferred_locale: &str,
+        fallback_locale: Option<&str>,
+        metadata: &Value,
+    ) -> OrderResult<Value> {
+        let schema = load_order_custom_fields_schema(&self.db, tenant_id).await?;
+        let resolved = resolve_attached_payload(
+            &self.db,
+            tenant_id,
+            "order",
+            order_id,
+            schema,
+            metadata,
+            preferred_locale,
+            fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE),
+        )
+        .await
+        .map_err(|error| OrderError::Validation(error.to_string()))?;
+
+        Ok(resolved.unwrap_or_else(|| serde_json::json!({})))
+    }
+
+    fn preferred_order_locale_from_metadata(metadata: &Value) -> String {
+        metadata
+            .get("locale")
+            .and_then(Value::as_str)
+            .or_else(|| metadata.get("locale_code").and_then(Value::as_str))
+            .or_else(|| {
+                metadata
+                    .get("cart_context")
+                    .and_then(Value::as_object)
+                    .and_then(|context| context.get("locale"))
+                    .and_then(Value::as_str)
+            })
+            .or_else(|| {
+                metadata
+                    .get("context")
+                    .and_then(Value::as_object)
+                    .and_then(|context| context.get("locale"))
+                    .and_then(Value::as_str)
+            })
+            .or_else(|| {
+                metadata
+                    .get("store_context")
+                    .and_then(Value::as_object)
+                    .and_then(|context| context.get("locale"))
+                    .and_then(Value::as_str)
+            })
+            .and_then(normalize_locale_tag)
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
+    }
 }
 
 fn can_cancel(status: &str) -> bool {
@@ -539,4 +696,89 @@ fn can_cancel(status: &str) -> bool {
 
 fn decimal_to_minor_units(amount: Decimal) -> Option<i64> {
     (amount.round_dp(2) * Decimal::from(100)).to_i64()
+}
+
+async fn load_order_custom_fields_schema(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+) -> OrderResult<CustomFieldsSchema> {
+    let rows = order_field_definitions_storage::Entity::find()
+        .filter(order_field_definitions_storage::Column::TenantId.eq(tenant_id))
+        .filter(order_field_definitions_storage::Column::IsActive.eq(true))
+        .order_by_asc(order_field_definitions_storage::Column::Position)
+        .all(db)
+        .await?;
+
+    let definitions = rows
+        .into_iter()
+        .filter_map(order_field_definition_from_row)
+        .collect();
+
+    Ok(CustomFieldsSchema::new(definitions))
+}
+
+fn order_field_definition_from_row(
+    row: order_field_definitions_storage::Model,
+) -> Option<FieldDefinition> {
+    let field_type: FieldType =
+        serde_json::from_value(serde_json::Value::String(row.field_type.clone())).ok()?;
+    let label = serde_json::from_value(row.label).unwrap_or_default();
+    let description = row
+        .description
+        .and_then(|value| serde_json::from_value(value).ok());
+    let validation: Option<ValidationRule> = row
+        .validation
+        .and_then(|value| serde_json::from_value(value).ok());
+
+    Some(FieldDefinition {
+        field_key: row.field_key,
+        field_type,
+        label,
+        description,
+        is_localized: row.is_localized,
+        is_required: row.is_required,
+        default_value: row.default_value,
+        validation,
+        position: row.position,
+        is_active: row.is_active,
+    })
+}
+
+fn split_order_metadata_payload(
+    schema: &CustomFieldsSchema,
+    metadata: &Value,
+) -> (
+    serde_json::Map<String, Value>,
+    serde_json::Map<String, Value>,
+) {
+    let known_keys = schema
+        .active_definitions()
+        .into_iter()
+        .map(|definition| definition.field_key.as_str())
+        .collect::<HashSet<_>>();
+    let mut reserved = serde_json::Map::new();
+    let mut custom_fields = serde_json::Map::new();
+
+    for (key, value) in metadata.as_object().cloned().unwrap_or_default() {
+        if known_keys.contains(key.as_str()) {
+            custom_fields.insert(key, value);
+        } else {
+            reserved.insert(key, value);
+        }
+    }
+
+    (reserved, custom_fields)
+}
+
+fn merge_reserved_order_metadata(
+    mut reserved: serde_json::Map<String, Value>,
+    custom_fields: Option<Value>,
+) -> Value {
+    if let Some(custom_fields) = custom_fields.and_then(|value| value.as_object().cloned()) {
+        for (key, value) in custom_fields {
+            reserved.insert(key, value);
+        }
+    }
+
+    Value::Object(reserved)
 }

@@ -18,7 +18,9 @@ ALTER TABLE tenant_locales
     ALTER COLUMN fallback_locale TYPE VARCHAR(32);
 "#,
             )
-            .await
+            .await?;
+
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -34,6 +36,8 @@ ALTER TABLE tenants
     ALTER COLUMN default_locale TYPE VARCHAR(5);
 "#,
             )
-            .await
+            .await?;
+
+        Ok(())
     }
 }

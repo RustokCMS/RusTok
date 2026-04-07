@@ -40,6 +40,7 @@
 //!         field_type: FieldType::Phone,
 //!         label: [("en".to_string(), "Phone".to_string())].into_iter().collect(),
 //!         description: None,
+//!         is_localized: false,
 //!         is_required: false,
 //!         default_value: None,
 //!         validation: Some(ValidationRule {
@@ -249,6 +250,10 @@ pub struct FieldDefinition {
     /// Optional localized description.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<HashMap<String, String>>,
+    /// Whether the field value belongs to locale-aware parallel records instead
+    /// of a single non-localized owner payload.
+    #[serde(default)]
+    pub is_localized: bool,
     /// Whether a non-null value must be present in metadata.
     #[serde(default)]
     pub is_required: bool,
@@ -1016,6 +1021,7 @@ pub fn json_field_contains(
 /// | field_type | VARCHAR(32) NOT NULL | FieldType serialised |
 /// | label | JSONB NOT NULL | `{"en": "…"}` |
 /// | description | JSONB | nullable |
+/// | is_localized | BOOLEAN NOT NULL DEFAULT false | explicit storage semantics for attached-mode value ownership |
 /// | is_required | BOOLEAN NOT NULL DEFAULT false | |
 /// | default_value | JSONB | nullable |
 /// | validation | JSONB | nullable |
@@ -1071,6 +1077,12 @@ pub async fn create_field_definitions_table(
                 )
                 .col(ColumnDef::new(Alias::new("label")).json_binary().not_null())
                 .col(ColumnDef::new(Alias::new("description")).json_binary())
+                .col(
+                    ColumnDef::new(Alias::new("is_localized"))
+                        .boolean()
+                        .not_null()
+                        .default(false),
+                )
                 .col(
                     ColumnDef::new(Alias::new("is_required"))
                         .boolean()
@@ -1172,6 +1184,7 @@ macro_rules! define_field_definitions_entity {
             pub field_type: String,
             pub label: sea_orm::entity::prelude::Json,
             pub description: Option<sea_orm::entity::prelude::Json>,
+            pub is_localized: bool,
             pub is_required: bool,
             pub default_value: Option<sea_orm::entity::prelude::Json>,
             pub validation: Option<sea_orm::entity::prelude::Json>,
@@ -1205,6 +1218,7 @@ mod tests {
             field_type: FieldType::Text,
             label: [("en".to_string(), key.to_string())].into_iter().collect(),
             description: None,
+            is_localized: false,
             is_required: required,
             default_value: None,
             validation: rule,
@@ -1224,6 +1238,7 @@ mod tests {
             field_type,
             label: [("en".to_string(), key.to_string())].into_iter().collect(),
             description: None,
+            is_localized: false,
             is_required: required,
             default_value: None,
             validation: rule,
@@ -1720,6 +1735,7 @@ mod tests {
                 .into_iter()
                 .collect(),
             description: None,
+            is_localized: false,
             is_required: false,
             default_value: Some(json!("free")),
             validation: None,
@@ -1741,6 +1757,7 @@ mod tests {
                 .into_iter()
                 .collect(),
             description: None,
+            is_localized: false,
             is_required: false,
             default_value: Some(json!("free")),
             validation: None,

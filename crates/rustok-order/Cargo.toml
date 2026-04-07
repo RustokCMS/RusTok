@@ -8,6 +8,7 @@ description = "Order domain module extracted from rustok-commerce"
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+flex.workspace = true
 rust_decimal.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true

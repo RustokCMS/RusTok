@@ -5,7 +5,8 @@ use rustok_core::generate_id;
 
 pub use super::_entities::tenants::ActiveModel;
 pub use super::_entities::tenants::Entity;
-use super::_entities::tenants::{self, Model};
+pub use super::_entities::tenants::Model;
+use super::_entities::tenants::{self};
 
 impl Model {
     pub fn is_enabled(&self) -> bool {

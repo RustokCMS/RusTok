@@ -54,6 +54,7 @@ impl Model {
             field_type,
             label,
             description,
+            is_localized: self.is_localized,
             is_required: self.is_required,
             default_value: self.default_value,
             validation,
@@ -70,6 +71,7 @@ pub struct CreateFieldDefinitionInput {
     pub field_type: FieldType,
     pub label: HashMap<String, String>,
     pub description: Option<HashMap<String, String>>,
+    pub is_localized: bool,
     pub is_required: bool,
     pub default_value: Option<serde_json::Value>,
     pub validation: Option<ValidationRule>,
@@ -81,6 +83,7 @@ pub struct CreateFieldDefinitionInput {
 pub struct UpdateFieldDefinitionInput {
     pub label: Option<HashMap<String, String>>,
     pub description: Option<HashMap<String, String>>,
+    pub is_localized: Option<bool>,
     pub is_required: Option<bool>,
     pub default_value: Option<serde_json::Value>,
     pub validation: Option<ValidationRule>,
