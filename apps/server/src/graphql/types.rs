@@ -287,6 +287,31 @@ pub struct RegistryValidationStageLifecycle {
     pub updated_at: String,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
+    pub execution_mode: String,
+    pub runnable: bool,
+    pub requires_manual_confirmation: bool,
+    pub allowed_terminal_reason_codes: Vec<String>,
+    pub suggested_pass_reason_code: Option<String>,
+    pub suggested_failure_reason_code: Option<String>,
+    pub suggested_blocked_reason_code: Option<String>,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct RegistryModerationPolicyLifecycle {
+    pub mode: String,
+    pub live_publish_supported: bool,
+    pub live_governance_supported: bool,
+    pub manual_review_required: bool,
+    pub restriction_reason_code: Option<String>,
+    pub restriction_reason: String,
+}
+
+#[derive(SimpleObject, Clone)]
+pub struct RegistryGovernanceActionLifecycle {
+    pub key: String,
+    pub enabled: bool,
+    pub reason: Option<String>,
+    pub supported_reason_codes: Vec<String>,
 }
 
 #[derive(SimpleObject, Clone)]
@@ -300,6 +325,7 @@ pub struct RegistryGovernanceActionLifecycle {
 
 #[derive(SimpleObject, Clone)]
 pub struct RegistryModuleLifecycle {
+    pub moderation_policy: RegistryModerationPolicyLifecycle,
     pub owner_binding: Option<RegistryOwnerLifecycle>,
     pub latest_request: Option<RegistryPublishRequestLifecycle>,
     pub latest_release: Option<RegistryReleaseLifecycle>,
@@ -380,6 +406,9 @@ pub struct MarketplaceModule {
     pub checksum_sha256: Option<String>,
     pub signature_present: bool,
     pub versions: Vec<MarketplaceModuleVersion>,
+    pub has_admin_ui: bool,
+    pub has_storefront_ui: bool,
+    pub ui_classification: String,
     pub registry_lifecycle: Option<RegistryModuleLifecycle>,
     pub compatible: bool,
     pub recommended_admin_surfaces: Vec<String>,
@@ -712,6 +741,9 @@ pub struct ModuleRegistryItem {
     pub dependencies: Vec<String>,
     pub ownership: String,
     pub trust_level: String,
+    pub has_admin_ui: bool,
+    pub has_storefront_ui: bool,
+    pub ui_classification: String,
     pub recommended_admin_surfaces: Vec<String>,
     pub showcase_admin_surfaces: Vec<String>,
     pub settings_schema: Vec<ModuleSettingField>,

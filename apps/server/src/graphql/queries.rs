@@ -417,6 +417,9 @@ fn marketplace_module_from_catalog_entry(
         checksum_sha256: entry.checksum_sha256,
         signature_present,
         versions,
+        has_admin_ui: entry.has_admin_ui,
+        has_storefront_ui: entry.has_storefront_ui,
+        ui_classification: entry.ui_classification,
         registry_lifecycle: None,
         compatible,
         recommended_admin_surfaces: entry.recommended_admin_surfaces,
@@ -434,6 +437,14 @@ fn registry_module_lifecycle_from_snapshot(
     snapshot: RegistryModuleLifecycleSnapshot,
 ) -> crate::graphql::types::RegistryModuleLifecycle {
     crate::graphql::types::RegistryModuleLifecycle {
+        moderation_policy: crate::graphql::types::RegistryModerationPolicyLifecycle {
+            mode: snapshot.moderation_policy.mode,
+            live_publish_supported: snapshot.moderation_policy.live_publish_supported,
+            live_governance_supported: snapshot.moderation_policy.live_governance_supported,
+            manual_review_required: snapshot.moderation_policy.manual_review_required,
+            restriction_reason_code: snapshot.moderation_policy.restriction_reason_code,
+            restriction_reason: snapshot.moderation_policy.restriction_reason,
+        },
         owner_binding: snapshot.owner_binding.map(|owner| {
             crate::graphql::types::RegistryOwnerLifecycle {
                 owner_actor: owner.owner_actor,
@@ -517,6 +528,25 @@ fn registry_module_lifecycle_from_snapshot(
                     updated_at: stage.updated_at,
                     started_at: stage.started_at,
                     finished_at: stage.finished_at,
+                    execution_mode: stage.execution_mode,
+                    runnable: stage.runnable,
+                    requires_manual_confirmation: stage.requires_manual_confirmation,
+                    allowed_terminal_reason_codes: stage.allowed_terminal_reason_codes,
+                    suggested_pass_reason_code: stage.suggested_pass_reason_code,
+                    suggested_failure_reason_code: stage.suggested_failure_reason_code,
+                    suggested_blocked_reason_code: stage.suggested_blocked_reason_code,
+                },
+            )
+            .collect(),
+        governance_actions: snapshot
+            .governance_actions
+            .into_iter()
+            .map(
+                |action| crate::graphql::types::RegistryGovernanceActionLifecycle {
+                    key: action.key,
+                    enabled: action.enabled,
+                    reason: action.reason,
+                    supported_reason_codes: action.supported_reason_codes,
                 },
             )
             .collect(),
@@ -755,6 +785,11 @@ impl RootQuery {
                     trust_level: catalog_entry
                         .map(|entry| entry.trust_level.clone())
                         .unwrap_or_else(|| "unverified".to_string()),
+                    has_admin_ui: catalog_entry.is_some_and(|entry| entry.has_admin_ui),
+                    has_storefront_ui: catalog_entry.is_some_and(|entry| entry.has_storefront_ui),
+                    ui_classification: catalog_entry
+                        .map(|entry| entry.ui_classification.clone())
+                        .unwrap_or_else(|| "no_ui".to_string()),
                     recommended_admin_surfaces: catalog_entry
                         .map(|entry| entry.recommended_admin_surfaces.clone())
                         .unwrap_or_default(),
@@ -964,7 +999,7 @@ impl RootQuery {
 
         let mut module = marketplace_module_from_catalog_entry(entry, registry, &installed_modules);
         module.registry_lifecycle = RegistryGovernanceService::new(app_ctx.db.clone())
-            .lifecycle_snapshot(&module.slug)
+            .lifecycle_snapshot(&module.slug, &module.ownership)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
             .map(registry_module_lifecycle_from_snapshot);
@@ -1411,6 +1446,9 @@ mod tests {
             checksum_sha256: None,
             signature: None,
             versions: Vec::new(),
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no_ui".to_string(),
             recommended_admin_surfaces: Vec::new(),
             showcase_admin_surfaces: Vec::new(),
             settings_schema: HashMap::new(),
@@ -1461,6 +1499,9 @@ mod tests {
             checksum_sha256: None,
             signature_present: false,
             versions: Vec::new(),
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no_ui".to_string(),
             registry_lifecycle: None,
             compatible: true,
             recommended_admin_surfaces: Vec::new(),
@@ -1499,6 +1540,9 @@ mod tests {
             checksum_sha256: None,
             signature_present: false,
             versions: Vec::new(),
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no_ui".to_string(),
             registry_lifecycle: None,
             compatible: true,
             recommended_admin_surfaces: Vec::new(),
