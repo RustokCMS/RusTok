@@ -2,9 +2,10 @@
 slug = "pages"
 name = "Pages"
 version = "0.1.0"
-description = "Static pages and page-management module"
+description = "Static pages, blocks and menus"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [marketplace]

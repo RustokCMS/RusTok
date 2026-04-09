@@ -39,9 +39,11 @@ Shared foundation / support crates:
 - `/api/graphql` и `/api/fn/*` являются параллельными transport-слоями; Leptos server functions не заменяют GraphQL API.
 - Health/observability surface публикуется через `/health*` и `/metrics`.
 - Module/runtime wiring опирается на `modules.toml`, `rustok-module.toml` и generated host integration.
+- Module-owned event listeners собираются из `ModuleRegistry` в общий `EventDispatcher`; `apps/server` больше не держит отдельные host-owned index/search/workflow listener paths.
 - `apps/server` может работать как `full` host или как `registry_only`, но `host_mode` не заменяет deployment profile и не меняет build/deploy semantics.
 - Для registry/governance surfaces именно сервер остаётся каноническим валидатором lifecycle policy, `reason` / `reason_code` contract и allowed action set; thin clients могут делать preflight, но не определяют policy локально.
 - `GET /v2/catalog/publish/{request_id}` остаётся machine-readable operator status contract: без `x-rustok-actor` он возвращает status-driven superset `governanceActions`, а при наличии actor header режет только request-level действия до реально разрешённых для этого actor.
+- Repo-side surface для текущего `module-system` считается стабилизированным в рамках уже существующего action set; незакрытым в коде остаётся только targeted verification и поддержание docs/audit, а rollout `modules.rustok.dev` остаётся внешней infra-задачей.
 
 ## Границы ответственности
 
@@ -49,6 +51,7 @@ Shared foundation / support crates:
 
 - transport adapters, middleware, request/runtime context и host wiring;
 - общий GraphQL schema surface и Leptos server-function entrypoints;
+- bootstrap общего module-owned event runtime через `ModuleRegistry` и `EventDispatcher`;
 - health/runtime guardrails, build/release orchestration и operator control-plane endpoints;
 - RBAC enforcement, auth/session integration и host-level observability.
 
@@ -56,6 +59,7 @@ Shared foundation / support crates:
 
 - дублировать module-owned domain services, storage и permission logic;
 - подменять модульные interaction contracts собственными ad hoc соглашениями;
+- превращать cron, relay worker или maintenance task в псевдо-`event_listener` мимо модульного runtime contract;
 - ломать dual-path contract между GraphQL и `#[server]`, если добавляется новый internal path.
 
 ## Health и runtime guardrails

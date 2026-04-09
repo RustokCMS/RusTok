@@ -26,6 +26,10 @@
   `products.shipping_profile_slug` / `product_variants.shipping_profile_slug`; metadata-backed
   `shipping_profile.slug` остаётся только backward-compatible формой нормализации для старых
   read/write-path consumer'ов.
+- multivendor foundation теперь тоже начинается на product boundary: create/update/read contract
+  включает nullable `seller_id`, который считается canonical seller identity key для downstream
+  cart/order/fulfillment orchestration; merchandising/display поля вроде `vendor` не должны
+  использоваться как seller identity.
 - effective shipping profile для deliverability теперь разрешается как
   `variant.shipping_profile_slug -> product.shipping_profile_slug -> default`, а omission
   first-class поля на write-path не должен затирать уже существующую typed binding/compatibility

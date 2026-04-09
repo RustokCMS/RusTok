@@ -2,10 +2,14 @@
 slug = "rbac"
 name = "RBAC"
 version = "0.1.0"
-description = "Roles, permissions, and access-control module"
+description = "Role-based access control helpers."
 ownership = "first_party"
 trust_level = "core"
+ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[crate]
+entry_type = "RbacModule"
 
 [provides.admin_ui]
 leptos_crate = "rustok-rbac-admin"

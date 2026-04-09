@@ -34,6 +34,7 @@ impl From<GqlProductStatus> for crate::entities::product::ProductStatus {
 pub struct GqlProduct {
     pub id: Uuid,
     pub status: GqlProductStatus,
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
@@ -103,6 +104,7 @@ pub struct GqlProductListItem {
     pub status: GqlProductStatus,
     pub title: String,
     pub handle: String,
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
@@ -232,6 +234,8 @@ pub struct GqlCartLineItem {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
     pub shipping_profile_slug: String,
+    pub seller_id: Option<String>,
+    pub seller_scope: Option<String>,
     pub sku: Option<String>,
     pub title: String,
     pub quantity: i32,
@@ -246,6 +250,8 @@ pub struct GqlCartLineItem {
 #[derive(SimpleObject)]
 pub struct GqlCartDeliveryGroup {
     pub shipping_profile_slug: String,
+    pub seller_id: Option<String>,
+    pub seller_scope: Option<String>,
     pub line_item_ids: Vec<Uuid>,
     pub selected_shipping_option_id: Option<Uuid>,
     pub available_shipping_options: Vec<GqlCartShippingOptionSummary>,
@@ -312,6 +318,7 @@ pub struct GqlOrderLineItem {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
     pub shipping_profile_slug: String,
+    pub seller_id: Option<String>,
     pub sku: Option<String>,
     pub title: String,
     pub quantity: i32,
@@ -394,12 +401,26 @@ pub struct GqlFulfillment {
     pub tracking_number: Option<String>,
     pub delivered_note: Option<String>,
     pub cancellation_reason: Option<String>,
+    pub items: Vec<GqlFulfillmentItem>,
     pub metadata: String,
     pub created_at: String,
     pub updated_at: String,
     pub shipped_at: Option<String>,
     pub delivered_at: Option<String>,
     pub cancelled_at: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlFulfillmentItem {
+    pub id: Uuid,
+    pub fulfillment_id: Uuid,
+    pub order_line_item_id: Uuid,
+    pub quantity: i32,
+    pub shipped_quantity: i32,
+    pub delivered_quantity: i32,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(SimpleObject)]
@@ -416,6 +437,7 @@ pub struct CreateProductInput {
     pub translations: Vec<ProductTranslationInput>,
     pub options: Option<Vec<ProductOptionInput>>,
     pub variants: Vec<CreateVariantInput>,
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
@@ -462,6 +484,7 @@ pub struct PriceInput {
 #[derive(InputObject)]
 pub struct UpdateProductInput {
     pub translations: Option<Vec<ProductTranslationInput>>,
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,
@@ -636,7 +659,36 @@ pub struct UpdateStorefrontCartContextInput {
 #[derive(InputObject)]
 pub struct StorefrontShippingSelectionInput {
     pub shipping_profile_slug: String,
+    pub seller_id: Option<String>,
+    pub seller_scope: Option<String>,
     pub selected_shipping_option_id: Option<Uuid>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "CreateFulfillmentItemInput")]
+pub struct CreateFulfillmentItemInputObject {
+    pub order_line_item_id: Uuid,
+    pub quantity: i32,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "CreateFulfillmentInput")]
+pub struct CreateFulfillmentInputObject {
+    pub order_id: Uuid,
+    pub shipping_option_id: Option<Uuid>,
+    pub customer_id: Option<Uuid>,
+    pub carrier: Option<String>,
+    pub tracking_number: Option<String>,
+    pub items: Vec<CreateFulfillmentItemInputObject>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "FulfillmentItemQuantityInput")]
+pub struct FulfillmentItemQuantityInputObject {
+    pub fulfillment_item_id: Uuid,
+    pub quantity: i32,
 }
 
 #[derive(InputObject)]
@@ -644,6 +696,7 @@ pub struct StorefrontShippingSelectionInput {
 pub struct ShipFulfillmentInputObject {
     pub carrier: String,
     pub tracking_number: String,
+    pub items: Option<Vec<FulfillmentItemQuantityInputObject>>,
     pub metadata: Option<String>,
 }
 
@@ -651,6 +704,23 @@ pub struct ShipFulfillmentInputObject {
 #[graphql(name = "DeliverFulfillmentInput")]
 pub struct DeliverFulfillmentInputObject {
     pub delivered_note: Option<String>,
+    pub items: Option<Vec<FulfillmentItemQuantityInputObject>>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "ReopenFulfillmentInput")]
+pub struct ReopenFulfillmentInputObject {
+    pub items: Option<Vec<FulfillmentItemQuantityInputObject>>,
+    pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+#[graphql(name = "ReshipFulfillmentInput")]
+pub struct ReshipFulfillmentInputObject {
+    pub carrier: String,
+    pub tracking_number: String,
+    pub items: Option<Vec<FulfillmentItemQuantityInputObject>>,
     pub metadata: Option<String>,
 }
 
@@ -706,6 +776,7 @@ impl From<dto::ProductResponse> for GqlProduct {
         Self {
             id: product.id,
             status: product.status.into(),
+            seller_id: product.seller_id,
             vendor: product.vendor,
             product_type: product.product_type,
             shipping_profile_slug: product.shipping_profile_slug,
@@ -907,6 +978,8 @@ impl From<dto::CartLineItemResponse> for GqlCartLineItem {
             product_id: value.product_id,
             variant_id: value.variant_id,
             shipping_profile_slug: value.shipping_profile_slug,
+            seller_id: value.seller_id,
+            seller_scope: value.seller_scope,
             sku: value.sku,
             title: value.title,
             quantity: value.quantity,
@@ -924,6 +997,8 @@ impl From<dto::CartDeliveryGroupResponse> for GqlCartDeliveryGroup {
     fn from(value: dto::CartDeliveryGroupResponse) -> Self {
         Self {
             shipping_profile_slug: value.shipping_profile_slug,
+            seller_id: value.seller_id,
+            seller_scope: value.seller_scope,
             line_item_ids: value.line_item_ids,
             selected_shipping_option_id: value.selected_shipping_option_id,
             available_shipping_options: value
@@ -1009,6 +1084,7 @@ impl From<dto::OrderLineItemResponse> for GqlOrderLineItem {
             product_id: item.product_id,
             variant_id: item.variant_id,
             shipping_profile_slug: item.shipping_profile_slug,
+            seller_id: item.seller_id,
             sku: item.sku,
             title: item.title,
             quantity: item.quantity,
@@ -1082,12 +1158,29 @@ impl From<dto::FulfillmentResponse> for GqlFulfillment {
             tracking_number: value.tracking_number,
             delivered_note: value.delivered_note,
             cancellation_reason: value.cancellation_reason,
+            items: value.items.into_iter().map(Into::into).collect(),
             metadata: value.metadata.to_string(),
             created_at: value.created_at.to_rfc3339(),
             updated_at: value.updated_at.to_rfc3339(),
             shipped_at: value.shipped_at.map(|value| value.to_rfc3339()),
             delivered_at: value.delivered_at.map(|value| value.to_rfc3339()),
             cancelled_at: value.cancelled_at.map(|value| value.to_rfc3339()),
+        }
+    }
+}
+
+impl From<dto::FulfillmentItemResponse> for GqlFulfillmentItem {
+    fn from(value: dto::FulfillmentItemResponse) -> Self {
+        Self {
+            id: value.id,
+            fulfillment_id: value.fulfillment_id,
+            order_line_item_id: value.order_line_item_id,
+            quantity: value.quantity,
+            shipped_quantity: value.shipped_quantity,
+            delivered_quantity: value.delivered_quantity,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
         }
     }
 }

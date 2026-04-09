@@ -6,7 +6,7 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 ## Область работ
 
 - удерживать `rustok-cart` как owner cart lifecycle и line-item state;
-- синхронизировать cart snapshot contract, runtime dependencies и local docs;
+- синхронизировать cart snapshot contract, runtime dependencies, storefront UI ownership и local docs;
 - не допускать возврата cart domain logic обратно в umbrella или host слой.
 
 ## Текущее состояние
@@ -14,7 +14,8 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 - `carts` и `cart_line_items` уже module-owned;
 - cart lifecycle и persisted storefront context snapshot уже встроены в базовый contract;
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`, без цикла зависимостей;
-- channel/context/deliverability orchestration поверх cart выполняется на уровне umbrella-модуля.
+- storefront cart inspection, safe decrement/remove write-side и seller-aware delivery-group snapshot уже вынесены в `rustok-cart/storefront`;
+- channel/context/deliverability orchestration поверх cart по-прежнему выполняется на уровне umbrella-модуля.
 
 ## Этапы
 
@@ -22,18 +23,26 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 
 - [x] зафиксировать cart lifecycle и storefront context snapshot;
 - [x] удерживать line-item CRUD и totals внутри `rustok-cart`;
-- [ ] удерживать sync между cart runtime contract, commerce orchestration и module metadata.
+- [x] удерживать sync между cart runtime contract, commerce orchestration, storefront route ownership и module metadata.
 
-### 2. Checkout hardening
+### 2. Storefront ownership
+
+- [x] вынести storefront cart inspection в `rustok-cart/storefront`;
+- [x] использовать native Leptos `#[server]` functions как default internal data layer;
+- [x] сохранить GraphQL storefront contract как fallback;
+- [x] вынести безопасные cart-owned line-item decrement/remove mutations из aggregate storefront surface;
+- [ ] не смешивать cart-owned UI с quantity increase, add-to-cart и checkout orchestration, пока эти write-path требуют cross-domain validation.
+
+### 3. Checkout hardening
 
 - [ ] удерживать `checking_out`/recovery semantics совместимыми с payment/order orchestration;
-- [ ] покрывать stale snapshot, shipping selection и multi-group edge-cases targeted tests;
+- [x] покрывать stale snapshot, shipping selection и multi-group edge-cases targeted tests;
 - [ ] развивать cart state только через explicit snapshot/versioning semantics.
 
-### 3. Operability
+### 4. Operability
 
 - [ ] документировать новые cart guarantees одновременно с изменением checkout flows;
-- [ ] удерживать local docs и `README.md` синхронизированными с storefront contract;
+- [x] удерживать local docs и `README.md` синхронизированными со storefront contract;
 - [ ] расширять diagnostics только при реальном runtime pressure.
 
 ## Проверка
@@ -45,6 +54,6 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 ## Правила обновления
 
 1. При изменении cart runtime contract сначала обновлять этот файл.
-2. При изменении public/runtime surface синхронизировать `README.md` и `docs/README.md`.
+2. При изменении public/runtime surface синхронизировать `README.md`, `docs/README.md` и `storefront/README.md`.
 3. При изменении module metadata синхронизировать `rustok-module.toml`.
 4. При изменении checkout orchestration expectations обновлять umbrella docs в `rustok-commerce`.

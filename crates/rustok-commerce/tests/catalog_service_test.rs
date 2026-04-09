@@ -57,6 +57,7 @@ fn create_test_product_input() -> CreateProductInput {
             weight: Some(Decimal::from_str("1.5").unwrap()),
             weight_unit: Some("kg".to_string()),
         }],
+        seller_id: None,
         vendor: Some("Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
         shipping_profile_slug: None,
@@ -109,6 +110,7 @@ async fn test_shipping_profile_slug_round_trips_through_catalog_service() {
             created.id,
             UpdateProductInput {
                 translations: None,
+                seller_id: None,
                 vendor: None,
                 product_type: None,
                 shipping_profile_slug: Some("Cold-Chain".to_string()),
@@ -223,6 +225,7 @@ async fn test_update_product_success() {
             meta_title: None,
             meta_description: None,
         }]),
+        seller_id: None,
         vendor: Some("Updated Vendor".to_string()),
         product_type: Some("Digital".to_string()),
         shipping_profile_slug: None,
@@ -685,6 +688,7 @@ async fn test_update_product_metadata() {
 
     let update_input = UpdateProductInput {
         translations: None,
+        seller_id: None,
         vendor: None,
         product_type: None,
         shipping_profile_slug: None,
@@ -744,6 +748,7 @@ async fn test_update_vendor() {
 
     let update_input = UpdateProductInput {
         translations: None,
+        seller_id: None,
         vendor: Some("New Vendor Inc".to_string()),
         product_type: None,
         shipping_profile_slug: None,
@@ -781,6 +786,7 @@ async fn test_update_nonexistent_product() {
             meta_title: None,
             meta_description: None,
         }]),
+        seller_id: None,
         vendor: None,
         product_type: None,
         shipping_profile_slug: None,
@@ -899,6 +905,7 @@ async fn test_create_archived_product() {
 
     let update_input = UpdateProductInput {
         translations: None,
+        seller_id: None,
         vendor: None,
         product_type: None,
         shipping_profile_slug: None,

@@ -1,10 +1,10 @@
 # rustok-ai-admin
 
-Leptos admin UI package for the `rustok-ai` capability crate.
+Large Leptos operator/admin UI package for the `rustok-ai` capability crate.
 
 ## Responsibilities
 
-- Exposes the AI operator/admin surface used by `apps/admin`.
+- Exposes the large AI operator/admin surface used by `apps/admin`.
 - Stays capability-owned: AI business UI does not live in `apps/admin`.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles for visible UI
   chrome, diagnostics, operator chat, approval flows, and session history surfaces.
@@ -20,7 +20,7 @@ Leptos admin UI package for the `rustok-ai` capability crate.
 - Reads the effective admin locale from `UiRouteContext.locale` and does not invent a separate
   package-local fallback chain.
 - Does not use `rustok-module.toml`: unlike module-owned packages, `rustok-ai-admin` is a
-  capability-owned admin surface that still follows the same host locale contract.
+  capability-owned operator/admin surface that still follows the same host locale contract.
 
 ## Entry Points
 

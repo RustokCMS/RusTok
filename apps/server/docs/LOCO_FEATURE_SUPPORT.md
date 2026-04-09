@@ -129,9 +129,12 @@
 |--------|-----------|-----|
 | Outbox relay | `OutboxRelayWorkerHandle` | tokio task, polling outbox |
 | Build worker | `BuildWorkerHandle` | tokio task, polling DB |
-| Index dispatcher | `spawn_index_dispatcher` | tokio task |
-| Search dispatcher | `spawn_search_dispatcher` | tokio task |
+| Module event dispatcher | `spawn_module_event_dispatcher` | tokio task |
 | Workflow cron | `WorkflowCronScheduler` | tokio task (feature `mod-workflow`) |
+
+`spawn_module_event_dispatcher` собирает module-owned handlers из `ModuleRegistry`.
+`WorkflowCronScheduler` остаётся отдельным background runtime path и не считается
+частью этого event-listener контракта.
 
 Loco Tasks (CLI): `cleanup`, `rebuild`, `db_baseline`, `media_cleanup`, `create_oauth_app` — запускаются вручную через `cargo loco task`.
 

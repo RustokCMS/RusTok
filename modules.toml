@@ -65,4 +65,4 @@ workflow = { crate = "rustok-workflow", source = "path", path = "crates/rustok-w
 alloy = { crate = "alloy", source = "path", path = "crates/alloy" }
 
 [settings]
-default_enabled = ["content", "cart", "customer", "product", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages"]
+default_enabled = ["content", "cart", "customer", "product", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages"]

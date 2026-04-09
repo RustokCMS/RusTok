@@ -161,17 +161,17 @@ graph TD
 | Slug | Crate | Зависимости | Роль |
 |---|---|---|---|
 | `content` | `rustok-content` | — | Shared content helpers, orchestration, rich-text/locale contract |
-| `cart` | `rustok-cart` | — | Cart lifecycle, line items, snapshot storefront context |
+| `cart` | `rustok-cart` | — | Cart lifecycle, line items, snapshot storefront context, canonical `seller_id` delivery-group ownership, cart-owned storefront inspection UI |
 | `customer` | `rustok-customer` | — | Storefront customer profile boundary и customer-owned admin operations UI |
-| `product` | `rustok-product` | `taxonomy` | Product catalog, variants, tags, shipping profile bindings, product-owned admin catalog UI и storefront catalog UI |
+| `product` | `rustok-product` | `taxonomy` | Product catalog, variants, tags, shipping profile bindings, nullable `seller_id` ownership contract, product-owned admin catalog UI и storefront catalog UI |
 | `profiles` | `rustok-profiles` | `taxonomy` | Public profile layer поверх `users`, author/member summary |
 | `region` | `rustok-region` | — | Region, country, currency, tax baseline, region-owned admin CRUD UI и storefront discovery UI |
 | `pricing` | `rustok-pricing` | `product` | Pricing domain baseline, pricing-owned admin visibility UI и storefront pricing atlas UI |
 | `inventory` | `rustok-inventory` | `product` | Inventory, stock availability baseline и inventory-owned admin visibility UI |
-| `order` | `rustok-order` | — | Order lifecycle, order snapshots и order-owned admin operations UI |
+| `order` | `rustok-order` | — | Order lifecycle, order snapshots with canonical `seller_id`, и order-owned admin operations UI |
 | `payment` | `rustok-payment` | — | Payment collections и payments |
 | `fulfillment` | `rustok-fulfillment` | — | Shipping options, fulfillments и fulfillment-owned shipping-option admin UI |
-| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Umbrella/root ecommerce orchestration и typed shipping-profile registry |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Umbrella/root ecommerce orchestration, typed shipping-profile registry и marketplace foundation вокруг canonical `seller_id` |
 | `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` | Blog domain, posts, categories, tags, transport/UI |
 | `forum` | `rustok-forum` | `content`, `taxonomy` | Forum domain, topics, replies, moderation, transport/UI |
 | `comments` | `rustok-comments` | — | Generic comments domain |
@@ -179,6 +179,7 @@ graph TD
 | `taxonomy` | `rustok-taxonomy` | `content` | Shared vocabulary/dictionary layer |
 | `media` | `rustok-media` | — | Media lifecycle, upload, storage-facing API |
 | `workflow` | `rustok-workflow` | — | Workflow execution, templates, webhook ingress |
+| `alloy` | `alloy` | — | Script execution, scheduler, hook runtime и capability-oriented automation surface |
 
 ## Общие библиотечные crate-ы
 
@@ -199,8 +200,7 @@ graph TD
 | `rustok-iggy-connector` | Embedded/remote connector layer для Iggy |
 | `rustok-telemetry` | Observability bootstrap и shared telemetry helpers |
 | `rustok-mcp` | MCP adapter/server tool surface |
-| `rustok-ai` | AI host/orchestrator capability |
-| `alloy` | Script/runtime capability |
+| `rustok-ai` | AI host/orchestrator capability with large operator/admin UI surfaces for Leptos and Next.js hosts |
 | `flex` | Custom fields capability и attached/standalone contracts |
 
 ## Приложения

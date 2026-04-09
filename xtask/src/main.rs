@@ -1,12 +1,8 @@
 use anyhow::{Context, Result};
-use reqwest::blocking::Client;
-use reqwest::Url;
 use semver::Version;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{
@@ -16,6 +12,26 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 use toml::Value as TomlValue;
+
+mod module_commands;
+mod module_contracts;
+mod parsing_helpers;
+mod preview_builders;
+mod registry_transport;
+mod runtime_contracts;
+mod server_contracts;
+mod ui_contracts;
+mod validation_runner;
+
+use module_commands::*;
+use module_contracts::*;
+use parsing_helpers::*;
+use preview_builders::*;
+use registry_transport::*;
+use runtime_contracts::*;
+use server_contracts::*;
+use ui_contracts::*;
+use validation_runner::*;
 
 #[derive(Debug, Deserialize)]
 struct Manifest {
@@ -44,6 +60,8 @@ struct ModuleSpec {
     crate_name: String,
     source: String,
     path: Option<String>,
+    #[serde(default)]
+    required: bool,
     version: Option<String>,
     git: Option<String>,
     #[allow(dead_code)]
@@ -65,6 +83,8 @@ struct ModulePackageManifest {
     module: ModulePackageMetadata,
     #[serde(default)]
     marketplace: ModulePackageMarketplaceMetadata,
+    #[serde(default)]
+    dependencies: HashMap<String, ModulePackageDependency>,
     #[serde(rename = "crate", default)]
     crate_contract: ModulePackageCrateContract,
     #[serde(default)]
@@ -86,9 +106,18 @@ struct ModulePackageMetadata {
     #[serde(default)]
     trust_level: String,
     #[serde(default)]
+    ui_classification: String,
+    #[serde(default)]
     recommended_admin_surfaces: Vec<String>,
     #[serde(default)]
     showcase_admin_surfaces: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ModulePackageDependency {
+    #[allow(dead_code)]
+    #[serde(default)]
+    version_req: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -108,15 +137,55 @@ struct ModulePackageCrateContract {
 #[derive(Debug, Deserialize, Default)]
 struct ModulePackageProvides {
     #[serde(default)]
+    graphql: Option<ModuleGraphqlProvides>,
+    #[serde(default)]
+    http: Option<ModuleHttpProvides>,
+    #[serde(default)]
     admin_ui: Option<ModuleUiProvides>,
     #[serde(default)]
     storefront_ui: Option<ModuleUiProvides>,
 }
 
 #[derive(Debug, Deserialize, Default)]
+struct ModuleGraphqlProvides {
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    mutation: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ModuleHttpProvides {
+    #[serde(default)]
+    routes: Option<String>,
+    #[serde(default)]
+    webhook_routes: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
 struct ModuleUiProvides {
     #[serde(default)]
     leptos_crate: Option<String>,
+    #[serde(default)]
+    route_segment: Option<String>,
+    #[serde(default)]
+    nav_label: Option<String>,
+    #[serde(default)]
+    slot: Option<String>,
+    #[serde(default)]
+    page_title: Option<String>,
+    #[serde(default)]
+    i18n: Option<ModuleUiI18nProvides>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ModuleUiI18nProvides {
+    #[serde(default)]
+    default_locale: Option<String>,
+    #[serde(default)]
+    supported_locales: Vec<String>,
+    #[serde(default)]
+    leptos_locales_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -574,134 +643,6 @@ fn print_usage() {
     println!("  module yank         Emit a dry-run yank payload preview");
 }
 
-fn manifest_path() -> PathBuf {
-    PathBuf::from("modules.toml")
-}
-
-fn load_manifest() -> Result<Manifest> {
-    load_manifest_from(&manifest_path())
-}
-
-fn load_manifest_from(path: &Path) -> Result<Manifest> {
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    let manifest: Manifest =
-        toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
-
-    if manifest.schema != 2 {
-        anyhow::bail!("Unsupported manifest schema: {}", manifest.schema);
-    }
-
-    Ok(manifest)
-}
-
-fn module_package_manifest_path(manifest_path: &Path, spec: &ModuleSpec) -> Option<PathBuf> {
-    if spec.source != "path" {
-        return None;
-    }
-
-    let module_path = spec.path.as_ref()?;
-    Some(
-        manifest_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(module_path)
-            .join("rustok-module.toml"),
-    )
-}
-
-fn load_module_package_manifest(path: &Path) -> Result<ModulePackageManifest> {
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))
-}
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .map(PathBuf::from)
-        .expect("xtask should live under the workspace root")
-}
-
-fn workspace_manifest_path() -> PathBuf {
-    workspace_root().join("Cargo.toml")
-}
-
-fn load_workspace_manifest() -> Result<TomlValue> {
-    let path = workspace_manifest_path();
-    let content =
-        fs::read_to_string(&path).with_context(|| format!("Failed to read {}", path.display()))?;
-    toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))
-}
-
-fn load_toml_value(path: &Path) -> Result<TomlValue> {
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))
-}
-
-fn resolve_workspace_inherited_string(
-    value: Option<&TomlValue>,
-    workspace_manifest: &TomlValue,
-    field: &str,
-) -> Result<Option<String>> {
-    let Some(value) = value else {
-        return Ok(None);
-    };
-
-    if let Some(string) = value.as_str() {
-        return Ok(Some(string.trim().to_string()));
-    }
-
-    if let Some(table) = value.as_table() {
-        if table.get("workspace").and_then(TomlValue::as_bool) == Some(true) {
-            let inherited = workspace_manifest
-                .get("workspace")
-                .and_then(TomlValue::as_table)
-                .and_then(|workspace| workspace.get("package"))
-                .and_then(TomlValue::as_table)
-                .and_then(|package| package.get(field))
-                .and_then(TomlValue::as_str)
-                .map(|value| value.trim().to_string());
-            return Ok(inherited);
-        }
-    }
-
-    anyhow::bail!("Unsupported package.{field} declaration in Cargo manifest")
-}
-
-fn load_resolved_cargo_package(
-    path: &Path,
-    workspace_manifest: &TomlValue,
-) -> Result<ResolvedCargoPackage> {
-    let manifest = load_toml_value(path)?;
-    let package = manifest
-        .get("package")
-        .and_then(TomlValue::as_table)
-        .with_context(|| format!("{} is missing [package]", path.display()))?;
-
-    let name = package
-        .get("name")
-        .and_then(TomlValue::as_str)
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .with_context(|| format!("{} is missing package.name", path.display()))?;
-    let version =
-        resolve_workspace_inherited_string(package.get("version"), workspace_manifest, "version")?
-            .filter(|value| !value.is_empty())
-            .with_context(|| format!("{} is missing package.version", path.display()))?;
-    let license =
-        resolve_workspace_inherited_string(package.get("license"), workspace_manifest, "license")?
-            .filter(|value| !value.is_empty());
-
-    Ok(ResolvedCargoPackage {
-        name,
-        version,
-        license,
-        manifest_path: path.to_path_buf(),
-    })
-}
-
 fn is_valid_module_ownership(value: &str) -> bool {
     matches!(value, "first_party" | "third_party")
 }
@@ -738,101 +679,6 @@ fn validate_admin_surfaces(
     }
 
     Ok(normalized)
-}
-
-fn validate_module_package_metadata(slug: &str, metadata: &ModulePackageMetadata) -> Result<()> {
-    let ownership = metadata.ownership.trim();
-    if !is_valid_module_ownership(ownership) {
-        anyhow::bail!("Module '{}' has invalid ownership '{}'", slug, ownership);
-    }
-
-    let trust_level = metadata.trust_level.trim();
-    if !is_valid_trust_level(trust_level) {
-        anyhow::bail!(
-            "Module '{}' has invalid trust level '{}'",
-            slug,
-            trust_level
-        );
-    }
-
-    let recommended = validate_admin_surfaces(
-        slug,
-        "recommended_admin_surfaces",
-        &metadata.recommended_admin_surfaces,
-    )?;
-    let showcase = validate_admin_surfaces(
-        slug,
-        "showcase_admin_surfaces",
-        &metadata.showcase_admin_surfaces,
-    )?;
-
-    if let Some(surface) = recommended.intersection(&showcase).next() {
-        anyhow::bail!(
-            "Module '{}' lists admin surface '{}' as both recommended and showcase",
-            slug,
-            surface
-        );
-    }
-
-    Ok(())
-}
-
-fn module_command(args: &[String]) -> Result<()> {
-    if args.is_empty() {
-        print_module_usage();
-        anyhow::bail!("Missing module subcommand");
-    }
-
-    match args[0].as_str() {
-        "validate" => module_validate_command(&args[1..]),
-        "test" => module_test_command(&args[1..]),
-        "stage-run" => module_stage_run_command(&args[1..]),
-        "runner" => module_runner_command(&args[1..]),
-        "publish" => module_publish_command(&args[1..]),
-        "request-changes" => module_request_changes_command(&args[1..]),
-        "hold" => module_hold_command(&args[1..]),
-        "resume" => module_resume_command(&args[1..]),
-        "stage" => module_stage_command(&args[1..]),
-        "owner-transfer" => module_owner_transfer_command(&args[1..]),
-        "yank" => module_yank_command(&args[1..]),
-        other => {
-            print_module_usage();
-            anyhow::bail!("Unknown module subcommand: {other}");
-        }
-    }
-}
-
-fn print_module_usage() {
-    println!("Usage:");
-    println!("  cargo xtask module validate [slug]");
-    println!("  cargo xtask module test <slug> [--dry-run]");
-    println!(
-        "  cargo xtask module stage-run <slug> <request-id> <stage> [--dry-run] [--registry-url <url>] [--actor <actor>] [--detail <text>] [--confirm-manual-review]"
-    );
-    println!(
-        "  cargo xtask module runner <runner-id> [--dry-run] [--once] [--registry-url <url>] [--runner-token <token>] [--poll-interval-ms <ms>] [--heartbeat-interval-ms <ms>] [--confirm-manual-review]"
-    );
-    println!(
-        "  cargo xtask module publish <slug> [--dry-run] [--registry-url <url>] [--actor <actor>] [--auto-approve] [--approve-reason <text>] [--approve-reason-code <code>] [--confirm-manual-review]"
-    );
-    println!(
-        "  cargo xtask module request-changes <request-id> [--dry-run] [--registry-url <url>] --actor <actor> --reason <text> --reason-code <code>"
-    );
-    println!(
-        "  cargo xtask module hold <request-id> [--dry-run] [--registry-url <url>] --actor <actor> --reason <text> --reason-code <code>"
-    );
-    println!(
-        "  cargo xtask module resume <request-id> [--dry-run] [--registry-url <url>] --actor <actor> --reason <text> --reason-code <code>"
-    );
-    println!(
-        "  cargo xtask module stage <request-id> <stage> <status> [--dry-run] [--detail <text>] [--reason-code <code>] [--registry-url <url>] [--actor <actor>] [--requeue]"
-    );
-    println!(
-        "  cargo xtask module owner-transfer <slug> <new-owner-actor> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>] [--actor <actor>]"
-    );
-    println!(
-        "  cargo xtask module yank <slug> <version> [--dry-run] [--reason <text>] [--reason-code <code>] [--registry-url <url>] [--actor <actor>]"
-    );
 }
 
 fn module_validate_command(args: &[String]) -> Result<()> {
@@ -874,531 +720,6 @@ fn module_validate_command(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn module_publish_command(args: &[String]) -> Result<()> {
-    if args.is_empty() {
-        print_module_usage();
-        anyhow::bail!("module publish requires a module slug");
-    }
-
-    let slug = args[0].as_str();
-    let dry_run = args.iter().skip(1).any(|arg| arg == "--dry-run");
-    let actor = actor_argument(&args[1..]);
-    let auto_approve = auto_approve_argument(&args[1..]);
-    let approve_reason = approve_reason_argument(&args[1..]);
-    let approve_reason_code = approve_reason_code_argument(&args[1..])?;
-    let confirm_manual_review = manual_review_confirmation_argument(&args[1..]);
-
-    let manifest_path = manifest_path();
-    let manifest = load_manifest_from(&manifest_path)?;
-    let workspace_manifest = load_workspace_manifest()?;
-    let spec = manifest
-        .modules
-        .get(slug)
-        .with_context(|| format!("Unknown module slug '{slug}'"))?;
-    let preview = build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
-    let registry_url = registry_url_argument(&args[1..]);
-    if dry_run {
-        if let Some(registry_url) = registry_url {
-            let payload = publish_via_registry_dry_run(&registry_url, &preview)?;
-            println!("{payload}");
-        } else {
-            let payload = serde_json::to_string_pretty(&preview)?;
-            println!("{payload}");
-        }
-    } else {
-        let registry_url = registry_url.with_context(|| {
-            "Live module publish requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
-        })?;
-        let actor = actor.with_context(|| "Live module publish requires --actor <actor>")?;
-        let payload = publish_via_registry_live(
-            &registry_url,
-            &preview,
-            &actor,
-            auto_approve,
-            approve_reason,
-            approve_reason_code,
-            confirm_manual_review,
-        )?;
-        println!("{payload}");
-    }
-
-    Ok(())
-}
-
-fn module_test_command(args: &[String]) -> Result<()> {
-    if args.is_empty() {
-        print_module_usage();
-        anyhow::bail!("module test requires a module slug");
-    }
-
-    let slug = args[0].as_str();
-    let dry_run = args.iter().skip(1).any(|arg| arg == "--dry-run");
-    let manifest_path = manifest_path();
-    let manifest = load_manifest_from(&manifest_path)?;
-    let workspace_manifest = load_workspace_manifest()?;
-    let spec = manifest
-        .modules
-        .get(slug)
-        .with_context(|| format!("Unknown module slug '{slug}'"))?;
-    let preview = build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
-    let plan = build_module_test_plan(&preview);
-
-    if dry_run {
-        let payload = serde_json::to_string_pretty(&plan)?;
-        println!("{payload}");
-        return Ok(());
-    }
-
-    println!(
-        "Running local module smoke checks for {slug} v{}...",
-        preview.version
-    );
-    for command in &plan.commands {
-        println!("  > {}", command.argv.join(" "));
-        run_command(command)?;
-    }
-
-    Ok(())
-}
-
-fn module_stage_run_command(args: &[String]) -> Result<()> {
-    if args.len() < 3 {
-        print_module_usage();
-        anyhow::bail!("module stage-run requires a module slug, request id, and stage key");
-    }
-
-    let slug = args[0].trim();
-    let request_id = args[1].trim();
-    let stage = args[2].trim().to_ascii_lowercase();
-    if slug.is_empty() {
-        anyhow::bail!("module stage-run requires a non-empty module slug");
-    }
-    if request_id.is_empty() {
-        anyhow::bail!("module stage-run requires a non-empty request id");
-    }
-
-    let dry_run = args.iter().skip(3).any(|arg| arg == "--dry-run");
-    let manifest_path = manifest_path();
-    let manifest = load_manifest_from(&manifest_path)?;
-    let workspace_manifest = load_workspace_manifest()?;
-    let spec = manifest
-        .modules
-        .get(slug)
-        .with_context(|| format!("Unknown module slug '{slug}'"))?;
-    let preview = build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
-    let plan = build_module_validation_stage_run_preview(
-        &preview,
-        request_id,
-        &stage,
-        detail_argument(&args[3..]),
-    )?;
-    let confirm_manual_review = manual_review_confirmation_argument(&args[3..]);
-    let registry_url = registry_url_argument(&args[3..]);
-    let actor = actor_argument(&args[3..]);
-
-    if dry_run {
-        println!("{}", serde_json::to_string_pretty(&plan)?);
-        return Ok(());
-    }
-
-    let registry_url = registry_url.with_context(|| {
-        "Live module stage-run requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
-    })?;
-    let actor = actor.with_context(|| "Live module stage-run requires --actor <actor>")?;
-    if plan.requires_manual_confirmation && !confirm_manual_review {
-        anyhow::bail!(
-            "module stage-run '{}' requires --confirm-manual-review before persisting a passed security/policy review",
-            plan.stage
-        );
-    }
-    run_validation_stage_plan_via_registry(&registry_url, &plan, &actor)?;
-    println!("{}", serde_json::to_string_pretty(&plan)?);
-    Ok(())
-}
-
-fn module_runner_command(args: &[String]) -> Result<()> {
-    if args.is_empty() {
-        print_module_usage();
-        anyhow::bail!("module runner requires a non-empty runner id");
-    }
-
-    let runner_id = args[0].trim();
-    if runner_id.is_empty() {
-        anyhow::bail!("module runner requires a non-empty runner id");
-    }
-
-    let dry_run = args.iter().skip(1).any(|arg| arg == "--dry-run");
-    let once = args.iter().skip(1).any(|arg| arg == "--once");
-    let confirm_manual_review = manual_review_confirmation_argument(&args[1..]);
-    let poll_interval_ms =
-        positive_u64_argument(&args[1..], "--poll-interval-ms", "module runner")?
-            .unwrap_or(DEFAULT_REMOTE_RUNNER_POLL_INTERVAL_MS);
-    let heartbeat_interval_ms =
-        positive_u64_argument(&args[1..], "--heartbeat-interval-ms", "module runner")?
-            .unwrap_or(DEFAULT_REMOTE_RUNNER_HEARTBEAT_INTERVAL_MS);
-    let supported_stages = supported_remote_runner_stages(confirm_manual_review);
-    let preview = ModuleRunnerPreview {
-        action: "remote_validation_runner".to_string(),
-        runner_id: runner_id.to_string(),
-        supported_stages: supported_stages
-            .iter()
-            .map(|value| (*value).to_string())
-            .collect(),
-        poll_interval_ms,
-        heartbeat_interval_ms,
-        once,
-        confirm_manual_review,
-    };
-
-    if dry_run {
-        println!("{}", serde_json::to_string_pretty(&preview)?);
-        return Ok(());
-    }
-
-    let registry_url = registry_url_argument(&args[1..]).with_context(|| {
-        "Live module runner requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
-    })?;
-    let runner_token = runner_token_argument(&args[1..]).with_context(|| {
-        format!("Live module runner requires --runner-token or {REMOTE_RUNNER_TOKEN_ENV}")
-    })?;
-
-    let manifest_path = manifest_path();
-    let manifest = load_manifest_from(&manifest_path)?;
-    let workspace_manifest = load_workspace_manifest()?;
-
-    if once {
-        let processed = run_remote_validation_runner_once(
-            &registry_url,
-            runner_id,
-            &runner_token,
-            &manifest_path,
-            &manifest,
-            &workspace_manifest,
-            confirm_manual_review,
-            heartbeat_interval_ms,
-        )?;
-        if !processed {
-            println!("No queued remote validation stages were available.");
-        }
-        return Ok(());
-    }
-
-    println!(
-        "Starting remote validation runner '{runner_id}' against {}...",
-        registry_url
-    );
-    loop {
-        let processed = run_remote_validation_runner_once(
-            &registry_url,
-            runner_id,
-            &runner_token,
-            &manifest_path,
-            &manifest,
-            &workspace_manifest,
-            confirm_manual_review,
-            heartbeat_interval_ms,
-        )?;
-        if !processed {
-            thread::sleep(Duration::from_millis(poll_interval_ms));
-        }
-    }
-}
-
-fn module_yank_command(args: &[String]) -> Result<()> {
-    if args.len() < 2 {
-        print_module_usage();
-        anyhow::bail!("module yank requires a module slug and version");
-    }
-
-    let slug = args[0].as_str();
-    let version = args[1].trim();
-    let dry_run = args.iter().skip(2).any(|arg| arg == "--dry-run");
-    Version::parse(version)
-        .with_context(|| format!("module yank version '{version}' is not valid semver"))?;
-
-    let manifest_path = manifest_path();
-    let manifest = load_manifest_from(&manifest_path)?;
-    let workspace_manifest = load_workspace_manifest()?;
-    let spec = manifest
-        .modules
-        .get(slug)
-        .with_context(|| format!("Unknown module slug '{slug}'"))?;
-    let preview = build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
-    let payload = ModuleYankDryRunPreview {
-        action: "yank".to_string(),
-        slug: slug.to_string(),
-        version: version.to_string(),
-        crate_name: preview.crate_name.clone(),
-        current_local_version: preview.version.clone(),
-        matches_local_version: preview.version == version,
-        package_manifest_path: preview.package_manifest_path,
-    };
-    let registry_url = registry_url_argument(&args[2..]);
-    let actor = actor_argument(&args[2..]);
-    let reason = reason_argument(&args[2..]);
-    let reason_code = reason_code_argument(&args[2..])?;
-    if dry_run {
-        if let Some(registry_url) = registry_url {
-            let remote_payload =
-                yank_via_registry_dry_run(&registry_url, &payload, reason, reason_code)?;
-            println!("{remote_payload}");
-        } else {
-            println!("{}", serde_json::to_string_pretty(&payload)?);
-        }
-    } else {
-        let registry_url = registry_url.with_context(|| {
-            "Live module yank requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
-        })?;
-        let actor = actor.with_context(|| "Live module yank requires --actor <actor>")?;
-        let reason = reason.with_context(|| "Live module yank requires --reason <text>")?;
-        let reason_code = reason_code.with_context(|| {
-            format!(
-                "Live module yank requires --reason-code <{}>",
-                REGISTRY_YANK_REASON_CODES.join("|")
-            )
-        })?;
-        let remote_payload =
-            yank_via_registry_live(&registry_url, &payload, &actor, reason, reason_code)?;
-        println!("{remote_payload}");
-    }
-
-    Ok(())
-}
-
-fn module_request_changes_command(args: &[String]) -> Result<()> {
-    module_publish_governance_command(
-        args,
-        "request-changes",
-        "request_changes",
-        REGISTRY_REQUEST_CHANGES_REASON_CODES,
-    )
-}
-
-fn module_hold_command(args: &[String]) -> Result<()> {
-    module_publish_governance_command(args, "hold", "hold", REGISTRY_HOLD_REASON_CODES)
-}
-
-fn module_resume_command(args: &[String]) -> Result<()> {
-    module_publish_governance_command(args, "resume", "resume", REGISTRY_RESUME_REASON_CODES)
-}
-
-fn module_publish_governance_command(
-    args: &[String],
-    command_name: &str,
-    action_key: &str,
-    allowed_reason_codes: &[&str],
-) -> Result<()> {
-    if args.is_empty() {
-        print_module_usage();
-        anyhow::bail!("module {command_name} requires a request id");
-    }
-
-    let request_id = args[0].trim();
-    if request_id.is_empty() {
-        anyhow::bail!("module {command_name} requires a non-empty request id");
-    }
-
-    let dry_run = args.iter().skip(1).any(|arg| arg == "--dry-run");
-    let actor = actor_argument(&args[1..]);
-    let reason = reason_argument(&args[1..]);
-    let reason_code =
-        governance_reason_code_argument(&args[1..], command_name, allowed_reason_codes)?;
-    let preview = ModulePublishGovernanceDryRunPreview {
-        action: action_key.to_string(),
-        request_id: request_id.to_string(),
-        actor: actor.clone(),
-        reason: reason.clone(),
-        reason_code: reason_code.clone(),
-    };
-    let registry_url = registry_url_argument(&args[1..]);
-
-    if dry_run {
-        if let Some(registry_url) = registry_url {
-            let payload = publish_request_governance_via_registry(
-                &registry_url,
-                request_id,
-                command_name,
-                action_key,
-                actor.as_deref(),
-                reason,
-                reason_code,
-                true,
-            )?;
-            println!("{payload}");
-        } else {
-            println!("{}", serde_json::to_string_pretty(&preview)?);
-        }
-        return Ok(());
-    }
-
-    let registry_url = registry_url.with_context(|| {
-        format!("Live module {command_name} requires --registry-url or RUSTOK_MODULE_REGISTRY_URL")
-    })?;
-    let actor =
-        actor.with_context(|| format!("Live module {command_name} requires --actor <actor>"))?;
-    let reason =
-        reason.with_context(|| format!("Live module {command_name} requires --reason <text>"))?;
-    let reason_code = reason_code.with_context(|| {
-        format!(
-            "Live module {command_name} requires --reason-code <{}>",
-            allowed_reason_codes.join("|")
-        )
-    })?;
-    let payload = publish_request_governance_via_registry(
-        &registry_url,
-        request_id,
-        command_name,
-        action_key,
-        Some(&actor),
-        Some(reason),
-        Some(reason_code),
-        false,
-    )?;
-    println!("{payload}");
-
-    Ok(())
-}
-
-fn module_owner_transfer_command(args: &[String]) -> Result<()> {
-    if args.len() < 2 {
-        print_module_usage();
-        anyhow::bail!("module owner-transfer requires a module slug and new owner actor");
-    }
-
-    let slug = args[0].as_str();
-    let new_owner_actor = args[1].trim();
-    if new_owner_actor.is_empty() {
-        anyhow::bail!("module owner-transfer requires a non-empty new owner actor");
-    }
-
-    let dry_run = args.iter().skip(2).any(|arg| arg == "--dry-run");
-    let actor = actor_argument(&args[2..]);
-    let manifest_path = manifest_path();
-    let manifest = load_manifest_from(&manifest_path)?;
-    let workspace_manifest = load_workspace_manifest()?;
-    let spec = manifest
-        .modules
-        .get(slug)
-        .with_context(|| format!("Unknown module slug '{slug}'"))?;
-    let preview = build_module_publish_preview(&manifest_path, slug, spec, &workspace_manifest)?;
-    let reason = reason_argument(&args[2..]);
-    let reason_code = owner_transfer_reason_code_argument(&args[2..])?;
-    let payload = ModuleOwnerTransferDryRunPreview {
-        action: "owner_transfer".to_string(),
-        slug: slug.to_string(),
-        crate_name: preview.crate_name.clone(),
-        current_local_version: preview.version.clone(),
-        package_manifest_path: preview.package_manifest_path,
-        new_owner_actor: new_owner_actor.to_string(),
-        reason: reason.clone(),
-        reason_code: reason_code.clone(),
-    };
-    let registry_url = registry_url_argument(&args[2..]);
-
-    if dry_run {
-        if let Some(registry_url) = registry_url {
-            let remote_payload =
-                owner_transfer_via_registry_dry_run(&registry_url, &payload, reason, reason_code)?;
-            println!("{remote_payload}");
-        } else {
-            println!("{}", serde_json::to_string_pretty(&payload)?);
-        }
-    } else {
-        let registry_url = registry_url.with_context(|| {
-            "Live module owner-transfer requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
-        })?;
-        let actor = actor.with_context(|| "Live module owner-transfer requires --actor <actor>")?;
-        let reason =
-            reason.with_context(|| "Live module owner-transfer requires --reason <text>")?;
-        let reason_code = reason_code.with_context(|| {
-            format!(
-                "Live module owner-transfer requires --reason-code <{}>",
-                REGISTRY_OWNER_TRANSFER_REASON_CODES.join("|")
-            )
-        })?;
-        let remote_payload =
-            owner_transfer_via_registry_live(&registry_url, &payload, &actor, reason, reason_code)?;
-        println!("{remote_payload}");
-    }
-
-    Ok(())
-}
-
-fn module_stage_command(args: &[String]) -> Result<()> {
-    if args.len() < 3 {
-        print_module_usage();
-        anyhow::bail!("module stage requires a request id, stage key, and status");
-    }
-
-    let request_id = args[0].trim();
-    let stage = args[1].trim();
-    let status = args[2].trim().to_ascii_lowercase();
-    if request_id.is_empty() {
-        anyhow::bail!("module stage requires a non-empty request id");
-    }
-    if stage.is_empty() {
-        anyhow::bail!("module stage requires a non-empty stage key");
-    }
-
-    let allowed_statuses = ["queued", "running", "passed", "failed", "blocked"];
-    if !allowed_statuses
-        .iter()
-        .any(|candidate| *candidate == status)
-    {
-        anyhow::bail!(
-            "module stage status '{}' is not supported; expected one of {}",
-            status,
-            allowed_statuses.join(", ")
-        );
-    }
-
-    let dry_run = args.iter().skip(3).any(|arg| arg == "--dry-run");
-    let requeue = args.iter().skip(3).any(|arg| arg == "--requeue");
-    let reason_code = validation_stage_reason_code_argument(&args[3..])?;
-    if requeue && status != "queued" {
-        anyhow::bail!("module stage --requeue requires status 'queued'");
-    }
-
-    let preview = ModuleValidationStageDryRunPreview {
-        action: "validation_stage".to_string(),
-        request_id: request_id.to_string(),
-        stage: stage.to_string(),
-        status,
-        detail: detail_argument(&args[3..]),
-        reason_code,
-        requeue,
-    };
-    let registry_url = registry_url_argument(&args[3..]);
-    let actor = actor_argument(&args[3..]);
-
-    if dry_run {
-        if let Some(registry_url) = registry_url {
-            let payload = validation_stage_via_registry_dry_run(&registry_url, &preview)?;
-            println!("{payload}");
-        } else {
-            println!("{}", serde_json::to_string_pretty(&preview)?);
-        }
-    } else {
-        if validation_stage_status_requires_reason_code(&preview.status)
-            && preview.reason_code.is_none()
-        {
-            anyhow::bail!(
-                "Live module stage status '{}' requires --reason-code <{}>",
-                preview.status,
-                REGISTRY_VALIDATION_STAGE_REASON_CODES.join("|")
-            );
-        }
-        let registry_url = registry_url.with_context(|| {
-            "Live module stage update requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
-        })?;
-        let actor = actor.with_context(|| "Live module stage update requires --actor <actor>")?;
-        let payload = validation_stage_via_registry_live(&registry_url, &preview, &actor)?;
-        println!("{payload}");
-    }
-
-    Ok(())
-}
-
 fn selected_modules<'a>(
     manifest: &'a Manifest,
     slug: Option<&'a str>,
@@ -1419,1744 +740,6 @@ fn selected_modules<'a>(
         .collect::<Vec<_>>();
     modules.sort_by(|left, right| left.0.cmp(right.0));
     Ok(modules)
-}
-
-fn registry_url_argument(args: &[String]) -> Option<String> {
-    if let Some(index) = args.iter().position(|arg| arg == "--registry-url") {
-        return args
-            .get(index + 1)
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-    }
-
-    std::env::var("RUSTOK_MODULE_REGISTRY_URL")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn runner_token_argument(args: &[String]) -> Option<String> {
-    if let Some(index) = args.iter().position(|arg| arg == "--runner-token") {
-        return args
-            .get(index + 1)
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-    }
-
-    std::env::var(REMOTE_RUNNER_TOKEN_ENV)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn positive_u64_argument(args: &[String], flag: &str, command_label: &str) -> Result<Option<u64>> {
-    let Some(index) = args.iter().position(|arg| arg == flag) else {
-        return Ok(None);
-    };
-
-    let value = args
-        .get(index + 1)
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .with_context(|| format!("{command_label} requires a value after {flag}"))?;
-    let parsed = value.parse::<u64>().with_context(|| {
-        format!("{command_label} {flag} value '{value}' is not a valid integer")
-    })?;
-    if parsed == 0 {
-        anyhow::bail!("{command_label} {flag} must be > 0");
-    }
-
-    Ok(Some(parsed))
-}
-
-fn actor_argument(args: &[String]) -> Option<String> {
-    if let Some(index) = args.iter().position(|arg| arg == "--actor") {
-        return args
-            .get(index + 1)
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-    }
-
-    None
-}
-
-fn auto_approve_argument(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "--auto-approve")
-}
-
-fn approve_reason_argument(args: &[String]) -> Option<String> {
-    if let Some(index) = args.iter().position(|arg| arg == "--approve-reason") {
-        return args
-            .get(index + 1)
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-    }
-
-    None
-}
-
-fn manual_review_confirmation_argument(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "--confirm-manual-review")
-}
-
-fn reason_argument(args: &[String]) -> Option<String> {
-    if let Some(index) = args.iter().position(|arg| arg == "--reason") {
-        return args
-            .get(index + 1)
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-    }
-
-    None
-}
-
-fn detail_argument(args: &[String]) -> Option<String> {
-    if let Some(index) = args.iter().position(|arg| arg == "--detail") {
-        return args
-            .get(index + 1)
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-    }
-
-    None
-}
-
-fn supported_remote_runner_stages(confirm_manual_review: bool) -> Vec<&'static str> {
-    let mut stages = vec!["compile_smoke", "targeted_tests"];
-    if confirm_manual_review {
-        stages.push("security_policy_review");
-    }
-    stages
-}
-
-fn reason_code_argument(args: &[String]) -> Result<Option<String>> {
-    normalized_reason_code_argument(
-        args,
-        REGISTRY_YANK_REASON_CODES,
-        "module yank",
-        "--reason-code",
-    )
-}
-
-fn owner_transfer_reason_code_argument(args: &[String]) -> Result<Option<String>> {
-    normalized_reason_code_argument(
-        args,
-        REGISTRY_OWNER_TRANSFER_REASON_CODES,
-        "module owner-transfer",
-        "--reason-code",
-    )
-}
-
-fn approve_reason_code_argument(args: &[String]) -> Result<Option<String>> {
-    normalized_reason_code_argument(
-        args,
-        REGISTRY_APPROVE_OVERRIDE_REASON_CODES,
-        "module publish approve override",
-        "--approve-reason-code",
-    )
-}
-
-fn validation_stage_reason_code_argument(args: &[String]) -> Result<Option<String>> {
-    normalized_reason_code_argument(
-        args,
-        REGISTRY_VALIDATION_STAGE_REASON_CODES,
-        "module stage",
-        "--reason-code",
-    )
-}
-
-fn governance_reason_code_argument(
-    args: &[String],
-    command_name: &str,
-    allowed: &[&str],
-) -> Result<Option<String>> {
-    normalized_reason_code_argument(
-        args,
-        allowed,
-        &format!("module {command_name}"),
-        "--reason-code",
-    )
-}
-
-fn normalized_reason_code_argument(
-    args: &[String],
-    allowed: &[&str],
-    command_label: &str,
-    flag: &str,
-) -> Result<Option<String>> {
-    let Some(index) = args.iter().position(|arg| arg == flag) else {
-        return Ok(None);
-    };
-
-    let value = args
-        .get(index + 1)
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty());
-
-    let Some(value) = value else {
-        return Ok(None);
-    };
-
-    if !allowed.iter().any(|candidate| *candidate == value) {
-        anyhow::bail!(
-            "{} reason code '{}' is not supported; expected one of {}",
-            command_label,
-            value,
-            allowed.join(", ")
-        );
-    }
-
-    Ok(Some(value))
-}
-
-fn publish_via_registry_dry_run(
-    registry_url: &str,
-    preview: &ModulePublishDryRunPreview,
-) -> Result<String> {
-    let endpoint = format!("{}/v2/catalog/publish", registry_url.trim_end_matches('/'));
-    let request = build_publish_registry_request(preview);
-
-    post_registry_json(&endpoint, &request)
-}
-
-fn publish_via_registry_live(
-    registry_url: &str,
-    preview: &ModulePublishDryRunPreview,
-    actor: &str,
-    auto_approve: bool,
-    approve_reason: Option<String>,
-    approve_reason_code: Option<String>,
-    confirm_manual_review: bool,
-) -> Result<String> {
-    let publisher = format!("publisher:{}", preview.slug);
-    let create_endpoint = format!("{}/v2/catalog/publish", registry_url.trim_end_matches('/'));
-    let create_request = build_live_publish_registry_request(preview);
-    let create_response: RegistryMutationHttpResponse = post_registry_json_parsed(
-        &create_endpoint,
-        &create_request,
-        Some(actor),
-        Some(&publisher),
-    )?;
-    if !create_response.accepted {
-        anyhow::bail!(
-            "Registry publish request was not accepted: {}",
-            join_registry_errors(&create_response.errors)
-        );
-    }
-
-    let request_id = create_response
-        .request_id
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .with_context(|| {
-            format!(
-                "Registry publish did not return request_id; status={:?}, next_step={:?}",
-                create_response.status, create_response.next_step
-            )
-        })?;
-
-    let artifact_bytes = build_publish_artifact_bytes(preview)?;
-    let upload_endpoint = format!(
-        "{}/v2/catalog/publish/{request_id}/artifact",
-        registry_url.trim_end_matches('/')
-    );
-    let upload_response: RegistryMutationHttpResponse = put_registry_bytes_parsed(
-        &upload_endpoint,
-        &artifact_bytes,
-        "application/json",
-        Some(actor),
-        Some(&publisher),
-    )?;
-    ensure_publish_step_accepted(
-        "artifact upload",
-        upload_response.accepted,
-        upload_response.status.as_deref(),
-        &upload_response.errors,
-    )?;
-
-    let validate_endpoint = format!(
-        "{}/v2/catalog/publish/{request_id}/validate",
-        registry_url.trim_end_matches('/')
-    );
-    let validate_request = RegistryPublishValidationHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        dry_run: false,
-    };
-    let validate_response: RegistryMutationHttpResponse = post_registry_json_parsed(
-        &validate_endpoint,
-        &validate_request,
-        Some(actor),
-        Some(&publisher),
-    )?;
-    ensure_publish_step_accepted(
-        "validation",
-        validate_response.accepted,
-        validate_response.status.as_deref(),
-        &validate_response.errors,
-    )?;
-
-    let readiness_endpoint = format!(
-        "{}/v2/catalog/publish/{request_id}",
-        registry_url.trim_end_matches('/')
-    );
-    let readiness = poll_registry_publish_status_until(
-        &readiness_endpoint,
-        Some(actor),
-        &["approved", "published", "rejected"],
-    )?;
-    ensure_publish_status_not_rejected(&readiness)?;
-    if readiness.status == "published" {
-        return pretty_json(&readiness);
-    }
-    if readiness.status != "approved" {
-        anyhow::bail!(
-            "Registry publish request '{}' did not reach approved status after validation; current status is '{}'",
-            readiness.request_id,
-            readiness.status
-        );
-    }
-    if !publish_status_action_available(&readiness, "approve") {
-        anyhow::bail!(
-            "Registry publish request '{}' reached status '{}', but the status contract does not advertise approve in governanceActions. Next step: {}",
-            readiness.request_id,
-            readiness.status,
-            readiness
-                .next_step
-                .clone()
-                .unwrap_or_else(|| "no next_step returned".to_string())
-        );
-    }
-    if !auto_approve {
-        return pretty_json(&readiness);
-    }
-    let readiness = run_publish_follow_up_stages_if_needed(
-        registry_url,
-        preview,
-        readiness,
-        actor,
-        confirm_manual_review,
-    )?;
-    if readiness.approval_override_required
-        && (approve_reason.as_deref().is_none_or(str::is_empty)
-            || approve_reason_code.as_deref().is_none_or(str::is_empty))
-    {
-        let pending_stages = readiness
-            .validation_stages
-            .iter()
-            .filter(|stage| !stage.status.eq_ignore_ascii_case("passed"))
-            .map(|stage| format!("{} ({})", stage.key, stage.status))
-            .collect::<Vec<_>>();
-        let security_policy_hint = if publish_status_stage_requires_action(
-            &readiness,
-            "security_policy_review",
-        ) {
-            "; rerun with --confirm-manual-review to complete the local security/policy review path, or provide explicit approve override fields"
-        } else {
-            ""
-        };
-        anyhow::bail!(
-            "Registry publish request '{}' still has non-passed follow-up stages [{}]; rerun with --approve-reason and --approve-reason-code <{}> or mark the remaining stages as passed first{}",
-            readiness.request_id,
-            pending_stages.join(", "),
-            if readiness.approval_override_reason_codes.is_empty() {
-                REGISTRY_APPROVE_OVERRIDE_REASON_CODES.join("|")
-            } else {
-                readiness.approval_override_reason_codes.join("|")
-            },
-            security_policy_hint
-        );
-    }
-
-    let approve_endpoint = format!(
-        "{}/v2/catalog/publish/{request_id}/approve",
-        registry_url.trim_end_matches('/')
-    );
-    let approve_request = RegistryPublishDecisionHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        dry_run: false,
-        reason: approve_reason,
-        reason_code: approve_reason_code,
-    };
-    let approve_response: RegistryMutationHttpResponse = post_registry_json_parsed(
-        &approve_endpoint,
-        &approve_request,
-        Some(actor),
-        Some(&publisher),
-    )?;
-    ensure_publish_step_accepted(
-        "approval",
-        approve_response.accepted,
-        approve_response.status.as_deref(),
-        &approve_response.errors,
-    )?;
-
-    let status_endpoint = format!(
-        "{}/v2/catalog/publish/{request_id}",
-        registry_url.trim_end_matches('/')
-    );
-    let status = poll_registry_publish_status_until(
-        &status_endpoint,
-        Some(actor),
-        &["published", "rejected"],
-    )?;
-    ensure_publish_status_not_rejected(&status)?;
-    pretty_json(&status)
-}
-
-fn yank_via_registry_dry_run(
-    registry_url: &str,
-    preview: &ModuleYankDryRunPreview,
-    reason: Option<String>,
-    reason_code: Option<String>,
-) -> Result<String> {
-    let endpoint = format!("{}/v2/catalog/yank", registry_url.trim_end_matches('/'));
-    let request = build_yank_registry_request(preview, reason, reason_code);
-
-    post_registry_json(&endpoint, &request)
-}
-
-fn yank_via_registry_live(
-    registry_url: &str,
-    preview: &ModuleYankDryRunPreview,
-    actor: &str,
-    reason: String,
-    reason_code: String,
-) -> Result<String> {
-    let endpoint = format!("{}/v2/catalog/yank", registry_url.trim_end_matches('/'));
-    let request = build_live_yank_registry_request(preview, Some(reason), Some(reason_code));
-    let publisher = format!("publisher:{}", preview.slug);
-    let response: RegistryMutationHttpResponse =
-        post_registry_json_parsed(&endpoint, &request, Some(actor), Some(&publisher))?;
-    if !response.accepted {
-        anyhow::bail!(
-            "Registry yank request was not accepted: {}",
-            join_registry_errors(&response.errors)
-        );
-    }
-
-    pretty_json(&response)
-}
-
-fn owner_transfer_via_registry_dry_run(
-    registry_url: &str,
-    preview: &ModuleOwnerTransferDryRunPreview,
-    reason: Option<String>,
-    reason_code: Option<String>,
-) -> Result<String> {
-    let endpoint = format!(
-        "{}/v2/catalog/owner-transfer",
-        registry_url.trim_end_matches('/')
-    );
-    let request = build_owner_transfer_registry_request(preview, reason, reason_code);
-
-    post_registry_json(&endpoint, &request)
-}
-
-fn owner_transfer_via_registry_live(
-    registry_url: &str,
-    preview: &ModuleOwnerTransferDryRunPreview,
-    actor: &str,
-    reason: String,
-    reason_code: String,
-) -> Result<String> {
-    let endpoint = format!(
-        "{}/v2/catalog/owner-transfer",
-        registry_url.trim_end_matches('/')
-    );
-    let request =
-        build_live_owner_transfer_registry_request(preview, Some(reason), Some(reason_code));
-    let response: RegistryMutationHttpResponse =
-        post_registry_json_parsed(&endpoint, &request, Some(actor), None)?;
-    if !response.accepted {
-        anyhow::bail!(
-            "Registry owner transfer request was not accepted: {}",
-            join_registry_errors(&response.errors)
-        );
-    }
-
-    pretty_json(&response)
-}
-
-fn validation_stage_via_registry_dry_run(
-    registry_url: &str,
-    preview: &ModuleValidationStageDryRunPreview,
-) -> Result<String> {
-    let endpoint = format!(
-        "{}/v2/catalog/publish/{}/stages",
-        registry_url.trim_end_matches('/'),
-        preview.request_id
-    );
-    let request = build_validation_stage_registry_request(preview);
-
-    post_registry_json(&endpoint, &request)
-}
-
-fn validation_stage_via_registry_live(
-    registry_url: &str,
-    preview: &ModuleValidationStageDryRunPreview,
-    actor: &str,
-) -> Result<String> {
-    let endpoint = format!(
-        "{}/v2/catalog/publish/{}/stages",
-        registry_url.trim_end_matches('/'),
-        preview.request_id
-    );
-    let request = build_live_validation_stage_registry_request(preview);
-    let response: RegistryMutationHttpResponse =
-        post_registry_json_parsed(&endpoint, &request, Some(actor), None)?;
-    if !response.accepted {
-        anyhow::bail!(
-            "Registry validation stage update was not accepted: {}",
-            join_registry_errors(&response.errors)
-        );
-    }
-
-    pretty_json(&response)
-}
-
-fn publish_request_governance_via_registry(
-    registry_url: &str,
-    request_id: &str,
-    command_name: &str,
-    action_key: &str,
-    actor: Option<&str>,
-    reason: Option<String>,
-    reason_code: Option<String>,
-    dry_run: bool,
-) -> Result<String> {
-    if !dry_run {
-        let status = fetch_registry_publish_status_with_actor(registry_url, request_id, actor)?;
-        if !publish_status_action_available(&status, action_key) {
-            anyhow::bail!(
-                "Registry publish request '{}' does not advertise '{}' in governanceActions. Current status: '{}'. Next step: {}",
-                status.request_id,
-                action_key,
-                status.status,
-                status
-                    .next_step
-                    .clone()
-                    .unwrap_or_else(|| "no next_step returned".to_string())
-            );
-        }
-    }
-
-    let endpoint = format!(
-        "{}/v2/catalog/publish/{request_id}/{}",
-        registry_url.trim_end_matches('/'),
-        command_name
-    );
-    let request = RegistryPublishDecisionHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        dry_run,
-        reason,
-        reason_code,
-    };
-    let response: RegistryMutationHttpResponse =
-        post_registry_json_parsed(&endpoint, &request, actor, None)?;
-    if !response.accepted {
-        anyhow::bail!(
-            "Registry publish {} request was not accepted: {}",
-            action_key,
-            join_registry_errors(&response.errors)
-        );
-    }
-
-    pretty_json(&response)
-}
-
-fn claim_remote_validation_stage_via_registry(
-    registry_url: &str,
-    runner_id: &str,
-    runner_token: &str,
-    supported_stages: &[&str],
-) -> Result<Option<RegistryRunnerClaimHttpPayload>> {
-    let endpoint = format!(
-        "{}/v2/catalog/runner/claim",
-        registry_url.trim_end_matches('/')
-    );
-    let request = RegistryRunnerClaimHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        runner_id: runner_id.to_string(),
-        supported_stages: supported_stages
-            .iter()
-            .map(|value| (*value).to_string())
-            .collect(),
-    };
-    let response: RegistryRunnerClaimHttpResponse =
-        post_registry_json_with_runner_token_parsed(&endpoint, &request, runner_token)?;
-    if !response.accepted {
-        anyhow::bail!("Registry remote runner claim was not accepted");
-    }
-
-    Ok(response.claim)
-}
-
-fn heartbeat_remote_validation_stage_via_registry(
-    registry_url: &str,
-    claim_id: &str,
-    runner_id: &str,
-    runner_token: &str,
-) -> Result<()> {
-    let endpoint = format!(
-        "{}/v2/catalog/runner/{claim_id}/heartbeat",
-        registry_url.trim_end_matches('/')
-    );
-    let request = RegistryRunnerHeartbeatHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        runner_id: runner_id.to_string(),
-    };
-    let response: RegistryRunnerMutationHttpResponse =
-        post_registry_json_with_runner_token_parsed(&endpoint, &request, runner_token)?;
-    if !response.accepted {
-        anyhow::bail!(
-            "Registry remote runner heartbeat for claim '{}' was not accepted",
-            claim_id
-        );
-    }
-
-    Ok(())
-}
-
-fn complete_remote_validation_stage_via_registry(
-    registry_url: &str,
-    claim_id: &str,
-    runner_id: &str,
-    runner_token: &str,
-    detail: String,
-    reason_code: String,
-) -> Result<()> {
-    let endpoint = format!(
-        "{}/v2/catalog/runner/{claim_id}/complete",
-        registry_url.trim_end_matches('/')
-    );
-    let request = RegistryRunnerCompletionHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        runner_id: runner_id.to_string(),
-        detail: Some(detail),
-        reason_code: Some(reason_code),
-    };
-    let response: RegistryRunnerMutationHttpResponse =
-        post_registry_json_with_runner_token_parsed(&endpoint, &request, runner_token)?;
-    if !response.accepted {
-        anyhow::bail!(
-            "Registry remote runner completion for claim '{}' was not accepted",
-            claim_id
-        );
-    }
-
-    Ok(())
-}
-
-fn fail_remote_validation_stage_via_registry(
-    registry_url: &str,
-    claim_id: &str,
-    runner_id: &str,
-    runner_token: &str,
-    detail: String,
-    reason_code: String,
-) -> Result<()> {
-    let endpoint = format!(
-        "{}/v2/catalog/runner/{claim_id}/fail",
-        registry_url.trim_end_matches('/')
-    );
-    let request = RegistryRunnerCompletionHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        runner_id: runner_id.to_string(),
-        detail: Some(detail),
-        reason_code: Some(reason_code),
-    };
-    let response: RegistryRunnerMutationHttpResponse =
-        post_registry_json_with_runner_token_parsed(&endpoint, &request, runner_token)?;
-    if !response.accepted {
-        anyhow::bail!(
-            "Registry remote runner failure report for claim '{}' was not accepted",
-            claim_id
-        );
-    }
-
-    Ok(())
-}
-
-fn build_publish_registry_request(
-    preview: &ModulePublishDryRunPreview,
-) -> RegistryPublishHttpRequest {
-    build_publish_registry_request_with_dry_run(preview, true)
-}
-
-fn build_live_publish_registry_request(
-    preview: &ModulePublishDryRunPreview,
-) -> RegistryPublishHttpRequest {
-    build_publish_registry_request_with_dry_run(preview, false)
-}
-
-fn build_publish_registry_request_with_dry_run(
-    preview: &ModulePublishDryRunPreview,
-    dry_run: bool,
-) -> RegistryPublishHttpRequest {
-    RegistryPublishHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        dry_run,
-        module: RegistryPublishModuleHttpRequest {
-            slug: preview.slug.clone(),
-            version: preview.version.clone(),
-            crate_name: preview.crate_name.clone(),
-            name: preview.module_name.clone(),
-            description: preview.module_description.clone(),
-            ownership: preview.ownership.clone(),
-            trust_level: preview.trust_level.clone(),
-            license: preview.license.clone(),
-            entry_type: preview.module_entry_type.clone(),
-            marketplace: RegistryPublishMarketplaceHttpRequest {
-                category: preview.marketplace.category.clone(),
-                tags: preview.marketplace.tags.clone(),
-            },
-            ui_packages: RegistryPublishUiPackagesHttpRequest {
-                admin: preview.ui_packages.admin.as_ref().map(|ui| {
-                    RegistryPublishUiPackageHttpRequest {
-                        crate_name: ui.crate_name.clone(),
-                    }
-                }),
-                storefront: preview.ui_packages.storefront.as_ref().map(|ui| {
-                    RegistryPublishUiPackageHttpRequest {
-                        crate_name: ui.crate_name.clone(),
-                    }
-                }),
-            },
-        },
-    }
-}
-
-fn build_yank_registry_request(
-    preview: &ModuleYankDryRunPreview,
-    reason: Option<String>,
-    reason_code: Option<String>,
-) -> RegistryYankHttpRequest {
-    build_yank_registry_request_with_dry_run(preview, reason, reason_code, true)
-}
-
-fn build_live_yank_registry_request(
-    preview: &ModuleYankDryRunPreview,
-    reason: Option<String>,
-    reason_code: Option<String>,
-) -> RegistryYankHttpRequest {
-    build_yank_registry_request_with_dry_run(preview, reason, reason_code, false)
-}
-
-fn build_yank_registry_request_with_dry_run(
-    preview: &ModuleYankDryRunPreview,
-    reason: Option<String>,
-    reason_code: Option<String>,
-    dry_run: bool,
-) -> RegistryYankHttpRequest {
-    RegistryYankHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        dry_run,
-        slug: preview.slug.clone(),
-        version: preview.version.clone(),
-        reason,
-        reason_code,
-    }
-}
-
-fn build_owner_transfer_registry_request(
-    preview: &ModuleOwnerTransferDryRunPreview,
-    reason: Option<String>,
-    reason_code: Option<String>,
-) -> RegistryOwnerTransferHttpRequest {
-    build_owner_transfer_registry_request_with_dry_run(preview, reason, reason_code, true)
-}
-
-fn build_live_owner_transfer_registry_request(
-    preview: &ModuleOwnerTransferDryRunPreview,
-    reason: Option<String>,
-    reason_code: Option<String>,
-) -> RegistryOwnerTransferHttpRequest {
-    build_owner_transfer_registry_request_with_dry_run(preview, reason, reason_code, false)
-}
-
-fn build_owner_transfer_registry_request_with_dry_run(
-    preview: &ModuleOwnerTransferDryRunPreview,
-    reason: Option<String>,
-    reason_code: Option<String>,
-    dry_run: bool,
-) -> RegistryOwnerTransferHttpRequest {
-    RegistryOwnerTransferHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        dry_run,
-        slug: preview.slug.clone(),
-        new_owner_actor: preview.new_owner_actor.clone(),
-        reason,
-        reason_code,
-    }
-}
-
-fn build_validation_stage_registry_request(
-    preview: &ModuleValidationStageDryRunPreview,
-) -> RegistryValidationStageHttpRequest {
-    build_validation_stage_registry_request_with_dry_run(preview, true)
-}
-
-fn build_live_validation_stage_registry_request(
-    preview: &ModuleValidationStageDryRunPreview,
-) -> RegistryValidationStageHttpRequest {
-    build_validation_stage_registry_request_with_dry_run(preview, false)
-}
-
-fn build_validation_stage_registry_request_with_dry_run(
-    preview: &ModuleValidationStageDryRunPreview,
-    dry_run: bool,
-) -> RegistryValidationStageHttpRequest {
-    RegistryValidationStageHttpRequest {
-        schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
-        dry_run,
-        stage: preview.stage.clone(),
-        status: preview.status.clone(),
-        detail: preview.detail.clone(),
-        reason_code: preview.reason_code.clone(),
-        requeue: preview.requeue,
-    }
-}
-
-fn post_registry_json<T>(endpoint: &str, payload: &T) -> Result<String>
-where
-    T: Serialize,
-{
-    let value: serde_json::Value = post_registry_json_parsed(endpoint, payload, None, None)?;
-    pretty_json(&value)
-}
-
-fn post_registry_json_parsed<T, U>(
-    endpoint: &str,
-    payload: &T,
-    actor: Option<&str>,
-    publisher: Option<&str>,
-) -> Result<U>
-where
-    T: Serialize,
-    U: DeserializeOwned,
-{
-    let client = build_registry_http_client(endpoint)?;
-    let mut request = client.post(endpoint).json(payload);
-    if let Some(actor) = actor {
-        request = request.header("x-rustok-actor", actor);
-    }
-    if let Some(publisher) = publisher {
-        request = request.header("x-rustok-publisher", publisher);
-    }
-    let response = request
-        .send()
-        .with_context(|| format!("Failed to call registry endpoint {endpoint}"))?;
-    parse_registry_json_response(endpoint, response)
-}
-
-fn post_registry_json_with_runner_token_parsed<T, U>(
-    endpoint: &str,
-    payload: &T,
-    runner_token: &str,
-) -> Result<U>
-where
-    T: Serialize,
-    U: DeserializeOwned,
-{
-    let client = build_registry_http_client(endpoint)?;
-    let response = client
-        .post(endpoint)
-        .header("x-rustok-runner-token", runner_token)
-        .json(payload)
-        .send()
-        .with_context(|| format!("Failed to call registry runner endpoint {endpoint}"))?;
-    parse_registry_json_response(endpoint, response)
-}
-
-fn put_registry_bytes_parsed<U>(
-    endpoint: &str,
-    payload: &[u8],
-    content_type: &str,
-    actor: Option<&str>,
-    publisher: Option<&str>,
-) -> Result<U>
-where
-    U: DeserializeOwned,
-{
-    let client = build_registry_http_client(endpoint)?;
-    let mut request = client
-        .put(endpoint)
-        .header("content-type", content_type)
-        .body(payload.to_vec());
-    if let Some(actor) = actor {
-        request = request.header("x-rustok-actor", actor);
-    }
-    if let Some(publisher) = publisher {
-        request = request.header("x-rustok-publisher", publisher);
-    }
-    let response = request
-        .send()
-        .with_context(|| format!("Failed to call registry upload endpoint {endpoint}"))?;
-    parse_registry_json_response(endpoint, response)
-}
-
-fn get_registry_json_parsed<U>(endpoint: &str, actor: Option<&str>) -> Result<U>
-where
-    U: DeserializeOwned,
-{
-    let client = build_registry_http_client(endpoint)?;
-    let mut request = client.get(endpoint);
-    if let Some(actor) = actor {
-        request = request.header("x-rustok-actor", actor);
-    }
-    let response = request
-        .send()
-        .with_context(|| format!("Failed to call registry endpoint {endpoint}"))?;
-    parse_registry_json_response(endpoint, response)
-}
-
-fn parse_registry_json_response<U>(
-    endpoint: &str,
-    response: reqwest::blocking::Response,
-) -> Result<U>
-where
-    U: DeserializeOwned,
-{
-    let response = response
-        .error_for_status()
-        .with_context(|| format!("Registry endpoint {endpoint} returned an error status"))?;
-    response
-        .json::<U>()
-        .with_context(|| format!("Failed to parse registry response from {endpoint}"))
-}
-
-fn build_publish_artifact_bytes(preview: &ModulePublishDryRunPreview) -> Result<Vec<u8>> {
-    let package_manifest_path = workspace_root().join(&preview.package_manifest_path);
-    let package_manifest = fs::read_to_string(&package_manifest_path).with_context(|| {
-        format!(
-            "Failed to read publish package manifest {}",
-            package_manifest_path.display()
-        )
-    })?;
-    let module_root = package_manifest_path.parent().with_context(|| {
-        format!(
-            "Failed to resolve module root for {}",
-            package_manifest_path.display()
-        )
-    })?;
-    let crate_manifest_path = module_root.join("Cargo.toml");
-    let crate_manifest = fs::read_to_string(&crate_manifest_path).with_context(|| {
-        format!(
-            "Failed to read crate manifest {}",
-            crate_manifest_path.display()
-        )
-    })?;
-
-    let admin_manifest = preview
-        .ui_packages
-        .admin
-        .as_ref()
-        .map(|ui| {
-            let path = workspace_root().join(&ui.manifest_path);
-            let content = fs::read_to_string(&path)
-                .with_context(|| format!("Failed to read admin UI manifest {}", path.display()))?;
-            Ok::<String, anyhow::Error>(content)
-        })
-        .transpose()?;
-    let storefront_manifest = preview
-        .ui_packages
-        .storefront
-        .as_ref()
-        .map(|ui| {
-            let path = workspace_root().join(&ui.manifest_path);
-            let content = fs::read_to_string(&path).with_context(|| {
-                format!("Failed to read storefront UI manifest {}", path.display())
-            })?;
-            Ok::<String, anyhow::Error>(content)
-        })
-        .transpose()?;
-
-    let payload = serde_json::json!({
-        "schema_version": REGISTRY_MUTATION_SCHEMA_VERSION,
-        "artifact_type": "rustok-module-publish-bundle",
-        "module": preview,
-        "files": {
-            "rustok-module.toml": package_manifest,
-            "Cargo.toml": crate_manifest,
-            "admin/Cargo.toml": admin_manifest,
-            "storefront/Cargo.toml": storefront_manifest,
-        }
-    });
-
-    serde_json::to_vec_pretty(&payload).context("Failed to serialize publish artifact bundle")
-}
-
-fn run_publish_follow_up_stages_if_needed(
-    registry_url: &str,
-    preview: &ModulePublishDryRunPreview,
-    mut status: RegistryPublishStatusHttpResponse,
-    actor: &str,
-    confirm_manual_review: bool,
-) -> Result<RegistryPublishStatusHttpResponse> {
-    let executable_stages = ["compile_smoke", "targeted_tests"];
-    for stage in executable_stages {
-        if publish_status_stage_requires_action(&status, stage) {
-            let plan = build_module_validation_stage_run_preview(
-                preview,
-                &status.request_id,
-                stage,
-                None,
-            )?;
-            run_validation_stage_plan_via_registry(registry_url, &plan, actor)?;
-            status = fetch_registry_publish_status_with_actor(
-                registry_url,
-                &status.request_id,
-                Some(actor),
-            )?;
-            ensure_publish_status_not_rejected(&status)?;
-        }
-    }
-
-    if publish_status_stage_requires_action(&status, "security_policy_review")
-        && confirm_manual_review
-    {
-        let plan = build_module_validation_stage_run_preview(
-            preview,
-            &status.request_id,
-            "security_policy_review",
-            None,
-        )?;
-        run_validation_stage_plan_via_registry(registry_url, &plan, actor)?;
-        status = fetch_registry_publish_status_with_actor(
-            registry_url,
-            &status.request_id,
-            Some(actor),
-        )?;
-        ensure_publish_status_not_rejected(&status)?;
-    }
-
-    Ok(status)
-}
-
-fn fetch_registry_publish_status_with_actor(
-    registry_url: &str,
-    request_id: &str,
-    actor: Option<&str>,
-) -> Result<RegistryPublishStatusHttpResponse> {
-    let endpoint = format!(
-        "{}/v2/catalog/publish/{request_id}",
-        registry_url.trim_end_matches('/')
-    );
-    get_registry_json_parsed(&endpoint, actor)
-}
-
-fn publish_status_stage_requires_action(
-    status: &RegistryPublishStatusHttpResponse,
-    stage_key: &str,
-) -> bool {
-    status
-        .validation_stages
-        .iter()
-        .find(|stage| stage.key.eq_ignore_ascii_case(stage_key))
-        .is_some_and(|stage| !stage.status.eq_ignore_ascii_case("passed"))
-}
-
-fn publish_status_action_available(
-    status: &RegistryPublishStatusHttpResponse,
-    action_key: &str,
-) -> bool {
-    status
-        .governance_actions
-        .iter()
-        .any(|action| action.key.eq_ignore_ascii_case(action_key))
-}
-
-fn poll_registry_publish_status_until(
-    endpoint: &str,
-    actor: Option<&str>,
-    desired_statuses: &[&str],
-) -> Result<RegistryPublishStatusHttpResponse> {
-    let mut last_status = None;
-
-    for attempt in 0..10 {
-        let status: RegistryPublishStatusHttpResponse = get_registry_json_parsed(endpoint, actor)?;
-        let terminal = desired_statuses
-            .iter()
-            .any(|candidate| status.status == *candidate);
-        last_status = Some(status);
-        if terminal {
-            break;
-        }
-        if attempt < 9 {
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        }
-    }
-
-    last_status.with_context(|| format!("Registry status endpoint {endpoint} returned no payload"))
-}
-
-fn ensure_publish_step_accepted(
-    step: &str,
-    accepted: bool,
-    status: Option<&str>,
-    errors: &[String],
-) -> Result<()> {
-    if accepted && status != Some("rejected") {
-        return Ok(());
-    }
-
-    let status_label = status.unwrap_or("unknown");
-    anyhow::bail!(
-        "Registry publish {step} finished with status '{status_label}': {}",
-        join_registry_errors(errors)
-    );
-}
-
-fn ensure_publish_status_not_rejected(status: &RegistryPublishStatusHttpResponse) -> Result<()> {
-    if status.accepted && status.status != "rejected" {
-        return Ok(());
-    }
-
-    anyhow::bail!(
-        "Registry publish request '{}' was rejected: {}",
-        status.request_id,
-        join_registry_errors(&status.errors)
-    );
-}
-
-fn join_registry_errors(errors: &[String]) -> String {
-    if errors.is_empty() {
-        "no error details returned".to_string()
-    } else {
-        errors.join("; ")
-    }
-}
-
-fn pretty_json<T>(value: &T) -> Result<String>
-where
-    T: Serialize,
-{
-    serde_json::to_string_pretty(value).context("Failed to pretty-print registry payload")
-}
-
-fn build_registry_http_client(endpoint: &str) -> Result<Client> {
-    let mut builder = Client::builder().timeout(std::time::Duration::from_secs(15));
-    if registry_endpoint_uses_loopback(endpoint) {
-        builder = builder.no_proxy();
-    }
-
-    builder
-        .build()
-        .context("Failed to build registry HTTP client")
-}
-
-fn registry_endpoint_uses_loopback(endpoint: &str) -> bool {
-    Url::parse(endpoint)
-        .ok()
-        .and_then(|url| url.host_str().map(|host| host.to_string()))
-        .is_some_and(|host| {
-            host.eq_ignore_ascii_case("localhost")
-                || host
-                    .trim_matches(|ch| ch == '[' || ch == ']')
-                    .parse::<IpAddr>()
-                    .map(|address| address.is_loopback())
-                    .unwrap_or(false)
-        })
-}
-
-fn build_module_test_plan(preview: &ModulePublishDryRunPreview) -> ModuleTestPlanPreview {
-    let mut commands = vec![ModuleCommandPreview {
-        label: "module validate".to_string(),
-        argv: vec![
-            "cargo".to_string(),
-            "run".to_string(),
-            "-p".to_string(),
-            "xtask".to_string(),
-            "--".to_string(),
-            "module".to_string(),
-            "validate".to_string(),
-            preview.slug.clone(),
-        ],
-    }];
-
-    commands.push(package_check_command("module crate", &preview.crate_name));
-
-    if let Some(admin) = preview.ui_packages.admin.as_ref() {
-        commands.push(package_check_command("admin ui crate", &admin.crate_name));
-    }
-
-    if let Some(storefront) = preview.ui_packages.storefront.as_ref() {
-        commands.push(package_check_command(
-            "storefront ui crate",
-            &storefront.crate_name,
-        ));
-    }
-
-    ModuleTestPlanPreview {
-        slug: preview.slug.clone(),
-        version: preview.version.clone(),
-        commands,
-    }
-}
-
-fn build_module_validation_stage_run_preview(
-    preview: &ModulePublishDryRunPreview,
-    request_id: &str,
-    stage: &str,
-    detail_override: Option<String>,
-) -> Result<ModuleValidationStageRunPreview> {
-    let normalized_stage = normalize_executable_validation_stage(stage)?;
-    let (commands, requires_manual_confirmation) = match normalized_stage {
-        "compile_smoke" => (build_compile_smoke_commands(preview), false),
-        "targeted_tests" => (build_module_test_plan(preview).commands, false),
-        "security_policy_review" => (build_security_policy_review_commands(preview), true),
-        _ => unreachable!(),
-    };
-    let running_detail = detail_override.unwrap_or_else(|| {
-        executable_validation_stage_running_detail(normalized_stage, &preview.slug)
-    });
-
-    Ok(ModuleValidationStageRunPreview {
-        action: "validation_stage_run".to_string(),
-        slug: preview.slug.clone(),
-        request_id: request_id.to_string(),
-        stage: normalized_stage.to_string(),
-        requires_manual_confirmation,
-        running_detail,
-        success_detail: executable_validation_stage_success_detail(normalized_stage, &preview.slug),
-        failure_detail_prefix: executable_validation_stage_failure_prefix(normalized_stage),
-        commands,
-    })
-}
-
-fn normalize_executable_validation_stage(stage: &str) -> Result<&'static str> {
-    let stage = stage.trim().to_ascii_lowercase();
-    match stage.as_str() {
-        "compile_smoke" => Ok("compile_smoke"),
-        "targeted_tests" => Ok("targeted_tests"),
-        "security_policy_review" => Ok("security_policy_review"),
-        _ => anyhow::bail!(
-            "module stage-run stage '{}' is not supported; expected one of compile_smoke, targeted_tests, or security_policy_review",
-            stage
-        ),
-    }
-}
-
-fn build_compile_smoke_commands(preview: &ModulePublishDryRunPreview) -> Vec<ModuleCommandPreview> {
-    let mut commands = vec![package_check_command("module crate", &preview.crate_name)];
-
-    if let Some(admin) = preview.ui_packages.admin.as_ref() {
-        commands.push(package_check_command("admin ui crate", &admin.crate_name));
-    }
-
-    if let Some(storefront) = preview.ui_packages.storefront.as_ref() {
-        commands.push(package_check_command(
-            "storefront ui crate",
-            &storefront.crate_name,
-        ));
-    }
-
-    commands
-}
-
-fn build_security_policy_review_commands(
-    preview: &ModulePublishDryRunPreview,
-) -> Vec<ModuleCommandPreview> {
-    vec![
-        ModuleCommandPreview {
-            label: "module validate".to_string(),
-            argv: vec![
-                "cargo".to_string(),
-                "run".to_string(),
-                "-p".to_string(),
-                "xtask".to_string(),
-                "--".to_string(),
-                "module".to_string(),
-                "validate".to_string(),
-                preview.slug.clone(),
-            ],
-        },
-        ModuleCommandPreview {
-            label: "module test dry-run".to_string(),
-            argv: vec![
-                "cargo".to_string(),
-                "run".to_string(),
-                "-p".to_string(),
-                "xtask".to_string(),
-                "--".to_string(),
-                "module".to_string(),
-                "test".to_string(),
-                preview.slug.clone(),
-                "--dry-run".to_string(),
-            ],
-        },
-    ]
-}
-
-fn executable_validation_stage_running_detail(stage: &str, slug: &str) -> String {
-    match stage {
-        "compile_smoke" => format!("Running local compile smoke checks for module '{slug}'."),
-        "targeted_tests" => format!("Running local targeted tests for module '{slug}'."),
-        "security_policy_review" => {
-            format!("Running local security/policy review preflight for module '{slug}'.")
-        }
-        _ => format!("Running local validation stage '{stage}' for module '{slug}'."),
-    }
-}
-
-fn executable_validation_stage_success_detail(stage: &str, slug: &str) -> String {
-    match stage {
-        "compile_smoke" => {
-            format!("Local compile smoke checks passed for module '{slug}'.")
-        }
-        "targeted_tests" => {
-            format!("Local targeted tests completed successfully for module '{slug}'.")
-        }
-        "security_policy_review" => format!(
-            "Local security/policy preflight completed and manual review was confirmed for module '{slug}'."
-        ),
-        _ => format!("Local validation stage '{stage}' completed successfully for '{slug}'."),
-    }
-}
-
-fn executable_validation_stage_failure_prefix(stage: &str) -> String {
-    match stage {
-        "compile_smoke" => "Local compile smoke failed".to_string(),
-        "targeted_tests" => "Local targeted tests failed".to_string(),
-        "security_policy_review" => "Local security/policy review preflight failed".to_string(),
-        _ => format!("Local validation stage '{stage}' failed"),
-    }
-}
-
-fn validation_stage_success_reason_code(stage: &str) -> &'static str {
-    match stage {
-        "security_policy_review" => "manual_review_complete",
-        _ => "local_runner_passed",
-    }
-}
-
-fn validation_stage_failure_reason_code(stage: &str) -> &'static str {
-    match stage {
-        "compile_smoke" => "build_failure",
-        "targeted_tests" => "test_failure",
-        "security_policy_review" => "policy_preflight_failed",
-        _ => "other",
-    }
-}
-
-fn validation_stage_status_requires_reason_code(status: &str) -> bool {
-    matches!(status, "passed" | "failed" | "blocked")
-}
-
-fn package_check_command(label: &str, package: &str) -> ModuleCommandPreview {
-    ModuleCommandPreview {
-        label: label.to_string(),
-        argv: vec![
-            "cargo".to_string(),
-            "check".to_string(),
-            "-p".to_string(),
-            package.to_string(),
-        ],
-    }
-}
-
-fn run_command(command: &ModuleCommandPreview) -> Result<()> {
-    let program = command
-        .argv
-        .first()
-        .with_context(|| format!("Command '{}' has empty argv", command.label))?;
-    let status = Command::new(program)
-        .args(&command.argv[1..])
-        .current_dir(workspace_root())
-        .status()
-        .with_context(|| format!("Failed to launch '{}'", command.argv.join(" ")))?;
-    if !status.success() {
-        anyhow::bail!(
-            "Command '{}' failed with status {}",
-            command.argv.join(" "),
-            status
-        );
-    }
-    Ok(())
-}
-
-fn run_validation_stage_plan_via_registry(
-    registry_url: &str,
-    plan: &ModuleValidationStageRunPreview,
-    actor: &str,
-) -> Result<()> {
-    let running_preview = ModuleValidationStageDryRunPreview {
-        action: "validation_stage".to_string(),
-        request_id: plan.request_id.clone(),
-        stage: plan.stage.clone(),
-        status: "running".to_string(),
-        detail: Some(plan.running_detail.clone()),
-        reason_code: None,
-        requeue: false,
-    };
-    validation_stage_via_registry_live(registry_url, &running_preview, actor)?;
-
-    for command in &plan.commands {
-        println!("  > {}", command.argv.join(" "));
-        if let Err(error) = run_command(command) {
-            let failed_preview = ModuleValidationStageDryRunPreview {
-                action: "validation_stage".to_string(),
-                request_id: plan.request_id.clone(),
-                stage: plan.stage.clone(),
-                status: "failed".to_string(),
-                detail: Some(format!("{}: {error}", plan.failure_detail_prefix)),
-                reason_code: Some(validation_stage_failure_reason_code(&plan.stage).to_string()),
-                requeue: false,
-            };
-            let report_error =
-                validation_stage_via_registry_live(registry_url, &failed_preview, actor)
-                    .err()
-                    .map(|report_error| {
-                        format!("; failed to persist failed stage status: {report_error}")
-                    })
-                    .unwrap_or_default();
-            anyhow::bail!("{error}{report_error}");
-        }
-    }
-
-    let passed_preview = ModuleValidationStageDryRunPreview {
-        action: "validation_stage".to_string(),
-        request_id: plan.request_id.clone(),
-        stage: plan.stage.clone(),
-        status: "passed".to_string(),
-        detail: Some(plan.success_detail.clone()),
-        reason_code: Some(validation_stage_success_reason_code(&plan.stage).to_string()),
-        requeue: false,
-    };
-    validation_stage_via_registry_live(registry_url, &passed_preview, actor)?;
-    Ok(())
-}
-
-fn run_remote_validation_runner_once(
-    registry_url: &str,
-    runner_id: &str,
-    runner_token: &str,
-    manifest_path: &Path,
-    manifest: &Manifest,
-    workspace_manifest: &TomlValue,
-    confirm_manual_review: bool,
-    heartbeat_interval_ms: u64,
-) -> Result<bool> {
-    let supported_stages = supported_remote_runner_stages(confirm_manual_review);
-    let Some(claim) = claim_remote_validation_stage_via_registry(
-        registry_url,
-        runner_id,
-        runner_token,
-        &supported_stages,
-    )?
-    else {
-        return Ok(false);
-    };
-
-    println!(
-        "Claimed remote validation stage '{}' for {}@{} ({})",
-        claim.stage_key, claim.slug, claim.version, claim.request_id
-    );
-    if !claim.runnable {
-        anyhow::bail!(
-            "Remote runner claim '{}' for stage '{}' is marked non-runnable",
-            claim.claim_id,
-            claim.stage_key
-        );
-    }
-
-    let stop_heartbeats = Arc::new(AtomicBool::new(false));
-    let heartbeat_stop = Arc::clone(&stop_heartbeats);
-    let heartbeat_registry_url = registry_url.to_string();
-    let heartbeat_runner_id = runner_id.to_string();
-    let heartbeat_runner_token = runner_token.to_string();
-    let heartbeat_claim_id = claim.claim_id.clone();
-    let heartbeat_handle = thread::spawn(move || {
-        while !heartbeat_stop.load(Ordering::Relaxed) {
-            thread::sleep(Duration::from_millis(heartbeat_interval_ms));
-            if heartbeat_stop.load(Ordering::Relaxed) {
-                break;
-            }
-            if let Err(error) = heartbeat_remote_validation_stage_via_registry(
-                &heartbeat_registry_url,
-                &heartbeat_claim_id,
-                &heartbeat_runner_id,
-                &heartbeat_runner_token,
-            ) {
-                eprintln!(
-                    "Remote validation runner heartbeat failed for claim '{}': {}",
-                    heartbeat_claim_id, error
-                );
-                break;
-            }
-        }
-    });
-
-    let result =
-        execute_remote_validation_claim(manifest_path, manifest, workspace_manifest, &claim)
-            .and_then(|plan| {
-                for command in &plan.commands {
-                    println!("  > {}", command.argv.join(" "));
-                    run_command(command)
-                        .with_context(|| format!("remote runner stage '{}' failed", plan.stage))?;
-                }
-
-                let reason_code = claim
-                    .suggested_pass_reason_code
-                    .clone()
-                    .filter(|value| {
-                        claim.allowed_terminal_reason_codes.is_empty()
-                            || claim
-                                .allowed_terminal_reason_codes
-                                .iter()
-                                .any(|candidate| candidate.eq_ignore_ascii_case(value))
-                    })
-                    .unwrap_or_else(|| {
-                        validation_stage_success_reason_code(&claim.stage_key).to_string()
-                    });
-                complete_remote_validation_stage_via_registry(
-                    registry_url,
-                    &claim.claim_id,
-                    runner_id,
-                    runner_token,
-                    plan.success_detail,
-                    reason_code,
-                )
-            });
-
-    stop_heartbeats.store(true, Ordering::Relaxed);
-    let _ = heartbeat_handle.join();
-
-    if let Err(error) = result {
-        let reason_code = claim
-            .suggested_failure_reason_code
-            .clone()
-            .filter(|value| {
-                claim.allowed_terminal_reason_codes.is_empty()
-                    || claim
-                        .allowed_terminal_reason_codes
-                        .iter()
-                        .any(|candidate| candidate.eq_ignore_ascii_case(value))
-            })
-            .unwrap_or_else(|| validation_stage_failure_reason_code(&claim.stage_key).to_string());
-        let detail = format!(
-            "{}: {}",
-            executable_validation_stage_failure_prefix(&claim.stage_key),
-            error
-        );
-        let report_error = fail_remote_validation_stage_via_registry(
-            registry_url,
-            &claim.claim_id,
-            runner_id,
-            runner_token,
-            detail,
-            reason_code,
-        )
-        .err()
-        .map(|report_error| format!("; failed to report remote stage failure: {report_error}"))
-        .unwrap_or_default();
-        anyhow::bail!("{error}{report_error}");
-    }
-
-    Ok(true)
-}
-
-fn execute_remote_validation_claim(
-    manifest_path: &Path,
-    manifest: &Manifest,
-    workspace_manifest: &TomlValue,
-    claim: &RegistryRunnerClaimHttpPayload,
-) -> Result<ModuleValidationStageRunPreview> {
-    let spec = manifest.modules.get(&claim.slug).with_context(|| {
-        format!(
-            "Remote runner claimed unknown local module slug '{}'",
-            claim.slug
-        )
-    })?;
-    let preview =
-        build_module_publish_preview(manifest_path, &claim.slug, spec, workspace_manifest)?;
-    if preview.version != claim.version {
-        anyhow::bail!(
-            "Remote runner claimed '{}@{}', but local workspace resolves version '{}'",
-            claim.slug,
-            claim.version,
-            preview.version
-        );
-    }
-
-    build_module_validation_stage_run_preview(
-        &preview,
-        &claim.request_id,
-        &claim.stage_key,
-        Some(remote_claim_running_detail(claim)),
-    )
-}
-
-fn remote_claim_running_detail(claim: &RegistryRunnerClaimHttpPayload) -> String {
-    format!(
-        "Remote runner '{}' executing '{}' for module '{}' from {}.",
-        claim.execution_mode, claim.stage_key, claim.slug, claim.artifact_url
-    )
-}
-
-fn build_module_publish_preview(
-    manifest_path: &Path,
-    slug: &str,
-    spec: &ModuleSpec,
-    workspace_manifest: &TomlValue,
-) -> Result<ModulePublishDryRunPreview> {
-    if spec.source != "path" {
-        anyhow::bail!(
-            "Module '{slug}' uses source='{}'; publish dry-run currently supports only local path modules",
-            spec.source
-        );
-    }
-
-    let package_manifest_path = module_package_manifest_path(manifest_path, spec)
-        .with_context(|| format!("Module '{slug}' has source='path' but no path specified"))?;
-    if !package_manifest_path.exists() {
-        anyhow::bail!(
-            "Module '{slug}' requires rustok-module.toml at {}",
-            package_manifest_path.display()
-        );
-    }
-
-    let package_manifest = load_module_package_manifest(&package_manifest_path)?;
-    validate_module_package_metadata(slug, &package_manifest.module)?;
-    validate_module_publish_contract(slug, &package_manifest)?;
-
-    let declared_slug = package_manifest.module.slug.trim();
-    if declared_slug != slug {
-        anyhow::bail!(
-            "Module '{slug}' declares slug '{}' in rustok-module.toml",
-            declared_slug
-        );
-    }
-
-    let module_root = package_manifest_path
-        .parent()
-        .map(PathBuf::from)
-        .with_context(|| {
-            format!(
-                "Failed to resolve module root for '{}'",
-                package_manifest_path.display()
-            )
-        })?;
-    validate_module_local_docs_contract(slug, &module_root)?;
-    let crate_manifest_path = module_root.join("Cargo.toml");
-    let crate_package = load_resolved_cargo_package(&crate_manifest_path, workspace_manifest)?;
-
-    if crate_package.name != spec.crate_name {
-        anyhow::bail!(
-            "Module '{slug}' points to crate '{}' in modules.toml, but Cargo.toml declares '{}'",
-            spec.crate_name,
-            crate_package.name
-        );
-    }
-
-    if crate_package.version != package_manifest.module.version {
-        anyhow::bail!(
-            "Module '{slug}' version mismatch: rustok-module.toml has '{}', Cargo.toml resolves to '{}'",
-            package_manifest.module.version,
-            crate_package.version
-        );
-    }
-
-    let license = crate_package.license.clone().with_context(|| {
-        format!(
-            "Module '{slug}' must resolve package.license via {}",
-            crate_package.manifest_path.display()
-        )
-    })?;
-
-    validate_module_ui_surface_contract(
-        slug,
-        &module_root,
-        "admin",
-        package_manifest
-            .provides
-            .admin_ui
-            .as_ref()
-            .and_then(|ui| ui.leptos_crate.as_deref()),
-    )?;
-    validate_module_ui_surface_contract(
-        slug,
-        &module_root,
-        "storefront",
-        package_manifest
-            .provides
-            .storefront_ui
-            .as_ref()
-            .and_then(|ui| ui.leptos_crate.as_deref()),
-    )?;
-
-    let admin_preview = validate_module_ui_package(
-        slug,
-        &module_root,
-        "admin",
-        package_manifest
-            .provides
-            .admin_ui
-            .as_ref()
-            .and_then(|ui| ui.leptos_crate.as_deref()),
-        &package_manifest.module.version,
-        workspace_manifest,
-    )?;
-    let storefront_preview = validate_module_ui_package(
-        slug,
-        &module_root,
-        "storefront",
-        package_manifest
-            .provides
-            .storefront_ui
-            .as_ref()
-            .and_then(|ui| ui.leptos_crate.as_deref()),
-        &package_manifest.module.version,
-        workspace_manifest,
-    )?;
-
-    Ok(ModulePublishDryRunPreview {
-        slug: slug.to_string(),
-        version: package_manifest.module.version.clone(),
-        crate_name: crate_package.name,
-        module_name: package_manifest.module.name.clone(),
-        module_description: package_manifest.module.description.clone(),
-        ownership: package_manifest.module.ownership.clone(),
-        trust_level: package_manifest.module.trust_level.clone(),
-        license,
-        manifest_path: manifest_path.display().to_string(),
-        package_manifest_path: package_manifest_path.display().to_string(),
-        module_entry_type: package_manifest.crate_contract.entry_type.clone(),
-        marketplace: ModuleMarketplacePreview {
-            category: package_manifest.marketplace.category.clone(),
-            tags: package_manifest.marketplace.tags.clone(),
-        },
-        ui_packages: ModuleUiPackagesPreview {
-            admin: admin_preview,
-            storefront: storefront_preview,
-        },
-    })
-}
-
-fn validate_module_publish_contract(slug: &str, manifest: &ModulePackageManifest) -> Result<()> {
-    let module_slug = manifest.module.slug.trim();
-    if module_slug.is_empty() {
-        anyhow::bail!("Module '{slug}' is missing module.slug in rustok-module.toml");
-    }
-
-    if manifest.module.name.trim().is_empty() {
-        anyhow::bail!("Module '{slug}' is missing module.name in rustok-module.toml");
-    }
-
-    let version = manifest.module.version.trim();
-    if version.is_empty() {
-        anyhow::bail!("Module '{slug}' is missing module.version in rustok-module.toml");
-    }
-    Version::parse(version)
-        .with_context(|| format!("Module '{slug}' has non-semver module.version '{version}'"))?;
-
-    if manifest.module.description.trim().len() < 20 {
-        anyhow::bail!(
-            "Module '{slug}' description must be at least 20 characters for publish readiness"
-        );
-    }
-
-    Ok(())
 }
 
 fn validate_module_local_docs_contract(slug: &str, module_root: &Path) -> Result<()> {
@@ -3184,101 +767,6 @@ fn validate_module_local_docs_contract(slug: &str, module_root: &Path) -> Result
     )?;
 
     Ok(())
-}
-
-fn validate_module_local_docs_file(
-    slug: &str,
-    path: &Path,
-    required_headings: &[&str],
-) -> Result<()> {
-    if !path.exists() {
-        anyhow::bail!(
-            "Module '{slug}' requires local docs file {}",
-            path.display()
-        );
-    }
-
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    for heading in required_headings {
-        if !content.contains(heading) {
-            anyhow::bail!(
-                "Module '{slug}' local docs {} must contain heading '{}'",
-                path.display(),
-                heading
-            );
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_module_ui_surface_contract(
-    slug: &str,
-    module_root: &Path,
-    surface: &str,
-    crate_name: Option<&str>,
-) -> Result<()> {
-    let manifest_path = module_root.join(surface).join("Cargo.toml");
-    let has_subcrate = manifest_path.exists();
-    let crate_name = crate_name.map(str::trim).filter(|value| !value.is_empty());
-
-    if has_subcrate && crate_name.is_none() {
-        anyhow::bail!(
-            "Module '{slug}' contains {}, but rustok-module.toml is missing [provides.{surface}_ui].leptos_crate",
-            manifest_path.display()
-        );
-    }
-
-    if !has_subcrate && crate_name.is_some() {
-        anyhow::bail!(
-            "Module '{slug}' declares [provides.{surface}_ui].leptos_crate, but {} is missing",
-            manifest_path.display()
-        );
-    }
-
-    Ok(())
-}
-
-fn validate_module_ui_package(
-    slug: &str,
-    module_root: &Path,
-    surface: &str,
-    crate_name: Option<&str>,
-    expected_version: &str,
-    workspace_manifest: &TomlValue,
-) -> Result<Option<ModuleUiPackagePreview>> {
-    let Some(crate_name) = crate_name else {
-        return Ok(None);
-    };
-
-    let manifest_path = module_root.join(surface).join("Cargo.toml");
-    if !manifest_path.exists() {
-        anyhow::bail!(
-            "Module '{slug}' declares provides.{surface}_ui.leptos_crate='{crate_name}', but {} is missing",
-            manifest_path.display()
-        );
-    }
-
-    let package = load_resolved_cargo_package(&manifest_path, workspace_manifest)?;
-    if package.name != crate_name {
-        anyhow::bail!(
-            "Module '{slug}' declares provides.{surface}_ui.leptos_crate='{crate_name}', but {} declares '{}'",
-            manifest_path.display(),
-            package.name
-        );
-    }
-    if package.version != expected_version {
-        anyhow::bail!(
-            "Module '{slug}' {surface} package version mismatch: expected '{expected_version}', got '{}'",
-            package.version
-        );
-    }
-
-    Ok(Some(ModuleUiPackagePreview {
-        crate_name: package.name,
-        manifest_path: manifest_path.display().to_string(),
-    }))
 }
 
 fn generate_registry() -> Result<()> {
@@ -3350,6 +838,10 @@ fn validate_manifest() -> Result<()> {
         );
     }
 
+    validate_default_enabled_server_contract(&manifest_path, &manifest)?;
+    validate_host_ui_inventory_contract(&manifest_path, &manifest)?;
+    validate_server_event_runtime_contract(&manifest_path)?;
+
     let mut module_manifest_count = 0usize;
 
     for (slug, spec) in &manifest.modules {
@@ -3411,6 +903,14 @@ fn validate_manifest() -> Result<()> {
 
             let package_manifest = load_module_package_manifest(&package_path)?;
             validate_module_package_metadata(slug, &package_manifest.module)?;
+            validate_module_semantics_contract(slug, spec, &package_manifest.module)?;
+            let module_root = package_path.parent().with_context(|| {
+                format!(
+                    "Failed to resolve module root for '{}'",
+                    package_path.display()
+                )
+            })?;
+            validate_module_event_listener_contract(slug, module_root)?;
             module_manifest_count += 1;
         }
     }
@@ -3470,21 +970,34 @@ mod tests {
         build_live_yank_registry_request, build_module_test_plan,
         build_owner_transfer_registry_request, build_publish_registry_request,
         build_validation_stage_registry_request, build_yank_registry_request, detail_argument,
-        module_hold_command, module_owner_transfer_command, module_publish_command,
-        module_request_changes_command, module_resume_command, module_runner_command,
-        module_stage_command, module_stage_run_command, module_test_command, module_yank_command,
-        positive_u64_argument, publish_status_action_available, reason_argument,
-        reason_code_argument, registry_endpoint_uses_loopback, registry_url_argument,
-        resolve_workspace_inherited_string, runner_token_argument, supported_remote_runner_stages,
-        validate_module_local_docs_file, validate_module_publish_contract,
-        validate_module_ui_surface_contract, workspace_root, ModuleMarketplacePreview,
-        ModuleOwnerTransferDryRunPreview, ModulePackageManifest, ModulePublishDryRunPreview,
-        ModuleUiPackagePreview, ModuleUiPackagesPreview, ModuleValidationStageDryRunPreview,
-        ModuleYankDryRunPreview, RegistryGovernanceActionHttpResponse,
-        RegistryPublishStatusHttpResponse, REGISTRY_MUTATION_SCHEMA_VERSION,
-        REGISTRY_YANK_REASON_CODES, REMOTE_RUNNER_TOKEN_ENV,
+        extract_runtime_module_dependencies, load_manifest_from, module_hold_command,
+        module_owner_transfer_command, module_publish_command, module_request_changes_command,
+        module_resume_command, module_runner_command, module_stage_command,
+        module_stage_run_command, module_test_command, module_yank_command,
+        normalize_module_ui_classification, positive_u64_argument, publish_status_action_available,
+        reason_argument, reason_code_argument, registry_endpoint_uses_loopback,
+        registry_url_argument, resolve_workspace_inherited_string, runner_token_argument,
+        supported_remote_runner_stages, validate_default_enabled_server_contract,
+        validate_host_ui_inventory_contract, validate_module_admin_surface_contract,
+        validate_module_docs_navigation_contract, validate_module_entry_type_contract,
+        validate_module_event_ingress_contract, validate_module_event_listener_contract,
+        validate_module_host_ui_contract, validate_module_index_search_boundary_contract,
+        validate_module_kind_contract, validate_module_local_docs_file,
+        validate_module_permission_contract, validate_module_publish_contract,
+        validate_module_runtime_metadata_contract,
+        validate_module_search_operator_surface_contract, validate_module_semantics_contract,
+        validate_module_server_http_surface_contract, validate_module_server_registry_contract,
+        validate_module_transport_surface_contract, validate_module_ui_classification_contract,
+        validate_module_ui_metadata_contract, validate_module_ui_surface_contract,
+        validate_server_event_runtime_contract, workspace_root, Manifest, ModuleMarketplacePreview,
+        ModuleOwnerTransferDryRunPreview, ModulePackageManifest, ModulePackageMetadata,
+        ModulePublishDryRunPreview, ModuleSpec, ModuleUiPackagePreview, ModuleUiPackagesPreview,
+        ModuleValidationStageDryRunPreview, ModuleYankDryRunPreview,
+        RegistryGovernanceActionHttpResponse, RegistryPublishStatusHttpResponse,
+        REGISTRY_MUTATION_SCHEMA_VERSION, REGISTRY_YANK_REASON_CODES, REMOTE_RUNNER_TOKEN_ENV,
     };
     use std::{
+        collections::HashMap,
         env,
         path::{Path, PathBuf},
         sync::{Mutex, MutexGuard, OnceLock},
@@ -3623,6 +1136,2728 @@ mod tests {
 
         assert!(error.to_string().contains("must contain heading"));
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn normalize_module_ui_classification_accepts_supported_values() {
+        assert_eq!(
+            normalize_module_ui_classification("admin-only").expect("admin-only should normalize"),
+            "admin_only"
+        );
+        assert_eq!(
+            normalize_module_ui_classification("dual_surface")
+                .expect("dual_surface should normalize"),
+            "dual_surface"
+        );
+    }
+
+    #[test]
+    fn validate_module_ui_metadata_contract_rejects_missing_admin_metadata() {
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "admin_only"
+                recommended_admin_surfaces = ["leptos-admin"]
+
+                [provides.admin_ui]
+                leptos_crate = "rustok-demo-admin"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        let error = validate_module_ui_metadata_contract("demo", &manifest)
+            .expect_err("missing admin metadata must fail");
+        assert!(error
+            .to_string()
+            .contains("provides.admin_ui.route_segment"));
+    }
+
+    #[test]
+    fn validate_module_ui_metadata_contract_accepts_dual_surface_manifest() {
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "dual_surface"
+                recommended_admin_surfaces = ["leptos-admin"]
+
+                [provides.admin_ui]
+                leptos_crate = "rustok-demo-admin"
+                route_segment = "demo"
+                nav_label = "Demo"
+
+                [provides.admin_ui.i18n]
+                default_locale = "en"
+                supported_locales = ["en", "ru"]
+                leptos_locales_path = "admin/locales"
+
+                [provides.storefront_ui]
+                leptos_crate = "rustok-demo-storefront"
+                slot = "home_after_catalog"
+                route_segment = "demo"
+                page_title = "Demo"
+
+                [provides.storefront_ui.i18n]
+                default_locale = "en"
+                supported_locales = ["en", "ru"]
+                leptos_locales_path = "storefront/locales"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        validate_module_ui_metadata_contract("demo", &manifest)
+            .expect("valid UI metadata should pass");
+    }
+
+    #[test]
+    fn validate_module_admin_surface_contract_rejects_surfaces_without_admin_ui() {
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "no_ui"
+                recommended_admin_surfaces = ["leptos-admin"]
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        let error = validate_module_admin_surface_contract("demo", &manifest)
+            .expect_err("admin surfaces without provides.admin_ui must fail");
+        assert!(error
+            .to_string()
+            .contains("does not declare [provides.admin_ui]"));
+    }
+
+    #[test]
+    fn validate_module_admin_surface_contract_rejects_missing_recommended_surface() {
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "admin_only"
+
+                [provides.admin_ui]
+                leptos_crate = "rustok-demo-admin"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        let error = validate_module_admin_surface_contract("demo", &manifest)
+            .expect_err("admin ui without recommended surface must fail");
+        assert!(error
+            .to_string()
+            .contains("must declare at least one recommended_admin_surface"));
+    }
+
+    #[test]
+    fn validate_module_admin_surface_contract_rejects_missing_leptos_admin_recommendation() {
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "admin_only"
+                recommended_admin_surfaces = ["next-admin"]
+
+                [provides.admin_ui]
+                leptos_crate = "rustok-demo-admin"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        let error = validate_module_admin_surface_contract("demo", &manifest)
+            .expect_err("leptos admin ui without leptos-admin recommendation must fail");
+        assert!(error.to_string().contains("must include 'leptos-admin'"));
+    }
+
+    #[test]
+    fn validate_module_admin_surface_contract_accepts_leptos_admin_manifest() {
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "admin_only"
+                recommended_admin_surfaces = ["leptos-admin"]
+                showcase_admin_surfaces = ["next-admin"]
+
+                [provides.admin_ui]
+                leptos_crate = "rustok-demo-admin"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        validate_module_admin_surface_contract("demo", &manifest)
+            .expect("valid admin surface manifest should pass");
+    }
+
+    #[test]
+    fn validate_module_ui_classification_contract_rejects_surface_drift() {
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "cart"
+                name = "Cart"
+                version = "1.2.3"
+                description = "Default cart submodule in the ecommerce family"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "capability_only"
+
+                [provides.storefront_ui]
+                leptos_crate = "rustok-cart-storefront"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        let error = validate_module_ui_classification_contract("cart", &manifest)
+            .expect_err("ui classification drift must fail");
+        assert!(error
+            .to_string()
+            .contains("manifest UI surfaces resolve to 'storefront_only'"));
+    }
+
+    #[test]
+    fn extract_runtime_module_dependencies_reads_dependency_array() {
+        let base = env::temp_dir().join(format!("xtask-runtime-deps-{}", std::process::id()));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        let lib_path = src_dir.join("lib.rs");
+        std::fs::write(
+            &lib_path,
+            r#"
+                impl RusToKModule for DemoModule {
+                    fn dependencies(&self) -> &[&'static str] {
+                        &["content", "taxonomy"]
+                    }
+                }
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+
+        let dependencies = extract_runtime_module_dependencies(&base)
+            .expect("dependencies should parse")
+            .expect("runtime implementation should be detected");
+        assert!(dependencies.contains("content"));
+        assert!(dependencies.contains("taxonomy"));
+        let _ = std::fs::remove_file(&lib_path);
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_entry_type_contract_rejects_missing_entry_type_for_runtime_module() {
+        let base = env::temp_dir().join(format!("xtask-entry-type-missing-{}", std::process::id()));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        let lib_path = src_dir.join("lib.rs");
+        std::fs::write(
+            &lib_path,
+            "pub struct DemoModule;\nimpl RusToKModule for DemoModule {}\n",
+        )
+        .expect("temporary lib.rs should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "no_ui"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        let error = validate_module_entry_type_contract("demo", &manifest, &base)
+            .expect_err("missing entry_type must fail");
+        assert!(error
+            .to_string()
+            .contains("must declare [crate].entry_type"));
+        let _ = std::fs::remove_file(&lib_path);
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_entry_type_contract_accepts_non_runtime_module_without_entry_type() {
+        let base = env::temp_dir().join(format!(
+            "xtask-entry-type-capability-{}",
+            std::process::id()
+        ));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        let lib_path = src_dir.join("lib.rs");
+        std::fs::write(&lib_path, "pub fn helper() {}\n")
+            .expect("temporary lib.rs should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "capability_only"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        validate_module_entry_type_contract("demo", &manifest, &base)
+            .expect("capability-style module without RusToKModule impl should pass");
+        let _ = std::fs::remove_file(&lib_path);
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_runtime_metadata_contract_rejects_description_drift() {
+        let base = env::temp_dir().join(format!("xtask-runtime-meta-{}", std::process::id()));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        let lib_path = src_dir.join("lib.rs");
+        std::fs::write(
+            &lib_path,
+            r#"
+                pub struct DemoModule;
+                impl RusToKModule for DemoModule {
+                    fn slug(&self) -> &'static str { "demo" }
+                    fn name(&self) -> &'static str { "Demo" }
+                    fn description(&self) -> &'static str { "Runtime description" }
+                }
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "Manifest description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "no_ui"
+
+                [crate]
+                entry_type = "DemoModule"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        let error = validate_module_runtime_metadata_contract("demo", &manifest, &base)
+            .expect_err("description drift must fail");
+        assert!(error.to_string().contains("description mismatch"));
+        let _ = std::fs::remove_file(&lib_path);
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_semantics_contract_rejects_path_module_with_non_first_party_ownership() {
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+        let metadata = ModulePackageMetadata {
+            slug: "demo".to_string(),
+            name: "Demo".to_string(),
+            version: "0.1.0".to_string(),
+            description: "A sufficiently long demo module description".to_string(),
+            ownership: "third_party".to_string(),
+            trust_level: "verified".to_string(),
+            ui_classification: "no_ui".to_string(),
+            recommended_admin_surfaces: Vec::new(),
+            showcase_admin_surfaces: Vec::new(),
+        };
+
+        let error = validate_module_semantics_contract("demo", &spec, &metadata)
+            .expect_err("path module with non-first-party ownership must fail");
+        assert!(error
+            .to_string()
+            .contains("must declare ownership='first_party'"));
+    }
+
+    #[test]
+    fn validate_module_semantics_contract_rejects_required_module_without_core_trust_level() {
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: true,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+        let metadata = ModulePackageMetadata {
+            slug: "demo".to_string(),
+            name: "Demo".to_string(),
+            version: "0.1.0".to_string(),
+            description: "A sufficiently long demo module description".to_string(),
+            ownership: "first_party".to_string(),
+            trust_level: "verified".to_string(),
+            ui_classification: "no_ui".to_string(),
+            recommended_admin_surfaces: Vec::new(),
+            showcase_admin_surfaces: Vec::new(),
+        };
+
+        let error = validate_module_semantics_contract("demo", &spec, &metadata)
+            .expect_err("required module without core trust level must fail");
+        assert!(error
+            .to_string()
+            .contains("must declare trust_level='core'"));
+    }
+
+    #[test]
+    fn validate_module_semantics_contract_rejects_optional_module_with_core_trust_level() {
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+        let metadata = ModulePackageMetadata {
+            slug: "demo".to_string(),
+            name: "Demo".to_string(),
+            version: "0.1.0".to_string(),
+            description: "A sufficiently long demo module description".to_string(),
+            ownership: "first_party".to_string(),
+            trust_level: "core".to_string(),
+            ui_classification: "no_ui".to_string(),
+            recommended_admin_surfaces: Vec::new(),
+            showcase_admin_surfaces: Vec::new(),
+        };
+
+        let error = validate_module_semantics_contract("demo", &spec, &metadata)
+            .expect_err("optional module with core trust level must fail");
+        assert!(error
+            .to_string()
+            .contains("must not declare trust_level='core'"));
+    }
+
+    #[test]
+    fn validate_module_kind_contract_rejects_required_module_without_core_kind() {
+        let base = env::temp_dir().join(format!("xtask-kind-required-{}", std::process::id()));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        let lib_path = src_dir.join("lib.rs");
+        std::fs::write(
+            &lib_path,
+            r#"
+                pub struct DemoModule;
+                impl RusToKModule for DemoModule {
+                    fn kind(&self) -> ModuleKind { ModuleKind::Optional }
+                }
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: true,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        let error = validate_module_kind_contract("demo", &spec, &base)
+            .expect_err("required module without ModuleKind::Core must fail");
+        assert!(error
+            .to_string()
+            .contains("must declare fn kind(&self) -> ModuleKind { ModuleKind::Core }"));
+
+        let _ = std::fs::remove_file(&lib_path);
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_kind_contract_rejects_optional_module_declaring_core_kind() {
+        let base = env::temp_dir().join(format!("xtask-kind-optional-{}", std::process::id()));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        let lib_path = src_dir.join("lib.rs");
+        std::fs::write(
+            &lib_path,
+            r#"
+                pub struct DemoModule;
+                impl RusToKModule for DemoModule {
+                    fn kind(&self) -> ModuleKind { ModuleKind::Core }
+                }
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        let error = validate_module_kind_contract("demo", &spec, &base)
+            .expect_err("optional module declaring ModuleKind::Core must fail");
+        assert!(error
+            .to_string()
+            .contains("must not declare ModuleKind::Core"));
+
+        let _ = std::fs::remove_file(&lib_path);
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_transport_surface_contract_rejects_missing_declared_symbol() {
+        let base = env::temp_dir().join(format!("xtask-surface-{}", std::process::id()));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        let lib_path = src_dir.join("lib.rs");
+        std::fs::write(&lib_path, "pub struct ExistingQuery;\n")
+            .expect("temporary lib.rs should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "no_ui"
+
+                [crate]
+                entry_type = "DemoModule"
+
+                [provides.graphql]
+                query = "graphql::MissingQuery"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        let error = validate_module_transport_surface_contract("demo", &manifest, &base)
+            .expect_err("missing declared symbol must fail");
+        assert!(error.to_string().contains("MissingQuery"));
+        let _ = std::fs::remove_file(&lib_path);
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_entry_type_contract_accepts_runtime_struct_with_fields() {
+        let base = env::temp_dir().join(format!("xtask-entry-type-fields-{}", std::process::id()));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        let lib_path = src_dir.join("lib.rs");
+        std::fs::write(
+            &lib_path,
+            r#"
+                pub struct DemoModule {
+                    service: usize,
+                }
+
+                impl RusToKModule for DemoModule {}
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "no_ui"
+
+                [crate]
+                entry_type = "DemoModule"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        validate_module_entry_type_contract("demo", &manifest, &base)
+            .expect("runtime struct with fields should satisfy entry_type contract");
+
+        let _ = std::fs::remove_file(&lib_path);
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_server_http_surface_contract_rejects_missing_server_routes_export() {
+        let base = env::temp_dir().join(format!("xtask-server-http-routes-{}", std::process::id()));
+        let controller_dir = base
+            .join("apps")
+            .join("server")
+            .join("src")
+            .join("controllers")
+            .join("demo");
+        std::fs::create_dir_all(&controller_dir)
+            .expect("temporary server controller dir should exist");
+        std::fs::write(controller_dir.join("mod.rs"), "pub mod api;\n")
+            .expect("temporary controller mod.rs should be writable");
+        std::fs::write(
+            base.join("modules.toml"),
+            "app = \"rustok-server\"\nschema = 2\n",
+        )
+        .expect("temporary modules.toml should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "no_ui"
+
+                [crate]
+                entry_type = "DemoModule"
+
+                [provides.http]
+                routes = "controllers::routes"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        let error = validate_module_server_http_surface_contract(
+            &base.join("modules.toml"),
+            "demo",
+            &manifest,
+        )
+        .expect_err("missing server routes export must fail");
+        assert!(error.to_string().contains("does not export pub routes()"));
+
+        let _ = std::fs::remove_file(controller_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(base.join("modules.toml"));
+        let _ = std::fs::remove_dir(&controller_dir);
+        let _ = std::fs::remove_dir(
+            base.join("apps")
+                .join("server")
+                .join("src")
+                .join("controllers"),
+        );
+        let _ = std::fs::remove_dir(base.join("apps").join("server").join("src"));
+        let _ = std::fs::remove_dir(base.join("apps").join("server"));
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_server_http_surface_contract_accepts_reexported_routes_and_webhooks() {
+        let base =
+            env::temp_dir().join(format!("xtask-server-http-reexport-{}", std::process::id()));
+        let controllers_dir = base
+            .join("apps")
+            .join("server")
+            .join("src")
+            .join("controllers");
+        std::fs::create_dir_all(&controllers_dir)
+            .expect("temporary server controllers dir should exist");
+        std::fs::write(
+            controllers_dir.join("demo.rs"),
+            "pub use rustok_demo::controllers::*;\n",
+        )
+        .expect("temporary controller re-export should be writable");
+        std::fs::write(
+            base.join("modules.toml"),
+            "app = \"rustok-server\"\nschema = 2\n",
+        )
+        .expect("temporary modules.toml should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "no_ui"
+
+                [crate]
+                entry_type = "DemoModule"
+
+                [provides.http]
+                routes = "controllers::routes"
+                webhook_routes = "controllers::webhook_routes"
+            "#,
+        )
+        .expect("module manifest should parse");
+
+        validate_module_server_http_surface_contract(&base.join("modules.toml"), "demo", &manifest)
+            .expect("re-exported controller shim should satisfy host HTTP contract");
+
+        let _ = std::fs::remove_file(controllers_dir.join("demo.rs"));
+        let _ = std::fs::remove_file(base.join("modules.toml"));
+        let _ = std::fs::remove_dir(&controllers_dir);
+        let _ = std::fs::remove_dir(base.join("apps").join("server").join("src"));
+        let _ = std::fs::remove_dir(base.join("apps").join("server"));
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_server_registry_contract_rejects_missing_server_feature() {
+        let base = env::temp_dir().join(format!(
+            "xtask-server-registry-missing-{}",
+            std::process::id()
+        ));
+        let module_root = base.join("crates").join("demo-module");
+        let src_dir = module_root.join("src");
+        let server_dir = base.join("apps").join("server");
+        let server_modules_dir = server_dir.join("src").join("modules");
+        std::fs::create_dir_all(&src_dir).expect("temporary module src dir should exist");
+        std::fs::create_dir_all(&server_modules_dir)
+            .expect("temporary server modules dir should exist");
+
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub struct DemoModule;\nimpl RusToKModule for DemoModule {}\n",
+        )
+        .expect("temporary lib.rs should be writable");
+        std::fs::write(
+            server_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                default = []
+            "#,
+        )
+        .expect("temporary server Cargo.toml should be writable");
+        std::fs::write(
+            server_modules_dir.join("mod.rs"),
+            "pub fn build_registry() {}\n",
+        )
+        .expect("temporary server modules mod.rs should be writable");
+        std::fs::write(
+            base.join("modules.toml"),
+            "app = \"rustok-server\"\nschema = 2\n",
+        )
+        .expect("temporary modules.toml should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "capability_only"
+
+                [crate]
+                entry_type = "DemoModule"
+            "#,
+        )
+        .expect("module manifest should parse");
+        let spec = ModuleSpec {
+            crate_name: "demo-module".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/demo-module".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        let error = validate_module_server_registry_contract(
+            &base.join("modules.toml"),
+            "demo",
+            &spec,
+            &manifest,
+            &module_root,
+        )
+        .expect_err("missing server feature must fail");
+        assert!(error.to_string().contains("must expose feature 'mod-demo'"));
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(server_modules_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(base.join("modules.toml"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&module_root);
+        let _ = std::fs::remove_dir(&server_modules_dir);
+        let _ = std::fs::remove_dir(server_dir.join("src"));
+        let _ = std::fs::remove_dir(&server_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_server_registry_contract_accepts_optional_runtime_module() {
+        let base = env::temp_dir().join(format!("xtask-server-registry-ok-{}", std::process::id()));
+        let module_root = base.join("crates").join("alloy");
+        let src_dir = module_root.join("src");
+        let server_dir = base.join("apps").join("server");
+        let server_modules_dir = server_dir.join("src").join("modules");
+        std::fs::create_dir_all(&src_dir).expect("temporary module src dir should exist");
+        std::fs::create_dir_all(&server_modules_dir)
+            .expect("temporary server modules dir should exist");
+
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub struct AlloyModule;\nimpl RusToKModule for AlloyModule {}\n",
+        )
+        .expect("temporary lib.rs should be writable");
+        std::fs::write(
+            server_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                default = []
+                mod-alloy = ["dep:alloy"]
+            "#,
+        )
+        .expect("temporary server Cargo.toml should be writable");
+        std::fs::write(
+            server_modules_dir.join("mod.rs"),
+            "pub fn build_registry() {}\n",
+        )
+        .expect("temporary server modules mod.rs should be writable");
+        std::fs::write(
+            base.join("modules.toml"),
+            "app = \"rustok-server\"\nschema = 2\n",
+        )
+        .expect("temporary modules.toml should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "alloy"
+                name = "Alloy"
+                version = "0.1.0"
+                description = "A sufficiently long alloy module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "capability_only"
+
+                [crate]
+                entry_type = "AlloyModule"
+            "#,
+        )
+        .expect("module manifest should parse");
+        let spec = ModuleSpec {
+            crate_name: "alloy".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/alloy".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        validate_module_server_registry_contract(
+            &base.join("modules.toml"),
+            "alloy",
+            &spec,
+            &manifest,
+            &module_root,
+        )
+        .expect("optional runtime module should map into server registry");
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(server_modules_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(base.join("modules.toml"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&module_root);
+        let _ = std::fs::remove_dir(&server_modules_dir);
+        let _ = std::fs::remove_dir(server_dir.join("src"));
+        let _ = std::fs::remove_dir(&server_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_server_registry_contract_rejects_required_module_missing_direct_registration(
+    ) {
+        let base = env::temp_dir().join(format!(
+            "xtask-server-registry-required-{}",
+            std::process::id()
+        ));
+        let module_root = base.join("crates").join("rustok-auth");
+        let src_dir = module_root.join("src");
+        let server_dir = base.join("apps").join("server");
+        let server_modules_dir = server_dir.join("src").join("modules");
+        std::fs::create_dir_all(&src_dir).expect("temporary module src dir should exist");
+        std::fs::create_dir_all(&server_modules_dir)
+            .expect("temporary server modules dir should exist");
+
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub struct AuthModule;\nimpl RusToKModule for AuthModule { fn kind(&self) -> ModuleKind { ModuleKind::Core } }\n",
+        )
+        .expect("temporary lib.rs should be writable");
+        std::fs::write(
+            server_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                default = []
+            "#,
+        )
+        .expect("temporary server Cargo.toml should be writable");
+        std::fs::write(
+            server_modules_dir.join("mod.rs"),
+            "pub fn build_registry() {}\n",
+        )
+        .expect("temporary server modules mod.rs should be writable");
+        std::fs::write(
+            base.join("modules.toml"),
+            "app = \"rustok-server\"\nschema = 2\n",
+        )
+        .expect("temporary modules.toml should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "auth"
+                name = "Auth"
+                version = "0.1.0"
+                description = "A sufficiently long auth module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "no_ui"
+
+                [crate]
+                entry_type = "AuthModule"
+            "#,
+        )
+        .expect("module manifest should parse");
+        let spec = ModuleSpec {
+            crate_name: "rustok-auth".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-auth".to_string()),
+            required: true,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        let error = validate_module_server_registry_contract(
+            &base.join("modules.toml"),
+            "auth",
+            &spec,
+            &manifest,
+            &module_root,
+        )
+        .expect_err("required module missing direct registration must fail");
+        assert!(error
+            .to_string()
+            .contains("must be registered directly in apps/server/src/modules/mod.rs"));
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(server_modules_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(base.join("modules.toml"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&module_root);
+        let _ = std::fs::remove_dir(&server_modules_dir);
+        let _ = std::fs::remove_dir(server_dir.join("src"));
+        let _ = std::fs::remove_dir(&server_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_server_registry_contract_rejects_optional_module_direct_registration() {
+        let base = env::temp_dir().join(format!(
+            "xtask-server-registry-direct-optional-{}",
+            std::process::id()
+        ));
+        let module_root = base.join("crates").join("alloy");
+        let src_dir = module_root.join("src");
+        let server_dir = base.join("apps").join("server");
+        let server_modules_dir = server_dir.join("src").join("modules");
+        std::fs::create_dir_all(&src_dir).expect("temporary module src dir should exist");
+        std::fs::create_dir_all(&server_modules_dir)
+            .expect("temporary server modules dir should exist");
+
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub struct AlloyModule;\nimpl RusToKModule for AlloyModule {}\n",
+        )
+        .expect("temporary lib.rs should be writable");
+        std::fs::write(
+            server_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                default = []
+                mod-alloy = ["dep:alloy"]
+            "#,
+        )
+        .expect("temporary server Cargo.toml should be writable");
+        std::fs::write(
+            server_modules_dir.join("mod.rs"),
+            "pub fn build_registry() { let _ = ModuleRegistry::new().register(AlloyModule); }\n",
+        )
+        .expect("temporary server modules mod.rs should be writable");
+        std::fs::write(
+            base.join("modules.toml"),
+            "app = \"rustok-server\"\nschema = 2\n",
+        )
+        .expect("temporary modules.toml should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "alloy"
+                name = "Alloy"
+                version = "0.1.0"
+                description = "A sufficiently long alloy module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "capability_only"
+
+                [crate]
+                entry_type = "AlloyModule"
+            "#,
+        )
+        .expect("module manifest should parse");
+        let spec = ModuleSpec {
+            crate_name: "alloy".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/alloy".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        let error = validate_module_server_registry_contract(
+            &base.join("modules.toml"),
+            "alloy",
+            &spec,
+            &manifest,
+            &module_root,
+        )
+        .expect_err("optional module direct registration must fail");
+        assert!(error
+            .to_string()
+            .contains("must not be registered directly"));
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(server_modules_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(base.join("modules.toml"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&module_root);
+        let _ = std::fs::remove_dir(&server_modules_dir);
+        let _ = std::fs::remove_dir(server_dir.join("src"));
+        let _ = std::fs::remove_dir(&server_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_server_registry_contract_rejects_server_feature_dependency_drift() {
+        let base = env::temp_dir().join(format!(
+            "xtask-server-registry-drift-{}",
+            std::process::id()
+        ));
+        let module_root = base.join("crates").join("blog");
+        let src_dir = module_root.join("src");
+        let server_dir = base.join("apps").join("server");
+        let server_modules_dir = server_dir.join("src").join("modules");
+        std::fs::create_dir_all(&src_dir).expect("temporary module src dir should exist");
+        std::fs::create_dir_all(&server_modules_dir)
+            .expect("temporary server modules dir should exist");
+
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub struct BlogModule;\nimpl RusToKModule for BlogModule { fn dependencies(&self) -> &[&'static str] { &[\"content\", \"taxonomy\"] } }\n",
+        )
+        .expect("temporary lib.rs should be writable");
+        std::fs::write(
+            server_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                default = []
+                mod-blog = ["dep:rustok-blog", "mod-taxonomy"]
+            "#,
+        )
+        .expect("temporary server Cargo.toml should be writable");
+        std::fs::write(
+            server_modules_dir.join("mod.rs"),
+            "pub fn build_registry() {}\n",
+        )
+        .expect("temporary server modules mod.rs should be writable");
+        std::fs::write(
+            base.join("modules.toml"),
+            "app = \"rustok-server\"\nschema = 2\n",
+        )
+        .expect("temporary modules.toml should be writable");
+
+        let manifest: ModulePackageManifest = toml::from_str(
+            r#"
+                [module]
+                slug = "blog"
+                name = "Blog"
+                version = "0.1.0"
+                description = "A sufficiently long blog module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "capability_only"
+
+                [crate]
+                entry_type = "BlogModule"
+
+                [dependencies]
+                content = {}
+                taxonomy = {}
+            "#,
+        )
+        .expect("module manifest should parse");
+        let spec = ModuleSpec {
+            crate_name: "rustok-blog".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/blog".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: Some(vec!["content".to_string(), "taxonomy".to_string()]),
+            features: None,
+        };
+
+        let error = validate_module_server_registry_contract(
+            &base.join("modules.toml"),
+            "blog",
+            &spec,
+            &manifest,
+            &module_root,
+        )
+        .expect_err("missing mod-content must fail");
+        assert!(error.to_string().contains("server feature graph drift"));
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(server_modules_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(base.join("modules.toml"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&module_root);
+        let _ = std::fs::remove_dir(&server_modules_dir);
+        let _ = std::fs::remove_dir(server_dir.join("src"));
+        let _ = std::fs::remove_dir(&server_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_default_enabled_server_contract_rejects_missing_server_default_feature() {
+        let base = env::temp_dir().join(format!(
+            "xtask-default-enabled-missing-{}",
+            std::process::id()
+        ));
+        let server_dir = base.join("apps").join("server");
+        std::fs::create_dir_all(&server_dir).expect("temporary server dir should exist");
+        std::fs::write(
+            server_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                default = ["mod-content"]
+                mod-content = ["dep:rustok-content"]
+                mod-pages = ["dep:rustok-pages", "mod-content"]
+            "#,
+        )
+        .expect("temporary server Cargo.toml should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+
+        let manifest = Manifest {
+            schema: 2,
+            app: "rustok-server".to_string(),
+            build: None,
+            modules: HashMap::from([
+                (
+                    "content".to_string(),
+                    ModuleSpec {
+                        crate_name: "rustok-content".to_string(),
+                        source: "path".to_string(),
+                        path: Some("crates/rustok-content".to_string()),
+                        required: false,
+                        version: None,
+                        git: None,
+                        rev: None,
+                        depends_on: None,
+                        features: None,
+                    },
+                ),
+                (
+                    "pages".to_string(),
+                    ModuleSpec {
+                        crate_name: "rustok-pages".to_string(),
+                        source: "path".to_string(),
+                        path: Some("crates/rustok-pages".to_string()),
+                        required: false,
+                        version: None,
+                        git: None,
+                        rev: None,
+                        depends_on: Some(vec!["content".to_string()]),
+                        features: None,
+                    },
+                ),
+            ]),
+            settings: Some(super::Settings {
+                default_enabled: Some(vec!["content".to_string(), "pages".to_string()]),
+            }),
+        };
+
+        let error = validate_default_enabled_server_contract(&manifest_path, &manifest)
+            .expect_err("missing mod-pages in server defaults must fail");
+        assert!(error
+            .to_string()
+            .contains("default_enabled modules must be present"));
+
+        let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&server_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_default_enabled_server_contract_rejects_required_module_in_default_enabled() {
+        let base = env::temp_dir().join(format!(
+            "xtask-default-enabled-required-{}",
+            std::process::id()
+        ));
+        let server_dir = base.join("apps").join("server");
+        std::fs::create_dir_all(&server_dir).expect("temporary server dir should exist");
+        std::fs::write(
+            server_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                default = ["mod-content"]
+                mod-content = ["dep:rustok-content"]
+            "#,
+        )
+        .expect("temporary server Cargo.toml should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+
+        let manifest = Manifest {
+            schema: 2,
+            app: "rustok-server".to_string(),
+            build: None,
+            modules: HashMap::from([(
+                "channel".to_string(),
+                ModuleSpec {
+                    crate_name: "rustok-channel".to_string(),
+                    source: "path".to_string(),
+                    path: Some("crates/rustok-channel".to_string()),
+                    required: true,
+                    version: None,
+                    git: None,
+                    rev: None,
+                    depends_on: None,
+                    features: None,
+                },
+            )]),
+            settings: Some(super::Settings {
+                default_enabled: Some(vec!["channel".to_string()]),
+            }),
+        };
+
+        let error = validate_default_enabled_server_contract(&manifest_path, &manifest)
+            .expect_err("required modules must not appear in default_enabled");
+        assert!(error
+            .to_string()
+            .contains("default_enabled must list only optional modules"));
+
+        let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&server_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_default_enabled_server_contract_accepts_present_server_default_features() {
+        let base = env::temp_dir().join(format!("xtask-default-enabled-ok-{}", std::process::id()));
+        let server_dir = base.join("apps").join("server");
+        std::fs::create_dir_all(&server_dir).expect("temporary server dir should exist");
+        std::fs::write(
+            server_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                default = ["mod-content", "mod-pages"]
+                mod-content = ["dep:rustok-content"]
+                mod-pages = ["dep:rustok-pages", "mod-content"]
+            "#,
+        )
+        .expect("temporary server Cargo.toml should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+
+        let manifest = Manifest {
+            schema: 2,
+            app: "rustok-server".to_string(),
+            build: None,
+            modules: HashMap::from([
+                (
+                    "content".to_string(),
+                    ModuleSpec {
+                        crate_name: "rustok-content".to_string(),
+                        source: "path".to_string(),
+                        path: Some("crates/rustok-content".to_string()),
+                        required: false,
+                        version: None,
+                        git: None,
+                        rev: None,
+                        depends_on: None,
+                        features: None,
+                    },
+                ),
+                (
+                    "pages".to_string(),
+                    ModuleSpec {
+                        crate_name: "rustok-pages".to_string(),
+                        source: "path".to_string(),
+                        path: Some("crates/rustok-pages".to_string()),
+                        required: false,
+                        version: None,
+                        git: None,
+                        rev: None,
+                        depends_on: Some(vec!["content".to_string()]),
+                        features: None,
+                    },
+                ),
+            ]),
+            settings: Some(super::Settings {
+                default_enabled: Some(vec!["content".to_string(), "pages".to_string()]),
+            }),
+        };
+
+        validate_default_enabled_server_contract(&manifest_path, &manifest)
+            .expect("default_enabled slugs present in server defaults should pass");
+
+        let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&server_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_default_enabled_server_contract_rejects_missing_optional_dependency_closure() {
+        let base = env::temp_dir().join(format!(
+            "xtask-default-enabled-closure-{}",
+            std::process::id()
+        ));
+        let server_dir = base.join("apps").join("server");
+        std::fs::create_dir_all(&server_dir).expect("temporary server dir should exist");
+        std::fs::write(
+            server_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                default = ["mod-blog"]
+                mod-content = ["dep:rustok-content"]
+                mod-blog = ["dep:rustok-blog", "mod-content"]
+            "#,
+        )
+        .expect("temporary server Cargo.toml should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+
+        let manifest = Manifest {
+            schema: 2,
+            app: "rustok-server".to_string(),
+            build: None,
+            modules: HashMap::from([
+                (
+                    "content".to_string(),
+                    ModuleSpec {
+                        crate_name: "rustok-content".to_string(),
+                        source: "path".to_string(),
+                        path: Some("crates/rustok-content".to_string()),
+                        required: false,
+                        version: None,
+                        git: None,
+                        rev: None,
+                        depends_on: None,
+                        features: None,
+                    },
+                ),
+                (
+                    "blog".to_string(),
+                    ModuleSpec {
+                        crate_name: "rustok-blog".to_string(),
+                        source: "path".to_string(),
+                        path: Some("crates/rustok-blog".to_string()),
+                        required: false,
+                        version: None,
+                        git: None,
+                        rev: None,
+                        depends_on: Some(vec!["content".to_string()]),
+                        features: None,
+                    },
+                ),
+            ]),
+            settings: Some(super::Settings {
+                default_enabled: Some(vec!["blog".to_string()]),
+            }),
+        };
+
+        let error = validate_default_enabled_server_contract(&manifest_path, &manifest)
+            .expect_err("missing optional dependency closure must fail");
+        assert!(error
+            .to_string()
+            .contains("default_enabled must include optional dependency closure"));
+
+        let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&server_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_host_ui_inventory_contract_rejects_orphan_module_ui_dependency() {
+        let base = env::temp_dir().join(format!("xtask-host-inventory-{}", std::process::id()));
+        let admin_dir = base.join("apps").join("admin");
+        let storefront_dir = base.join("apps").join("storefront");
+        let demo_admin_dir = base.join("crates").join("rustok-demo").join("admin");
+        let demo_root = base.join("crates").join("rustok-demo");
+        std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
+        std::fs::create_dir_all(&storefront_dir).expect("temporary storefront dir should exist");
+        std::fs::create_dir_all(&demo_admin_dir).expect("temporary demo admin dir should exist");
+
+        std::fs::write(
+            admin_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                hydrate = ["rustok-demo-admin/hydrate"]
+                ssr = ["rustok-demo-admin/ssr"]
+
+                [dependencies]
+                rustok-demo-admin = { path = "../../crates/rustok-demo/admin", default-features = false }
+            "#,
+        )
+        .expect("temporary admin Cargo.toml should be writable");
+        std::fs::write(storefront_dir.join("Cargo.toml"), "[dependencies]\n")
+            .expect("temporary storefront Cargo.toml should be writable");
+        std::fs::write(
+            demo_admin_dir.join("Cargo.toml"),
+            r#"
+                [package]
+                name = "rustok-demo-admin"
+                version = "0.1.0"
+            "#,
+        )
+        .expect("temporary demo admin Cargo.toml should be writable");
+        std::fs::write(
+            demo_root.join("rustok-module.toml"),
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "no_ui"
+            "#,
+        )
+        .expect("temporary rustok-module.toml should be writable");
+
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(
+            &manifest_path,
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\" }\n",
+        )
+        .expect("temporary modules.toml should be writable");
+        let manifest = load_manifest_from(&manifest_path).expect("manifest should parse");
+
+        let error = validate_host_ui_inventory_contract(&manifest_path, &manifest)
+            .expect_err("orphan module ui dependency must fail");
+        assert!(error
+            .to_string()
+            .contains("but no module manifest declares it as admin UI"));
+
+        let _ = std::fs::remove_file(admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(storefront_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(demo_admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(demo_root.join("rustok-module.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&demo_admin_dir);
+        let _ = std::fs::remove_dir(&demo_root);
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&admin_dir);
+        let _ = std::fs::remove_dir(&storefront_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_host_ui_inventory_contract_ignores_support_ui_dependency_without_module_manifest() {
+        let base = env::temp_dir().join(format!(
+            "xtask-host-inventory-support-{}",
+            std::process::id()
+        ));
+        let admin_dir = base.join("apps").join("admin");
+        let storefront_dir = base.join("apps").join("storefront");
+        let support_admin_dir = base.join("crates").join("rustok-ai").join("admin");
+        std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
+        std::fs::create_dir_all(&storefront_dir).expect("temporary storefront dir should exist");
+        std::fs::create_dir_all(&support_admin_dir)
+            .expect("temporary support admin dir should exist");
+
+        std::fs::write(
+            admin_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                hydrate = ["rustok-ai-admin/hydrate"]
+                ssr = ["rustok-ai-admin/ssr"]
+
+                [dependencies]
+                rustok-ai-admin = { path = "../../crates/rustok-ai/admin", default-features = false }
+            "#,
+        )
+        .expect("temporary admin Cargo.toml should be writable");
+        std::fs::write(storefront_dir.join("Cargo.toml"), "[dependencies]\n")
+            .expect("temporary storefront Cargo.toml should be writable");
+        std::fs::write(
+            support_admin_dir.join("Cargo.toml"),
+            r#"
+                [package]
+                name = "rustok-ai-admin"
+                version = "0.1.0"
+            "#,
+        )
+        .expect("temporary support admin Cargo.toml should be writable");
+
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(
+            &manifest_path,
+            "app = \"rustok-server\"\nschema = 2\n[modules]\n",
+        )
+        .expect("temporary modules.toml should be writable");
+        let manifest = load_manifest_from(&manifest_path).expect("manifest should parse");
+
+        validate_host_ui_inventory_contract(&manifest_path, &manifest)
+            .expect("support ui dependency without rustok-module.toml should be ignored");
+
+        let _ = std::fs::remove_file(admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(storefront_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(support_admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&support_admin_dir);
+        let _ = std::fs::remove_dir(base.join("crates").join("rustok-ai"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&admin_dir);
+        let _ = std::fs::remove_dir(&storefront_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_host_ui_inventory_contract_rejects_orphan_feature_entry_for_declared_module_ui() {
+        let base = env::temp_dir().join(format!(
+            "xtask-host-inventory-feature-{}",
+            std::process::id()
+        ));
+        let admin_dir = base.join("apps").join("admin");
+        let storefront_dir = base.join("apps").join("storefront");
+        let demo_root = base.join("crates").join("rustok-demo");
+        std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
+        std::fs::create_dir_all(&storefront_dir).expect("temporary storefront dir should exist");
+        std::fs::create_dir_all(&demo_root).expect("temporary demo root should exist");
+
+        std::fs::write(
+            admin_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                hydrate = []
+                ssr = ["rustok-demo-admin/ssr"]
+
+                [dependencies]
+            "#,
+        )
+        .expect("temporary admin Cargo.toml should be writable");
+        std::fs::write(storefront_dir.join("Cargo.toml"), "[dependencies]\n")
+            .expect("temporary storefront Cargo.toml should be writable");
+        std::fs::write(
+            demo_root.join("rustok-module.toml"),
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "admin_only"
+
+                [provides.admin_ui]
+                leptos_crate = "rustok-demo-admin"
+            "#,
+        )
+        .expect("temporary rustok-module.toml should be writable");
+
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(
+            &manifest_path,
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\" }\n",
+        )
+        .expect("temporary modules.toml should be writable");
+        let manifest = load_manifest_from(&manifest_path).expect("manifest should parse");
+
+        let error = validate_host_ui_inventory_contract(&manifest_path, &manifest)
+            .expect_err("orphan feature entry must fail");
+        assert!(error
+            .to_string()
+            .contains("feature 'ssr' references 'rustok-demo-admin/ssr'"));
+
+        let _ = std::fs::remove_file(admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(storefront_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(demo_root.join("rustok-module.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&demo_root);
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&admin_dir);
+        let _ = std::fs::remove_dir(&storefront_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_server_event_runtime_contract_rejects_legacy_dispatcher_references() {
+        let base = env::temp_dir().join(format!(
+            "xtask-server-event-runtime-legacy-{}",
+            std::process::id()
+        ));
+        let services_dir = base
+            .join("apps")
+            .join("server")
+            .join("src")
+            .join("services");
+        std::fs::create_dir_all(&services_dir).expect("temporary services dir should exist");
+        std::fs::write(
+            services_dir.join("app_runtime.rs"),
+            "fn bootstrap() { spawn_index_dispatcher(); let _ = WorkflowCronScheduler::new(todo!()); }",
+        )
+        .expect("temporary app_runtime.rs should be writable");
+        std::fs::write(
+            services_dir.join("mod.rs"),
+            "pub mod module_event_dispatcher;\n",
+        )
+        .expect("temporary services mod.rs should be writable");
+        std::fs::write(
+            services_dir.join("module_event_dispatcher.rs"),
+            "pub fn spawn_module_event_dispatcher() {}\n",
+        )
+        .expect("temporary module_event_dispatcher.rs should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+
+        let error = validate_server_event_runtime_contract(&manifest_path)
+            .expect_err("legacy dispatcher references must fail");
+        assert!(error
+            .to_string()
+            .contains("legacy index/search dispatchers"));
+
+        let _ = std::fs::remove_file(services_dir.join("app_runtime.rs"));
+        let _ = std::fs::remove_file(services_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(services_dir.join("module_event_dispatcher.rs"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&services_dir);
+        let _ = std::fs::remove_dir(base.join("apps").join("server").join("src"));
+        let _ = std::fs::remove_dir(base.join("apps").join("server"));
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_server_event_runtime_contract_accepts_module_owned_dispatcher_path() {
+        let base = env::temp_dir().join(format!(
+            "xtask-server-event-runtime-ok-{}",
+            std::process::id()
+        ));
+        let services_dir = base
+            .join("apps")
+            .join("server")
+            .join("src")
+            .join("services");
+        std::fs::create_dir_all(&services_dir).expect("temporary services dir should exist");
+        std::fs::write(
+            services_dir.join("app_runtime.rs"),
+            "use crate::services::module_event_dispatcher::spawn_module_event_dispatcher;\nfn bootstrap() { spawn_module_event_dispatcher(); }\nfn workflow() { let _ = WorkflowCronScheduler::new(todo!()); }",
+        )
+        .expect("temporary app_runtime.rs should be writable");
+        std::fs::write(
+            services_dir.join("mod.rs"),
+            "pub mod module_event_dispatcher;\n",
+        )
+        .expect("temporary services mod.rs should be writable");
+        std::fs::write(
+            services_dir.join("module_event_dispatcher.rs"),
+            "pub fn spawn_module_event_dispatcher() {}\n",
+        )
+        .expect("temporary module_event_dispatcher.rs should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+
+        validate_server_event_runtime_contract(&manifest_path)
+            .expect("module-owned dispatcher path should validate");
+
+        let _ = std::fs::remove_file(services_dir.join("app_runtime.rs"));
+        let _ = std::fs::remove_file(services_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(services_dir.join("module_event_dispatcher.rs"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&services_dir);
+        let _ = std::fs::remove_dir(base.join("apps").join("server").join("src"));
+        let _ = std::fs::remove_dir(base.join("apps").join("server"));
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_host_ui_contract_rejects_missing_admin_feature_wiring() {
+        let base = env::temp_dir().join(format!("xtask-host-ui-missing-{}", std::process::id()));
+        let admin_dir = base.join("apps").join("admin");
+        let ui_crate_dir = base.join("crates").join("rustok-demo").join("admin");
+        std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
+        std::fs::create_dir_all(&ui_crate_dir).expect("temporary ui crate dir should exist");
+
+        std::fs::write(
+            admin_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                hydrate = []
+                ssr = []
+
+                [dependencies]
+                rustok-demo-admin = { path = "../../crates/rustok-demo/admin", default-features = false }
+            "#,
+        )
+        .expect("temporary admin Cargo.toml should be writable");
+        std::fs::write(
+            ui_crate_dir.join("Cargo.toml"),
+            r#"
+                [package]
+                name = "rustok-demo-admin"
+                version = "0.1.0"
+
+                [features]
+                hydrate = []
+                ssr = []
+            "#,
+        )
+        .expect("temporary ui crate Cargo.toml should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(
+            &manifest_path,
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\" }\n",
+        )
+            .expect("temporary modules.toml should be writable");
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        let error = validate_module_host_ui_contract(
+            &manifest_path,
+            "demo",
+            &spec,
+            Some("rustok-demo-admin"),
+            None,
+        )
+        .expect_err("missing host ui feature wiring must fail");
+        assert!(error
+            .to_string()
+            .contains("feature 'hydrate' is missing 'rustok-demo-admin/hydrate'"));
+
+        let _ = std::fs::remove_file(admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(ui_crate_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&ui_crate_dir);
+        let _ = std::fs::remove_dir(base.join("crates").join("rustok-demo"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&admin_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_host_ui_contract_accepts_storefront_ssr_wiring() {
+        let base = env::temp_dir().join(format!("xtask-host-ui-ok-{}", std::process::id()));
+        let storefront_dir = base.join("apps").join("storefront");
+        let ui_crate_dir = base.join("crates").join("rustok-demo").join("storefront");
+        std::fs::create_dir_all(&storefront_dir).expect("temporary storefront dir should exist");
+        std::fs::create_dir_all(&ui_crate_dir).expect("temporary ui crate dir should exist");
+
+        std::fs::write(
+            storefront_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                hydrate = []
+                ssr = ["rustok-demo-storefront/ssr"]
+
+                [dependencies]
+                rustok-demo-storefront = { path = "../../crates/rustok-demo/storefront", default-features = false }
+            "#,
+        )
+        .expect("temporary storefront Cargo.toml should be writable");
+        std::fs::write(
+            ui_crate_dir.join("Cargo.toml"),
+            r#"
+                [package]
+                name = "rustok-demo-storefront"
+                version = "0.1.0"
+
+                [features]
+                hydrate = []
+                ssr = []
+            "#,
+        )
+        .expect("temporary ui crate Cargo.toml should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(
+            &manifest_path,
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\" }\n",
+        )
+            .expect("temporary modules.toml should be writable");
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        validate_module_host_ui_contract(
+            &manifest_path,
+            "demo",
+            &spec,
+            None,
+            Some("rustok-demo-storefront"),
+        )
+        .expect("storefront ssr wiring should validate");
+
+        let _ = std::fs::remove_file(storefront_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(ui_crate_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&ui_crate_dir);
+        let _ = std::fs::remove_dir(base.join("crates").join("rustok-demo"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&storefront_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_host_ui_contract_rejects_missing_dependency_admin_ui_wiring() {
+        let base = env::temp_dir().join(format!("xtask-host-ui-dependency-{}", std::process::id()));
+        let admin_dir = base.join("apps").join("admin");
+        let demo_admin_dir = base.join("crates").join("rustok-demo").join("admin");
+        let comments_admin_dir = base.join("crates").join("rustok-comments").join("admin");
+        let demo_root = base.join("crates").join("rustok-demo");
+        let comments_root = base.join("crates").join("rustok-comments");
+        std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
+        std::fs::create_dir_all(&demo_admin_dir).expect("temporary demo admin dir should exist");
+        std::fs::create_dir_all(&comments_admin_dir)
+            .expect("temporary comments admin dir should exist");
+
+        std::fs::write(
+            admin_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                hydrate = ["rustok-demo-admin/hydrate"]
+                ssr = ["rustok-demo-admin/ssr"]
+
+                [dependencies]
+                rustok-demo-admin = { path = "../../crates/rustok-demo/admin", default-features = false }
+            "#,
+        )
+        .expect("temporary admin Cargo.toml should be writable");
+        std::fs::write(
+            demo_admin_dir.join("Cargo.toml"),
+            r#"
+                [package]
+                name = "rustok-demo-admin"
+                version = "0.1.0"
+
+                [features]
+                hydrate = []
+                ssr = []
+            "#,
+        )
+        .expect("temporary demo admin Cargo.toml should be writable");
+        std::fs::write(
+            comments_admin_dir.join("Cargo.toml"),
+            r#"
+                [package]
+                name = "rustok-comments-admin"
+                version = "0.1.0"
+
+                [features]
+                hydrate = []
+                ssr = []
+            "#,
+        )
+        .expect("temporary comments admin Cargo.toml should be writable");
+        std::fs::write(
+            demo_root.join("rustok-module.toml"),
+            r#"
+                [module]
+                slug = "demo"
+                name = "Demo"
+                version = "0.1.0"
+                description = "A sufficiently long demo module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "admin_only"
+
+                [provides.admin_ui]
+                leptos_crate = "rustok-demo-admin"
+            "#,
+        )
+        .expect("temporary demo rustok-module.toml should be writable");
+        std::fs::write(
+            comments_root.join("rustok-module.toml"),
+            r#"
+                [module]
+                slug = "comments"
+                name = "Comments"
+                version = "0.1.0"
+                description = "A sufficiently long comments module description"
+                ownership = "first_party"
+                trust_level = "verified"
+                ui_classification = "admin_only"
+
+                [provides.admin_ui]
+                leptos_crate = "rustok-comments-admin"
+            "#,
+        )
+        .expect("temporary comments rustok-module.toml should be writable");
+
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(
+            &manifest_path,
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\", depends_on = [\"comments\"] }\ncomments = { crate = \"rustok-comments\", source = \"path\", path = \"crates/rustok-comments\" }\n",
+        )
+        .expect("temporary modules.toml should be writable");
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: Some(vec!["comments".to_string()]),
+            features: None,
+        };
+
+        let error = validate_module_host_ui_contract(
+            &manifest_path,
+            "demo",
+            &spec,
+            Some("rustok-demo-admin"),
+            None,
+        )
+        .expect_err("missing dependency admin UI wiring must fail");
+        assert!(error
+            .to_string()
+            .contains("missing UI dependency from module 'comments'"));
+
+        let _ = std::fs::remove_file(admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(demo_admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(comments_admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(demo_root.join("rustok-module.toml"));
+        let _ = std::fs::remove_file(comments_root.join("rustok-module.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&demo_admin_dir);
+        let _ = std::fs::remove_dir(&comments_admin_dir);
+        let _ = std::fs::remove_dir(&demo_root);
+        let _ = std::fs::remove_dir(&comments_root);
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&admin_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_host_ui_contract_rejects_non_canonical_ui_dependency_path() {
+        let base = env::temp_dir().join(format!("xtask-host-ui-canonical-{}", std::process::id()));
+        let admin_dir = base.join("apps").join("admin");
+        let demo_admin_dir = base.join("crates").join("rustok-demo").join("admin");
+        let wrong_admin_dir = base.join("crates").join("wrong-demo").join("admin");
+        std::fs::create_dir_all(&admin_dir).expect("temporary admin dir should exist");
+        std::fs::create_dir_all(&demo_admin_dir).expect("temporary demo admin dir should exist");
+        std::fs::create_dir_all(&wrong_admin_dir).expect("temporary wrong admin dir should exist");
+
+        std::fs::write(
+            admin_dir.join("Cargo.toml"),
+            r#"
+                [features]
+                hydrate = ["rustok-demo-admin/hydrate"]
+                ssr = ["rustok-demo-admin/ssr"]
+
+                [dependencies]
+                rustok-demo-admin = { path = "../../crates/wrong-demo/admin", default-features = false }
+            "#,
+        )
+        .expect("temporary admin Cargo.toml should be writable");
+        std::fs::write(
+            demo_admin_dir.join("Cargo.toml"),
+            r#"
+                [package]
+                name = "rustok-demo-admin"
+                version = "0.1.0"
+
+                [features]
+                hydrate = []
+                ssr = []
+            "#,
+        )
+        .expect("temporary demo admin Cargo.toml should be writable");
+        std::fs::write(
+            wrong_admin_dir.join("Cargo.toml"),
+            r#"
+                [package]
+                name = "rustok-demo-admin"
+                version = "0.1.0"
+
+                [features]
+                hydrate = []
+                ssr = []
+            "#,
+        )
+        .expect("temporary wrong admin Cargo.toml should be writable");
+
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(
+            &manifest_path,
+            "app = \"rustok-server\"\nschema = 2\n[modules]\ndemo = { crate = \"rustok-demo\", source = \"path\", path = \"crates/rustok-demo\" }\n",
+        )
+        .expect("temporary modules.toml should be writable");
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        let error = validate_module_host_ui_contract(
+            &manifest_path,
+            "demo",
+            &spec,
+            Some("rustok-demo-admin"),
+            None,
+        )
+        .expect_err("non-canonical ui dependency path must fail");
+        assert!(error.to_string().contains("instead of canonical"));
+
+        let _ = std::fs::remove_file(admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(demo_admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(wrong_admin_dir.join("Cargo.toml"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&demo_admin_dir);
+        let _ = std::fs::remove_dir(base.join("crates").join("rustok-demo"));
+        let _ = std::fs::remove_dir(&wrong_admin_dir);
+        let _ = std::fs::remove_dir(base.join("crates").join("wrong-demo"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&admin_dir);
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_permission_contract_rejects_unknown_permission_constant() {
+        let base =
+            env::temp_dir().join(format!("xtask-permissions-unknown-{}", std::process::id()));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            r#"
+                pub struct DemoModule;
+                impl RusToKModule for DemoModule {
+                    fn permissions(&self) -> Vec<Permission> {
+                        vec![Permission::DOES_NOT_EXIST]
+                    }
+                }
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+
+        let error = validate_module_permission_contract("demo", &base)
+            .expect_err("unknown permission constant must fail");
+        assert!(error
+            .to_string()
+            .contains("unknown Permission::DOES_NOT_EXIST"));
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_permission_contract_rejects_duplicate_permission_semantics() {
+        let base = env::temp_dir().join(format!(
+            "xtask-permissions-duplicate-{}",
+            std::process::id()
+        ));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            r#"
+                pub struct DemoModule;
+                impl RusToKModule for DemoModule {
+                    fn permissions(&self) -> Vec<Permission> {
+                        vec![
+                            Permission::USERS_READ,
+                            Permission::new(Resource::Users, Action::Read),
+                        ]
+                    }
+                }
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+
+        let error = validate_module_permission_contract("demo", &base)
+            .expect_err("duplicate permission semantics must fail");
+        assert!(error
+            .to_string()
+            .contains("duplicate permission 'users:read'"));
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_permission_contract_rejects_missing_minimum_runtime_permission() {
+        let base =
+            env::temp_dir().join(format!("xtask-permissions-minimum-{}", std::process::id()));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            r#"
+                pub struct BlogModule;
+                impl RusToKModule for BlogModule {
+                    fn permissions(&self) -> Vec<Permission> {
+                        vec![Permission::BLOG_POSTS_READ]
+                    }
+                }
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+
+        let error = validate_module_permission_contract("blog", &base)
+            .expect_err("missing minimum runtime permission must fail");
+        assert!(error
+            .to_string()
+            .contains("must declare minimum runtime permission 'blog_posts:manage'"));
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_event_listener_contract_rejects_missing_registration_hook() {
+        let base = env::temp_dir().join(format!(
+            "xtask-event-listener-missing-{}",
+            std::process::id()
+        ));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            r#"
+                pub struct SearchModule;
+
+                impl SearchModule {
+                    pub fn new() -> Self {
+                        Self
+                    }
+                }
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+
+        let error = validate_module_event_listener_contract("search", &base)
+            .expect_err("missing register_event_listeners hook must fail");
+        assert!(error.to_string().contains("register_event_listeners"));
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_event_listener_contract_accepts_index_runtime_registration() {
+        let base = env::temp_dir().join(format!("xtask-event-listener-ok-{}", std::process::id()));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            r#"
+                pub struct IndexModule;
+
+                impl IndexModule {
+                    pub fn register_event_listeners(&self) {
+                        let runtime = IndexerRuntimeConfig::new(2, 100, 10);
+                        let _content = ContentIndexer::with_runtime(todo!(), runtime.clone());
+                        let _product = ProductIndexer::with_runtime(todo!(), runtime);
+                    }
+                }
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+
+        validate_module_event_listener_contract("index", &base)
+            .expect("index event listener fragments should validate");
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_event_ingress_contract_rejects_workflow_without_webhook_routes() {
+        let base = env::temp_dir().join(format!(
+            "xtask-event-ingress-missing-{}",
+            std::process::id()
+        ));
+        let workflow_controllers_dir = base
+            .join("crates")
+            .join("rustok-workflow")
+            .join("src")
+            .join("controllers");
+        let workflow_services_dir = base
+            .join("crates")
+            .join("rustok-workflow")
+            .join("src")
+            .join("services");
+        let server_workflow_dir = base
+            .join("apps")
+            .join("server")
+            .join("src")
+            .join("controllers")
+            .join("workflow");
+        std::fs::create_dir_all(&workflow_controllers_dir)
+            .expect("temporary workflow controllers dir should exist");
+        std::fs::create_dir_all(&workflow_services_dir)
+            .expect("temporary workflow services dir should exist");
+        std::fs::create_dir_all(&server_workflow_dir)
+            .expect("temporary server workflow dir should exist");
+        std::fs::write(
+            workflow_controllers_dir.join("mod.rs"),
+            "pub fn routes() {}\n",
+        )
+        .expect("temporary workflow controllers mod.rs should be writable");
+        std::fs::write(
+            workflow_services_dir.join("trigger_handler.rs"),
+            "impl EventHandler for WorkflowTriggerHandler {}\n",
+        )
+        .expect("temporary trigger_handler.rs should be writable");
+        std::fs::write(
+            server_workflow_dir.join("mod.rs"),
+            "pub fn webhook_routes() -> Routes { rustok_workflow::controllers::webhook_routes() }\n",
+        )
+        .expect("temporary server workflow shim should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+        let module_root = base.join("crates").join("rustok-workflow");
+
+        let error =
+            validate_module_event_ingress_contract(&manifest_path, "workflow", &module_root)
+                .expect_err("missing workflow webhook routes must fail");
+        assert!(error.to_string().contains("webhook_routes"));
+
+        let _ = std::fs::remove_file(workflow_controllers_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(workflow_services_dir.join("trigger_handler.rs"));
+        let _ = std::fs::remove_file(server_workflow_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&workflow_controllers_dir);
+        let _ = std::fs::remove_dir(&workflow_services_dir);
+        let _ = std::fs::remove_dir(base.join("crates").join("rustok-workflow").join("src"));
+        let _ = std::fs::remove_dir(base.join("crates").join("rustok-workflow"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&server_workflow_dir);
+        let _ = std::fs::remove_dir(
+            base.join("apps")
+                .join("server")
+                .join("src")
+                .join("controllers"),
+        );
+        let _ = std::fs::remove_dir(base.join("apps").join("server").join("src"));
+        let _ = std::fs::remove_dir(base.join("apps").join("server"));
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_event_ingress_contract_accepts_workflow_webhook_shim() {
+        let base = env::temp_dir().join(format!("xtask-event-ingress-ok-{}", std::process::id()));
+        let workflow_controllers_dir = base
+            .join("crates")
+            .join("rustok-workflow")
+            .join("src")
+            .join("controllers");
+        let workflow_services_dir = base
+            .join("crates")
+            .join("rustok-workflow")
+            .join("src")
+            .join("services");
+        let server_workflow_dir = base
+            .join("apps")
+            .join("server")
+            .join("src")
+            .join("controllers")
+            .join("workflow");
+        std::fs::create_dir_all(&workflow_controllers_dir)
+            .expect("temporary workflow controllers dir should exist");
+        std::fs::create_dir_all(&workflow_services_dir)
+            .expect("temporary workflow services dir should exist");
+        std::fs::create_dir_all(&server_workflow_dir)
+            .expect("temporary server workflow dir should exist");
+        std::fs::write(
+            workflow_controllers_dir.join("mod.rs"),
+            "pub fn routes() {}\npub fn webhook_routes() { Routes::new().prefix(\"webhooks\"); }\n",
+        )
+        .expect("temporary workflow controllers mod.rs should be writable");
+        std::fs::write(
+            workflow_services_dir.join("trigger_handler.rs"),
+            "impl EventHandler for WorkflowTriggerHandler {}\n",
+        )
+        .expect("temporary trigger_handler.rs should be writable");
+        std::fs::write(
+            server_workflow_dir.join("mod.rs"),
+            "pub fn webhook_routes() -> Routes { rustok_workflow::controllers::webhook_routes() }\n",
+        )
+        .expect("temporary server workflow shim should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+        let module_root = base.join("crates").join("rustok-workflow");
+
+        validate_module_event_ingress_contract(&manifest_path, "workflow", &module_root)
+            .expect("workflow event ingress contract should validate");
+
+        let _ = std::fs::remove_file(workflow_controllers_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(workflow_services_dir.join("trigger_handler.rs"));
+        let _ = std::fs::remove_file(server_workflow_dir.join("mod.rs"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&workflow_controllers_dir);
+        let _ = std::fs::remove_dir(&workflow_services_dir);
+        let _ = std::fs::remove_dir(base.join("crates").join("rustok-workflow").join("src"));
+        let _ = std::fs::remove_dir(base.join("crates").join("rustok-workflow"));
+        let _ = std::fs::remove_dir(base.join("crates"));
+        let _ = std::fs::remove_dir(&server_workflow_dir);
+        let _ = std::fs::remove_dir(
+            base.join("apps")
+                .join("server")
+                .join("src")
+                .join("controllers"),
+        );
+        let _ = std::fs::remove_dir(base.join("apps").join("server").join("src"));
+        let _ = std::fs::remove_dir(base.join("apps").join("server"));
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_index_search_boundary_contract_rejects_index_exposing_search_engine() {
+        let base = env::temp_dir().join(format!(
+            "xtask-index-search-boundary-bad-{}",
+            std::process::id()
+        ));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub use crate::search::PgSearchEngine;\npub struct IndexModule; pub struct ContentIndexer; pub struct ProductIndexer; pub struct IndexerRuntimeConfig;",
+        )
+        .expect("temporary lib.rs should be writable");
+        std::fs::write(
+            base.join("README.md"),
+            "read-model substrate\nContentIndexer::with_runtime\nProductIndexer::with_runtime\nIndexerRuntimeConfig\n",
+        )
+        .expect("temporary README.md should be writable");
+
+        let error = validate_module_index_search_boundary_contract("index", &base)
+            .expect_err("index must not expose search-owned symbols");
+        assert!(error.to_string().contains("PgSearchEngine"));
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_file(base.join("README.md"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_index_search_boundary_contract_accepts_search_surface() {
+        let base = env::temp_dir().join(format!(
+            "xtask-index-search-boundary-ok-{}",
+            std::process::id()
+        ));
+        let src_dir = base.join("src");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            "pub use crate::engine::SearchEngineKind;\npub use crate::pg_engine::PgSearchEngine;\npub use crate::ingestion::SearchIngestionHandler;\n",
+        )
+        .expect("temporary lib.rs should be writable");
+        std::fs::write(
+            base.join("README.md"),
+            "search_documents\nproduct-facing search contracts\n",
+        )
+        .expect("temporary README.md should be writable");
+
+        validate_module_index_search_boundary_contract("search", &base)
+            .expect("search boundary surface should validate");
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_file(base.join("README.md"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_search_operator_surface_contract_rejects_missing_readme_marker() {
+        let base = env::temp_dir().join(format!(
+            "xtask-search-operator-surface-missing-{}",
+            std::process::id()
+        ));
+        let src_dir = base.join("src");
+        let docs_dir = base.join("docs");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        std::fs::create_dir_all(&docs_dir).expect("temporary docs dir should exist");
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            r#"
+                pub struct SearchDiagnosticsService;
+                pub struct SearchAnalyticsService;
+                pub struct SearchSettingsService;
+                pub struct SearchDictionaryService;
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+        std::fs::write(
+            base.join("README.md"),
+            "searchDiagnostics\nsearchAnalytics\nsearchSettingsPreview\n",
+        )
+        .expect("temporary README.md should be writable");
+        std::fs::write(docs_dir.join("observability-runbook.md"), "# runbook\n")
+            .expect("temporary observability-runbook.md should be writable");
+
+        let error = validate_module_search_operator_surface_contract("search", &base)
+            .expect_err("missing operator readme marker must fail");
+        assert!(error.to_string().contains("triggerSearchRebuild"));
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_file(base.join("README.md"));
+        let _ = std::fs::remove_file(docs_dir.join("observability-runbook.md"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&docs_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_search_operator_surface_contract_accepts_operator_plane() {
+        let base = env::temp_dir().join(format!(
+            "xtask-search-operator-surface-ok-{}",
+            std::process::id()
+        ));
+        let src_dir = base.join("src");
+        let docs_dir = base.join("docs");
+        std::fs::create_dir_all(&src_dir).expect("temporary src dir should exist");
+        std::fs::create_dir_all(&docs_dir).expect("temporary docs dir should exist");
+        std::fs::write(
+            src_dir.join("lib.rs"),
+            r#"
+                pub struct SearchDiagnosticsService;
+                pub struct SearchAnalyticsService;
+                pub struct SearchSettingsService;
+                pub struct SearchDictionaryService;
+            "#,
+        )
+        .expect("temporary lib.rs should be writable");
+        std::fs::write(
+            base.join("README.md"),
+            "searchDiagnostics\nsearchAnalytics\nsearchSettingsPreview\ntriggerSearchRebuild\n",
+        )
+        .expect("temporary README.md should be writable");
+        std::fs::write(docs_dir.join("observability-runbook.md"), "# runbook\n")
+            .expect("temporary observability-runbook.md should be writable");
+
+        validate_module_search_operator_surface_contract("search", &base)
+            .expect("search operator-plane contract should validate");
+
+        let _ = std::fs::remove_file(src_dir.join("lib.rs"));
+        let _ = std::fs::remove_file(base.join("README.md"));
+        let _ = std::fs::remove_file(docs_dir.join("observability-runbook.md"));
+        let _ = std::fs::remove_dir(&src_dir);
+        let _ = std::fs::remove_dir(&docs_dir);
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_docs_navigation_contract_rejects_missing_ui_navigation_link() {
+        let base = env::temp_dir().join(format!("xtask-docs-nav-missing-{}", std::process::id()));
+        let docs_modules_dir = base.join("docs").join("modules");
+        std::fs::create_dir_all(&docs_modules_dir)
+            .expect("temporary docs/modules dir should exist");
+        std::fs::write(
+            docs_modules_dir.join("_index.md"),
+            "| `rustok-demo` | [docs](../../crates/rustok-demo/docs/README.md) | [plan](../../crates/rustok-demo/docs/implementation-plan.md) |\n",
+        )
+        .expect("temporary _index.md should be writable");
+        std::fs::write(docs_modules_dir.join("UI_PACKAGES_INDEX.md"), "# ui\n")
+            .expect("temporary UI index should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        let error = validate_module_docs_navigation_contract(
+            &manifest_path,
+            "demo",
+            &spec,
+            Some("rustok-demo-admin"),
+            None,
+            &[],
+        )
+        .expect_err("missing admin ui link must fail");
+        assert!(error.to_string().contains("declares admin UI"));
+
+        let _ = std::fs::remove_file(docs_modules_dir.join("_index.md"));
+        let _ = std::fs::remove_file(docs_modules_dir.join("UI_PACKAGES_INDEX.md"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&docs_modules_dir);
+        let _ = std::fs::remove_dir(base.join("docs"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_docs_navigation_contract_accepts_documented_storefront_module() {
+        let base = env::temp_dir().join(format!("xtask-docs-nav-ok-{}", std::process::id()));
+        let docs_modules_dir = base.join("docs").join("modules");
+        std::fs::create_dir_all(&docs_modules_dir)
+            .expect("temporary docs/modules dir should exist");
+        std::fs::write(
+            docs_modules_dir.join("_index.md"),
+            "| `rustok-demo` | [docs](../../crates/rustok-demo/docs/README.md) | [plan](../../crates/rustok-demo/docs/implementation-plan.md) |\n",
+        )
+        .expect("temporary _index.md should be writable");
+        std::fs::write(
+            docs_modules_dir.join("UI_PACKAGES_INDEX.md"),
+            "- `rustok-demo` storefront UI: [README](../../crates/rustok-demo/storefront/README.md)\n",
+        )
+        .expect("temporary UI index should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+
+        let spec = ModuleSpec {
+            crate_name: "rustok-demo".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-demo".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        validate_module_docs_navigation_contract(
+            &manifest_path,
+            "demo",
+            &spec,
+            None,
+            Some("rustok-demo-storefront"),
+            &[],
+        )
+        .expect("documented storefront UI should validate");
+
+        let _ = std::fs::remove_file(docs_modules_dir.join("_index.md"));
+        let _ = std::fs::remove_file(docs_modules_dir.join("UI_PACKAGES_INDEX.md"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&docs_modules_dir);
+        let _ = std::fs::remove_dir(base.join("docs"));
+        let _ = std::fs::remove_dir(&base);
+    }
+
+    #[test]
+    fn validate_module_docs_navigation_contract_rejects_missing_next_admin_showcase_entry() {
+        let base =
+            env::temp_dir().join(format!("xtask-docs-nav-next-admin-{}", std::process::id()));
+        let docs_modules_dir = base.join("docs").join("modules");
+        let next_admin_package_dir = base
+            .join("apps")
+            .join("next-admin")
+            .join("packages")
+            .join("blog");
+        std::fs::create_dir_all(&docs_modules_dir)
+            .expect("temporary docs/modules dir should exist");
+        std::fs::create_dir_all(&next_admin_package_dir)
+            .expect("temporary next-admin package dir should exist");
+        std::fs::write(
+            docs_modules_dir.join("_index.md"),
+            "| `rustok-blog` | [docs](../../crates/rustok-blog/docs/README.md) | [plan](../../crates/rustok-blog/docs/implementation-plan.md) |\n",
+        )
+        .expect("temporary _index.md should be writable");
+        std::fs::write(
+            docs_modules_dir.join("UI_PACKAGES_INDEX.md"),
+            "- `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)\n",
+        )
+        .expect("temporary UI index should be writable");
+        let manifest_path = base.join("modules.toml");
+        std::fs::write(&manifest_path, "app = \"rustok-server\"\nschema = 2\n")
+            .expect("temporary modules.toml should be writable");
+
+        let spec = ModuleSpec {
+            crate_name: "rustok-blog".to_string(),
+            source: "path".to_string(),
+            path: Some("crates/rustok-blog".to_string()),
+            required: false,
+            version: None,
+            git: None,
+            rev: None,
+            depends_on: None,
+            features: None,
+        };
+
+        let error = validate_module_docs_navigation_contract(
+            &manifest_path,
+            "blog",
+            &spec,
+            Some("rustok-blog-admin"),
+            None,
+            &["next-admin".to_string()],
+        )
+        .expect_err("missing next-admin showcase entry must fail");
+        assert!(error
+            .to_string()
+            .contains("showcase_admin_surfaces=['next-admin']"));
+
+        let _ = std::fs::remove_file(docs_modules_dir.join("_index.md"));
+        let _ = std::fs::remove_file(docs_modules_dir.join("UI_PACKAGES_INDEX.md"));
+        let _ = std::fs::remove_file(&manifest_path);
+        let _ = std::fs::remove_dir(&docs_modules_dir);
+        let _ = std::fs::remove_dir(base.join("docs"));
+        let _ = std::fs::remove_dir(&next_admin_package_dir);
+        let _ = std::fs::remove_dir(base.join("apps").join("next-admin").join("packages"));
+        let _ = std::fs::remove_dir(base.join("apps").join("next-admin"));
+        let _ = std::fs::remove_dir(base.join("apps"));
+        let _ = std::fs::remove_dir(&base);
     }
 
     #[test]

@@ -5,7 +5,11 @@ version = "0.1.0"
 description = "Generic comments domain for blog and other opt-in non-forum discussion surfaces"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[crate]
+entry_type = "CommentsModule"
 
 [provides.admin_ui]
 leptos_crate = "rustok-comments-admin"

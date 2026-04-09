@@ -2,9 +2,10 @@
 slug = "product"
 name = "Product"
 version = "0.1.0"
-description = "Default catalog submodule in the ecommerce family"
+description = "Product catalog, variants, translations, options, and publication lifecycle"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]

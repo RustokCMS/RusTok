@@ -38,6 +38,8 @@ pub struct ProductListItem {
     pub status: String,
     pub title: String,
     pub handle: String,
+    #[serde(rename = "sellerId")]
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     #[serde(rename = "productType")]
     pub product_type: Option<String>,
@@ -54,6 +56,8 @@ pub struct ProductListItem {
 pub struct ProductDetail {
     pub id: String,
     pub status: String,
+    #[serde(rename = "sellerId")]
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     #[serde(rename = "productType")]
     pub product_type: Option<String>,
@@ -128,6 +132,7 @@ pub struct ProductDraft {
     pub title: String,
     pub handle: String,
     pub description: String,
+    pub seller_id: String,
     pub vendor: String,
     pub product_type: String,
     pub shipping_profile_slug: Option<String>,

@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-use crate::model::{RegionAdminBootstrap, RegionDetail, RegionDraft, RegionList};
+use crate::model::{RegionAdminBootstrap, RegionDetail, RegionDraft, RegionList, RegionListItem};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {

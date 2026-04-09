@@ -18,12 +18,11 @@ use crate::modules::{DeploymentSurfaceContract, ManifestManager};
 use crate::services::content_orchestration::init_content_orchestration;
 use crate::services::event_transport_factory::build_event_runtime;
 use crate::services::graphql_schema::init_graphql_schema;
-use crate::services::index_dispatcher::spawn_index_dispatcher;
 use crate::services::marketplace_catalog::{
     MarketplaceCatalogService, SharedMarketplaceCatalogService,
 };
+use crate::services::module_event_dispatcher::spawn_module_event_dispatcher;
 use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
-use crate::services::search_dispatcher::spawn_search_dispatcher;
 use rustok_cache::CacheService;
 
 pub struct AppRuntimeBootstrap {
@@ -89,8 +88,7 @@ pub async fn bootstrap_app_runtime(
     if !settings.runtime.is_registry_only() {
         let event_runtime = build_event_runtime(ctx).await?;
         ctx.shared_store.insert(event_runtime.transport.clone());
-        spawn_index_dispatcher(ctx, settings);
-        spawn_search_dispatcher(ctx);
+        spawn_module_event_dispatcher(ctx, settings, &registry);
         ctx.shared_store.insert(Arc::new(event_runtime));
         ctx.shared_store
             .insert(crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(ctx.db.clone()));
@@ -152,21 +150,8 @@ fn init_alloy_runtime(ctx: &AppContext) {
 
 #[cfg(feature = "mod-workflow")]
 fn init_workflow_runtime(ctx: &AppContext) {
-    use rustok_core::events::EventDispatcher;
-    use rustok_workflow::{WorkflowCronScheduler, WorkflowTriggerHandler};
-
-    let bus = crate::services::event_bus::event_bus_from_context(ctx);
+    use rustok_workflow::WorkflowCronScheduler;
     let db = ctx.db.clone();
-
-    // Register the event-trigger handler
-    let mut dispatcher = EventDispatcher::new(bus);
-    dispatcher.register(WorkflowTriggerHandler::new(db.clone()));
-    let running = dispatcher.start();
-    tokio::spawn(async move {
-        if let Err(error) = running.join().await {
-            tracing::error!("Workflow event dispatcher panicked: {:?}", error);
-        }
-    });
 
     // Start the cron scheduler
     let scheduler = WorkflowCronScheduler::new(db);
@@ -177,7 +162,7 @@ fn init_workflow_runtime(ctx: &AppContext) {
         }
     });
 
-    tracing::info!("Workflow runtime initialized (event trigger + cron scheduler)");
+    tracing::info!("Workflow runtime initialized (cron scheduler)");
 }
 
 struct RateLimitLayers {

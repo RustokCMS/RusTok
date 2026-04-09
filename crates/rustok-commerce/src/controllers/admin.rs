@@ -13,16 +13,17 @@ use uuid::Uuid;
 use crate::{
     dto::{
         AuthorizePaymentInput, CancelFulfillmentInput, CancelOrderInput, CancelPaymentInput,
-        CapturePaymentInput, CreateProductInput, CreateShippingOptionInput,
+        CapturePaymentInput, CreateFulfillmentInput, CreateProductInput, CreateShippingOptionInput,
         CreateShippingProfileInput, DeliverFulfillmentInput, DeliverOrderInput,
         FulfillmentResponse, ListFulfillmentsInput, ListPaymentCollectionsInput,
         ListShippingProfilesInput, MarkPaidOrderInput, OrderResponse, PaymentCollectionResponse,
-        ProductResponse, ShipFulfillmentInput, ShipOrderInput, ShippingOptionResponse,
-        ShippingProfileResponse, UpdateProductInput, UpdateShippingOptionInput,
-        UpdateShippingProfileInput,
+        ProductResponse, ReopenFulfillmentInput, ReshipFulfillmentInput, ShipFulfillmentInput,
+        ShipOrderInput, ShippingOptionResponse, ShippingProfileResponse, UpdateProductInput,
+        UpdateShippingOptionInput, UpdateShippingProfileInput,
     },
     storefront_shipping::normalize_shipping_profile_slug,
-    CatalogService, FulfillmentService, OrderService, PaymentService, ShippingProfileService,
+    CatalogService, FulfillmentOrchestrationError, FulfillmentOrchestrationService,
+    FulfillmentService, OrderService, PaymentService, ShippingProfileService,
 };
 
 use super::{
@@ -111,7 +112,10 @@ pub fn routes() -> Routes {
             "/shipping-options/{id}/reactivate",
             axum::routing::post(reactivate_shipping_option),
         )
-        .add("/fulfillments", axum::routing::get(list_fulfillments))
+        .add(
+            "/fulfillments",
+            axum::routing::get(list_fulfillments).post(create_fulfillment),
+        )
         .add("/fulfillments/{id}", axum::routing::get(show_fulfillment))
         .add(
             "/fulfillments/{id}/ship",
@@ -120,6 +124,14 @@ pub fn routes() -> Routes {
         .add(
             "/fulfillments/{id}/deliver",
             axum::routing::post(deliver_fulfillment),
+        )
+        .add(
+            "/fulfillments/{id}/reopen",
+            axum::routing::post(reopen_fulfillment),
+        )
+        .add(
+            "/fulfillments/{id}/reship",
+            axum::routing::post(reship_fulfillment),
         )
         .add(
             "/fulfillments/{id}/cancel",
@@ -1289,6 +1301,38 @@ pub async fn cancel_payment_collection(
 
 /// Show admin fulfillment
 #[utoipa::path(
+    post,
+    path = "/admin/fulfillments",
+    tag = "admin",
+    request_body = CreateFulfillmentInput,
+    responses(
+        (status = 201, description = "Fulfillment created", body = FulfillmentResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Order not found")
+    )
+)]
+pub async fn create_fulfillment(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Json(input): Json<CreateFulfillmentInput>,
+) -> Result<(StatusCode, Json<FulfillmentResponse>)> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_CREATE],
+        "Permission denied: fulfillments:create required",
+    )?;
+
+    let fulfillment = FulfillmentOrchestrationService::new(ctx.db.clone())
+        .create_manual_fulfillment(tenant.id, input)
+        .await
+        .map_err(map_fulfillment_orchestration_error)?;
+
+    Ok((StatusCode::CREATED, Json(fulfillment)))
+}
+
+/// Show admin fulfillment
+#[utoipa::path(
     get,
     path = "/admin/fulfillments/{id}",
     tag = "admin",
@@ -1387,6 +1431,74 @@ pub async fn deliver_fulfillment(
     Ok(Json(fulfillment))
 }
 
+/// Reopen admin fulfillment
+#[utoipa::path(
+    post,
+    path = "/admin/fulfillments/{id}/reopen",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    request_body = ReopenFulfillmentInput,
+    responses(
+        (status = 200, description = "Fulfillment reopened", body = FulfillmentResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Fulfillment not found")
+    )
+)]
+pub async fn reopen_fulfillment(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<ReopenFulfillmentInput>,
+) -> Result<Json<FulfillmentResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_UPDATE],
+        "Permission denied: fulfillments:update required",
+    )?;
+
+    let fulfillment = FulfillmentService::new(ctx.db.clone())
+        .reopen_fulfillment(tenant.id, id, input)
+        .await
+        .map_err(map_fulfillment_error)?;
+
+    Ok(Json(fulfillment))
+}
+
+/// Reship admin fulfillment
+#[utoipa::path(
+    post,
+    path = "/admin/fulfillments/{id}/reship",
+    tag = "admin",
+    params(("id" = Uuid, Path, description = "Fulfillment ID")),
+    request_body = ReshipFulfillmentInput,
+    responses(
+        (status = 200, description = "Fulfillment marked for reship", body = FulfillmentResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Fulfillment not found")
+    )
+)]
+pub async fn reship_fulfillment(
+    State(ctx): State<AppContext>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<ReshipFulfillmentInput>,
+) -> Result<Json<FulfillmentResponse>> {
+    ensure_permissions(
+        &auth,
+        &[Permission::FULFILLMENTS_UPDATE],
+        "Permission denied: fulfillments:update required",
+    )?;
+
+    let fulfillment = FulfillmentService::new(ctx.db.clone())
+        .reship_fulfillment(tenant.id, id, input)
+        .await
+        .map_err(map_fulfillment_error)?;
+
+    Ok(Json(fulfillment))
+}
+
 /// Cancel admin fulfillment
 #[utoipa::path(
     post,
@@ -1438,6 +1550,13 @@ fn map_order_error(error: rustok_order::error::OrderError) -> Error {
 fn map_fulfillment_error(error: rustok_fulfillment::error::FulfillmentError) -> Error {
     match error {
         rustok_fulfillment::error::FulfillmentError::FulfillmentNotFound(_) => Error::NotFound,
+        other => Error::BadRequest(other.to_string()),
+    }
+}
+
+fn map_fulfillment_orchestration_error(error: FulfillmentOrchestrationError) -> Error {
+    match error {
+        FulfillmentOrchestrationError::OrderNotFound(_) => Error::NotFound,
         other => Error::BadRequest(other.to_string()),
     }
 }
@@ -1510,8 +1629,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::dto::{
-        CancelPaymentInput, CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
-        CreatePaymentCollectionInput, ShipFulfillmentInput, UpdateShippingOptionInput,
+        CancelPaymentInput, CreateFulfillmentInput, CreateFulfillmentItemInput, CreateOrderInput,
+        CreateOrderLineItemInput, CreatePaymentCollectionInput, DeliverFulfillmentInput,
+        FulfillmentItemQuantityInput, ShipFulfillmentInput, UpdateShippingOptionInput,
     };
     use crate::{FulfillmentService, OrderService, PaymentService, ShippingProfileService};
 
@@ -1638,6 +1758,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-ORDER-1".to_string()),
                         title: "Admin Order".to_string(),
                         quantity: 2,
@@ -1672,6 +1793,7 @@ mod tests {
                     customer_id: Some(customer_id),
                     carrier: Some("manual".to_string()),
                     tracking_number: Some("TRACK-123".to_string()),
+                    items: None,
                     metadata: json!({ "source": "admin-order-fulfillment" }),
                 },
             )
@@ -1753,6 +1875,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-ORDER-LIST-1".to_string()),
                         title: "Admin List Order 1".to_string(),
                         quantity: 1,
@@ -1775,6 +1898,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-ORDER-LIST-2".to_string()),
                         title: "Admin List Order 2".to_string(),
                         quantity: 1,
@@ -1874,6 +1998,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-PAYMENT-LIST-1".to_string()),
                         title: "Admin Payment List 1".to_string(),
                         quantity: 1,
@@ -1896,6 +2021,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-PAYMENT-LIST-2".to_string()),
                         title: "Admin Payment List 2".to_string(),
                         quantity: 1,
@@ -2482,6 +2608,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-FULFILLMENT-LIST-1".to_string()),
                         title: "Admin Fulfillment List 1".to_string(),
                         quantity: 1,
@@ -2504,6 +2631,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-FULFILLMENT-LIST-2".to_string()),
                         title: "Admin Fulfillment List 2".to_string(),
                         quantity: 1,
@@ -2524,6 +2652,7 @@ mod tests {
                     customer_id: Some(customer_a),
                     carrier: None,
                     tracking_number: None,
+                    items: None,
                     metadata: json!({ "source": "admin-fulfillment-list" }),
                 },
             )
@@ -2538,6 +2667,7 @@ mod tests {
                     customer_id: Some(customer_b),
                     carrier: None,
                     tracking_number: None,
+                    items: None,
                     metadata: json!({ "source": "admin-fulfillment-list" }),
                 },
             )
@@ -2550,6 +2680,7 @@ mod tests {
                 ShipFulfillmentInput {
                     carrier: "manual".to_string(),
                     tracking_number: "TRACK-FILTERED".to_string(),
+                    items: None,
                     metadata: json!({ "source": "admin-fulfillment-list" }),
                 },
             )
@@ -2670,6 +2801,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-ORDER-LIFECYCLE-1".to_string()),
                         title: "Admin Lifecycle Order".to_string(),
                         quantity: 1,
@@ -2823,6 +2955,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-ORDER-CANCEL-1".to_string()),
                         title: "Admin Cancel Order".to_string(),
                         quantity: 1,
@@ -2950,6 +3083,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-PAYMENT-1".to_string()),
                         title: "Admin Payment Order".to_string(),
                         quantity: 1,
@@ -3085,6 +3219,242 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn admin_fulfillment_transport_creates_manual_fulfillment_with_typed_items() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let customer_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Admin Test Tenant".to_string(),
+            slug: format!("admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![
+                Permission::FULFILLMENTS_CREATE,
+                Permission::FULFILLMENTS_READ,
+            ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(customer_id),
+                    currency_code: "eur".to_string(),
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
+                        sku: Some("ADMIN-FULLFILLMENT-CREATE-1".to_string()),
+                        title: "Admin Fulfillment Create Order".to_string(),
+                        quantity: 3,
+                        unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                        metadata: json!({
+                            "source": "admin-fulfillment-create",
+                            "seller": {
+                                "scope": "merchant-alpha",
+                                "label": "Merchant Alpha"
+                            }
+                        }),
+                    }],
+                    metadata: json!({ "source": "admin-fulfillment-create" }),
+                },
+            )
+            .await
+            .expect("order should be created");
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let create_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/admin/fulfillments")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "order_id": order.id,
+                            "shipping_option_id": null,
+                            "customer_id": null,
+                            "carrier": null,
+                            "tracking_number": null,
+                            "items": [
+                                {
+                                    "order_line_item_id": order.line_items[0].id,
+                                    "quantity": 2,
+                                    "metadata": { "source": "admin-manual-fulfillment" }
+                                }
+                            ],
+                            "metadata": { "source": "admin-manual-fulfillment" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create request should succeed");
+        let create_status = create_response.status();
+        let create_body = to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .expect("create body should read");
+        assert_eq!(
+            create_status,
+            StatusCode::CREATED,
+            "unexpected create body: {}",
+            String::from_utf8_lossy(&create_body)
+        );
+        let created: serde_json::Value =
+            serde_json::from_slice(&create_body).expect("create response should be JSON");
+        assert_eq!(created["order_id"], json!(order.id));
+        assert_eq!(created["customer_id"], json!(customer_id));
+        assert_eq!(
+            created["items"][0]["order_line_item_id"],
+            json!(order.line_items[0].id)
+        );
+        assert_eq!(created["items"][0]["quantity"], json!(2));
+        assert_eq!(
+            created["metadata"]["delivery_group"]["shipping_profile_slug"],
+            json!("default")
+        );
+        assert_eq!(
+            created["metadata"]["delivery_group"]["seller_scope"],
+            json!("merchant-alpha")
+        );
+        assert_eq!(created["metadata"]["post_order"]["manual"], json!(true));
+    }
+
+    #[tokio::test]
+    async fn admin_fulfillment_transport_rejects_overfulfillment_for_order_line_item() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let customer_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Admin Test Tenant".to_string(),
+            slug: format!("admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::FULFILLMENTS_CREATE],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(customer_id),
+                    currency_code: "eur".to_string(),
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
+                        sku: Some("ADMIN-FULLFILLMENT-OVER-1".to_string()),
+                        title: "Admin Fulfillment Over Order".to_string(),
+                        quantity: 2,
+                        unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-fulfillment-over" }),
+                    }],
+                    metadata: json!({ "source": "admin-fulfillment-over" }),
+                },
+            )
+            .await
+            .expect("order should be created");
+        FulfillmentService::new(db.clone())
+            .create_fulfillment(
+                tenant_id,
+                CreateFulfillmentInput {
+                    order_id: order.id,
+                    shipping_option_id: None,
+                    customer_id: Some(customer_id),
+                    carrier: None,
+                    tracking_number: None,
+                    items: Some(vec![CreateFulfillmentItemInput {
+                        order_line_item_id: order.line_items[0].id,
+                        quantity: 2,
+                        metadata: json!({ "source": "existing-fulfillment" }),
+                    }]),
+                    metadata: json!({ "source": "existing-fulfillment" }),
+                },
+            )
+            .await
+            .expect("existing fulfillment should be created");
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let create_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/admin/fulfillments")
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "order_id": order.id,
+                            "shipping_option_id": null,
+                            "customer_id": customer_id,
+                            "carrier": null,
+                            "tracking_number": null,
+                            "items": [
+                                {
+                                    "order_line_item_id": order.line_items[0].id,
+                                    "quantity": 1,
+                                    "metadata": {}
+                                }
+                            ],
+                            "metadata": { "source": "admin-overfulfillment" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("create request should complete");
+        let create_status = create_response.status();
+        let create_body = to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .expect("create body should read");
+        assert_eq!(
+            create_status,
+            StatusCode::BAD_REQUEST,
+            "unexpected overfulfillment body: {}",
+            String::from_utf8_lossy(&create_body)
+        );
+        assert!(
+            String::from_utf8_lossy(&create_body).contains("no remaining quantity"),
+            "unexpected overfulfillment body: {}",
+            String::from_utf8_lossy(&create_body)
+        );
+    }
+
+    #[tokio::test]
     async fn admin_fulfillment_transport_ships_delivers_and_reads_detail() {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
@@ -3124,6 +3494,7 @@ mod tests {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
                         shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
                         sku: Some("ADMIN-FULLFILLMENT-1".to_string()),
                         title: "Admin Fulfillment Order".to_string(),
                         quantity: 1,
@@ -3144,6 +3515,7 @@ mod tests {
                     customer_id: Some(customer_id),
                     carrier: None,
                     tracking_number: None,
+                    items: None,
                     metadata: json!({ "source": "admin-fulfillment-transport" }),
                 },
             )
@@ -3247,5 +3619,351 @@ mod tests {
         assert_eq!(detail["id"], json!(fulfillment.id));
         assert_eq!(detail["status"], json!("delivered"));
         assert_eq!(detail["order_id"], json!(order.id));
+    }
+
+    #[tokio::test]
+    async fn admin_fulfillment_transport_supports_partial_item_ship_and_deliver() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let customer_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Admin Test Tenant".to_string(),
+            slug: format!("admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![
+                Permission::FULFILLMENTS_READ,
+                Permission::FULFILLMENTS_CREATE,
+                Permission::FULFILLMENTS_UPDATE,
+            ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(customer_id),
+                    currency_code: "eur".to_string(),
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
+                        sku: Some("ADMIN-FULLFILLMENT-PARTIAL-1".to_string()),
+                        title: "Admin Fulfillment Partial Order".to_string(),
+                        quantity: 3,
+                        unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-fulfillment-partial" }),
+                    }],
+                    metadata: json!({ "source": "admin-fulfillment-partial" }),
+                },
+            )
+            .await
+            .expect("order should be created");
+        let fulfillment = FulfillmentService::new(db.clone())
+            .create_fulfillment(
+                tenant_id,
+                CreateFulfillmentInput {
+                    order_id: order.id,
+                    shipping_option_id: None,
+                    customer_id: Some(customer_id),
+                    carrier: None,
+                    tracking_number: None,
+                    items: Some(vec![CreateFulfillmentItemInput {
+                        order_line_item_id: order.line_items[0].id,
+                        quantity: 3,
+                        metadata: json!({ "source": "admin-fulfillment-partial" }),
+                    }]),
+                    metadata: json!({ "source": "admin-fulfillment-partial" }),
+                },
+            )
+            .await
+            .expect("fulfillment should be created");
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let item_id = fulfillment.items[0].id;
+
+        let ship_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/admin/fulfillments/{}/ship", fulfillment.id))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "carrier": "manual",
+                            "tracking_number": "TRACK-PARTIAL",
+                            "items": [
+                                {
+                                    "fulfillment_item_id": item_id,
+                                    "quantity": 2
+                                }
+                            ],
+                            "metadata": { "source": "admin-fulfillment-partial-ship" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("partial ship request should succeed");
+        let ship_body = to_bytes(ship_response.into_body(), usize::MAX)
+            .await
+            .expect("ship body should read");
+        let shipped: serde_json::Value =
+            serde_json::from_slice(&ship_body).expect("ship response should be JSON");
+        assert_eq!(shipped["status"], json!("shipped"));
+        assert_eq!(shipped["items"][0]["shipped_quantity"], json!(2));
+        assert_eq!(shipped["items"][0]["delivered_quantity"], json!(0));
+
+        let deliver_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/admin/fulfillments/{}/deliver", fulfillment.id))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "delivered_note": "partial delivered",
+                            "items": [
+                                {
+                                    "fulfillment_item_id": item_id,
+                                    "quantity": 1
+                                }
+                            ],
+                            "metadata": { "source": "admin-fulfillment-partial-deliver" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("partial deliver request should succeed");
+        let deliver_body = to_bytes(deliver_response.into_body(), usize::MAX)
+            .await
+            .expect("deliver body should read");
+        let delivered: serde_json::Value =
+            serde_json::from_slice(&deliver_body).expect("deliver response should be JSON");
+        assert_eq!(delivered["status"], json!("shipped"));
+        assert_eq!(delivered["items"][0]["shipped_quantity"], json!(2));
+        assert_eq!(delivered["items"][0]["delivered_quantity"], json!(1));
+        assert_eq!(
+            delivered["metadata"]["audit"]["events"][1]["type"],
+            json!("deliver")
+        );
+    }
+
+    #[tokio::test]
+    async fn admin_fulfillment_transport_supports_reopen_and_reship() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let customer_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Admin Test Tenant".to_string(),
+            slug: format!("admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![
+                Permission::FULFILLMENTS_READ,
+                Permission::FULFILLMENTS_CREATE,
+                Permission::FULFILLMENTS_UPDATE,
+            ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(customer_id),
+                    currency_code: "eur".to_string(),
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
+                        sku: Some("ADMIN-FULLFILLMENT-REOPEN-1".to_string()),
+                        title: "Admin Fulfillment Reopen Order".to_string(),
+                        quantity: 2,
+                        unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-fulfillment-reopen" }),
+                    }],
+                    metadata: json!({ "source": "admin-fulfillment-reopen" }),
+                },
+            )
+            .await
+            .expect("order should be created");
+        let fulfillment = FulfillmentService::new(db.clone())
+            .create_fulfillment(
+                tenant_id,
+                CreateFulfillmentInput {
+                    order_id: order.id,
+                    shipping_option_id: None,
+                    customer_id: Some(customer_id),
+                    carrier: None,
+                    tracking_number: None,
+                    items: Some(vec![CreateFulfillmentItemInput {
+                        order_line_item_id: order.line_items[0].id,
+                        quantity: 2,
+                        metadata: json!({ "source": "admin-fulfillment-reopen" }),
+                    }]),
+                    metadata: json!({ "source": "admin-fulfillment-reopen" }),
+                },
+            )
+            .await
+            .expect("fulfillment should be created");
+
+        let app = admin_transport_router(test_app_context(db.clone()), tenant, auth);
+        let item_id = fulfillment.items[0].id;
+
+        FulfillmentService::new(db.clone())
+            .ship_fulfillment(
+                tenant_id,
+                fulfillment.id,
+                ShipFulfillmentInput {
+                    carrier: "manual".to_string(),
+                    tracking_number: "ADMIN-REOPEN-OLD".to_string(),
+                    items: Some(vec![FulfillmentItemQuantityInput {
+                        fulfillment_item_id: item_id,
+                        quantity: 2,
+                    }]),
+                    metadata: json!({ "source": "admin-fulfillment-reopen-ship" }),
+                },
+            )
+            .await
+            .expect("fulfillment should ship");
+        FulfillmentService::new(db.clone())
+            .deliver_fulfillment(
+                tenant_id,
+                fulfillment.id,
+                DeliverFulfillmentInput {
+                    delivered_note: Some("done".to_string()),
+                    items: Some(vec![FulfillmentItemQuantityInput {
+                        fulfillment_item_id: item_id,
+                        quantity: 2,
+                    }]),
+                    metadata: json!({ "source": "admin-fulfillment-reopen-deliver" }),
+                },
+            )
+            .await
+            .expect("fulfillment should deliver");
+
+        let reopen_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/admin/fulfillments/{}/reopen", fulfillment.id))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "items": [
+                                {
+                                    "fulfillment_item_id": item_id,
+                                    "quantity": 1
+                                }
+                            ],
+                            "metadata": { "source": "admin-fulfillment-reopen-step" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("reopen request should succeed");
+        let reopen_body = to_bytes(reopen_response.into_body(), usize::MAX)
+            .await
+            .expect("reopen body should read");
+        let reopened: serde_json::Value =
+            serde_json::from_slice(&reopen_body).expect("reopen response should be JSON");
+        assert_eq!(reopened["status"], json!("shipped"));
+        assert_eq!(reopened["items"][0]["delivered_quantity"], json!(1));
+        assert_eq!(reopened["delivered_note"], serde_json::Value::Null);
+
+        let deliver_again = FulfillmentService::new(db.clone())
+            .deliver_fulfillment(
+                tenant_id,
+                fulfillment.id,
+                DeliverFulfillmentInput {
+                    delivered_note: Some("done-again".to_string()),
+                    items: Some(vec![FulfillmentItemQuantityInput {
+                        fulfillment_item_id: item_id,
+                        quantity: 1,
+                    }]),
+                    metadata: json!({ "source": "admin-fulfillment-redeliver" }),
+                },
+            )
+            .await
+            .expect("fulfillment should be delivered again");
+        assert_eq!(deliver_again.status, "delivered");
+
+        let reship_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/admin/fulfillments/{}/reship", fulfillment.id))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "carrier": "manual",
+                            "tracking_number": "ADMIN-REOPEN-NEW",
+                            "items": [
+                                {
+                                    "fulfillment_item_id": item_id,
+                                    "quantity": 2
+                                }
+                            ],
+                            "metadata": { "source": "admin-fulfillment-reship-step" }
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("reship request should succeed");
+        let reship_body = to_bytes(reship_response.into_body(), usize::MAX)
+            .await
+            .expect("reship body should read");
+        let reshipped: serde_json::Value =
+            serde_json::from_slice(&reship_body).expect("reship response should be JSON");
+        assert_eq!(reshipped["status"], json!("shipped"));
+        assert_eq!(reshipped["tracking_number"], json!("ADMIN-REOPEN-NEW"));
+        assert_eq!(reshipped["items"][0]["delivered_quantity"], json!(0));
+        assert_eq!(
+            reshipped["metadata"]["audit"]["events"][4]["type"],
+            json!("reship")
+        );
     }
 }

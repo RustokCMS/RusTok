@@ -1,5 +1,9 @@
 extern crate rhai_full as rhai;
 
+use async_trait::async_trait;
+use rustok_core::{MigrationSource, Permission, RusToKModule};
+use sea_orm_migration::MigrationTrait;
+
 pub mod api;
 pub mod bridge;
 pub mod context;
@@ -39,6 +43,8 @@ pub use runtime::{init, runtime_from_ctx, scoped_runtime, AlloyRuntime, SharedAl
 pub use scheduler::{ScheduledJob, Scheduler};
 pub use storage::{InMemoryStorage, ScriptPage, ScriptQuery, ScriptRegistry, SeaOrmStorage};
 
+pub struct AlloyModule;
+
 pub fn create_default_engine() -> ScriptEngine {
     let config = EngineConfig::default();
     create_engine_with_config(config)
@@ -75,6 +81,43 @@ pub fn create_orchestrator_with_engine<R: ScriptRegistry>(
     registry: std::sync::Arc<R>,
 ) -> ScriptOrchestrator<R> {
     ScriptOrchestrator::new(engine, registry)
+}
+
+impl MigrationSource for AlloyModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        migrations::migrations()
+    }
+}
+
+#[async_trait]
+impl RusToKModule for AlloyModule {
+    fn slug(&self) -> &'static str {
+        "alloy"
+    }
+
+    fn name(&self) -> &'static str {
+        "Alloy"
+    }
+
+    fn description(&self) -> &'static str {
+        "Alloy runtime and scripting capability"
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            Permission::SCRIPTS_CREATE,
+            Permission::SCRIPTS_READ,
+            Permission::SCRIPTS_UPDATE,
+            Permission::SCRIPTS_DELETE,
+            Permission::SCRIPTS_LIST,
+            Permission::SCRIPTS_EXECUTE,
+            Permission::SCRIPTS_MANAGE,
+        ]
+    }
 }
 
 #[cfg(test)]
@@ -309,5 +352,18 @@ mod tests {
             }
             _ => panic!("Expected Continue outcome"),
         }
+    }
+
+    #[test]
+    fn module_metadata() {
+        let module = AlloyModule;
+        assert_eq!(module.slug(), "alloy");
+        assert_eq!(module.name(), "Alloy");
+        assert_eq!(
+            module.description(),
+            "Alloy runtime and scripting capability"
+        );
+        assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
+        assert!(module.permissions().contains(&Permission::SCRIPTS_MANAGE));
     }
 }

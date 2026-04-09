@@ -20,8 +20,8 @@ use crate::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
-    CartService, CatalogService, CheckoutService, CustomerService, FulfillmentService,
-    OrderService, PaymentService, ShippingProfileService, StoreContextService,
+    CartService, CatalogService, CheckoutService, CustomerService, FulfillmentOrchestrationService,
+    FulfillmentService, OrderService, PaymentService, ShippingProfileService, StoreContextService,
 };
 
 use super::{require_commerce_permission, types::*, MODULE_SLUG};
@@ -180,6 +180,8 @@ impl CommerceMutation {
                     .into_iter()
                     .map(|item| crate::dto::CartShippingSelectionInput {
                         shipping_profile_slug: item.shipping_profile_slug,
+                        seller_id: item.seller_id,
+                        seller_scope: item.seller_scope,
                         selected_shipping_option_id: item.selected_shipping_option_id,
                     })
                     .collect::<Vec<_>>(),
@@ -404,6 +406,8 @@ impl CommerceMutation {
                             .into_iter()
                             .map(|item| crate::dto::CartShippingSelectionInput {
                                 shipping_profile_slug: item.shipping_profile_slug,
+                                seller_id: item.seller_id,
+                                seller_scope: item.seller_scope,
                                 selected_shipping_option_id: item.selected_shipping_option_id,
                             })
                             .collect()
@@ -781,6 +785,51 @@ impl CommerceMutation {
         Ok(profile.into())
     }
 
+    async fn create_fulfillment(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        input: CreateFulfillmentInputObject,
+    ) -> Result<GqlFulfillment> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_CREATE],
+            "Permission denied: fulfillments:create required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let fulfillment = FulfillmentOrchestrationService::new(db.clone())
+            .create_manual_fulfillment(
+                tenant_id,
+                crate::dto::CreateFulfillmentInput {
+                    order_id: input.order_id,
+                    shipping_option_id: input.shipping_option_id,
+                    customer_id: input.customer_id,
+                    carrier: input.carrier,
+                    tracking_number: input.tracking_number,
+                    items: Some(
+                        input
+                            .items
+                            .into_iter()
+                            .map(|item| {
+                                Ok(crate::dto::CreateFulfillmentItemInput {
+                                    order_line_item_id: item.order_line_item_id,
+                                    quantity: item.quantity,
+                                    metadata: parse_optional_metadata(item.metadata.as_deref())?,
+                                })
+                            })
+                            .collect::<Result<Vec<_>>>()?,
+                    ),
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(fulfillment.into())
+    }
+
     async fn reactivate_shipping_profile(
         &self,
         ctx: &Context<'_>,
@@ -866,6 +915,15 @@ impl CommerceMutation {
                 crate::dto::ShipFulfillmentInput {
                     carrier: input.carrier,
                     tracking_number: input.tracking_number,
+                    items: input.items.map(|items| {
+                        items
+                            .into_iter()
+                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
+                                fulfillment_item_id: item.fulfillment_item_id,
+                                quantity: item.quantity,
+                            })
+                            .collect()
+                    }),
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
@@ -895,6 +953,91 @@ impl CommerceMutation {
                 id,
                 crate::dto::DeliverFulfillmentInput {
                     delivered_note: input.delivered_note,
+                    items: input.items.map(|items| {
+                        items
+                            .into_iter()
+                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
+                                fulfillment_item_id: item.fulfillment_item_id,
+                                quantity: item.quantity,
+                            })
+                            .collect()
+                    }),
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(fulfillment.into())
+    }
+
+    async fn reopen_fulfillment(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: ReopenFulfillmentInputObject,
+    ) -> Result<GqlFulfillment> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let fulfillment = FulfillmentService::new(db.clone())
+            .reopen_fulfillment(
+                tenant_id,
+                id,
+                crate::dto::ReopenFulfillmentInput {
+                    items: input.items.map(|items| {
+                        items
+                            .into_iter()
+                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
+                                fulfillment_item_id: item.fulfillment_item_id,
+                                quantity: item.quantity,
+                            })
+                            .collect()
+                    }),
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
+
+        Ok(fulfillment.into())
+    }
+
+    async fn reship_fulfillment(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        input: ReshipFulfillmentInputObject,
+    ) -> Result<GqlFulfillment> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::FULFILLMENTS_UPDATE],
+            "Permission denied: fulfillments:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let fulfillment = FulfillmentService::new(db.clone())
+            .reship_fulfillment(
+                tenant_id,
+                id,
+                crate::dto::ReshipFulfillmentInput {
+                    carrier: input.carrier,
+                    tracking_number: input.tracking_number,
+                    items: input.items.map(|items| {
+                        items
+                            .into_iter()
+                            .map(|item| crate::dto::FulfillmentItemQuantityInput {
+                                fulfillment_item_id: item.fulfillment_item_id,
+                                quantity: item.quantity,
+                            })
+                            .collect()
+                    }),
                     metadata: parse_optional_metadata(input.metadata.as_deref())?,
                 },
             )
@@ -1001,6 +1144,7 @@ impl CommerceMutation {
                     })
                     .collect()
             }),
+            seller_id: input.seller_id,
             vendor: input.vendor,
             product_type: input.product_type,
             shipping_profile_slug: input.shipping_profile_slug,
@@ -1131,6 +1275,7 @@ fn convert_create_product_input(
         translations,
         options,
         variants,
+        seller_id: input.seller_id,
         vendor: input.vendor,
         product_type: input.product_type,
         shipping_profile_slug: input.shipping_profile_slug,
@@ -1273,6 +1418,8 @@ async fn validate_selected_shipping_option(
             .map(|group| {
                 vec![crate::dto::CartShippingSelectionInput {
                     shipping_profile_slug: group.shipping_profile_slug.clone(),
+                    seller_id: group.seller_id.clone(),
+                    seller_scope: group.seller_scope.clone(),
                     selected_shipping_option_id: Some(selected_shipping_option_id),
                 }]
             })
@@ -1323,6 +1470,8 @@ fn current_shipping_selections(
         .iter()
         .map(|group| crate::dto::CartShippingSelectionInput {
             shipping_profile_slug: group.shipping_profile_slug.clone(),
+            seller_id: group.seller_id.clone(),
+            seller_scope: group.seller_scope.clone(),
             selected_shipping_option_id: group.selected_shipping_option_id,
         })
         .collect()
@@ -1470,7 +1619,38 @@ async fn resolve_storefront_line_item_input(
         title,
         quantity: input.quantity,
         unit_price: selected_price.amount,
-        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+        metadata: merge_graphql_metadata(
+            parse_optional_metadata(input.metadata.as_deref())?,
+            seller_snapshot_metadata(product_model.seller_id.as_deref()),
+        ),
+    })
+}
+
+fn normalize_graphql_seller_scope(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+fn normalize_graphql_seller_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_owned())
+}
+
+fn seller_snapshot_metadata(seller_id: Option<&str>) -> Value {
+    let seller_id = normalize_graphql_seller_id(seller_id);
+    let seller_scope = seller_id
+        .as_deref()
+        .and_then(|value| normalize_graphql_seller_scope(Some(value)));
+
+    serde_json::json!({
+        "seller": {
+            "id": seller_id,
+            "scope": seller_scope,
+        }
     })
 }
 

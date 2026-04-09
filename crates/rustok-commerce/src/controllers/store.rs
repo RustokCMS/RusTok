@@ -189,6 +189,7 @@ pub async fn list_products(
                 handle: translation
                     .map(|value| value.handle.clone())
                     .unwrap_or_default(),
+                seller_id: product.seller_id,
                 vendor: product.vendor,
                 product_type: product.product_type,
                 shipping_profile_slug: Some(shipping_profile_slug_from_product_metadata(
@@ -1090,6 +1091,8 @@ async fn validate_selected_shipping_option(
             .map(|group| {
                 vec![crate::dto::CartShippingSelectionInput {
                     shipping_profile_slug: group.shipping_profile_slug.clone(),
+                    seller_id: group.seller_id.clone(),
+                    seller_scope: group.seller_scope.clone(),
                     selected_shipping_option_id: Some(selected_shipping_option_id),
                 }]
             })
@@ -1138,6 +1141,8 @@ fn current_shipping_selections(cart: &CartResponse) -> Vec<crate::dto::CartShipp
         .iter()
         .map(|group| crate::dto::CartShippingSelectionInput {
             shipping_profile_slug: group.shipping_profile_slug.clone(),
+            seller_id: group.seller_id.clone(),
+            seller_scope: group.seller_scope.clone(),
             selected_shipping_option_id: group.selected_shipping_option_id,
         })
         .collect()
@@ -1240,7 +1245,10 @@ async fn resolve_store_line_item_input(
         title,
         quantity: input.quantity,
         unit_price: selected_price.amount,
-        metadata: input.metadata,
+        metadata: merge_metadata(
+            input.metadata,
+            seller_snapshot_metadata(product_model.seller_id.as_deref()),
+        ),
     })
 }
 
@@ -1328,6 +1336,34 @@ fn merge_metadata(current: Value, patch: Value) -> Value {
         }
         (_, patch) => patch,
     }
+}
+
+fn normalize_store_seller_scope(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+fn normalize_store_seller_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_owned())
+}
+
+fn seller_snapshot_metadata(seller_id: Option<&str>) -> Value {
+    let seller_id = normalize_store_seller_id(seller_id);
+    let seller_scope = seller_id
+        .as_deref()
+        .and_then(|value| normalize_store_seller_scope(Some(value)));
+
+    json!({
+        "seller": {
+            "id": seller_id,
+            "scope": seller_scope,
+        }
+    })
 }
 
 fn cart_context_metadata(cart: &CartResponse, context: &StoreContextResponse) -> Value {
@@ -1459,6 +1495,8 @@ struct RequestedCartContext {
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct StoreCartShippingSelectionInput {
     pub shipping_profile_slug: String,
+    pub seller_id: Option<String>,
+    pub seller_scope: Option<String>,
     pub selected_shipping_option_id: Option<Uuid>,
 }
 
@@ -1466,6 +1504,8 @@ impl From<StoreCartShippingSelectionInput> for crate::dto::CartShippingSelection
     fn from(value: StoreCartShippingSelectionInput) -> Self {
         Self {
             shipping_profile_slug: value.shipping_profile_slug,
+            seller_id: value.seller_id,
+            seller_scope: value.seller_scope,
             selected_shipping_option_id: value.selected_shipping_option_id,
         }
     }
@@ -2612,6 +2652,7 @@ mod tests {
                 weight: None,
                 weight_unit: None,
             }],
+            seller_id: None,
             vendor: Some("Storefront Vendor".to_string()),
             product_type: Some("physical".to_string()),
             shipping_profile_slug: None,

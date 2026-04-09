@@ -30,6 +30,7 @@ pub use services::{
     RegionService, ShippingProfileService, StoreContextError, StoreContextResult,
     StoreContextService,
 };
+pub(crate) use services::{FulfillmentOrchestrationError, FulfillmentOrchestrationService};
 pub use state_machine::{
     Cancelled, Confirmed, Delivered, Order, OrderError, Paid, Pending, Shipped,
 };

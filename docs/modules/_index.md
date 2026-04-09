@@ -102,6 +102,7 @@
 ### Optional/storefront-поверхности
 
 - `rustok-blog` storefront UI: [README](../../crates/rustok-blog/storefront/README.md)
+- `rustok-cart` storefront UI: [README](../../crates/rustok-cart/storefront/README.md)
 - `rustok-commerce` storefront UI: [README](../../crates/rustok-commerce/storefront/README.md)
 - `rustok-forum` storefront UI: [README](../../crates/rustok-forum/storefront/README.md)
 - `rustok-pages` storefront UI: [README](../../crates/rustok-pages/storefront/README.md)
@@ -112,8 +113,8 @@
 
 ### Capability/admin-поверхности
 
-- `rustok-ai` Leptos admin UI: [README](../../crates/rustok-ai/admin/README.md)
-- `rustok-ai` Next.js admin UI: `apps/next-admin/packages/rustok-ai/`
+- `rustok-ai` Leptos operator/admin UI: [README](../../crates/rustok-ai/admin/README.md)
+- `rustok-ai` Next.js operator/admin UI: `apps/next-admin/packages/rustok-ai/`
 
 ## Примечания
 
@@ -125,12 +126,13 @@
   `rustok-pricing` уже забрал pricing visibility UI, `rustok-customer` уже
   забрал customer operations UI, `rustok-region` уже забрал region CRUD UI, а
   `rustok-commerce-admin` оставлен только под shipping-profile registry;
-  storefront-side split тоже продвинут: `rustok-region`, `rustok-product` и `rustok-pricing` уже публикуют собственные
-  storefront packages, а `rustok-commerce-storefront` сжат до orchestration hub без catalog/pricing ownership;
+  storefront-side split тоже продвинут: `rustok-region`, `rustok-product`, `rustok-pricing` и `rustok-cart` уже публикуют собственные
+  storefront packages, а `rustok-commerce-storefront` сжат до aggregate checkout workspace с seller-aware delivery-group shipping selection и без catalog/pricing ownership;
   остальные commerce storefront flows ещё предстоит вынести из umbrella route там, где ownership boundary уже устойчива.
-- `rustok-mcp`, `rustok-ai`, `alloy` и `flex` считаются capability/support
+- `rustok-mcp`, `rustok-ai` и `flex` считаются capability/support
   layers и индексируются здесь для навигации, даже если не входят в taxonomy
-  `Core/Optional`.
+  `Core/Optional`; при этом `rustok-ai` уже публикует крупные operator/admin
+  UI-поверхности для Leptos и Next.js host-ов.
 - при изменении runtime-контракта или ownership сначала обновляются локальные docs
   компонента, затем этот индекс и остальные central registry docs.
 
@@ -141,3 +143,7 @@
 - [Реестр crate-ов модульной платформы](./crates-registry.md)
 - [Контракт `rustok-module.toml`](./manifest.md)
 - [Шаблон документации модуля](../templates/module_contract.md)
+### Next.js admin showcase
+
+- `rustok-blog`: `apps/next-admin/packages/blog/`
+- `rustok-search`: `apps/next-admin/packages/search/`

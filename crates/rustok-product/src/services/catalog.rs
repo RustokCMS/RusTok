@@ -28,6 +28,13 @@ use crate::entities::product_tag;
 
 const PRODUCT_SCOPE_VALUE: &str = "product";
 
+fn normalize_seller_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_owned())
+}
+
 mod product_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("product_field_definitions");
 }
@@ -51,6 +58,7 @@ pub struct StorefrontProductListItem {
     pub status: entities::product::ProductStatus,
     pub title: String,
     pub handle: String,
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub tags: Vec<String>,
@@ -131,6 +139,7 @@ impl CatalogService {
             } else {
                 entities::product::ProductStatus::Draft
             }),
+            seller_id: Set(normalize_seller_id(input.seller_id.as_deref())),
             vendor: Set(input.vendor.clone()),
             product_type: Set(input.product_type.clone()),
             shipping_profile_slug: Set(input
@@ -642,6 +651,7 @@ impl CatalogService {
             id: product.id,
             tenant_id: product.tenant_id,
             status: product.status,
+            seller_id: product.seller_id,
             vendor: product.vendor,
             product_type: product.product_type,
             shipping_profile_slug: product
@@ -792,6 +802,7 @@ impl CatalogService {
                     handle: translation
                         .map(|value| value.handle.clone())
                         .unwrap_or_default(),
+                    seller_id: product.seller_id,
                     vendor: product.vendor,
                     product_type: product.product_type,
                     tags: product_tags.get(&product.id).cloned().unwrap_or_default(),
@@ -925,6 +936,9 @@ impl CatalogService {
 
         if let Some(vendor) = input.vendor {
             product_active.vendor = Set(Some(vendor));
+        }
+        if input.seller_id.is_some() {
+            product_active.seller_id = Set(normalize_seller_id(input.seller_id.as_deref()));
         }
         if let Some(product_type) = input.product_type {
             product_active.product_type = Set(Some(product_type));

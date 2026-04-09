@@ -183,11 +183,15 @@ impl CheckoutService {
                                 product_id: item.product_id,
                                 variant_id: item.variant_id,
                                 shipping_profile_slug: item.shipping_profile_slug.clone(),
+                                seller_id: item.seller_id.clone(),
                                 sku: item.sku.clone(),
                                 title: item.title.clone(),
                                 quantity: item.quantity,
                                 unit_price: item.unit_price,
-                                metadata: item.metadata.clone(),
+                                metadata: merge_checkout_metadata(
+                                    item.metadata.clone(),
+                                    checkout_order_line_item_metadata(item.id),
+                                ),
                             })
                             .collect(),
                         metadata: order_metadata.clone(),
@@ -336,7 +340,7 @@ impl CheckoutService {
                 match self
                     .create_fulfillments_for_delivery_groups(
                         tenant_id,
-                        order.id,
+                        &order,
                         cart.customer_id,
                         &cart,
                         input.metadata.clone(),
@@ -662,7 +666,7 @@ impl CheckoutService {
     async fn create_fulfillments_for_delivery_groups(
         &self,
         tenant_id: Uuid,
-        order_id: Uuid,
+        order: &crate::dto::OrderResponse,
         customer_id: Option<Uuid>,
         cart: &rustok_cart::dto::CartResponse,
         metadata: serde_json::Value,
@@ -670,12 +674,15 @@ impl CheckoutService {
         let mut fulfillments = Vec::with_capacity(cart.delivery_groups.len());
 
         for delivery_group in &cart.delivery_groups {
+            let items = fulfillment_items_for_delivery_group(order, delivery_group)?;
             let selected_shipping_option_id = delivery_group.selected_shipping_option_id;
             let group_metadata = merge_checkout_metadata(
                 metadata.clone(),
                 serde_json::json!({
                     "delivery_group": {
                         "shipping_profile_slug": delivery_group.shipping_profile_slug,
+                        "seller_id": delivery_group.seller_id,
+                        "seller_scope": delivery_group.seller_scope,
                         "line_item_ids": delivery_group.line_item_ids,
                     }
                 }),
@@ -685,11 +692,12 @@ impl CheckoutService {
                 .create_fulfillment(
                     tenant_id,
                     CreateFulfillmentInput {
-                        order_id,
+                        order_id: order.id,
                         shipping_option_id: selected_shipping_option_id,
                         customer_id,
                         carrier: None,
                         tracking_number: None,
+                        items: Some(items),
                         metadata: group_metadata,
                     },
                 )
@@ -729,7 +737,7 @@ impl CheckoutService {
                 payment_collection_id,
                 CancelPaymentInput {
                     reason: Some(reason.to_string()),
-                    metadata: serde_json::json!({ "compensated": true, "reason": reason }),
+                    metadata: serde_json::json!({ "compensated": true }),
                 },
             )
             .await;
@@ -786,6 +794,56 @@ fn checkout_cart_context_metadata(
             "email": cart.email,
         }
     })
+}
+
+fn checkout_order_line_item_metadata(cart_line_item_id: Uuid) -> serde_json::Value {
+    serde_json::json!({
+        "checkout": {
+            "cart_line_item_id": cart_line_item_id,
+        }
+    })
+}
+
+fn cart_line_item_id_from_order_line_item(
+    item: &crate::dto::OrderLineItemResponse,
+) -> Option<Uuid> {
+    item.metadata
+        .get("checkout")
+        .and_then(|checkout| checkout.get("cart_line_item_id"))
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+}
+
+fn fulfillment_items_for_delivery_group(
+    order: &crate::dto::OrderResponse,
+    delivery_group: &rustok_cart::dto::CartDeliveryGroupResponse,
+) -> CheckoutResult<Vec<crate::dto::CreateFulfillmentItemInput>> {
+    let mut items = Vec::with_capacity(delivery_group.line_item_ids.len());
+
+    for cart_line_item_id in &delivery_group.line_item_ids {
+        let order_line_item = order
+            .line_items
+            .iter()
+            .find(|item| cart_line_item_id_from_order_line_item(item) == Some(*cart_line_item_id))
+            .ok_or_else(|| {
+                CheckoutError::Validation(format!(
+                    "order line item for cart line item {cart_line_item_id} is missing from delivery group projection"
+                ))
+            })?;
+
+        items.push(crate::dto::CreateFulfillmentItemInput {
+            order_line_item_id: order_line_item.id,
+            quantity: order_line_item.quantity,
+            metadata: serde_json::json!({
+                "source_cart_line_item_id": cart_line_item_id,
+                "shipping_profile_slug": delivery_group.shipping_profile_slug,
+                "seller_id": delivery_group.seller_id,
+                "seller_scope": delivery_group.seller_scope,
+            }),
+        });
+    }
+
+    Ok(items)
 }
 
 fn fulfillment_shim(

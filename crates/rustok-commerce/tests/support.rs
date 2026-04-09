@@ -7,7 +7,7 @@ use rustok_commerce::entities::{
     reservation_item, shipping_profile, stock_location, variant_translation,
 };
 use rustok_customer::entities::customer;
-use rustok_fulfillment::entities::{fulfillment, shipping_option};
+use rustok_fulfillment::entities::{fulfillment, fulfillment_item, shipping_option};
 use rustok_order::entities::{order, order_line_item};
 use rustok_payment::entities::{payment, payment_collection};
 use rustok_product::entities::product_tag;
@@ -179,6 +179,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
+        schema.create_table_from_entity(fulfillment_item::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
         schema.create_table_from_entity(product_image::Entity),
     )
     .await;
@@ -207,6 +213,7 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     )
     .await;
     ensure_tenant_tables(db).await;
+    ensure_field_definition_tables(db).await;
     create_entity_table(
         db,
         &builder,
@@ -257,5 +264,42 @@ async fn ensure_tenant_tables(db: &DatabaseConnection) {
         ))
         .await
         .expect("failed to create tenant context test table");
+    }
+}
+
+async fn ensure_field_definition_tables(db: &DatabaseConnection) {
+    for prefix in ["product", "order"] {
+        for sql in [
+            format!(
+                "CREATE TABLE IF NOT EXISTS {prefix}_field_definitions (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    field_key TEXT NOT NULL,
+                    field_type TEXT NOT NULL,
+                    label TEXT NOT NULL,
+                    description TEXT NULL,
+                    is_localized INTEGER NOT NULL DEFAULT 0,
+                    is_required INTEGER NOT NULL DEFAULT 0,
+                    default_value TEXT NULL,
+                    validation TEXT NULL,
+                    position INTEGER NOT NULL DEFAULT 0,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )"
+            ),
+            format!(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_{prefix}_fd_tenant_key
+                 ON {prefix}_field_definitions (tenant_id, field_key)"
+            ),
+            format!(
+                "CREATE INDEX IF NOT EXISTS idx_{prefix}_fd_tenant_active
+                 ON {prefix}_field_definitions (tenant_id, is_active)"
+            ),
+        ] {
+            db.execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
+                .await
+                .expect("failed to create field definitions test table");
+        }
     }
 }

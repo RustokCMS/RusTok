@@ -17,7 +17,11 @@
 - Apply channel-aware storefront availability on top of platform `ChannelContext` and `rustok-channel` bindings, without introducing a second sales-channel domain inside commerce.
 - Apply shipping-profile compatibility between catalog products, storefront shipping discovery, cart context, and checkout validation, with typed product/variant bindings, typed line-item snapshots, and metadata normalization kept only as a backward-compatibility layer.
 - Expose first-class `shipping_profile_slug` on product and variant create/update/read contracts and `allowed_shipping_profile_slugs` on shipping-option contracts.
-- Expose deliverability-aware cart and checkout contracts with `delivery_groups[]`, typed `shipping_selections[]`, and `fulfillments[]`, while keeping the old singular shipping/fulfillment fields only as single-group compatibility shims.
+- Expose deliverability-aware cart and checkout contracts with `delivery_groups[]`, typed `shipping_selections[]`, `fulfillments[]`, and typed `fulfillment.items[]`, while keeping the old singular shipping/fulfillment fields only as single-group compatibility shims.
+- Treat nullable `seller_id` as the canonical marketplace identity key across product, cart, order, checkout, and fulfillment contracts, while keeping `seller_scope` only as a transitional compatibility field for legacy snapshots.
+- Expose admin/manual post-order fulfillment creation over REST and GraphQL with typed `items[]`, seller-aware delivery-group consistency checks, and remaining-quantity validation against order line items.
+- Expose partial item-level `ship` / `deliver` adjustments over admin REST and GraphQL, with per-item shipped/delivered counters and a language-agnostic metadata-based audit trail.
+- Expose explicit admin `reopen` / `reship` fulfillment recovery operations over REST and GraphQL, so post-order delivery corrections do not rely on implicit status rewrites.
 - Own the typed `shipping_profiles` registry and validate product/shipping-option references against active shipping profiles before write-path mutations are accepted.
 - Resolve the effective shipping profile as `variant -> product -> default`, persist it into cart/order line-item snapshots, and use those snapshots instead of live product metadata for checkout deliverability decisions.
 - Expose admin shipping-option management over REST and GraphQL (`list/show/create/update/deactivate/reactivate`) on top of `FulfillmentService`, so delivery compatibility and lifecycle are configurable without dropping to direct service calls.
@@ -29,7 +33,8 @@
 - Publish a module-owned Leptos admin UI package in `admin/` for host composition.
 - Let the module-owned Leptos admin UI package keep the typed shipping-profile registry after product CRUD moved into `rustok-product/admin`, shipping-option UI moved into `rustok-fulfillment/admin`, order operations UI moved into `rustok-order/admin`, inventory visibility moved into `rustok-inventory/admin`, and pricing visibility moved into `rustok-pricing/admin`.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for host composition.
-- Keep the aggregate storefront package transitional while split modules start publishing their own storefront routes, with `rustok-region/storefront` and `rustok-product/storefront` already owning their public slices.
+- Keep the aggregate storefront package transitional while split modules start publishing their own storefront routes, with `rustok-region/storefront`, `rustok-product/storefront`, `rustok-pricing/storefront`, and `rustok-cart/storefront` already owning their public slices.
+- Keep `rustok-commerce/storefront` focused on aggregate checkout workspace concerns such as delivery-group shipping selection, payment-collection reuse, and checkout completion over a selected cart.
 - Publish the typed RBAC surface for commerce resources.
 
 ## Interactions
@@ -49,10 +54,11 @@
 - `apps/admin` also consumes `rustok-inventory-admin` through the same manifest-driven composition path, with inventory visibility and stock-health inspection now owned by the inventory module.
 - `apps/admin` also consumes `rustok-pricing-admin` through the same manifest-driven composition path, with pricing visibility and sale-marker inspection now owned by the pricing module.
 - `apps/admin` also consumes `rustok-product-admin` through the same manifest-driven composition path, with catalog CRUD now owned by the product module instead of the aggregate commerce route.
-- `apps/storefront` consumes `rustok-commerce-storefront` through manifest-driven `build.rs` code generation, with a public catalog surface mounted under `/modules/commerce`.
+- `apps/storefront` consumes `rustok-commerce-storefront` through manifest-driven `build.rs` code generation, with the aggregate checkout workspace mounted under `/modules/commerce`.
 - `apps/storefront` also consumes `rustok-product-storefront` through the same manifest-driven composition path, with published catalog discovery now owned by the product module under `/modules/products`.
 - `apps/storefront` also consumes `rustok-pricing-storefront` through the same manifest-driven composition path, with public pricing discovery now owned by the pricing module under `/modules/pricing`.
 - `apps/storefront` also consumes `rustok-region-storefront` through the same manifest-driven composition path, with public region discovery mounted under `/modules/regions`.
+- `apps/storefront` also consumes `rustok-cart-storefront` through the same manifest-driven composition path, with cart inspection and safe line-item decrement/remove actions mounted under `/modules/cart`.
 - `rustok-module.toml` exports both surfaces through `[provides.admin_ui]` and `[provides.storefront_ui]`, so host wiring stays manifest-derived instead of relying on manual route registration.
 - Declares permissions via `rustok-core::Permission` for `products`, `orders`, `customers`,
   `regions`, `payments`, `fulfillments`, `inventory`, and `discounts`.

@@ -29,6 +29,7 @@
 
 - `rustok-pages-storefront`
 - `rustok-blog-storefront`
+- `rustok-cart-storefront`
 - `rustok-commerce-storefront`
 - `rustok-pricing-storefront`
 - `rustok-product-storefront`
@@ -46,7 +47,12 @@ Build-time wiring генерируется из `modules.toml` и `rustok-module
 - `resolve-canonical-route`
 - `pages/storefront-data`
 - `blog/storefront-data`
+- `cart/storefront-data`
+- `cart/decrement-line-item`
+- `cart/remove-line-item`
 - `commerce/storefront-data`
+- `commerce/create-payment-collection`
+- `commerce/complete-checkout`
 - `pricing/storefront-data`
 - `product/storefront-data`
 - `region/storefront-data`
@@ -56,7 +62,7 @@ Build-time wiring генерируется из `modules.toml` и `rustok-module
 - `search/storefront-suggestions`
 - `search/storefront-track-click`
 
-GraphQL path при этом остаётся рабочим и поддерживаемым fallback-контрактом для module-owned discovery surfaces, а `commerce/storefront-data` теперь используется только для aggregate storefront context/orchestration hub.
+GraphQL path при этом остаётся рабочим и поддерживаемым fallback-контрактом для module-owned storefront surfaces, `cart/storefront-data` теперь обслуживает cart-owned cart workspace с seller-aware delivery-group snapshot, `cart/decrement-line-item` и `cart/remove-line-item` дают безопасный line-item write-side внутри cart boundary, а `commerce/storefront-data`, `commerce/select-shipping-option`, `commerce/create-payment-collection` и `commerce/complete-checkout` обслуживают aggregate checkout workspace в `rustok-commerce/storefront`, сохраняя seller-aware shipping selection contract end-to-end.
 
 ## Canonical routing и locale
 

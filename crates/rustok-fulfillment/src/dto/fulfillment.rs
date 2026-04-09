@@ -50,7 +50,23 @@ pub struct CreateFulfillmentInput {
     pub carrier: Option<String>,
     #[validate(length(max = 100))]
     pub tracking_number: Option<String>,
+    pub items: Option<Vec<CreateFulfillmentItemInput>>,
     pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct CreateFulfillmentItemInput {
+    pub order_line_item_id: Uuid,
+    #[validate(range(min = 1))]
+    pub quantity: i32,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct FulfillmentItemQuantityInput {
+    pub fulfillment_item_id: Uuid,
+    #[validate(range(min = 1))]
+    pub quantity: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
@@ -59,12 +75,30 @@ pub struct ShipFulfillmentInput {
     pub carrier: String,
     #[validate(length(min = 1, max = 100))]
     pub tracking_number: String,
+    pub items: Option<Vec<FulfillmentItemQuantityInput>>,
     pub metadata: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DeliverFulfillmentInput {
     pub delivered_note: Option<String>,
+    pub items: Option<Vec<FulfillmentItemQuantityInput>>,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ReopenFulfillmentInput {
+    pub items: Option<Vec<FulfillmentItemQuantityInput>>,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct ReshipFulfillmentInput {
+    #[validate(length(min = 1, max = 100))]
+    pub carrier: String,
+    #[validate(length(min = 1, max = 100))]
+    pub tracking_number: String,
+    pub items: Option<Vec<FulfillmentItemQuantityInput>>,
     pub metadata: Value,
 }
 
@@ -101,10 +135,24 @@ pub struct FulfillmentResponse {
     pub tracking_number: Option<String>,
     pub delivered_note: Option<String>,
     pub cancellation_reason: Option<String>,
+    pub items: Vec<FulfillmentItemResponse>,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub shipped_at: Option<DateTime<Utc>>,
     pub delivered_at: Option<DateTime<Utc>>,
     pub cancelled_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct FulfillmentItemResponse {
+    pub id: Uuid,
+    pub fulfillment_id: Uuid,
+    pub order_line_item_id: Uuid,
+    pub quantity: i32,
+    pub shipped_quantity: i32,
+    pub delivered_quantity: i32,
+    pub metadata: Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }

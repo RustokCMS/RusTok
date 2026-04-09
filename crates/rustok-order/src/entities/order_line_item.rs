@@ -11,6 +11,7 @@ pub struct Model {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
     pub shipping_profile_slug: String,
+    pub seller_id: Option<String>,
     pub sku: Option<String>,
     pub title: String,
     pub quantity: i32,

@@ -14,6 +14,8 @@
 - базовая crate/module structure уже встроена в workspace;
 - canonical direction зафиксирован: `index` отвечает за ingestion и indexed reads, а не за ranking/UX поиска;
 - модуль уже рассматривается как substrate для cross-module filtering и link-aware queries;
+- event-driven consumers переведены на module-owned runtime path через `register_event_listeners(...)`, старый host/legacy listener path удалён;
+- boundary `index != search` теперь дополнительно удерживается contract-проверкой в `xtask`, чтобы read-model слой не начал снова экспортировать search-owned engine surfaces;
 - root `README.md`, local docs и manifest metadata входят в scoped audit path.
 
 ## Этапы

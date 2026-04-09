@@ -8,6 +8,8 @@ pub struct Model {
     pub id: Uuid,
     pub cart_id: Uuid,
     pub shipping_profile_slug: String,
+    pub seller_id: Option<String>,
+    pub seller_scope: Option<String>,
     pub selected_shipping_option_id: Option<Uuid>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

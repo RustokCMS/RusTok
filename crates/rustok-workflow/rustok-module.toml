@@ -2,9 +2,10 @@
 slug = "workflow"
 name = "Workflow"
 version = "0.1.0"
-description = "Visual workflow automation and event orchestration module"
+description = "Visual workflow automation and event orchestration"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]

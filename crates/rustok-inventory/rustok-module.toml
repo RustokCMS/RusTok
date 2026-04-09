@@ -2,10 +2,10 @@
 slug = "inventory"
 name = "Inventory"
 version = "0.1.0"
-description = "Default inventory submodule in the ecommerce family"
+description = "Inventory adjustments, availability checks, and stock-level persistence"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "capability_only"
+ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [dependencies]

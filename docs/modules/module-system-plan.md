@@ -113,9 +113,10 @@
 
 | Класс | Модули | Комментарий |
 |---|---|---|
-| `dual-surface` | `blog`, `commerce`, `forum`, `pages`, `search` | admin + storefront |
-| `admin-only core` | `channel`, `index`, `outbox`, `rbac`, `tenant` | осознанные module-owned admin slices |
-| `admin-only optional` | `comments`, `media`, `workflow` | осознанные module-owned admin slices |
+| `dual-surface` | `blog`, `commerce`, `forum`, `pages`, `pricing`, `product`, `region`, `search` | admin + storefront |
+| `admin-only` | `channel`, `comments`, `customer`, `fulfillment`, `index`, `inventory`, `media`, `order`, `outbox`, `rbac`, `tenant`, `workflow` | осознанные module-owned admin slices |
+| `storefront-only` | `cart` | отдельный storefront-owned slice без admin UI |
+| `no-ui / capability-only` | `alloy`, `auth`, `cache`, `content`, `email`, `payment`, `profiles`, `taxonomy` | path entries без manifest-declared Leptos UI |
 
 Дополнительно:
 
@@ -123,7 +124,7 @@
 - ✅ Package-owned i18n contract уже живёт в manifest-driven UI:
   - admin surfaces `workflow`, `rbac`, `tenant`, `index`, `outbox`, `pages`, `comments`, `channel`, `forum`, `search`, `commerce`
   - storefront surfaces `blog`, `pages`, `commerce`, `forum`, `search`
-- ⚠️ Для остальных path entries в `modules.toml` финальная явная классификация как `no-ui` / `capability-only` / `future UI` всё ещё должна быть зафиксирована отдельным аудитом, а не выводиться по умолчанию из отсутствия sub-crate.
+- ✅ Базовая классификация path entries теперь зафиксирована явно через manifest audit, а не выводится по умолчанию из отсутствия sub-crate; отдельным хвостом остаётся только периодическая сверка этой таблицы с живыми `rustok-module.toml`.
 
 ### 5. Registry V1
 
@@ -267,9 +268,9 @@ Governance first cut:
 - ✅ `/modules` теперь использует `registryLifecycle` только как summary/read-model, а authoritative request-level operator contract читает отдельным actor-aware fetch к `GET /v2/catalog/publish/{request_id}` по текущему полю `Actor`.
 - ✅ `xtask` теперь тоже покрывает явные governance follow-up actions поверх того же status contract: `cargo xtask module request-changes|hold|resume <request-id> --actor <actor> --reason <text> --reason-code <code> --registry-url ...` сначала смотрит `governanceActions`, а потом уже вызывает live route.
 - ✅ Follow-up stage trail тоже стал более структурированным: `POST /v2/catalog/publish/{request_id}/stages` и `cargo xtask module stage ...` теперь умеют structured `reason_code`, а для live terminal stage updates (`passed` / `failed` / `blocked`) он уже обязателен. `stage-run` проставляет его автоматически (`local_runner_passed`, `build_failure`, `test_failure`, `manual_review_complete`, `policy_preflight_failed`, ...), так что moderation history по stage updates больше не живёт только как prose-detail.
-- ⚠️ В stricter policy layer осталось добить:
-  - richer moderation decisions beyond approve/reject/owner-transfer/yank
-  - аналогично формализовать exceptional governance/release-management решения beyond current approve/reject/owner-transfer/yank contracts
+- ⚠️ В stricter policy layer осталось добить только repo-side hardening уже существующего action set:
+  - удерживать единый server-enforced authority path для review vs release-management действий
+  - продолжать targeted verification для stale runner claims, duplicate terminal reports и actor-aware preflight без расширения lifecycle
 
 ### Блок B. Отдельный deployment для `modules.rustok.dev`
 
@@ -282,8 +283,8 @@ Governance first cut:
 
 ### Блок C. Покрытие UI и operator polish
 
-- ⚠️ Manifest-wired UI coverage уже заметно шире исходных dual-surface proof points: live contract включает расширенный набор admin-only core/optional surfaces, но полный аудит остальных path entries ещё не доведён до финальной классификации.
-- ⬜ Нужно продолжить аудит path-модулей на предмет честной классификации `dual-surface` / `admin-only` / `storefront-only` / `no-ui`.
+- ✅ Manifest-wired UI coverage уже сведён к явной repo-side классификации `dual-surface` / `admin-only` / `storefront-only` / `no-ui`.
+- ⚠️ Дальше здесь нужен не redesign, а только периодический audit новых path entries и сверка manifest table с `modules.toml`.
 - ✅ `/modules` уже умеет не только показывать lifecycle, но и запускать интерактивные governance-действия, показывать policy hints, copyable `xtask`/HTTP/curl snippets, headers/body hints и operator commands.
 - ✅ `/modules` уже различает automatic validation failure и manual governance reject в `Validation summary`, а также показывает отдельный `Ready for review` сигнал для validated request, который ещё не опубликован.
 - ✅ `/modules` теперь также показывает отдельный `Follow-up gates` summary для `compile_smoke` / `targeted_tests` / `security_policy_review`, чтобы внешние async/manual gates были видны отдельно от базовой artifact/manifest validation.
@@ -299,20 +300,20 @@ Governance first cut:
 - ✅ `xtask` уже получил targeted unit coverage для V2 operator paths: publish/stage/owner-transfer/yank dry-run/live payload contracts, `requeue=true` contract, explicit `detail = null` stability, базовые argument-count guards, early CLI guards для empty request/stage ids, invalid semver и unknown slug, live-mode guards для missing `--registry-url` / missing `--reason`, `registry_url` env fallback/CLI precedence, `--reason`/`--detail` trimming, empty owner-transfer actor guard и loopback/no-proxy guardrails (включая IPv6 `::1`).
 - ✅ `xtask module runner` уже получил targeted unit coverage для runner-id/token/stage-set/interval argument guards.
 - ✅ `cargo xtask module publish --auto-approve` теперь использует stage-aware status preflight и останавливается раньше live approve, если request требует override, а `--approve-reason` / `--approve-reason-code` не были переданы.
-- ⚠️ Полный workspace/test graph регулярно блокируется незавершённой параллельной разработкой в соседних crate-ах.
-- ⬜ Нужны более устойчивые targeted tests для:
-  - V2 lifecycle transitions, включая requeue/retry semantics
+- ⚠️ Полный workspace/test graph регулярно блокируется незавершённой параллельной разработкой в соседних crate-ах, поэтому acceptance по `module-system` держится на targeted checks.
+- ⚠️ Repo-side хвост в тестах теперь сводится к устойчивому набору targeted verification:
+  - actor-aware `GET /v2/catalog/publish/{request_id}` и текущий governance action set
+  - V2 lifecycle transitions, включая retry/requeue semantics и `reason` / `reason_code` enforcement
   - projection V2 → V1
+  - thin runner contract: claim/heartbeat/complete/fail, lease expiry и stale/duplicate claim rejection
   - `registry_only` reduced surface
-  - manifest-wired UI и `[provides.*_ui.i18n]` guardrails
 
 ## Приоритет выполнения
 
-1. Довести richer moderation/policy model поверх уже существующих `approve/reject/request-changes/hold/resume/owner-transfer/yank`.
+1. Добить repo-side targeted verification вокруг текущего governance/policy и thin runner contract без расширения lifecycle.
 2. Закрыть production deployment path для `modules.rustok.dev`.
-3. Решить, нужен ли отдельный managed worker/sandbox fleet поверх уже существующего `runner/*` + `xtask module runner`.
-4. Продолжить аудит и доводку manifest-wired UI / i18n coverage.
-5. Уплотнить targeted test coverage вокруг V1/V2, reduced host и thin runner contract.
+3. Поддерживать manifest-wired UI / i18n audit как периодическую сверку, а не как неразмеченный open-ended backlog.
+4. При необходимости отдельно решить, нужен ли внешний managed worker/sandbox fleet поверх уже существующего `runner/*` + `xtask module runner`.
 
 ## Критерии завершения
 
@@ -325,6 +326,7 @@ Governance first cut:
 - publish/yank flow работает и в `Monolith + full`, и в `HeadlessApi + full`.
 - `/modules` показывает operator-friendly lifecycle, validation и governance state, а также умеет запускать базовые V2 governance-действия.
 - UI wiring всех path-модулей честно классифицирован, а manifest / i18n guardrails проверяются tooling-слоем.
+- В открытом backlog остаются только provider-specific rollout `modules.rustok.dev`, возможный future managed fleet как внешняя infra-задача и периодический audit новых path-модулей.
 
 ## Связанные документы
 
@@ -337,4 +339,3 @@ Governance first cut:
 - [Server docs](../../apps/server/docs/README.md)
 - [Health / registry_only runbook](../../apps/server/docs/health.md)
 - [Admin docs](../../apps/admin/docs/README.md)
-

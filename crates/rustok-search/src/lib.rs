@@ -1,5 +1,8 @@
 use async_trait::async_trait;
-use rustok_core::{module::HealthStatus, MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::{
+    module::HealthStatus, MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
+    ModuleKind, RusToKModule,
+};
 use sea_orm_migration::MigrationTrait;
 
 pub mod analytics;
@@ -77,6 +80,14 @@ impl RusToKModule for SearchModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
+    }
+
+    fn register_event_listeners(
+        &self,
+        registry: &mut ModuleEventListenerRegistry,
+        ctx: &ModuleEventListenerContext<'_>,
+    ) {
+        registry.register(SearchIngestionHandler::new(ctx.db.clone()));
     }
 
     async fn health(&self) -> HealthStatus {

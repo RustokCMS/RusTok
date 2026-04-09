@@ -89,10 +89,12 @@
 - `rustok-search` admin UI: [README](../../crates/rustok-search/admin/README.md)
 - `rustok-media` admin UI: [README](../../crates/rustok-media/admin/README.md)
 - `rustok-comments` admin UI: [README](../../crates/rustok-comments/admin/README.md)
+- `rustok-workflow` admin UI: [README](../../crates/rustok-workflow/admin/README.md)
 
 ### Optional/storefront-поверхности
 
 - `rustok-blog` storefront UI: [README](../../crates/rustok-blog/storefront/README.md)
+- `rustok-cart` storefront UI: [README](../../crates/rustok-cart/storefront/README.md)
 - `rustok-commerce` storefront UI: [README](../../crates/rustok-commerce/storefront/README.md)
 - `rustok-forum` storefront UI: [README](../../crates/rustok-forum/storefront/README.md)
 - `rustok-pages` storefront UI: [README](../../crates/rustok-pages/storefront/README.md)
@@ -101,9 +103,10 @@
 - `rustok-region` storefront UI: [README](../../crates/rustok-region/storefront/README.md)
 - `rustok-search` storefront UI: [README](../../crates/rustok-search/storefront/README.md)
 
-### Capability-owned UI
+### Large capability/admin surfaces
 
-- `rustok-ai` Leptos admin UI: [README](../../crates/rustok-ai/admin/README.md)
+- `rustok-ai` Leptos operator/admin UI: [README](../../crates/rustok-ai/admin/README.md)
+- `rustok-ai` Next.js operator/admin UI: `apps/next-admin/packages/rustok-ai/`
 
 ## Что не делать
 
@@ -119,3 +122,7 @@
 - [Быстрый старт по UI-пакетам](./UI_PACKAGES_QUICKSTART.md)
 - [Обзор модульной платформы](./overview.md)
 - [Реестр crate-ов модульной платформы](./crates-registry.md)
+### Next.js admin showcase
+
+- `rustok-blog`: `apps/next-admin/packages/blog/`
+- `rustok-search`: `apps/next-admin/packages/search/`

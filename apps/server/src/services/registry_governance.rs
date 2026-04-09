@@ -4876,6 +4876,114 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn complete_remote_validation_stage_rejects_expired_claim() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let request = insert_publish_request(&db, RegistryPublishRequestStatus::Approved).await;
+        insert_remote_running_validation_stage(
+            &db,
+            &request,
+            "compile_smoke",
+            "rvc_expired",
+            "worker-1",
+            Utc::now() - Duration::seconds(5),
+        )
+        .await;
+        let service = RegistryGovernanceService::new(db);
+
+        let error = service
+            .complete_remote_validation_stage(
+                "rvc_expired",
+                "worker-1",
+                Some("Compile smoke passed."),
+                Some("local_runner_passed"),
+            )
+            .await
+            .expect_err("expired claim should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("Remote validation claim 'rvc_expired' has expired"));
+    }
+
+    #[tokio::test]
+    async fn complete_remote_validation_stage_rejects_duplicate_completion() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let request = insert_publish_request(&db, RegistryPublishRequestStatus::Approved).await;
+        insert_remote_running_validation_stage(
+            &db,
+            &request,
+            "compile_smoke",
+            "rvc_duplicate",
+            "worker-1",
+            Utc::now() + Duration::minutes(5),
+        )
+        .await;
+        let service = RegistryGovernanceService::new(db.clone());
+
+        let completed = service
+            .complete_remote_validation_stage(
+                "rvc_duplicate",
+                "worker-1",
+                Some("Compile smoke passed."),
+                Some("local_runner_passed"),
+            )
+            .await
+            .expect("first completion should succeed");
+        assert_eq!(
+            completed.stage.status,
+            RegistryValidationStageStatus::Passed
+        );
+
+        let error = service
+            .complete_remote_validation_stage(
+                "rvc_duplicate",
+                "worker-1",
+                Some("Compile smoke passed again."),
+                Some("local_runner_passed"),
+            )
+            .await
+            .expect_err("duplicate completion should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("Remote validation claim 'rvc_duplicate' was not found"));
+    }
+
+    #[tokio::test]
+    async fn review_governance_actor_cannot_yank_published_release() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let request = insert_publish_request(&db, RegistryPublishRequestStatus::Published).await;
+        insert_registry_owner_binding(&db, &request.slug, "owner:blog").await;
+        insert_active_release(&db, &request, "publisher:blog").await;
+        let service = RegistryGovernanceService::new(db.clone());
+
+        let error = service
+            .yank_release(
+                &request.slug,
+                &request.version,
+                "Moderation review requested a rollback.",
+                "rollback",
+                "governance:moderator",
+            )
+            .await
+            .expect_err("review governance actor should not manage published releases");
+
+        assert!(error
+            .to_string()
+            .contains("is not allowed to yank published release"));
+
+        let release = RegistryModuleReleaseEntity::find()
+            .filter(registry_module_release::Column::Slug.eq(request.slug))
+            .filter(registry_module_release::Column::Version.eq(request.version))
+            .one(&db)
+            .await
+            .unwrap()
+            .expect("release should still exist");
+        assert_eq!(release.status, RegistryModuleReleaseStatus::Active);
+        assert!(release.yanked_at.is_none());
+    }
+
+    #[tokio::test]
     async fn lifecycle_snapshot_prefers_persisted_validation_stages() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let request = insert_publish_request(&db, RegistryPublishRequestStatus::Approved).await;
@@ -5112,6 +5220,90 @@ mod tests {
             claim_expires_at: Set(None),
             last_heartbeat_at: Set(None),
             runner_kind: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+        };
+        active.insert(db).await.unwrap();
+    }
+
+    async fn insert_remote_running_validation_stage(
+        db: &DatabaseConnection,
+        request: &registry_publish_request::Model,
+        stage_key: &str,
+        claim_id: &str,
+        runner_id: &str,
+        claim_expires_at: chrono::DateTime<Utc>,
+    ) {
+        let now = Utc::now();
+        let active = RegistryValidationStageActiveModel {
+            id: Set(format!("rvs_{}", uuid::Uuid::new_v4().simple())),
+            request_id: Set(request.id.clone()),
+            slug: Set(request.slug.clone()),
+            version: Set(request.version.clone()),
+            stage_key: Set(stage_key.to_string()),
+            status: Set(RegistryValidationStageStatus::Running),
+            triggered_by: Set(format!("remote-runner:{runner_id}")),
+            queue_reason: Set("test_setup".to_string()),
+            attempt_number: Set(1),
+            detail: Set("Remote validation is in progress.".to_string()),
+            started_at: Set(Some(now)),
+            finished_at: Set(None),
+            last_error: Set(None),
+            claim_id: Set(Some(claim_id.to_string())),
+            claimed_by: Set(Some(runner_id.to_string())),
+            claim_expires_at: Set(Some(claim_expires_at)),
+            last_heartbeat_at: Set(Some(now)),
+            runner_kind: Set(Some("remote".to_string())),
+            created_at: Set(now),
+            updated_at: Set(now),
+        };
+        active.insert(db).await.unwrap();
+    }
+
+    async fn insert_registry_owner_binding(db: &DatabaseConnection, slug: &str, owner_actor: &str) {
+        let now = Utc::now();
+        let active = RegistryModuleOwnerActiveModel {
+            slug: Set(slug.to_string()),
+            owner_actor: Set(owner_actor.to_string()),
+            bound_by: Set("registry:admin".to_string()),
+            bound_at: Set(now),
+            updated_at: Set(now),
+        };
+        active.insert(db).await.unwrap();
+    }
+
+    async fn insert_active_release(
+        db: &DatabaseConnection,
+        request: &registry_publish_request::Model,
+        publisher: &str,
+    ) {
+        let now = Utc::now();
+        let active = RegistryModuleReleaseActiveModel {
+            id: Set(format!("rrel_{}", uuid::Uuid::new_v4().simple())),
+            request_id: Set(Some(request.id.clone())),
+            slug: Set(request.slug.clone()),
+            version: Set(request.version.clone()),
+            crate_name: Set(request.crate_name.clone()),
+            module_name: Set(request.module_name.clone()),
+            description: Set(request.description.clone()),
+            ownership: Set(request.ownership.clone()),
+            trust_level: Set(request.trust_level.clone()),
+            license: Set(request.license.clone()),
+            entry_type: Set(request.entry_type.clone()),
+            marketplace: Set(request.marketplace.clone()),
+            ui_packages: Set(request.ui_packages.clone()),
+            status: Set(RegistryModuleReleaseStatus::Active),
+            publisher: Set(publisher.to_string()),
+            artifact_path: Set(Some("C:\\temp\\blog-0.1.0.zip".to_string())),
+            artifact_url: Set(Some(
+                "https://registry.example.test/blog-0.1.0.zip".to_string(),
+            )),
+            checksum_sha256: Set(Some("checksum".to_string())),
+            artifact_size: Set(Some(1024)),
+            yanked_reason: Set(None),
+            yanked_by: Set(None),
+            yanked_at: Set(None),
+            published_at: Set(now),
             created_at: Set(now),
             updated_at: Set(now),
         };

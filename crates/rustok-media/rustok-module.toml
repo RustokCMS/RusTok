@@ -2,10 +2,14 @@
 slug = "media"
 name = "Media"
 version = "0.1.0"
-description = "Media library, uploads and localized asset metadata module"
+description = "Media library, uploads and localized asset metadata"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[crate]
+entry_type = "MediaModule"
 
 [provides.admin_ui]
 leptos_crate = "rustok-media-admin"

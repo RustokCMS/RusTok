@@ -23,6 +23,7 @@
 - остаётся отдельным модулем по отношению к `rustok-index`: `search` отвечает за UX, ranking и engine semantics, а не за shared indexed read-model substrate;
 - использует PostgreSQL как baseline engine и может расширяться отдельными connector crates;
 - должен держать Leptos и Next UI surfaces на одном backend contract;
+- event-driven ingestion публикуется модулем через `SearchModule::register_event_listeners(...)` и подключается сервером через `ModuleRegistry`, без отдельного host-owned search dispatcher;
 - доменные модули поставляют изменения через ingestion path, не зная об активном engine.
 
 ## Проверка

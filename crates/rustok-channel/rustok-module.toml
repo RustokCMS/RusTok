@@ -2,9 +2,10 @@
 slug = "channel"
 name = "Channel"
 version = "0.1.0"
-description = "Experimental core channel-management module"
+description = "Experimental core channel-management context for external delivery surfaces."
 ownership = "first_party"
 trust_level = "core"
+ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]

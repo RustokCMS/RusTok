@@ -16,6 +16,8 @@ pub struct CreateProductInput {
     pub options: Vec<ProductOptionInput>,
     #[validate(nested)]
     pub variants: Vec<CreateVariantInput>,
+    #[validate(length(max = 100, message = "Seller ID must be max 100 characters"))]
+    pub seller_id: Option<String>,
     #[validate(length(max = 255, message = "Vendor must be max 255 characters"))]
     pub vendor: Option<String>,
     #[validate(length(max = 255, message = "Product type must be max 255 characters"))]
@@ -65,6 +67,8 @@ pub struct ProductOptionInput {
 pub struct UpdateProductInput {
     #[validate(nested)]
     pub translations: Option<Vec<ProductTranslationInput>>,
+    #[validate(length(max = 100, message = "Seller ID must be max 100 characters"))]
+    pub seller_id: Option<String>,
     #[validate(length(max = 255, message = "Vendor must be max 255 characters"))]
     pub vendor: Option<String>,
     #[validate(length(max = 255, message = "Product type must be max 255 characters"))]
@@ -85,6 +89,7 @@ pub struct ProductResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub status: ProductStatus,
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,

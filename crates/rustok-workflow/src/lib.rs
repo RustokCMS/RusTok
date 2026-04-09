@@ -20,7 +20,9 @@
 
 use async_trait::async_trait;
 use rustok_core::permissions::{Action, Permission, Resource};
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, RusToKModule,
+};
 use sea_orm_migration::MigrationTrait;
 
 pub mod controllers;
@@ -76,6 +78,14 @@ impl RusToKModule for WorkflowModule {
             Permission::new(Resource::WorkflowExecutions, Action::Read),
             Permission::new(Resource::WorkflowExecutions, Action::List),
         ]
+    }
+
+    fn register_event_listeners(
+        &self,
+        registry: &mut ModuleEventListenerRegistry,
+        ctx: &ModuleEventListenerContext<'_>,
+    ) {
+        registry.register(WorkflowTriggerHandler::new(ctx.db.clone()));
     }
 }
 

@@ -1,5 +1,7 @@
 use rust_decimal::Decimal;
-use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput, UpdateCartContextInput};
+use rustok_cart::dto::{
+    AddCartLineItemInput, CartShippingSelectionInput, CreateCartInput, UpdateCartContextInput,
+};
 use rustok_cart::error::CartError;
 use rustok_cart::services::CartService;
 use rustok_test_utils::db::setup_test_db;
@@ -248,4 +250,189 @@ async fn checkout_lifecycle_uses_checking_out_before_completion() {
         .await
         .unwrap();
     assert_eq!(completed.status, "completed");
+}
+
+#[tokio::test]
+async fn seller_aware_delivery_groups_split_same_shipping_profile() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let seller_a_option_id = Uuid::new_v4();
+    let seller_b_option_id = Uuid::new_v4();
+    let seller_a_id = "seller-a-id";
+    let seller_b_id = "seller-b-id";
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                metadata: serde_json::json!({
+                    "seller": {
+                        "id": seller_a_id,
+                        "scope": "seller-a"
+                    }
+                }),
+                ..line_item_input()
+            },
+        )
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                sku: Some("SKU-CART-2".to_string()),
+                metadata: serde_json::json!({
+                    "seller": {
+                        "id": seller_b_id,
+                        "scope": "seller-b"
+                    }
+                }),
+                ..line_item_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.delivery_groups.len(), 2);
+    assert!(cart
+        .delivery_groups
+        .iter()
+        .all(|group| group.shipping_profile_slug == "default"));
+
+    let seller_ids = cart
+        .line_items
+        .iter()
+        .map(|item| item.seller_id.clone().expect("seller id should be present"))
+        .collect::<Vec<_>>();
+    assert!(cart.line_items.iter().all(|item| {
+        item.metadata
+            .get("seller")
+            .and_then(|seller| seller.get("label"))
+            .is_none()
+            && item.metadata.get("seller_label").is_none()
+    }));
+    assert!(seller_ids.contains(&seller_a_id.to_string()));
+    assert!(seller_ids.contains(&seller_b_id.to_string()));
+
+    let updated = service
+        .update_context(
+            tenant_id,
+            cart.id,
+            UpdateCartContextInput {
+                email: cart.email.clone(),
+                region_id: cart.region_id,
+                country_code: cart.country_code.clone(),
+                locale_code: cart.locale_code.clone(),
+                selected_shipping_option_id: None,
+                shipping_selections: Some(vec![
+                    CartShippingSelectionInput {
+                        shipping_profile_slug: "default".to_string(),
+                        seller_id: Some(seller_a_id.to_string()),
+                        seller_scope: None,
+                        selected_shipping_option_id: Some(seller_a_option_id),
+                    },
+                    CartShippingSelectionInput {
+                        shipping_profile_slug: "default".to_string(),
+                        seller_id: Some(seller_b_id.to_string()),
+                        seller_scope: None,
+                        selected_shipping_option_id: Some(seller_b_option_id),
+                    },
+                ]),
+            },
+        )
+        .await
+        .unwrap();
+
+    let delivery_groups = updated
+        .delivery_groups
+        .iter()
+        .map(|group| {
+            (
+                group.shipping_profile_slug.clone(),
+                group
+                    .seller_id
+                    .clone()
+                    .expect("seller id should be present"),
+                group
+                    .seller_scope
+                    .clone()
+                    .expect("seller scope should be present"),
+                group.selected_shipping_option_id,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(delivery_groups.contains(&(
+        String::from("default"),
+        seller_a_id.to_string(),
+        String::from("seller-a"),
+        Some(seller_a_option_id),
+    )));
+    assert!(delivery_groups.contains(&(
+        String::from("default"),
+        seller_b_id.to_string(),
+        String::from("seller-b"),
+        Some(seller_b_option_id),
+    )));
+}
+
+#[tokio::test]
+async fn legacy_seller_scope_still_splits_delivery_groups_without_seller_id() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                metadata: serde_json::json!({
+                    "seller": {
+                        "scope": "legacy-seller-a"
+                    }
+                }),
+                ..line_item_input()
+            },
+        )
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                sku: Some("SKU-CART-LEGACY-2".to_string()),
+                metadata: serde_json::json!({
+                    "seller": {
+                        "scope": "legacy-seller-b"
+                    }
+                }),
+                ..line_item_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.delivery_groups.len(), 2);
+    assert!(cart
+        .delivery_groups
+        .iter()
+        .all(|group| group.seller_id.is_none()));
+    assert!(cart
+        .delivery_groups
+        .iter()
+        .any(|group| { group.seller_scope.as_deref() == Some("legacy-seller-a") }));
+    assert!(cart
+        .delivery_groups
+        .iter()
+        .any(|group| { group.seller_scope.as_deref() == Some("legacy-seller-b") }));
 }

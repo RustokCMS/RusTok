@@ -2,10 +2,10 @@
 slug = "pricing"
 name = "Pricing"
 version = "0.1.0"
-description = "Default pricing submodule in the ecommerce family"
+description = "Variant pricing, price lists, regions, and discount calculations"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "capability_only"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [dependencies]

@@ -177,10 +177,14 @@ version = "0.1.0"
 description = "At least one publish-ready sentence."
 ownership = "platform"
 trust_level = "first-party"
+ui_classification = "dual_surface"
 
 [crate]
 entry_type = "<PascalSlug>Module"
 ```
+
+Если crate реализует `RusToKModule`, `entry_type` обязателен и должен совпадать с реальным runtime entry type в `src/lib.rs`.
+Если crate не реализует `RusToKModule` и используется как capability-only слой, `entry_type` можно не указывать.
 
 Дальше по необходимости добавляются:
 

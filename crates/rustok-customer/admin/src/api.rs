@@ -2,7 +2,10 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerDraft, CustomerList};
+use crate::model::{
+    CurrentTenant, CustomerAdminBootstrap, CustomerDetail, CustomerDraft, CustomerList,
+    CustomerListItem, CustomerProfileRecord, CustomerRecord,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -361,14 +364,11 @@ async fn customer_create_native(payload: CustomerDraft) -> Result<CustomerDetail
             "customers:create required",
         )?;
 
-        let requested_locale = {
-            let trimmed = payload.locale.trim();
-            if trimmed.is_empty() {
-                Some(tenant.default_locale.as_str())
-            } else {
-                Some(trimmed)
-            }
-        };
+        let locale = optional_text(payload.locale);
+        let requested_locale = locale
+            .as_deref()
+            .unwrap_or(tenant.default_locale.as_str())
+            .to_string();
         let customer_service = CustomerService::new(app_ctx.db.clone());
         let profile_service = ProfileService::new(app_ctx.db.clone());
         let created = customer_service
@@ -380,7 +380,7 @@ async fn customer_create_native(payload: CustomerDraft) -> Result<CustomerDetail
                     first_name: optional_text(payload.first_name),
                     last_name: optional_text(payload.last_name),
                     phone: optional_text(payload.phone),
-                    locale: optional_text(payload.locale),
+                    locale,
                     metadata: serde_json::json!({}),
                 },
             )
@@ -392,7 +392,7 @@ async fn customer_create_native(payload: CustomerDraft) -> Result<CustomerDetail
             &profile_service,
             &tenant,
             created.id,
-            requested_locale,
+            Some(requested_locale.as_str()),
         )
         .await
     }
@@ -434,12 +434,12 @@ async fn customer_update_native(
         )?;
 
         let customer_id = parse_uuid(&customer_id, "customer_id")?;
-        let requested_locale = {
+        let locale = {
             let trimmed = payload.locale.trim();
             if trimmed.is_empty() {
-                Some(tenant.default_locale.as_str())
+                tenant.default_locale.clone()
             } else {
-                Some(trimmed)
+                trimmed.to_string()
             }
         };
         let customer_service = CustomerService::new(app_ctx.db.clone());
@@ -453,7 +453,7 @@ async fn customer_update_native(
                     first_name: Some(payload.first_name),
                     last_name: Some(payload.last_name),
                     phone: Some(payload.phone),
-                    locale: Some(payload.locale),
+                    locale: Some(locale.clone()),
                     metadata: None,
                 },
             )
@@ -465,7 +465,7 @@ async fn customer_update_native(
             &profile_service,
             &tenant,
             customer_id,
-            requested_locale,
+            Some(locale.as_str()),
         )
         .await
     }

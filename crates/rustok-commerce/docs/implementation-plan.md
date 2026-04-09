@@ -40,7 +40,7 @@ typed shipping-profile registry.
 Порядок дальнейшей разработки фиксируется так:
 
 1. выполнить UI split по module ownership: вынести domain UI из aggregate `rustok-commerce-admin` / `rustok-commerce-storefront` в соответствующие split-модули (`product`, `order`, `inventory`, `pricing`, `fulfillment`, `customer`, `region`), оставив `rustok-commerce` только orchestration/cross-domain surfaces;
-2. завершить `Phase 7` до seller-aware deliverability model поверх уже работающего split-fulfillment baseline;
+2. продолжить `Phase 7` от уже внедрённого seller-aware grouping и typed fulfillment-item model к post-order delivery changes;
 3. перевести `Phase 8` в Pricing 2.0 с channel-aware price resolution, price lists, rules и promotions;
 4. вынести `Phase 9` в отдельный tax domain с tax lines и provider seam;
 5. закрыть `Phase 10` post-order surface (`returns/refunds/exchanges/claims/order changes`);
@@ -49,10 +49,10 @@ typed shipping-profile registry.
 
 Ближайший execution slice:
 
-- сначала продолжить уже начатый UI split: product admin route вынесен в `rustok-product/admin`, shipping-option admin route вынесен в `rustok-fulfillment/admin`, customer admin route вынесен в `rustok-customer/admin`, order admin route вынесен в `rustok-order/admin`, inventory admin route вынесен в `rustok-inventory/admin`, pricing admin route вынесен в `rustok-pricing/admin`, region admin route вынесен в `rustok-region/admin`, storefront split уже идёт через `rustok-region/storefront`, `rustok-product/storefront` и `rustok-pricing/storefront`, а aggregate `rustok-commerce-storefront` уже сжат до orchestration hub; следующий шаг — выносить только оставшиеся storefront flows с устойчивой ownership boundary поверх cart/checkout;
-- затем закрыть seller-aware grouping поверх `delivery_groups[]`, чтобы split fulfillment перестал быть только profile-based;
-- затем добавить fulfillment-item model и post-order delivery changes;
-- и только после этого идти в channel-aware pricing.
+- сначала продолжить уже начатый UI split: product admin route вынесен в `rustok-product/admin`, shipping-option admin route вынесен в `rustok-fulfillment/admin`, customer admin route вынесен в `rustok-customer/admin`, order admin route вынесен в `rustok-order/admin`, inventory admin route вынесен в `rustok-inventory/admin`, pricing admin route вынесен в `rustok-pricing/admin`, region admin route вынесен в `rustok-region/admin`, storefront split уже идёт через `rustok-region/storefront`, `rustok-product/storefront`, `rustok-pricing/storefront` и `rustok-cart/storefront`, а aggregate `rustok-commerce-storefront` уже сжат до aggregate checkout workspace с seller-aware delivery-group shipping selection;
+- параллельно закрепить `Marketplace Foundations`: canonical `seller_id` в product/cart/order/checkout/fulfillment contract, seller-aware grouping по `seller_id`, transitional compatibility для legacy `seller_scope` и подготовку seller-owned read model без разворачивания полного marketplace feature set;
+- `Phase 7` теперь уже закрыт до explicit `reopen` / `reship` semantics поверх seller-aware grouping, typed fulfillment-item model, manual post-order create path и partial ship/deliver baseline;
+- и теперь уже идти в channel-aware pricing.
 
 ## Текущее состояние
 
@@ -71,7 +71,8 @@ typed shipping-profile registry.
 ## Что ещё явно отсутствует
 
 - полноценные channel-aware publication и availability semantics для admin write-path, pricing/inventory/fulfillment и остальных commerce entities beyond storefront baseline;
-- seller-aware deliverability model поверх уже введённых typed shipping profiles: сейчас delivery groups группируются по effective `shipping_profile_slug`, но ещё не учитывают будущий seller/vendor domain;
+- post-order delivery changes и item-level delivery recovery поверх уже введённого seller-aware deliverability baseline, typed fulfillment-item model, manual post-order create path и partial ship/deliver baseline;
+- seller portal, merchant RBAC surfaces, commissions/payouts/settlement и disputes/returns marketplace-policy сознательно вынесены за рамки ближайшего scope и не входят в foundation slice;
 - channel-aware price resolution всё ещё не реализован и переносится в `Phase 8`, несмотря на уже закрытый channel-aware catalog/inventory baseline;
 - полноценный promotion/discount domain поверх price rules, а не только `compare_at_amount` и service-level `apply_discount`;
 - отдельный tax domain: сейчас tax фактически живёт в `region` как `tax_rate` / `tax_included`;
@@ -93,8 +94,9 @@ typed shipping-profile registry.
 | `BL-09` | region tax flags vs отдельный tax domain | вынести tax calculation/rules/providers из плоской `region`-модели в отдельный bounded context |
 | `BL-10` | линейный order lifecycle vs post-order reality | добавить returns, refunds, exchanges, claims, order changes и draft/edit semantics |
 | `BL-11` | manual/default providers vs extensibility | стабилизировать payment/fulfillment provider SPI вместо смешивания базовой модели с внешними интеграциями |
-| `BL-12` | typed shipping profile registry, typed product/variant bindings, line-item snapshots, cart delivery groups и multi-fulfillment checkout уже есть, но deliverability model ещё не закрыта до seller-aware уровня | довести deliverability domain от profile-based split fulfillment до seller-aware grouping, fulfillment-item model и post-order delivery changes |
+| `BL-12` | typed shipping profile registry, typed product/variant bindings, seller-aware line-item snapshots, cart delivery groups, multi-fulfillment checkout и typed fulfillment items уже есть, но deliverability model ещё не закрыта до post-order уровня | довести deliverability domain от seller-aware grouping и typed fulfillment items до post-order delivery changes |
 | `BL-13` | split backend уже есть, но storefront и часть admin ownership всё ещё агрегированы в `rustok-commerce-storefront` и оставшихся umbrella admin routes | разнести admin/storefront UI по split ecommerce-модулям и оставить umbrella UI только для cross-domain orchestration surfaces |
+| `BL-14` | seller-aware grouping уже есть, но marketplace identity boundary исторически опиралась на `seller_scope` вместо стабильного opaque key | закрепить `seller_id` как canonical multivendor boundary в product/cart/order/fulfillment contracts, оставив `seller_scope` только как transitional compatibility field до backfill |
 
 ## Этапы
 
@@ -125,7 +127,8 @@ typed shipping-profile registry.
 - `rustok-inventory` уже публикует собственный module-owned admin UI package `rustok-inventory/admin` для stock visibility и low-stock triage;
 - `rustok-pricing` уже публикует собственный module-owned admin UI package `rustok-pricing/admin` для price visibility, sale markers и currency coverage;
 - `rustok-pricing` уже публикует собственный module-owned storefront UI package `rustok-pricing/storefront` для public pricing atlas, sale markers и currency coverage;
-- aggregate `rustok-commerce-storefront` больше не держит published catalog/pricing read-side и сжат до orchestration hub с request/tenant/channel context summary;
+- `rustok-cart` уже публикует собственный module-owned storefront UI package `rustok-cart/storefront` для storefront cart inspection, safe decrement/remove line-item actions и seller-aware delivery-group snapshot;
+- aggregate `rustok-commerce-storefront` больше не держит published catalog/pricing read-side и сжат до aggregate checkout workspace с request/tenant/channel context summary, seller-aware delivery-group shipping selection, `payment collection` reuse и `complete checkout` actions по `?cart_id=`;
 - aggregate `rustok-commerce-admin` больше не дублирует product/shipping-option flows и оставлен только под shipping profiles.
 
 Следующие шаги:
@@ -134,7 +137,9 @@ typed shipping-profile registry.
 - [x] начать отдельный storefront split через `rustok-region/storefront`;
 - [x] вынести product storefront read-side из aggregate `rustok-commerce-storefront`;
 - [x] вынести pricing storefront read-side из aggregate `rustok-commerce-storefront`.
-- [x] сжать `rustok-commerce-storefront` до orchestration hub без catalog/pricing ownership.
+- [x] сжать `rustok-commerce-storefront` до aggregate checkout workspace без catalog/pricing ownership.
+- [x] вынести cart storefront inspection read-side в `rustok-cart/storefront`.
+- [x] оставить в `rustok-commerce-storefront` только aggregate checkout workspace для delivery-group shipping selection, `payment collection` и `complete checkout`.
 
 ### Phase 2. Medusa-style transport baseline
 
@@ -275,8 +280,15 @@ Deliverables:
 - admin REST/GraphQL surface теперь так же умеет `list/show/create/update/deactivate/reactivate` shipping profiles, а product/shipping-option write-path валидирует ссылки против active registry;
 - module-owned `rustok-commerce/admin` UI уже потребляет этот control plane напрямую и может показывать inactive shipping options вместе с explicit lifecycle actions;
 - `CatalogService` и `FulfillmentService` по-прежнему нормализуют эти поля в metadata-backed storage shape для backward compatibility, но source of truth для deliverability decisions уже живёт в typed product/variant fields, typed registry и line-item snapshots;
-- cart line items теперь хранят effective `shipping_profile_slug`, cart response отдаёт `delivery_groups[]`, а store/GraphQL checkout input принимает typed `shipping_selections[]`;
+- product create/update/read contracts теперь тоже принимают nullable `seller_id`, чтобы seller identity приходила из catalog write-side, а не вычислялась из merchandising/display полей вроде `vendor`;
+- cart line items теперь хранят effective `shipping_profile_slug` и canonical seller snapshot (`seller_id`), cart response отдаёт seller-aware `delivery_groups[]`, а store/GraphQL checkout input принимает typed `shipping_selections[]`;
+- `cart_shipping_selections` теперь персистит seller-aware key по `(shipping_profile_slug, seller_id)` и fallback'ится к `seller_scope` только для legacy записей без `seller_id`;
 - `CheckoutService` теперь валидирует stale shipping-profile snapshots, режет несовместимые selections по delivery groups и создаёт отдельный fulfillment на каждую delivery group;
+- storefront REST/GraphQL и module-owned storefront UI packages (`rustok-cart/storefront`, `rustok-commerce/storefront`) теперь прокидывают seller-aware delivery-group contract end-to-end с canonical `seller_id`, а fulfillment metadata сохраняет language-agnostic seller identity без seller display text;
+- fulfillment boundary теперь хранит typed `fulfillment_items` и checkout связывает delivery groups с `order_line_item_id`, так что item scope больше не держится только на `delivery_group.line_item_ids` внутри metadata;
+- admin REST/GraphQL теперь тоже умеют manual post-order `create fulfillment` с typed `items[]`: create path валидирует `order_line_item_id` против заказа, remaining quantity против уже созданных non-cancelled fulfillments и не даёт смешивать разные seller-aware delivery groups в одном follow-up fulfillment;
+- `FulfillmentService` теперь держит item-level `shipped_quantity` / `delivered_quantity`, а admin REST/GraphQL `ship` / `deliver` принимают optional quantity adjustments по `fulfillment_item_id`, так что partial post-order delivery progress и audit trail живут в typed fulfillment boundary;
+- admin REST/GraphQL теперь уже умеют explicit `reopen` / `reship` для fulfilled/cancelled recovery path: delivered fulfillments можно возвращать в `shipped`, cancelled fulfillments можно возвращать в actionable state, а delivery corrections больше не требуют неявных status hacks;
 - `CompleteCheckoutResponse` и storefront GraphQL checkout surface теперь возвращают `fulfillments[]`, а singular `fulfillment` остаётся только compatibility shim для single-group carts;
 - прежний strict single-option mixed-cart invariant больше не является целевой архитектурой: он сохранён только как compatibility shortcut для cart'ов с одной delivery group;
 - regression tests уже покрывают effective-profile resolution, mixed-cart delivery groups, missing per-group selection, multi-fulfillment checkout, stale snapshot reject path и GraphQL checkout parity для новых полей.
@@ -287,6 +299,30 @@ Deliverables:
 - migration tests для product/variant/cart/order shipping-profile schema;
 - integration tests на mixed cart с разной fulfillment policy;
 - regression tests на preflight checkout failures, которые должны отпускать `checking_out` lock и не создавать payment/order artifacts до side effects.
+
+### Cross-cutting. Marketplace Foundations
+
+Статус: `in progress`
+
+Фокус:
+
+- добавить минимальный multivendor foundation без разворачивания seller portal, payouts, commissions или disputes;
+- закрепить `seller_id` как canonical seller identity key для ecommerce write-side и orchestration;
+- не хранить seller display label в ecommerce storage и не использовать `vendor` как seller identity.
+
+Что уже закрыто:
+
+- product create/update/read contracts теперь включают nullable `seller_id`;
+- cart line items, `cart_shipping_selections`, order line items и fulfillment delivery-group metadata теперь несут `seller_id` как canonical key;
+- cart grouping и checkout/manual fulfillment validation теперь опираются на `(shipping_profile_slug, seller_id)` и fallback'ятся к `seller_scope` только для legacy записей без `seller_id`;
+- REST, GraphQL и Leptos `#[server]` contracts для product/cart/checkout/manual fulfillment уже расширены полем `seller_id`;
+- seller display label больше не персистится в ecommerce storage, а legacy `seller_scope` сохраняется только как transitional compatibility field.
+
+Ближайшие шаги:
+
+- подготовить seller-owned read model/resolver для display label по `seller_id` и effective locale;
+- сделать отдельный migration/backfill slice, после которого можно будет вычищать compatibility-path для legacy `seller_scope`;
+- не расширять текущий scope в merchant RBAC, seller portal, payouts, commissions и disputes до завершения foundation + backfill.
 
 ### Phase 8. Pricing 2.0 и promotions
 

@@ -1,8 +1,8 @@
 # Документация `alloy`
 
-`alloy` — capability-crate для платформенного script/runtime слоя на базе Rhai.
-Он не входит в tenant module registry как обычный бизнес-модуль, но живёт в том
-же module-standard contract и должен оставаться синхронизированным с host wiring.
+`alloy` — capability-модуль платформенного script/runtime слоя на базе Rhai.
+Он входит в `ModuleRegistry` и устанавливается/удаляется как остальные optional
+модули, но при этом остаётся capability-only слоем, а не tenant-бизнес-доменом.
 
 ## Назначение
 
@@ -16,12 +16,12 @@
 - storage/migrations для scripts и execution log;
 - GraphQL/HTTP transport surfaces (`graphql::*`, `controllers::routes`);
 - интеграционные контракты `ScriptableEntity` и `HookExecutor` для host-модулей;
-- отсутствие tenant-scoped enable/disable semantics в `tenant_modules`.
+- отсутствие превращения script runtime в отдельный tenant-бизнес-домен.
 
 ## Интеграция
 
 - подключается `apps/server` через generated module wiring из `modules.toml` и `rustok-module.toml`;
-- остаётся capability-only runtime crate без собственного tenant enablement toggle;
+- регистрируется в `ModuleRegistry` как обычный optional модуль и публикует script permission surface;
 - использует Rhai как embedded engine и должен удерживать sandbox/resource-limit semantics;
 - может вызываться доменными модулями через hook/integration contracts, не размывая их собственные runtime boundaries.
 

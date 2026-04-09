@@ -2,9 +2,10 @@
 slug = "blog"
 name = "Blog"
 version = "0.1.0"
-description = "Blog and news module"
+description = "Posts, Comments, Categories, Tags"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 showcase_admin_surfaces = ["next-admin"]
 

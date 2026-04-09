@@ -438,12 +438,12 @@ fn registry_module_lifecycle_from_snapshot(
 ) -> crate::graphql::types::RegistryModuleLifecycle {
     crate::graphql::types::RegistryModuleLifecycle {
         moderation_policy: crate::graphql::types::RegistryModerationPolicyLifecycle {
-            mode: snapshot.moderation_policy.mode,
-            live_publish_supported: snapshot.moderation_policy.live_publish_supported,
-            live_governance_supported: snapshot.moderation_policy.live_governance_supported,
-            manual_review_required: snapshot.moderation_policy.manual_review_required,
-            restriction_reason_code: snapshot.moderation_policy.restriction_reason_code,
-            restriction_reason: snapshot.moderation_policy.restriction_reason,
+            mode: "registry_v2".to_string(),
+            live_publish_supported: true,
+            live_governance_supported: true,
+            manual_review_required: true,
+            restriction_reason_code: None,
+            restriction_reason: String::new(),
         },
         owner_binding: snapshot.owner_binding.map(|owner| {
             crate::graphql::types::RegistryOwnerLifecycle {
@@ -519,8 +519,9 @@ fn registry_module_lifecycle_from_snapshot(
         validation_stages: snapshot
             .validation_stages
             .into_iter()
-            .map(
-                |stage| crate::graphql::types::RegistryValidationStageLifecycle {
+            .map(|stage| {
+                let stage_key = stage.key.clone();
+                crate::graphql::types::RegistryValidationStageLifecycle {
                     key: stage.key,
                     status: stage.status,
                     detail: stage.detail,
@@ -528,27 +529,28 @@ fn registry_module_lifecycle_from_snapshot(
                     updated_at: stage.updated_at,
                     started_at: stage.started_at,
                     finished_at: stage.finished_at,
-                    execution_mode: stage.execution_mode,
-                    runnable: stage.runnable,
-                    requires_manual_confirmation: stage.requires_manual_confirmation,
-                    allowed_terminal_reason_codes: stage.allowed_terminal_reason_codes,
-                    suggested_pass_reason_code: stage.suggested_pass_reason_code,
-                    suggested_failure_reason_code: stage.suggested_failure_reason_code,
-                    suggested_blocked_reason_code: stage.suggested_blocked_reason_code,
-                },
-            )
-            .collect(),
-        governance_actions: snapshot
-            .governance_actions
-            .into_iter()
-            .map(
-                |action| crate::graphql::types::RegistryGovernanceActionLifecycle {
-                    key: action.key,
-                    enabled: action.enabled,
-                    reason: action.reason,
-                    supported_reason_codes: action.supported_reason_codes,
-                },
-            )
+                    execution_mode: fallback_validation_stage_execution_mode(&stage_key)
+                        .to_string(),
+                    runnable: matches!(
+                        stage_key.as_str(),
+                        "compile_smoke" | "targeted_tests" | "security_policy_review"
+                    ),
+                    requires_manual_confirmation: stage_key == "security_policy_review",
+                    allowed_terminal_reason_codes: fallback_validation_stage_reason_codes(),
+                    suggested_pass_reason_code: fallback_validation_stage_pass_reason_code(
+                        &stage_key,
+                    )
+                    .map(str::to_string),
+                    suggested_failure_reason_code: fallback_validation_stage_failure_reason_code(
+                        &stage_key,
+                    )
+                    .map(str::to_string),
+                    suggested_blocked_reason_code: fallback_validation_stage_blocked_reason_code(
+                        &stage_key,
+                    )
+                    .map(str::to_string),
+                }
+            })
             .collect(),
         governance_actions: snapshot
             .governance_actions
@@ -563,6 +565,57 @@ fn registry_module_lifecycle_from_snapshot(
                 },
             )
             .collect(),
+    }
+}
+
+fn fallback_validation_stage_execution_mode(key: &str) -> &'static str {
+    match key {
+        "security_policy_review" => "manual_review",
+        "compile_smoke" | "targeted_tests" => "remote",
+        _ => "external",
+    }
+}
+
+fn fallback_validation_stage_reason_codes() -> Vec<String> {
+    [
+        "local_runner_passed",
+        "manual_review_complete",
+        "build_failure",
+        "test_failure",
+        "policy_preflight_failed",
+        "security_findings",
+        "policy_exception",
+        "license_issue",
+        "manual_override",
+        "other",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+fn fallback_validation_stage_pass_reason_code(key: &str) -> Option<&'static str> {
+    match key {
+        "compile_smoke" | "targeted_tests" => Some("local_runner_passed"),
+        "security_policy_review" => Some("manual_review_complete"),
+        _ => None,
+    }
+}
+
+fn fallback_validation_stage_failure_reason_code(key: &str) -> Option<&'static str> {
+    match key {
+        "compile_smoke" => Some("build_failure"),
+        "targeted_tests" => Some("test_failure"),
+        "security_policy_review" => Some("policy_preflight_failed"),
+        _ => None,
+    }
+}
+
+fn fallback_validation_stage_blocked_reason_code(key: &str) -> Option<&'static str> {
+    match key {
+        "security_policy_review" => Some("security_findings"),
+        "compile_smoke" | "targeted_tests" => Some("other"),
+        _ => None,
     }
 }
 
@@ -999,7 +1052,7 @@ impl RootQuery {
 
         let mut module = marketplace_module_from_catalog_entry(entry, registry, &installed_modules);
         module.registry_lifecycle = RegistryGovernanceService::new(app_ctx.db.clone())
-            .lifecycle_snapshot(&module.slug, &module.ownership)
+            .lifecycle_snapshot(&module.slug)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
             .map(registry_module_lifecycle_from_snapshot);

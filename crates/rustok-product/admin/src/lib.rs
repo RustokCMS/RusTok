@@ -26,6 +26,7 @@ pub fn ProductAdmin() -> impl IntoView {
     let (title, set_title) = signal(String::new());
     let (handle, set_handle) = signal(String::new());
     let (description, set_description) = signal(String::new());
+    let (seller_id, set_seller_id) = signal(String::new());
     let (vendor, set_vendor) = signal(String::new());
     let (product_type, set_product_type) = signal(String::new());
     let (shipping_profile_slug, set_shipping_profile_slug) = signal(String::new());
@@ -131,6 +132,7 @@ pub fn ProductAdmin() -> impl IntoView {
         set_title.set(String::new());
         set_handle.set(String::new());
         set_description.set(String::new());
+        set_seller_id.set(String::new());
         set_vendor.set(String::new());
         set_product_type.set(String::new());
         set_shipping_profile_slug.set(String::new());
@@ -166,6 +168,7 @@ pub fn ProductAdmin() -> impl IntoView {
             title: title.get_untracked(),
             handle: handle.get_untracked(),
             description: description.get_untracked(),
+            seller_id: seller_id.get_untracked(),
             vendor: vendor.get_untracked(),
             product_type: product_type.get_untracked(),
             shipping_profile_slug: text_or_none(shipping_profile_slug.get_untracked()),
@@ -217,6 +220,7 @@ pub fn ProductAdmin() -> impl IntoView {
                         set_title,
                         set_handle,
                         set_description,
+                        set_seller_id,
                         set_vendor,
                         set_product_type,
                         set_shipping_profile_slug,
@@ -405,6 +409,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                                         set_title,
                                                                         set_handle,
                                                                         set_description,
+                                                                        set_seller_id,
                                                                         set_vendor,
                                                                         set_product_type,
                                                                         set_shipping_profile_slug,
@@ -562,7 +567,10 @@ pub fn ProductAdmin() -> impl IntoView {
                             <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "product.field.title", "Title") prop:value=move || title.get() on:input=move |ev| set_title.set(event_target_value(&ev)) />
                             <textarea class="min-h-24 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "product.field.description", "Description") prop:value=move || description.get() on:input=move |ev| set_description.set(event_target_value(&ev)) />
                             <div class="grid gap-4 md:grid-cols-2">
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "product.field.sellerId", "Seller ID") prop:value=move || seller_id.get() on:input=move |ev| set_seller_id.set(event_target_value(&ev)) />
                                 <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "product.field.vendor", "Vendor") prop:value=move || vendor.get() on:input=move |ev| set_vendor.set(event_target_value(&ev)) />
+                            </div>
+                            <div class="grid gap-4 md:grid-cols-2">
                                 <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "product.field.productType", "Product type") prop:value=move || product_type.get() on:input=move |ev| set_product_type.set(event_target_value(&ev)) />
                             </div>
                             <div class="grid gap-4 md:grid-cols-2">
@@ -633,6 +641,7 @@ fn apply_product(
     set_title: WriteSignal<String>,
     set_handle: WriteSignal<String>,
     set_description: WriteSignal<String>,
+    set_seller_id: WriteSignal<String>,
     set_vendor: WriteSignal<String>,
     set_product_type: WriteSignal<String>,
     set_shipping_profile_slug: WriteSignal<String>,
@@ -675,6 +684,7 @@ fn apply_product(
             .and_then(|item| item.description)
             .unwrap_or_default(),
     );
+    set_seller_id.set(product.seller_id.clone().unwrap_or_default());
     set_vendor.set(product.vendor.clone().unwrap_or_default());
     set_product_type.set(product.product_type.clone().unwrap_or_default());
     set_shipping_profile_slug.set(product.shipping_profile_slug.clone().unwrap_or_default());

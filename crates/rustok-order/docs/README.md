@@ -15,6 +15,7 @@
 - модуль не зависит от `rustok-commerce` umbrella, чтобы не создавать цикл;
 - product/variant ссылки в заказе хранятся как snapshot references, а не как
   обязательные cross-module foreign keys;
+- order line items теперь тоже несут nullable `seller_id` как canonical multivendor snapshot key;
 - GraphQL и REST transport пока остаются в фасаде `rustok-commerce`;
 - admin UI ownership вынесен в `rustok-order/admin`.
 

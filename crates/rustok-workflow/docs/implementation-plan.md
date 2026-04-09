@@ -15,6 +15,7 @@ capability integrations без дрейфа и битой документаци
 - workflow storage и execution journal уже определены внутри модуля;
 - engine, trigger handlers, cron/manual/webhook/event triggers и базовые step types уже составляют рабочий baseline;
 - GraphQL, REST/webhook ingress и module-owned admin UI уже живут внутри модуля;
+- webhook ingress уже закреплён как module-owned transport surface, а cron path удерживается отдельно от `event_listener` и от server webhook shim;
 - интеграция с `alloy` уже является capability-level step integration, а не registry-level hard dependency.
 
 ## Этапы

@@ -3,7 +3,10 @@
 //! Denormalized indexes for fast reads, linking, and cross-module filtering.
 
 use async_trait::async_trait;
-use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
+use rustok_core::{
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind,
+    RusToKModule,
+};
 use sea_orm_migration::MigrationTrait;
 
 pub mod content;
@@ -38,6 +41,26 @@ impl RusToKModule for IndexModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
+    }
+
+    fn register_event_listeners(
+        &self,
+        registry: &mut ModuleEventListenerRegistry,
+        ctx: &ModuleEventListenerContext<'_>,
+    ) {
+        let runtime = ctx
+            .extensions
+            .get::<IndexerRuntimeConfig>()
+            .cloned()
+            .expect("index module requires IndexerRuntimeConfig in ModuleRuntimeExtensions");
+        registry.register(content::ContentIndexer::with_runtime(
+            ctx.db.clone(),
+            runtime.clone(),
+        ));
+        registry.register(product::ProductIndexer::with_runtime(
+            ctx.db.clone(),
+            runtime,
+        ));
     }
 }
 

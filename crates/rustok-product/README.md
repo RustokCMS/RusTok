@@ -14,6 +14,9 @@
 - Product-side normalization of first-class `shipping_profile_slug` onto the
   temporary metadata-backed shipping profile contract, without erasing an
   existing metadata-backed profile when the typed field is omitted.
+- Product-side ownership of nullable `seller_id` as the canonical marketplace
+  identity key that downstream cart/order/fulfillment flows consume; merchandising
+  fields such as `vendor` remain display-only and are not used as seller identity.
 - Product-side split and locale-aware resolution of Flex attached custom-field
   values, using shared `flex` attached localized storage while preserving
   non-Flex operational metadata in `products.metadata`.

@@ -45,7 +45,19 @@ RUSTOK_EVENT_TRANSPORT=memory
 - settings: `apps/server/src/common/settings.rs`
 - фабрика транспорта: `apps/server/src/services/event_transport_factory.rs`
 - общий event bus и forwarder: `apps/server/src/services/event_bus.rs`
-- подключение в runtime: `apps/server/src/app.rs`
+- module-owned listener bootstrap: `apps/server/src/services/module_event_dispatcher.rs`
+- подключение в runtime: `apps/server/src/services/app_runtime.rs`
+
+## Module-owned listeners
+
+`apps/server` больше не держит отдельные host-owned dispatchers для `index`,
+`search` и `workflow`. Event handlers этих модулей публикуются самими модулями
+через `RusToKModule::register_event_listeners(...)`, затем собираются из
+`ModuleRegistry` и регистрируются в одном общем `EventDispatcher`.
+
+В этот путь не входят cron/background jobs. Например,
+`WorkflowCronScheduler` остаётся отдельным runtime path и не считается
+`event_listener`.
 
 ## Ограничения текущей реализации
 

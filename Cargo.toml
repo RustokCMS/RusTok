@@ -10,6 +10,7 @@ members = [
     "crates/rustok-blog/storefront",
     "crates/rustok-commerce/admin",
     "crates/rustok-commerce/storefront",
+    "crates/rustok-cart/storefront",
     "crates/rustok-fulfillment/admin",
     "crates/rustok-inventory/admin",
     "crates/rustok-product/admin",

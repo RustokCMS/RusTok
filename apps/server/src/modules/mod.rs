@@ -69,6 +69,7 @@ mod contract_tests {
     const PAGES_README: &str = include_str!("../../../../crates/rustok-pages/README.md");
     const TAXONOMY_README: &str = include_str!("../../../../crates/rustok-taxonomy/README.md");
     const WORKFLOW_README: &str = include_str!("../../../../crates/rustok-workflow/README.md");
+    const ALLOY_README: &str = include_str!("../../../../crates/alloy/README.md");
     const FLEX_MUTATION: &str = include_str!("../graphql/flex/mutation.rs");
 
     #[test]
@@ -98,6 +99,7 @@ mod contract_tests {
             ("pages", PAGES_README),
             ("taxonomy", TAXONOMY_README),
             ("workflow", WORKFLOW_README),
+            ("alloy", ALLOY_README),
         ] {
             assert!(
                 readme.contains("## Interactions"),
@@ -127,6 +129,7 @@ mod contract_tests {
         let pages = registry.get("pages").expect("pages module");
         let taxonomy = registry.get("taxonomy").expect("taxonomy module");
         let workflow = registry.get("workflow").expect("workflow module");
+        let alloy = registry.get("alloy").expect("alloy module");
 
         assert!(auth.permissions().contains(&Permission::USERS_MANAGE));
         assert!(channel.permissions().is_empty());
@@ -162,6 +165,7 @@ mod contract_tests {
         assert!(workflow
             .permissions()
             .contains(&Permission::WORKFLOWS_MANAGE));
+        assert!(alloy.permissions().contains(&Permission::SCRIPTS_MANAGE));
     }
 
     #[test]
@@ -181,6 +185,7 @@ mod contract_tests {
         let pages = registry.get("pages").expect("pages module");
         let taxonomy = registry.get("taxonomy").expect("taxonomy module");
         let workflow = registry.get("workflow").expect("workflow module");
+        let alloy = registry.get("alloy").expect("alloy module");
 
         assert!(registry.is_core("channel"));
         assert!(registry.is_core("outbox"));
@@ -211,6 +216,7 @@ mod contract_tests {
         assert_eq!(pages.dependencies(), &["content"]);
         assert_eq!(taxonomy.dependencies(), &["content"]);
         assert!(workflow.dependencies().is_empty());
+        assert!(alloy.dependencies().is_empty());
     }
 
     #[test]

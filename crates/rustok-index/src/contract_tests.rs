@@ -14,3 +14,28 @@ fn crate_api_defines_minimal_contract_sections() {
         );
     }
 }
+
+#[tokio::test]
+async fn index_module_registers_registry_owned_event_listeners() {
+    use rustok_core::{ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
+    use sea_orm::Database;
+
+    use crate::{IndexModule, IndexerRuntimeConfig};
+
+    let registry = ModuleRegistry::new().register(IndexModule);
+    let db = Database::connect("sqlite::memory:")
+        .await
+        .expect("in-memory sqlite should connect");
+    let mut extensions = ModuleRuntimeExtensions::default();
+    extensions.insert(IndexerRuntimeConfig::new(2, 100, 10));
+    let ctx = ModuleEventListenerContext {
+        db,
+        extensions: &extensions,
+    };
+
+    let handlers = registry.build_event_listeners(&ctx);
+    let mut names: Vec<&'static str> = handlers.iter().map(|handler| handler.name()).collect();
+    names.sort_unstable();
+
+    assert_eq!(names, vec!["content_indexer", "product_indexer"]);
+}

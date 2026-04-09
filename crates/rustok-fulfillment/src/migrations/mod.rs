@@ -1,9 +1,13 @@
 mod m20260325_000105_create_fulfillment_tables;
+mod m20260409_000106_add_fulfillment_items;
+mod m20260409_000107_add_fulfillment_item_progress;
 
 use sea_orm_migration::MigrationTrait;
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(
-        m20260325_000105_create_fulfillment_tables::Migration,
-    )]
+    vec![
+        Box::new(m20260325_000105_create_fulfillment_tables::Migration),
+        Box::new(m20260409_000106_add_fulfillment_items::Migration),
+        Box::new(m20260409_000107_add_fulfillment_item_progress::Migration),
+    ]
 }

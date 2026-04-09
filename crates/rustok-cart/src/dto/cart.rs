@@ -81,6 +81,8 @@ pub struct CartLineItemResponse {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
     pub shipping_profile_slug: String,
+    pub seller_id: Option<String>,
+    pub seller_scope: Option<String>,
     pub sku: Option<String>,
     pub title: String,
     pub quantity: i32,
@@ -96,6 +98,10 @@ pub struct CartLineItemResponse {
 pub struct CartShippingSelectionInput {
     #[validate(length(min = 1, max = 100))]
     pub shipping_profile_slug: String,
+    #[validate(length(max = 100))]
+    pub seller_id: Option<String>,
+    #[validate(length(min = 1, max = 100))]
+    pub seller_scope: Option<String>,
     pub selected_shipping_option_id: Option<Uuid>,
 }
 
@@ -113,6 +119,8 @@ pub struct CartShippingOptionSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CartDeliveryGroupResponse {
     pub shipping_profile_slug: String,
+    pub seller_id: Option<String>,
+    pub seller_scope: Option<String>,
     pub line_item_ids: Vec<Uuid>,
     pub selected_shipping_option_id: Option<Uuid>,
     pub available_shipping_options: Vec<CartShippingOptionSummary>,

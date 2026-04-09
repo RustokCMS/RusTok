@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Default region submodule in the ecommerce family"
 ownership = "first_party"
 trust_level = "verified"
-ui_classification = "embedded_optional"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [crate]

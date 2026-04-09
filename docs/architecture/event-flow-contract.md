@@ -53,6 +53,29 @@ Consumer:
   предположений
 - не должен ломать write-side contract publisher-а
 
+## Модульные event listeners
+
+Module-owned event listeners публикуются через runtime contract самого модуля:
+
+- `RusToKModule::register_event_listeners(...)` регистрирует handlers в `ModuleEventListenerRegistry`;
+- `apps/server` собирает их через `ModuleRegistry::build_event_listeners(...)` и подключает к общему `EventDispatcher`;
+- runtime dependencies для listeners передаются через `ModuleEventListenerContext` и `ModuleRuntimeExtensions`, а не через host-owned ручной wiring в `apps/server`.
+
+Это означает, что модуль владеет своими event consumers так же, как он владеет
+`GraphQL`, `HTTP` и UI surfaces.
+
+### Что не считается event listener
+
+В этот contract не входят:
+
+- cron/background jobs;
+- relay workers;
+- transport forwarders;
+- long-running host maintenance tasks.
+
+Например, `WorkflowCronScheduler` остаётся отдельным background runtime path и не
+публикуется как `event_listener`.
+
 ## Content и orchestration-события
 
 Нужно различать:

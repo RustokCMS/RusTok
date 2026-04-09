@@ -2,10 +2,13 @@
 slug = "alloy"
 name = "Alloy"
 version = "0.1.0"
-description = "Alloy scripting capability"
+description = "Alloy runtime and scripting capability"
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "capability_only"
+
+[crate]
+entry_type = "AlloyModule"
 
 [provides.graphql]
 query = "graphql::AlloyQuery"

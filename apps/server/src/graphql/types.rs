@@ -309,14 +309,6 @@ pub struct RegistryModerationPolicyLifecycle {
 #[derive(SimpleObject, Clone)]
 pub struct RegistryGovernanceActionLifecycle {
     pub key: String,
-    pub enabled: bool,
-    pub reason: Option<String>,
-    pub supported_reason_codes: Vec<String>,
-}
-
-#[derive(SimpleObject, Clone)]
-pub struct RegistryGovernanceActionLifecycle {
-    pub key: String,
     pub reason_required: bool,
     pub reason_code_required: bool,
     pub reason_codes: Vec<String>,

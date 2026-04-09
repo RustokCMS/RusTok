@@ -22,6 +22,8 @@ pub struct CreateOrderLineItemInput {
     pub variant_id: Option<Uuid>,
     pub shipping_profile_slug: String,
     #[validate(length(max = 100))]
+    pub seller_id: Option<String>,
+    #[validate(length(max = 100))]
     pub sku: Option<String>,
     #[validate(length(min = 1, max = 255))]
     pub title: String,
@@ -99,6 +101,7 @@ pub struct OrderLineItemResponse {
     pub product_id: Option<Uuid>,
     pub variant_id: Option<Uuid>,
     pub shipping_profile_slug: String,
+    pub seller_id: Option<String>,
     pub sku: Option<String>,
     pub title: String,
     pub quantity: i32,

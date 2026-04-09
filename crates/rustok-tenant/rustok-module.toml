@@ -2,10 +2,14 @@
 slug = "tenant"
 name = "Tenant"
 version = "0.1.0"
-description = "Tenant lifecycle and tenancy-management module"
+description = "Multi-tenancy helpers and tenant metadata."
 ownership = "first_party"
 trust_level = "core"
+ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
+
+[crate]
+entry_type = "TenantModule"
 
 [provides.admin_ui]
 leptos_crate = "rustok-tenant-admin"

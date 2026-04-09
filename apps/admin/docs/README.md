@@ -34,6 +34,7 @@
 - `apps/admin` остаётся CSR-first host; наличие feature-профилей `hydrate` и `ssr` не означает, что runtime уже перешёл на полноценный SSR/service-layer contract.
 - WebSocket transport `/api/graphql/ws` остаётся действующим путём для live update сценариев, включая build/progress и subscription-based surfaces.
 - Host-owned `/modules` governance UI не держит локальные policy-эвристики: `registryLifecycle` остаётся summary/read-model, а authoritative request-level contract для interactive governance читается отдельным actor-aware fetch к `GET /v2/catalog/publish/{request_id}` по текущему полю `Actor`; `reason` / `reason_code` и request-level availability берутся из этого статуса, а `owner-transfer` / `yank` остаются server-driven release-management actions из summary lifecycle.
+- Для `apps/admin` это считается конечным repo-side contract: дальше здесь не нужен новый client-owned lifecycle, а только targeted verification mapping и периодическая сверка `/modules` UX с server-driven policy surface.
 
 ## Contract для module-owned admin UI
 

@@ -105,3 +105,4 @@ dump.rdb
 # Local configuration overrides
 config.local.toml
 config.*.local.toml
+/target_codex_permissions/

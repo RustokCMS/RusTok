@@ -6,6 +6,5 @@ description = "Default payment submodule in the ecommerce family"
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "capability_only"
-
 [crate]
 entry_type = "PaymentModule"

@@ -2,10 +2,9 @@
 slug = "email"
 name = "Email"
 version = "0.1.0"
-description = "Core email delivery module for SMTP transport, templates, and email lifecycle"
+description = "SMTP transport, email templates, delivery lifecycle."
 ownership = "first_party"
 trust_level = "core"
 ui_classification = "capability_only"
-
 [crate]
 entry_type = "EmailModule"

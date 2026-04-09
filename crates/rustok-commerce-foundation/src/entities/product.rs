@@ -37,6 +37,7 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub status: ProductStatus,
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,

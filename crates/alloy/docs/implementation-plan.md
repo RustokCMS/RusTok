@@ -5,8 +5,8 @@ contract приведены к единому формату.
 
 ## Область работ
 
-- удерживать `alloy` как capability-only runtime crate для скриптов, scheduler и hook execution;
-- синхронизировать runtime contract, host wiring и local docs;
+- удерживать `alloy` как capability-oriented модуль платформенного script/runtime слоя для скриптов, scheduler и hook execution;
+- синхронизировать runtime contract, `ModuleRegistry` wiring и local docs;
 - развивать script platform без превращения `alloy` в tenant-scoped бизнес-модуль.
 
 ## Текущее состояние
@@ -14,6 +14,7 @@ contract приведены к единому формату.
 - storage, migrations и execution log уже встроены в capability crate;
 - `ScriptEngine`, `ScriptOrchestrator`, `Scheduler` и bridge/helper слой уже составляют базовый runtime;
 - GraphQL/HTTP transport surfaces живут внутри `alloy`, а host подключает их через generated module wiring;
+- `AlloyModule` зарегистрирован как обычный optional модуль и публикует script permission surface;
 - локальные docs и root `README.md` теперь входят в scoped module audit path.
 
 ## Этапы

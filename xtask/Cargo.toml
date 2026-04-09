@@ -12,3 +12,4 @@ serde_json.workspace = true
 anyhow = "1.0"
 semver = "1.0"
 reqwest = { workspace = true, features = ["blocking", "json"] }
+regex = "1.12"

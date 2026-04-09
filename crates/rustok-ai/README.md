@@ -23,7 +23,7 @@ Current implementation includes:
   and the server-side `aiRecentRuns` query
 - bounded runtime observability via `AiManagementService::metrics_snapshot()` plus Prometheus
   module/span telemetry for router decisions and direct/MCP run outcomes
-- shared admin surfaces for Leptos and Next.js hosts
+- large operator/admin surfaces for both Leptos and Next.js hosts
 - dedicated AI diagnostics sub-routes for both admin hosts (`/ai/diagnostics`, `/dashboard/ai/diagnostics`)
 
 The current implementation is sufficient to treat `rustok-ai` as MVP-complete for the initial
@@ -71,8 +71,8 @@ RusToK AI host/orchestrator scope. Remaining work is post-MVP depth, not missing
 - Uses `apps/server` as the persisted control plane for provider profiles, tool profiles, sessions,
   task profiles, runs, traces, and approvals.
 - Uses the shared GraphQL WebSocket surface in `apps/server` for live AI run streaming.
-- Ships a Leptos admin UI package in `crates/rustok-ai/admin`.
-- Ships a Next.js admin UI package through `apps/next-admin/packages/rustok-ai`.
+- Ships a large Leptos operator/admin UI package in `crates/rustok-ai/admin`.
+- Ships a large Next.js operator/admin UI package through `apps/next-admin/packages/rustok-ai`.
 
 ## Entry points
 

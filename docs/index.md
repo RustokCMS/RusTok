@@ -39,9 +39,17 @@
   inventory visibility, `rustok-pricing/admin` забрал pricing visibility,
   `rustok-customer/admin` забрал customer operations, `rustok-region/admin`
   забрал region CRUD, storefront-side split уже идёт через `rustok-region/storefront`
-  , `rustok-product/storefront` и `rustok-pricing/storefront`,
+  , `rustok-product/storefront`, `rustok-pricing/storefront` и `rustok-cart/storefront`,
   `rustok-commerce-admin` очищен до shipping-profile registry, а
-  `rustok-commerce-storefront` уже сжат до orchestration hub.
+  `rustok-commerce-storefront` уже сжат до aggregate checkout workspace с seller-aware delivery-group shipping selection, а admin `create fulfillment` уже валидирует typed items по order-line ownership и remaining quantity.
+- Текущий `Phase 7` уже дошёл до explicit post-order recovery semantics: `fulfillment_items`
+  держат `shipped_quantity` / `delivered_quantity`, audit trail в metadata fulfillment/item'ов
+  остаётся language-agnostic и не дублирует свободный текст вроде `delivered_note`, а admin
+  REST/GraphQL теперь уже умеют не только partial item-level `ship` / `deliver`, но и
+  explicit `reopen` / `reship` для post-order delivery corrections.
+- Cross-cutting трек `Marketplace Foundations` тоже уже начат: `seller_id` стал canonical
+  multivendor key в product/cart/order/checkout/fulfillment contract, а `seller_scope`
+  оставлен только как transitional compatibility field для legacy snapshot'ов.
 - [Спец-план rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 
 ## UI и клиентские поверхности

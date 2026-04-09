@@ -144,6 +144,7 @@ impl OrderService {
                 product_id: Set(item.product_id),
                 variant_id: Set(item.variant_id),
                 shipping_profile_slug: Set(item.shipping_profile_slug.clone()),
+                seller_id: Set(normalize_seller_id(item.seller_id.as_deref())),
                 sku: Set(item.sku.clone()),
                 title: Set(item.title.clone()),
                 quantity: Set(item.quantity),
@@ -578,6 +579,7 @@ impl OrderService {
                     product_id: item.product_id,
                     variant_id: item.variant_id,
                     shipping_profile_slug: item.shipping_profile_slug,
+                    seller_id: item.seller_id,
                     sku: item.sku,
                     title: item.title,
                     quantity: item.quantity,
@@ -781,4 +783,11 @@ fn merge_reserved_order_metadata(
     }
 
     Value::Object(reserved)
+}
+
+fn normalize_seller_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_owned())
 }

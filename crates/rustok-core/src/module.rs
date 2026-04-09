@@ -1,8 +1,13 @@
+use std::any::{Any, TypeId};
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
 use sea_orm_migration::MigrationTrait;
 use serde_json::Value;
 
+use crate::events::EventHandler;
 use crate::permissions::Permission;
 
 pub struct ModuleContext<'a> {
@@ -11,10 +16,62 @@ pub struct ModuleContext<'a> {
     pub config: &'a Value,
 }
 
-pub trait EventListener: crate::events::EventHandler {}
-
 pub trait MigrationSource: Send + Sync {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>>;
+}
+
+#[derive(Clone, Default)]
+pub struct ModuleRuntimeExtensions {
+    entries: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
+}
+
+impl ModuleRuntimeExtensions {
+    pub fn insert<T>(&mut self, value: T)
+    where
+        T: Any + Send + Sync,
+    {
+        self.entries.insert(TypeId::of::<T>(), Arc::new(value));
+    }
+
+    pub fn get<T>(&self) -> Option<&T>
+    where
+        T: Any + Send + Sync,
+    {
+        self.entries
+            .get(&TypeId::of::<T>())
+            .and_then(|value| value.as_ref().downcast_ref::<T>())
+    }
+}
+
+pub struct ModuleEventListenerContext<'a> {
+    pub db: DatabaseConnection,
+    pub extensions: &'a ModuleRuntimeExtensions,
+}
+
+#[derive(Default)]
+pub struct ModuleEventListenerRegistry {
+    handlers: Vec<Arc<dyn EventHandler>>,
+}
+
+impl ModuleEventListenerRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn register<H>(&mut self, handler: H)
+    where
+        H: EventHandler,
+    {
+        self.handlers.push(Arc::new(handler));
+    }
+
+    pub fn register_boxed(&mut self, handler: Arc<dyn EventHandler>) {
+        self.handlers.push(handler);
+    }
+
+    pub fn into_handlers(self) -> Vec<Arc<dyn EventHandler>> {
+        self.handlers
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -70,8 +127,11 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
         Vec::new()
     }
 
-    fn event_listeners(&self) -> Vec<Box<dyn EventListener>> {
-        Vec::new()
+    fn register_event_listeners(
+        &self,
+        _registry: &mut ModuleEventListenerRegistry,
+        _ctx: &ModuleEventListenerContext<'_>,
+    ) {
     }
 
     async fn on_enable(&self, _ctx: ModuleContext<'_>) -> crate::Result<()> {
@@ -84,5 +144,26 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
 
     async fn health(&self) -> HealthStatus {
         HealthStatus::Healthy
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ModuleRuntimeExtensions;
+
+    #[derive(Debug, Eq, PartialEq)]
+    struct DemoRuntimeValue(&'static str);
+
+    #[test]
+    fn module_runtime_extensions_store_and_resolve_typed_values() {
+        let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(DemoRuntimeValue("demo"));
+
+        let value = extensions
+            .get::<DemoRuntimeValue>()
+            .expect("typed runtime value should be available");
+
+        assert_eq!(value, &DemoRuntimeValue("demo"));
+        assert!(extensions.get::<String>().is_none());
     }
 }

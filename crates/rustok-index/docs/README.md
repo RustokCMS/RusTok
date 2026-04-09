@@ -23,6 +23,7 @@ ingestion и cross-module query substrate.
 - зависит от `rustok-core` и стабильных integration contracts модулей-источников;
 - может использоваться `apps/server` и другими platform consumers как internal query/read-model layer;
 - не должен схлопываться с `rustok-search`: `search` может читать projections, но `index` не становится search module;
+- event-driven consumers модуля публикуются через `IndexModule::register_event_listeners(...)` и собираются сервером из `ModuleRegistry`, а не через отдельный host-owned dispatcher path;
 - остаётся `Core` module без самостоятельного storefront/admin UX как primary surface.
 
 ## Проверка

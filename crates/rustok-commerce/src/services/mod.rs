@@ -1,5 +1,6 @@
 pub mod checkout;
 pub mod context;
+mod fulfillment_orchestration;
 mod shipping_profile;
 
 pub use rustok_cart::services::cart;
@@ -14,6 +15,9 @@ pub use rustok_region::services::region;
 
 pub use checkout::{CheckoutError, CheckoutResult, CheckoutService};
 pub use context::{StoreContextError, StoreContextResult, StoreContextService};
+pub(crate) use fulfillment_orchestration::{
+    FulfillmentOrchestrationError, FulfillmentOrchestrationService,
+};
 pub use rustok_cart::CartService;
 pub use rustok_customer::CustomerService;
 pub use rustok_fulfillment::FulfillmentService;

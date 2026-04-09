@@ -1264,6 +1264,9 @@ fn load_runtime_marketplace_modules(
                 checksum_sha256: package_manifest.marketplace.checksum_sha256.clone(),
                 signature_present: package_manifest.marketplace.signature.is_some(),
             }],
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no-ui".to_string(),
             registry_lifecycle: None,
             compatible: true,
             recommended_admin_surfaces: package_manifest.module.recommended_admin_surfaces.clone(),
@@ -1339,6 +1342,9 @@ fn load_runtime_marketplace_modules(
                 checksum_sha256: None,
                 signature_present: false,
             }],
+            has_admin_ui: false,
+            has_storefront_ui: false,
+            ui_classification: "no-ui".to_string(),
             registry_lifecycle: None,
             compatible: true,
             recommended_admin_surfaces: Vec::new(),
@@ -1938,10 +1944,11 @@ fn map_registry_governance_event_row(
 fn map_registry_validation_stage_row(
     row: sea_orm::QueryResult,
 ) -> Result<RegistryValidationStageLifecycle, ServerFnError> {
+    let key: String = row
+        .try_get("", "stage_key")
+        .map_err(|err| server_error(err.to_string()))?;
     Ok(RegistryValidationStageLifecycle {
-        key: row
-            .try_get("", "stage_key")
-            .map_err(|err| server_error(err.to_string()))?,
+        key: key.clone(),
         status: row
             .try_get("", "status")
             .map_err(|err| server_error(err.to_string()))?,
@@ -1963,6 +1970,19 @@ fn map_registry_validation_stage_row(
             .try_get::<Option<chrono::DateTime<chrono::Utc>>>("", "finished_at")
             .map(|value| value.map(|value| value.to_rfc3339()))
             .map_err(|err| server_error(err.to_string()))?,
+        execution_mode: fallback_validation_stage_execution_mode(&key).to_string(),
+        runnable: matches!(
+            key.as_str(),
+            "compile_smoke" | "targeted_tests" | "security_policy_review"
+        ),
+        requires_manual_confirmation: key == "security_policy_review",
+        allowed_terminal_reason_codes: fallback_validation_stage_reason_codes(),
+        suggested_pass_reason_code: fallback_validation_stage_pass_reason_code(&key)
+            .map(str::to_string),
+        suggested_failure_reason_code: fallback_validation_stage_failure_reason_code(&key)
+            .map(str::to_string),
+        suggested_blocked_reason_code: fallback_validation_stage_blocked_reason_code(&key)
+            .map(str::to_string),
     })
 }
 
@@ -1977,6 +1997,62 @@ fn registry_follow_up_gate_detail(key: &str) -> &'static str {
             "Security and policy review still require an external gate before production approval."
         }
         _ => "External follow-up gate is still pending.",
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn fallback_validation_stage_execution_mode(key: &str) -> &'static str {
+    match key {
+        "security_policy_review" => "manual_review",
+        "compile_smoke" | "targeted_tests" => "remote",
+        _ => "external",
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn fallback_validation_stage_reason_codes() -> Vec<String> {
+    [
+        "local_runner_passed",
+        "manual_review_complete",
+        "build_failure",
+        "test_failure",
+        "policy_preflight_failed",
+        "security_findings",
+        "policy_exception",
+        "license_issue",
+        "manual_override",
+        "other",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+#[cfg(feature = "ssr")]
+fn fallback_validation_stage_pass_reason_code(key: &str) -> Option<&'static str> {
+    match key {
+        "compile_smoke" | "targeted_tests" => Some("local_runner_passed"),
+        "security_policy_review" => Some("manual_review_complete"),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn fallback_validation_stage_failure_reason_code(key: &str) -> Option<&'static str> {
+    match key {
+        "compile_smoke" => Some("build_failure"),
+        "targeted_tests" => Some("test_failure"),
+        "security_policy_review" => Some("policy_preflight_failed"),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn fallback_validation_stage_blocked_reason_code(key: &str) -> Option<&'static str> {
+    match key {
+        "security_policy_review" => Some("security_findings"),
+        "compile_smoke" | "targeted_tests" => Some("other"),
+        _ => None,
     }
 }
 
@@ -2183,6 +2259,23 @@ fn derive_registry_validation_stages(
                 updated_at: event.created_at.clone(),
                 started_at: None,
                 finished_at: None,
+                execution_mode: fallback_validation_stage_execution_mode(gate_key).to_string(),
+                runnable: matches!(
+                    gate_key,
+                    "compile_smoke" | "targeted_tests" | "security_policy_review"
+                ),
+                requires_manual_confirmation: gate_key == "security_policy_review",
+                allowed_terminal_reason_codes: fallback_validation_stage_reason_codes(),
+                suggested_pass_reason_code: fallback_validation_stage_pass_reason_code(gate_key)
+                    .map(str::to_string),
+                suggested_failure_reason_code: fallback_validation_stage_failure_reason_code(
+                    gate_key,
+                )
+                .map(str::to_string),
+                suggested_blocked_reason_code: fallback_validation_stage_blocked_reason_code(
+                    gate_key,
+                )
+                .map(str::to_string),
             });
             continue;
         }
@@ -2200,6 +2293,23 @@ fn derive_registry_validation_stages(
                     .unwrap_or_default(),
                 started_at: None,
                 finished_at: None,
+                execution_mode: fallback_validation_stage_execution_mode(gate_key).to_string(),
+                runnable: matches!(
+                    gate_key,
+                    "compile_smoke" | "targeted_tests" | "security_policy_review"
+                ),
+                requires_manual_confirmation: gate_key == "security_policy_review",
+                allowed_terminal_reason_codes: fallback_validation_stage_reason_codes(),
+                suggested_pass_reason_code: fallback_validation_stage_pass_reason_code(gate_key)
+                    .map(str::to_string),
+                suggested_failure_reason_code: fallback_validation_stage_failure_reason_code(
+                    gate_key,
+                )
+                .map(str::to_string),
+                suggested_blocked_reason_code: fallback_validation_stage_blocked_reason_code(
+                    gate_key,
+                )
+                .map(str::to_string),
             });
         }
     }
@@ -2569,6 +2679,14 @@ async fn load_registry_module_lifecycle(
     );
 
     Ok(Some(RegistryModuleLifecycle {
+        moderation_policy: crate::entities::module::model::RegistryModerationPolicyLifecycle {
+            mode: "registry_v2".to_string(),
+            live_publish_supported: true,
+            live_governance_supported: true,
+            manual_review_required: true,
+            restriction_reason_code: None,
+            restriction_reason: String::new(),
+        },
         owner_binding,
         latest_request,
         latest_release,
@@ -2725,6 +2843,9 @@ async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnError>
                     trust_level: metadata
                         .map(|metadata| metadata.trust_level.to_string())
                         .unwrap_or_else(|| "unverified".to_string()),
+                    has_admin_ui: false,
+                    has_storefront_ui: false,
+                    ui_classification: "no-ui".to_string(),
                     recommended_admin_surfaces: metadata
                         .map(|metadata| {
                             metadata

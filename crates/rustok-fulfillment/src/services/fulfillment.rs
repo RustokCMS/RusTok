@@ -2,10 +2,10 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde_json::{Map, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
@@ -14,8 +14,9 @@ use rustok_core::generate_id;
 
 use crate::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, CreateShippingOptionInput,
-    DeliverFulfillmentInput, FulfillmentResponse, ListFulfillmentsInput, ShipFulfillmentInput,
-    ShippingOptionResponse, UpdateShippingOptionInput,
+    DeliverFulfillmentInput, FulfillmentItemQuantityInput, FulfillmentItemResponse,
+    FulfillmentResponse, ListFulfillmentsInput, ReopenFulfillmentInput, ReshipFulfillmentInput,
+    ShipFulfillmentInput, ShippingOptionResponse, UpdateShippingOptionInput,
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
@@ -233,9 +234,11 @@ impl FulfillmentService {
             self.get_shipping_option(tenant_id, shipping_option_id)
                 .await?;
         }
+        validate_fulfillment_items(input.items.as_deref())?;
 
         let fulfillment_id = generate_id();
         let now = Utc::now();
+        let txn = self.db.begin().await?;
         entities::fulfillment::ActiveModel {
             id: Set(fulfillment_id),
             tenant_id: Set(tenant_id),
@@ -254,8 +257,28 @@ impl FulfillmentService {
             delivered_at: Set(None),
             cancelled_at: Set(None),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
+
+        if let Some(items) = input.items {
+            for item in items {
+                entities::fulfillment_item::ActiveModel {
+                    id: Set(generate_id()),
+                    fulfillment_id: Set(fulfillment_id),
+                    order_line_item_id: Set(item.order_line_item_id),
+                    quantity: Set(item.quantity),
+                    shipped_quantity: Set(0),
+                    delivered_quantity: Set(0),
+                    metadata: Set(item.metadata),
+                    created_at: Set(now.into()),
+                    updated_at: Set(now.into()),
+                }
+                .insert(&txn)
+                .await?;
+            }
+        }
+
+        txn.commit().await?;
 
         self.get_fulfillment(tenant_id, fulfillment_id).await
     }
@@ -266,7 +289,7 @@ impl FulfillmentService {
         fulfillment_id: Uuid,
     ) -> FulfillmentResult<FulfillmentResponse> {
         let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
-        Ok(map_fulfillment(fulfillment))
+        self.build_fulfillment_response(fulfillment).await
     }
 
     pub async fn find_by_order(
@@ -281,7 +304,10 @@ impl FulfillmentService {
             .one(&self.db)
             .await?;
 
-        Ok(fulfillment.map(map_fulfillment))
+        match fulfillment {
+            Some(fulfillment) => Ok(Some(self.build_fulfillment_response(fulfillment).await?)),
+            None => Ok(None),
+        }
     }
 
     pub async fn list_by_order(
@@ -296,7 +322,11 @@ impl FulfillmentService {
             .all(&self.db)
             .await?;
 
-        Ok(rows.into_iter().map(map_fulfillment).collect())
+        let mut items = Vec::with_capacity(rows.len());
+        for row in rows {
+            items.push(self.build_fulfillment_response(row).await?);
+        }
+        Ok(items)
     }
 
     pub async fn list_fulfillments(
@@ -329,7 +359,12 @@ impl FulfillmentService {
             .all(&self.db)
             .await?;
 
-        Ok((rows.into_iter().map(map_fulfillment).collect(), total))
+        let mut items = Vec::with_capacity(rows.len());
+        for row in rows {
+            items.push(self.build_fulfillment_response(row).await?);
+        }
+
+        Ok((items, total))
     }
 
     pub async fn ship_fulfillment(
@@ -343,23 +378,101 @@ impl FulfillmentService {
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
 
         let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
-        if fulfillment.status != STATUS_PENDING {
+        if !matches!(fulfillment.status.as_str(), STATUS_PENDING | STATUS_SHIPPED) {
             return Err(FulfillmentError::InvalidTransition {
                 from: fulfillment.status,
                 to: STATUS_SHIPPED.to_string(),
             });
         }
+        let items = self.load_fulfillment_items(fulfillment.id).await?;
+        if items.is_empty() {
+            if fulfillment.status != STATUS_PENDING {
+                return Err(FulfillmentError::InvalidTransition {
+                    from: fulfillment.status,
+                    to: STATUS_SHIPPED.to_string(),
+                });
+            }
 
-        let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+            let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+            let now = Utc::now();
+            let carrier = input.carrier.clone();
+            let tracking_number = input.tracking_number.clone();
+            let metadata = active.metadata.clone().take().unwrap_or_default();
+            active.status = Set(STATUS_SHIPPED.to_string());
+            active.carrier = Set(Some(carrier.clone()));
+            active.tracking_number = Set(Some(tracking_number.clone()));
+            active.metadata = Set(append_audit_event(
+                merge_metadata(metadata, input.metadata),
+                build_fulfillment_audit_event(
+                    FulfillmentItemAction::Ship,
+                    now,
+                    &[],
+                    Some(carrier),
+                    Some(tracking_number),
+                    STATUS_SHIPPED,
+                ),
+            ));
+            active.shipped_at = Set(Some(now.into()));
+            active.updated_at = Set(now.into());
+            active.update(&self.db).await?;
+
+            return self.get_fulfillment(tenant_id, fulfillment_id).await;
+        }
+
+        validate_item_quantity_adjustments(input.items.as_deref())?;
         let now = Utc::now();
+        let adjustment_plan =
+            resolve_item_adjustments(&items, input.items.as_deref(), FulfillmentItemAction::Ship)?;
+        let txn = self.db.begin().await?;
+        let mut adjusted_items = Vec::with_capacity(items.len());
+        let adjustment_lookup = adjustment_plan.into_iter().collect::<BTreeMap<Uuid, i32>>();
+        let mut adjusted_entries = Vec::new();
+        for item in items {
+            let adjustment = adjustment_lookup.get(&item.id).copied().unwrap_or_default();
+            let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
+            if adjustment > 0 {
+                let shipped_quantity = item.shipped_quantity + adjustment;
+                active.shipped_quantity = Set(shipped_quantity);
+                active.metadata = Set(append_audit_event(
+                    item.metadata.clone(),
+                    build_item_audit_event(FulfillmentItemAction::Ship, now, adjustment),
+                ));
+                active.updated_at = Set(now.into());
+                adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
+            }
+            let updated = active.update(&txn).await?;
+            adjusted_items.push(updated);
+        }
+
+        let all_items_delivered = adjusted_items
+            .iter()
+            .all(|item| item.delivered_quantity >= item.quantity);
+        let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
         let metadata = active.metadata.clone().take().unwrap_or_default();
-        active.status = Set(STATUS_SHIPPED.to_string());
-        active.carrier = Set(Some(input.carrier));
-        active.tracking_number = Set(Some(input.tracking_number));
-        active.metadata = Set(merge_metadata(metadata, input.metadata));
-        active.shipped_at = Set(Some(now.into()));
+        active.status = Set(if all_items_delivered {
+            STATUS_DELIVERED.to_string()
+        } else {
+            STATUS_SHIPPED.to_string()
+        });
+        active.carrier = Set(Some(input.carrier.clone()));
+        active.tracking_number = Set(Some(input.tracking_number.clone()));
+        active.metadata = Set(append_audit_event(
+            merge_metadata(metadata, input.metadata),
+            build_fulfillment_audit_event(
+                FulfillmentItemAction::Ship,
+                now,
+                &adjusted_entries,
+                Some(input.carrier),
+                Some(input.tracking_number),
+                active.status.clone().take().unwrap_or_default().as_str(),
+            ),
+        ));
+        if active.shipped_at.clone().take().is_none() {
+            active.shipped_at = Set(Some(now.into()));
+        }
         active.updated_at = Set(now.into());
-        active.update(&self.db).await?;
+        active.update(&txn).await?;
+        txn.commit().await?;
 
         self.get_fulfillment(tenant_id, fulfillment_id).await
     }
@@ -377,16 +490,294 @@ impl FulfillmentService {
                 to: STATUS_DELIVERED.to_string(),
             });
         }
+        let items = self.load_fulfillment_items(fulfillment.id).await?;
+        if items.is_empty() {
+            let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+            let now = Utc::now();
+            let metadata = active.metadata.clone().take().unwrap_or_default();
+            active.status = Set(STATUS_DELIVERED.to_string());
+            active.delivered_note = Set(input.delivered_note.clone());
+            active.metadata = Set(append_audit_event(
+                merge_metadata(metadata, input.metadata),
+                build_fulfillment_audit_event(
+                    FulfillmentItemAction::Deliver,
+                    now,
+                    &[],
+                    None,
+                    None,
+                    STATUS_DELIVERED,
+                ),
+            ));
+            active.delivered_at = Set(Some(now.into()));
+            active.updated_at = Set(now.into());
+            active.update(&self.db).await?;
+
+            return self.get_fulfillment(tenant_id, fulfillment_id).await;
+        }
+
+        validate_item_quantity_adjustments(input.items.as_deref())?;
+        let now = Utc::now();
+        let adjustment_plan = resolve_item_adjustments(
+            &items,
+            input.items.as_deref(),
+            FulfillmentItemAction::Deliver,
+        )?;
+        let txn = self.db.begin().await?;
+        let mut adjusted_items = Vec::with_capacity(items.len());
+        let adjustment_lookup = adjustment_plan.into_iter().collect::<BTreeMap<Uuid, i32>>();
+        let mut adjusted_entries = Vec::new();
+        for item in items {
+            let adjustment = adjustment_lookup.get(&item.id).copied().unwrap_or_default();
+            let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
+            if adjustment > 0 {
+                let delivered_quantity = item.delivered_quantity + adjustment;
+                active.delivered_quantity = Set(delivered_quantity);
+                active.metadata = Set(append_audit_event(
+                    item.metadata.clone(),
+                    build_item_audit_event(FulfillmentItemAction::Deliver, now, adjustment),
+                ));
+                active.updated_at = Set(now.into());
+                adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
+            }
+            let updated = active.update(&txn).await?;
+            adjusted_items.push(updated);
+        }
+
+        let all_items_delivered = adjusted_items
+            .iter()
+            .all(|item| item.delivered_quantity >= item.quantity);
+        let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+        let metadata = active.metadata.clone().take().unwrap_or_default();
+        active.status = Set(if all_items_delivered {
+            STATUS_DELIVERED.to_string()
+        } else {
+            STATUS_SHIPPED.to_string()
+        });
+        active.delivered_note = Set(input.delivered_note.clone());
+        active.metadata = Set(append_audit_event(
+            merge_metadata(metadata, input.metadata),
+            build_fulfillment_audit_event(
+                FulfillmentItemAction::Deliver,
+                now,
+                &adjusted_entries,
+                None,
+                None,
+                active.status.clone().take().unwrap_or_default().as_str(),
+            ),
+        ));
+        if all_items_delivered {
+            active.delivered_at = Set(Some(now.into()));
+        }
+        active.updated_at = Set(now.into());
+        active.update(&txn).await?;
+        txn.commit().await?;
+
+        self.get_fulfillment(tenant_id, fulfillment_id).await
+    }
+
+    pub async fn reopen_fulfillment(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: ReopenFulfillmentInput,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
+        let now = Utc::now();
+
+        match fulfillment.status.as_str() {
+            STATUS_CANCELLED => {
+                let items = self.load_fulfillment_items(fulfillment.id).await?;
+                let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+                let metadata = active.metadata.clone().take().unwrap_or_default();
+                let status_after = reopened_status_for_cancelled(&items, &active);
+                active.status = Set(status_after.to_string());
+                active.cancellation_reason = Set(None);
+                active.cancelled_at = Set(None);
+                active.metadata = Set(append_audit_event(
+                    merge_metadata(metadata, input.metadata),
+                    build_fulfillment_audit_event(
+                        FulfillmentItemAction::Reopen,
+                        now,
+                        &[],
+                        None,
+                        None,
+                        status_after,
+                    ),
+                ));
+                active.updated_at = Set(now.into());
+                active.update(&self.db).await?;
+
+                self.get_fulfillment(tenant_id, fulfillment_id).await
+            }
+            STATUS_DELIVERED => {
+                let items = self.load_fulfillment_items(fulfillment.id).await?;
+                if items.is_empty() {
+                    let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+                    let metadata = active.metadata.clone().take().unwrap_or_default();
+                    active.status = Set(STATUS_SHIPPED.to_string());
+                    active.delivered_note = Set(None);
+                    active.delivered_at = Set(None);
+                    active.metadata = Set(append_audit_event(
+                        merge_metadata(metadata, input.metadata),
+                        build_fulfillment_audit_event(
+                            FulfillmentItemAction::Reopen,
+                            now,
+                            &[],
+                            None,
+                            None,
+                            STATUS_SHIPPED,
+                        ),
+                    ));
+                    active.updated_at = Set(now.into());
+                    active.update(&self.db).await?;
+
+                    return self.get_fulfillment(tenant_id, fulfillment_id).await;
+                }
+
+                validate_item_quantity_adjustments(input.items.as_deref())?;
+                let adjustment_plan = resolve_item_adjustments(
+                    &items,
+                    input.items.as_deref(),
+                    FulfillmentItemAction::Reopen,
+                )?;
+                let txn = self.db.begin().await?;
+                let adjustment_lookup =
+                    adjustment_plan.into_iter().collect::<BTreeMap<Uuid, i32>>();
+                let mut adjusted_entries = Vec::new();
+                for item in items {
+                    let adjustment = adjustment_lookup.get(&item.id).copied().unwrap_or_default();
+                    let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
+                    if adjustment > 0 {
+                        active.delivered_quantity = Set(item.delivered_quantity - adjustment);
+                        active.metadata = Set(append_audit_event(
+                            item.metadata.clone(),
+                            build_item_audit_event(FulfillmentItemAction::Reopen, now, adjustment),
+                        ));
+                        active.updated_at = Set(now.into());
+                        adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
+                    }
+                    active.update(&txn).await?;
+                }
+
+                let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+                let metadata = active.metadata.clone().take().unwrap_or_default();
+                active.status = Set(STATUS_SHIPPED.to_string());
+                active.delivered_note = Set(None);
+                active.delivered_at = Set(None);
+                active.metadata = Set(append_audit_event(
+                    merge_metadata(metadata, input.metadata),
+                    build_fulfillment_audit_event(
+                        FulfillmentItemAction::Reopen,
+                        now,
+                        &adjusted_entries,
+                        None,
+                        None,
+                        STATUS_SHIPPED,
+                    ),
+                ));
+                active.updated_at = Set(now.into());
+                active.update(&txn).await?;
+                txn.commit().await?;
+
+                self.get_fulfillment(tenant_id, fulfillment_id).await
+            }
+            status => Err(FulfillmentError::InvalidTransition {
+                from: status.to_string(),
+                to: "reopened".to_string(),
+            }),
+        }
+    }
+
+    pub async fn reship_fulfillment(
+        &self,
+        tenant_id: Uuid,
+        fulfillment_id: Uuid,
+        input: ReshipFulfillmentInput,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        input
+            .validate()
+            .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+
+        let fulfillment = self.load_fulfillment(tenant_id, fulfillment_id).await?;
+        if fulfillment.status != STATUS_DELIVERED {
+            return Err(FulfillmentError::InvalidTransition {
+                from: fulfillment.status,
+                to: STATUS_SHIPPED.to_string(),
+            });
+        }
+
+        let items = self.load_fulfillment_items(fulfillment.id).await?;
+        let now = Utc::now();
+        if items.is_empty() {
+            let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
+            let metadata = active.metadata.clone().take().unwrap_or_default();
+            active.status = Set(STATUS_SHIPPED.to_string());
+            active.carrier = Set(Some(input.carrier.clone()));
+            active.tracking_number = Set(Some(input.tracking_number.clone()));
+            active.delivered_note = Set(None);
+            active.delivered_at = Set(None);
+            active.metadata = Set(append_audit_event(
+                merge_metadata(metadata, input.metadata),
+                build_fulfillment_audit_event(
+                    FulfillmentItemAction::Reship,
+                    now,
+                    &[],
+                    Some(input.carrier),
+                    Some(input.tracking_number),
+                    STATUS_SHIPPED,
+                ),
+            ));
+            active.updated_at = Set(now.into());
+            active.update(&self.db).await?;
+
+            return self.get_fulfillment(tenant_id, fulfillment_id).await;
+        }
+
+        validate_item_quantity_adjustments(input.items.as_deref())?;
+        let adjustment_plan = resolve_item_adjustments(
+            &items,
+            input.items.as_deref(),
+            FulfillmentItemAction::Reship,
+        )?;
+        let txn = self.db.begin().await?;
+        let adjustment_lookup = adjustment_plan.into_iter().collect::<BTreeMap<Uuid, i32>>();
+        let mut adjusted_entries = Vec::new();
+        for item in items {
+            let adjustment = adjustment_lookup.get(&item.id).copied().unwrap_or_default();
+            let mut active: entities::fulfillment_item::ActiveModel = item.clone().into();
+            if adjustment > 0 {
+                active.delivered_quantity = Set(item.delivered_quantity - adjustment);
+                active.metadata = Set(append_audit_event(
+                    item.metadata.clone(),
+                    build_item_audit_event(FulfillmentItemAction::Reship, now, adjustment),
+                ));
+                active.updated_at = Set(now.into());
+                adjusted_entries.push((item.id, item.order_line_item_id, adjustment));
+            }
+            active.update(&txn).await?;
+        }
 
         let mut active: entities::fulfillment::ActiveModel = fulfillment.into();
-        let now = Utc::now();
         let metadata = active.metadata.clone().take().unwrap_or_default();
-        active.status = Set(STATUS_DELIVERED.to_string());
-        active.delivered_note = Set(input.delivered_note);
-        active.metadata = Set(merge_metadata(metadata, input.metadata));
-        active.delivered_at = Set(Some(now.into()));
+        active.status = Set(STATUS_SHIPPED.to_string());
+        active.carrier = Set(Some(input.carrier.clone()));
+        active.tracking_number = Set(Some(input.tracking_number.clone()));
+        active.delivered_note = Set(None);
+        active.delivered_at = Set(None);
+        active.metadata = Set(append_audit_event(
+            merge_metadata(metadata, input.metadata),
+            build_fulfillment_audit_event(
+                FulfillmentItemAction::Reship,
+                now,
+                &adjusted_entries,
+                Some(input.carrier),
+                Some(input.tracking_number),
+                STATUS_SHIPPED,
+            ),
+        ));
         active.updated_at = Set(now.into());
-        active.update(&self.db).await?;
+        active.update(&txn).await?;
+        txn.commit().await?;
 
         self.get_fulfillment(tenant_id, fulfillment_id).await
     }
@@ -410,7 +801,17 @@ impl FulfillmentService {
         let metadata = active.metadata.clone().take().unwrap_or_default();
         active.status = Set(STATUS_CANCELLED.to_string());
         active.cancellation_reason = Set(input.reason);
-        active.metadata = Set(merge_metadata(metadata, input.metadata));
+        active.metadata = Set(append_audit_event(
+            merge_metadata(metadata, input.metadata),
+            build_fulfillment_audit_event(
+                FulfillmentItemAction::Cancel,
+                now,
+                &[],
+                None,
+                None,
+                STATUS_CANCELLED,
+            ),
+        ));
         active.cancelled_at = Set(Some(now.into()));
         active.updated_at = Set(now.into());
         active.update(&self.db).await?;
@@ -428,6 +829,31 @@ impl FulfillmentService {
             .one(&self.db)
             .await?
             .ok_or(FulfillmentError::FulfillmentNotFound(fulfillment_id))
+    }
+
+    async fn build_fulfillment_response(
+        &self,
+        fulfillment: entities::fulfillment::Model,
+    ) -> FulfillmentResult<FulfillmentResponse> {
+        let items = entities::fulfillment_item::Entity::find()
+            .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment.id))
+            .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+
+        Ok(map_fulfillment(fulfillment, items))
+    }
+
+    async fn load_fulfillment_items(
+        &self,
+        fulfillment_id: Uuid,
+    ) -> FulfillmentResult<Vec<entities::fulfillment_item::Model>> {
+        entities::fulfillment_item::Entity::find()
+            .filter(entities::fulfillment_item::Column::FulfillmentId.eq(fulfillment_id))
+            .order_by_asc(entities::fulfillment_item::Column::CreatedAt)
+            .all(&self.db)
+            .await
+            .map_err(Into::into)
     }
 
     async fn set_shipping_option_active(
@@ -542,6 +968,223 @@ fn apply_allowed_shipping_profiles_to_metadata(
     Value::Object(metadata_object)
 }
 
+fn validate_fulfillment_items(
+    items: Option<&[crate::dto::CreateFulfillmentItemInput]>,
+) -> FulfillmentResult<()> {
+    let Some(items) = items else {
+        return Ok(());
+    };
+
+    let mut seen_line_items = BTreeSet::new();
+    for item in items {
+        item.validate()
+            .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        if !seen_line_items.insert(item.order_line_item_id) {
+            return Err(FulfillmentError::Validation(format!(
+                "duplicate fulfillment item for order_line_item_id {}",
+                item.order_line_item_id
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_item_quantity_adjustments(
+    items: Option<&[FulfillmentItemQuantityInput]>,
+) -> FulfillmentResult<()> {
+    let Some(items) = items else {
+        return Ok(());
+    };
+
+    let mut seen_items = BTreeSet::new();
+    for item in items {
+        item.validate()
+            .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
+        if !seen_items.insert(item.fulfillment_item_id) {
+            return Err(FulfillmentError::Validation(format!(
+                "duplicate fulfillment item adjustment for item {}",
+                item.fulfillment_item_id
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum FulfillmentItemAction {
+    Ship,
+    Deliver,
+    Reopen,
+    Reship,
+    Cancel,
+}
+
+fn resolve_item_adjustments(
+    items: &[entities::fulfillment_item::Model],
+    requested: Option<&[FulfillmentItemQuantityInput]>,
+    action: FulfillmentItemAction,
+) -> FulfillmentResult<Vec<(Uuid, i32)>> {
+    let planned = if let Some(requested) = requested {
+        requested
+            .iter()
+            .map(|item| (item.fulfillment_item_id, item.quantity))
+            .collect::<Vec<_>>()
+    } else {
+        items
+            .iter()
+            .filter_map(|item| {
+                let quantity = match action {
+                    FulfillmentItemAction::Ship => item.quantity - item.shipped_quantity,
+                    FulfillmentItemAction::Deliver => {
+                        item.shipped_quantity - item.delivered_quantity
+                    }
+                    FulfillmentItemAction::Reopen | FulfillmentItemAction::Reship => {
+                        item.delivered_quantity
+                    }
+                    FulfillmentItemAction::Cancel => 0,
+                };
+                (quantity > 0).then_some((item.id, quantity))
+            })
+            .collect::<Vec<_>>()
+    };
+
+    if planned.is_empty() {
+        return Err(FulfillmentError::Validation(match action {
+            FulfillmentItemAction::Ship => {
+                "fulfillment has no remaining item quantity to ship".to_string()
+            }
+            FulfillmentItemAction::Deliver => {
+                "fulfillment has no remaining shipped item quantity to deliver".to_string()
+            }
+            FulfillmentItemAction::Reopen => {
+                "fulfillment has no delivered item quantity to reopen".to_string()
+            }
+            FulfillmentItemAction::Reship => {
+                "fulfillment has no delivered item quantity to reship".to_string()
+            }
+            FulfillmentItemAction::Cancel => {
+                "fulfillment has no cancellable item quantity".to_string()
+            }
+        }));
+    }
+
+    let items_by_id = items
+        .iter()
+        .map(|item| (item.id, item))
+        .collect::<BTreeMap<_, _>>();
+    for (item_id, quantity) in &planned {
+        let item = items_by_id.get(item_id).ok_or_else(|| {
+            FulfillmentError::Validation(format!(
+                "fulfillment item {item_id} does not belong to this fulfillment"
+            ))
+        })?;
+        let remaining_quantity = match action {
+            FulfillmentItemAction::Ship => item.quantity - item.shipped_quantity,
+            FulfillmentItemAction::Deliver => item.shipped_quantity - item.delivered_quantity,
+            FulfillmentItemAction::Reopen | FulfillmentItemAction::Reship => {
+                item.delivered_quantity
+            }
+            FulfillmentItemAction::Cancel => 0,
+        };
+        if *quantity > remaining_quantity {
+            return Err(FulfillmentError::Validation(format!(
+                "{} quantity {} exceeds remaining quantity {} for fulfillment item {}",
+                action.as_str(),
+                quantity,
+                remaining_quantity,
+                item_id
+            )));
+        }
+    }
+
+    Ok(planned)
+}
+
+fn build_item_audit_event(
+    action: FulfillmentItemAction,
+    at: chrono::DateTime<Utc>,
+    quantity: i32,
+) -> Value {
+    serde_json::json!({
+        "type": action.as_str(),
+        "at": at.to_rfc3339(),
+        "quantity": quantity,
+    })
+}
+
+fn build_fulfillment_audit_event(
+    action: FulfillmentItemAction,
+    at: chrono::DateTime<Utc>,
+    items: &[(Uuid, Uuid, i32)],
+    carrier: Option<String>,
+    tracking_number: Option<String>,
+    status_after: &str,
+) -> Value {
+    serde_json::json!({
+        "type": action.as_str(),
+        "at": at.to_rfc3339(),
+        "status_after": status_after,
+        "carrier": carrier,
+        "tracking_number": tracking_number,
+        "items": items
+            .iter()
+            .map(|(fulfillment_item_id, order_line_item_id, quantity)| {
+                serde_json::json!({
+                    "fulfillment_item_id": fulfillment_item_id,
+                    "order_line_item_id": order_line_item_id,
+                    "quantity": quantity,
+                })
+            })
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn append_audit_event(metadata: Value, event: Value) -> Value {
+    let mut metadata_object = match metadata {
+        Value::Object(object) => object,
+        _ => Map::new(),
+    };
+    let mut audit = match metadata_object.remove("audit") {
+        Some(Value::Object(object)) => object,
+        _ => Map::new(),
+    };
+    let mut events = match audit.remove("events") {
+        Some(Value::Array(items)) => items,
+        _ => Vec::new(),
+    };
+    events.push(event);
+    audit.insert("events".to_string(), Value::Array(events));
+    metadata_object.insert("audit".to_string(), Value::Object(audit));
+    Value::Object(metadata_object)
+}
+
+impl FulfillmentItemAction {
+    fn as_str(self) -> &'static str {
+        match self {
+            FulfillmentItemAction::Ship => "ship",
+            FulfillmentItemAction::Deliver => "deliver",
+            FulfillmentItemAction::Reopen => "reopen",
+            FulfillmentItemAction::Reship => "reship",
+            FulfillmentItemAction::Cancel => "cancel",
+        }
+    }
+}
+
+fn reopened_status_for_cancelled(
+    items: &[entities::fulfillment_item::Model],
+    fulfillment: &entities::fulfillment::ActiveModel,
+) -> &'static str {
+    if items.iter().any(|item| item.shipped_quantity > 0) {
+        STATUS_SHIPPED
+    } else if fulfillment.shipped_at.clone().take().is_some() {
+        STATUS_SHIPPED
+    } else {
+        STATUS_PENDING
+    }
+}
+
 fn map_shipping_option(option: entities::shipping_option::Model) -> ShippingOptionResponse {
     ShippingOptionResponse {
         id: option.id,
@@ -558,7 +1201,10 @@ fn map_shipping_option(option: entities::shipping_option::Model) -> ShippingOpti
     }
 }
 
-fn map_fulfillment(fulfillment: entities::fulfillment::Model) -> FulfillmentResponse {
+fn map_fulfillment(
+    fulfillment: entities::fulfillment::Model,
+    items: Vec<entities::fulfillment_item::Model>,
+) -> FulfillmentResponse {
     FulfillmentResponse {
         id: fulfillment.id,
         tenant_id: fulfillment.tenant_id,
@@ -570,6 +1216,7 @@ fn map_fulfillment(fulfillment: entities::fulfillment::Model) -> FulfillmentResp
         tracking_number: fulfillment.tracking_number,
         delivered_note: fulfillment.delivered_note,
         cancellation_reason: fulfillment.cancellation_reason,
+        items: items.into_iter().map(map_fulfillment_item).collect(),
         metadata: fulfillment.metadata,
         created_at: fulfillment.created_at.with_timezone(&Utc),
         updated_at: fulfillment.updated_at.with_timezone(&Utc),
@@ -582,5 +1229,19 @@ fn map_fulfillment(fulfillment: entities::fulfillment::Model) -> FulfillmentResp
         cancelled_at: fulfillment
             .cancelled_at
             .map(|value| value.with_timezone(&Utc)),
+    }
+}
+
+fn map_fulfillment_item(item: entities::fulfillment_item::Model) -> FulfillmentItemResponse {
+    FulfillmentItemResponse {
+        id: item.id,
+        fulfillment_id: item.fulfillment_id,
+        order_line_item_id: item.order_line_item_id,
+        quantity: item.quantity,
+        shipped_quantity: item.shipped_quantity,
+        delivered_quantity: item.delivered_quantity,
+        metadata: item.metadata,
+        created_at: item.created_at.with_timezone(&Utc),
+        updated_at: item.updated_at.with_timezone(&Utc),
     }
 }

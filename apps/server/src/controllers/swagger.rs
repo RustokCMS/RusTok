@@ -101,6 +101,8 @@ use utoipa::OpenApi;
         crate::controllers::commerce::admin::show_fulfillment,
         crate::controllers::commerce::admin::ship_fulfillment,
         crate::controllers::commerce::admin::deliver_fulfillment,
+        crate::controllers::commerce::admin::reopen_fulfillment,
+        crate::controllers::commerce::admin::reship_fulfillment,
         crate::controllers::commerce::admin::cancel_fulfillment,
         // Health
         crate::controllers::health::health,

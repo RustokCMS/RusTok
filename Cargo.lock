@@ -9867,6 +9867,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-cart-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
+ "rustok-api",
+ "rustok-cart",
+ "rustok-customer",
+ "sea-orm",
+ "serde",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-channel"
 version = "0.1.0"
 dependencies = [
@@ -10017,8 +10033,15 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-graphql",
  "leptos_axum",
+ "loco-rs",
  "rustok-api",
+ "rustok-cart",
+ "rustok-commerce",
+ "rustok-customer",
+ "sea-orm",
  "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -10922,6 +10945,7 @@ dependencies = [
  "loco-rs",
  "rustok-api",
  "rustok-blog-storefront",
+ "rustok-cart-storefront",
  "rustok-commerce-storefront",
  "rustok-content",
  "rustok-forum-storefront",
@@ -14827,6 +14851,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "regex",
  "reqwest 0.13.2",
  "semver",
  "serde",

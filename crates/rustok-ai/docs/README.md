@@ -64,8 +64,8 @@
 
 ### UI-пакеты
 
-- Leptos admin UI package: `crates/rustok-ai/admin`;
-- Next.js admin UI package: `apps/next-admin/packages/rustok-ai`;
+- крупный Leptos operator/admin UI package: `crates/rustok-ai/admin`;
+- крупный Next.js operator/admin UI package: `apps/next-admin/packages/rustok-ai`;
 - оба UI уже поддерживают provider registry с редактируемыми `capabilities` и `usage_policy`;
 - оба UI показывают execution metadata (`execution_mode`, `execution_path`) для session/run inspection;
 - оба UI поддерживают direct job surfaces для `alloy_code`, `image_asset`, `product_copy` и `blog_draft`;
@@ -95,7 +95,7 @@
 - direct first-party execution registry;
 - chat/session/approval contracts;
 - server-side management service;
-- capability-owned admin UI packages.
+- capability-owned large operator/admin UI packages.
 
 ### Что остаётся в `rustok-mcp`
 

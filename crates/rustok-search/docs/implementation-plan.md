@@ -15,6 +15,8 @@
 - PostgreSQL FTS и `pg_trgm` служат baseline engine contract;
 - Leptos и Next admin surfaces уже подключены, storefront path существует на том же backend contract;
 - rebuild, diagnostics, analytics и settings editor уже составляют рабочий операторский baseline.
+- operator-plane contract теперь дополнительно удерживается через `xtask`: public exports, README markers и `docs/observability-runbook.md` не должны деградировать при дальнейших рефакторингах.
+- boundary `index != search` дополнительно удерживается contract-проверкой в `xtask`, чтобы search surface не откатывался к index-owned runtime types.
 
 ## Этапы
 

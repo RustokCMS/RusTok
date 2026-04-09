@@ -1007,6 +1007,7 @@ async fn load_product_list_items(
                 handle: translation
                     .map(|value| value.handle.clone())
                     .unwrap_or_default(),
+                seller_id: product.seller_id,
                 vendor: product.vendor,
                 product_type: product.product_type,
                 shipping_profile_slug: Some(product_shipping_profile_slug(

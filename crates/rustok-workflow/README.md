@@ -21,6 +21,8 @@
   `alloy_script` step type, without declaring Alloy as a runtime module dependency.
 - Exposes its own GraphQL and REST adapters; `apps/server` now acts only as a composition root
   and re-export shim for workflow transport entry points.
+- Keeps webhook ingress as a module-owned transport surface via `controllers::webhook_routes`,
+  while `WorkflowCronScheduler` remains a separate background runtime path.
 - Declares permissions via `rustok-core::Permission`.
 - REST and GraphQL adapters enforce permissions from `AuthContext.permissions` before invoking
   workflow services.

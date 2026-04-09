@@ -57,6 +57,7 @@ async fn create_test_product(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid
             weight: Some(Decimal::from_str("1.5").unwrap()),
             weight_unit: Some("kg".to_string()),
         }],
+        seller_id: None,
         vendor: Some("Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
         shipping_profile_slug: None,

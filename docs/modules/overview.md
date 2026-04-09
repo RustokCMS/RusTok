@@ -77,6 +77,7 @@ Central docs в `docs/modules/` описывают карту платформы
 | `taxonomy` | `rustok-taxonomy` | `content` |
 | `media` | `rustok-media` | — |
 | `workflow` | `rustok-workflow` | — |
+| `alloy` | `alloy` | — |
 
 ## Что лежит рядом с модулями
 
@@ -97,8 +98,8 @@ Central docs в `docs/modules/` описывают карту платформы
 - `rustok-iggy-connector`
 - `rustok-telemetry`
 - `rustok-mcp`
-- `rustok-ai`
-- `alloy`
+- `rustok-ai` with large operator/admin UI surfaces in `crates/rustok-ai/admin` and
+  `apps/next-admin/packages/rustok-ai`
 - `flex`
 
 Именно поэтому нельзя автоматически отождествлять «любой crate в `crates/`» с
@@ -120,15 +121,21 @@ Central docs в `docs/modules/` описывают карту платформы
 
 ## Alloy и capability crates
 
-`alloy`, `rustok-ai`, `rustok-mcp` и `flex` не входят в taxonomy `Core/Optional`
+`rustok-ai`, `rustok-mcp` и `flex` не входят в taxonomy `Core/Optional`
 как обычные платформенные модули.
 
 Это означает:
 
 - они могут быть частью runtime-composition;
 - они могут иметь собственные docs, UI и capability-поверхность;
+- `rustok-ai` при этом остаётся capability crate, но уже публикует крупные
+  operator/admin UI-поверхности и для Leptos host, и для Next.js host;
 - но их роль описывается как support/capability-слой, а не как tenant-toggled
   module category.
+
+`alloy` здесь отдельный случай: он остаётся capability-oriented по смыслу, но
+при этом объявлен в `modules.toml` и участвует в `ModuleRegistry` как обычный
+optional модуль.
 
 ## Связанные документы
 

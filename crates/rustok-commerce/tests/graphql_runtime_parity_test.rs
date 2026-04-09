@@ -5,7 +5,8 @@ use rustok_commerce::dto::{
     AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateCustomerInput,
     CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
     CreatePaymentCollectionInput, CreateProductInput, CreateShippingOptionInput,
-    CreateVariantInput, PriceInput, ProductTranslationInput,
+    CreateVariantInput, DeliverFulfillmentInput, PriceInput, ProductTranslationInput,
+    ShipFulfillmentInput,
 };
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::{
@@ -105,6 +106,7 @@ fn create_product_input() -> CreateProductInput {
             weight: None,
             weight_unit: None,
         }],
+        seller_id: None,
         vendor: Some("Parity Vendor".to_string()),
         product_type: Some("physical".to_string()),
         shipping_profile_slug: None,
@@ -501,6 +503,171 @@ fn admin_order_parity_query(
               orderId
               trackingNumber
             }}
+          }}
+        }}
+        "#
+    )
+}
+
+fn admin_create_fulfillment_mutation(
+    tenant_id: Uuid,
+    order_id: Uuid,
+    order_line_item_id: Uuid,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          createFulfillment(
+            tenantId: "{tenant_id}",
+            input: {{
+              orderId: "{order_id}"
+              shippingOptionId: null
+              customerId: null
+              carrier: null
+              trackingNumber: null
+              items: [{{
+                orderLineItemId: "{order_line_item_id}"
+                quantity: 2
+                metadata: "{{\"source\":\"graphql-manual-fulfillment\"}}"
+              }}]
+              metadata: "{{\"source\":\"graphql-manual-fulfillment\"}}"
+            }}
+          ) {{
+            id
+            orderId
+            customerId
+            status
+            items {{
+              orderLineItemId
+              quantity
+            }}
+            metadata
+          }}
+        }}
+        "#
+    )
+}
+
+fn admin_partial_fulfillment_progress_mutation(
+    tenant_id: Uuid,
+    fulfillment_id: Uuid,
+    fulfillment_item_id: Uuid,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          shipFulfillment(
+            tenantId: "{tenant_id}",
+            id: "{fulfillment_id}",
+            input: {{
+              carrier: "manual"
+              trackingNumber: "GRAPHQL-PARTIAL"
+              items: [{{
+                fulfillmentItemId: "{fulfillment_item_id}"
+                quantity: 2
+              }}]
+              metadata: "{{\"source\":\"graphql-partial-ship\"}}"
+            }}
+          ) {{
+            status
+            items {{
+              id
+              quantity
+              shippedQuantity
+              deliveredQuantity
+            }}
+          }}
+          deliverFulfillment(
+            tenantId: "{tenant_id}",
+            id: "{fulfillment_id}",
+            input: {{
+              deliveredNote: "partial"
+              items: [{{
+                fulfillmentItemId: "{fulfillment_item_id}"
+                quantity: 1
+              }}]
+              metadata: "{{\"source\":\"graphql-partial-deliver\"}}"
+            }}
+          ) {{
+            status
+            items {{
+              id
+              quantity
+              shippedQuantity
+              deliveredQuantity
+            }}
+            metadata
+          }}
+        }}
+        "#
+    )
+}
+
+fn admin_reopen_fulfillment_mutation(
+    tenant_id: Uuid,
+    fulfillment_id: Uuid,
+    fulfillment_item_id: Uuid,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          reopenFulfillment(
+            tenantId: "{tenant_id}",
+            id: "{fulfillment_id}",
+            input: {{
+              items: [{{
+                fulfillmentItemId: "{fulfillment_item_id}"
+                quantity: 1
+              }}]
+              metadata: "{{\"source\":\"graphql-reopen\"}}"
+            }}
+          ) {{
+            status
+            deliveredNote
+            items {{
+              id
+              quantity
+              shippedQuantity
+              deliveredQuantity
+            }}
+            metadata
+          }}
+        }}
+        "#
+    )
+}
+
+fn admin_reship_fulfillment_mutation(
+    tenant_id: Uuid,
+    fulfillment_id: Uuid,
+    fulfillment_item_id: Uuid,
+) -> String {
+    format!(
+        r#"
+        mutation {{
+          reshipFulfillment(
+            tenantId: "{tenant_id}",
+            id: "{fulfillment_id}",
+            input: {{
+              carrier: "manual"
+              trackingNumber: "GRAPHQL-RESHIP"
+              items: [{{
+                fulfillmentItemId: "{fulfillment_item_id}"
+                quantity: 2
+              }}]
+              metadata: "{{\"source\":\"graphql-reship\"}}"
+            }}
+          ) {{
+            status
+            trackingNumber
+            deliveredNote
+            items {{
+              id
+              quantity
+              shippedQuantity
+              deliveredQuantity
+            }}
+            metadata
           }}
         }}
         "#
@@ -2265,6 +2432,7 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
                     shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
                     sku: Some("GRAPHQL-ADMIN-ORDER-1".to_string()),
                     title: "GraphQL Admin Order".to_string(),
                     quantity: 1,
@@ -2303,6 +2471,7 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
                 customer_id: Some(customer_id),
                 carrier: None,
                 tracking_number: None,
+                items: None,
                 metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
             },
         )
@@ -2420,6 +2589,457 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
 }
 
 #[tokio::test]
+async fn admin_graphql_create_fulfillment_supports_typed_manual_post_order_items() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: Some("merchant-alpha-id".to_string()),
+                    sku: Some("GRAPHQL-MANUAL-FULFILLMENT-1".to_string()),
+                    title: "GraphQL Manual Fulfillment Order".to_string(),
+                    quantity: 3,
+                    unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                    metadata: serde_json::json!({
+                        "source": "graphql-manual-fulfillment",
+                        "seller": {
+                            "scope": "merchant-alpha",
+                            "label": "Merchant Alpha"
+                        }
+                    }),
+                }],
+                metadata: serde_json::json!({ "source": "graphql-manual-fulfillment" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_fulfillment_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(admin_create_fulfillment_mutation(
+            tenant_id,
+            order.id,
+            order.line_items[0].id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin GraphQL create fulfillment errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let fulfillment_metadata: Value = serde_json::from_str(
+        json["createFulfillment"]["metadata"]
+            .as_str()
+            .expect("fulfillment metadata should be JSON string"),
+    )
+    .expect("fulfillment metadata should parse");
+
+    assert_eq!(
+        json["createFulfillment"]["orderId"],
+        Value::from(order.id.to_string())
+    );
+    assert_eq!(
+        json["createFulfillment"]["customerId"],
+        Value::from(customer_id.to_string())
+    );
+    assert_eq!(json["createFulfillment"]["status"], Value::from("pending"));
+    assert_eq!(
+        json["createFulfillment"]["items"][0]["orderLineItemId"],
+        Value::from(order.line_items[0].id.to_string())
+    );
+    assert_eq!(
+        json["createFulfillment"]["items"][0]["quantity"],
+        Value::from(2)
+    );
+    assert_eq!(
+        fulfillment_metadata["delivery_group"]["seller_id"],
+        Value::from("merchant-alpha-id")
+    );
+    assert_eq!(
+        fulfillment_metadata["delivery_group"]["seller_scope"],
+        Value::from("merchant-alpha")
+    );
+    assert!(fulfillment_metadata["delivery_group"]
+        .get("seller_label")
+        .is_none());
+    assert_eq!(
+        fulfillment_metadata["post_order"]["manual"],
+        Value::from(true)
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_ship_and_deliver_support_partial_item_progress() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-PARTIAL-FULFILLMENT-1".to_string()),
+                    title: "GraphQL Partial Fulfillment Order".to_string(),
+                    quantity: 3,
+                    unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-partial-fulfillment" }),
+                }],
+                metadata: serde_json::json!({ "source": "graphql-partial-fulfillment" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+    let fulfillment = FulfillmentService::new(db.clone())
+        .create_fulfillment(
+            tenant_id,
+            CreateFulfillmentInput {
+                order_id: order.id,
+                shipping_option_id: None,
+                customer_id: Some(customer_id),
+                carrier: None,
+                tracking_number: None,
+                items: Some(vec![rustok_commerce::dto::CreateFulfillmentItemInput {
+                    order_line_item_id: order.line_items[0].id,
+                    quantity: 3,
+                    metadata: serde_json::json!({ "source": "graphql-partial-fulfillment" }),
+                }]),
+                metadata: serde_json::json!({ "source": "graphql-partial-fulfillment" }),
+            },
+        )
+        .await
+        .expect("fulfillment should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_fulfillment_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(admin_partial_fulfillment_progress_mutation(
+            tenant_id,
+            fulfillment.id,
+            fulfillment.items[0].id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin GraphQL partial fulfillment errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let deliver_metadata: Value = serde_json::from_str(
+        json["deliverFulfillment"]["metadata"]
+            .as_str()
+            .expect("deliver metadata should be JSON string"),
+    )
+    .expect("deliver metadata should parse");
+
+    assert_eq!(json["shipFulfillment"]["status"], Value::from("shipped"));
+    assert_eq!(
+        json["shipFulfillment"]["items"][0]["shippedQuantity"],
+        Value::from(2)
+    );
+    assert_eq!(json["deliverFulfillment"]["status"], Value::from("shipped"));
+    assert_eq!(
+        json["deliverFulfillment"]["items"][0]["deliveredQuantity"],
+        Value::from(1)
+    );
+    assert_eq!(
+        deliver_metadata["audit"]["events"][1]["type"],
+        Value::from("deliver")
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-REOPEN-FULFILLMENT-1".to_string()),
+                    title: "GraphQL Reopen Fulfillment Order".to_string(),
+                    quantity: 3,
+                    unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-reopen-fulfillment" }),
+                }],
+                metadata: serde_json::json!({ "source": "graphql-reopen-fulfillment" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+    let fulfillment = FulfillmentService::new(db.clone())
+        .create_fulfillment(
+            tenant_id,
+            CreateFulfillmentInput {
+                order_id: order.id,
+                shipping_option_id: None,
+                customer_id: Some(customer_id),
+                carrier: None,
+                tracking_number: None,
+                items: Some(vec![rustok_commerce::dto::CreateFulfillmentItemInput {
+                    order_line_item_id: order.line_items[0].id,
+                    quantity: 3,
+                    metadata: serde_json::json!({ "source": "graphql-reopen-fulfillment" }),
+                }]),
+                metadata: serde_json::json!({ "source": "graphql-reopen-fulfillment" }),
+            },
+        )
+        .await
+        .expect("fulfillment should be created");
+    FulfillmentService::new(db.clone())
+        .ship_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            ShipFulfillmentInput {
+                carrier: "manual".to_string(),
+                tracking_number: "GRAPHQL-REOPEN".to_string(),
+                items: Some(vec![rustok_commerce::dto::FulfillmentItemQuantityInput {
+                    fulfillment_item_id: fulfillment.items[0].id,
+                    quantity: 3,
+                }]),
+                metadata: serde_json::json!({ "source": "graphql-reopen-ship" }),
+            },
+        )
+        .await
+        .expect("fulfillment should ship");
+    FulfillmentService::new(db.clone())
+        .deliver_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            DeliverFulfillmentInput {
+                delivered_note: Some("done".to_string()),
+                items: Some(vec![rustok_commerce::dto::FulfillmentItemQuantityInput {
+                    fulfillment_item_id: fulfillment.items[0].id,
+                    quantity: 3,
+                }]),
+                metadata: serde_json::json!({ "source": "graphql-reopen-deliver" }),
+            },
+        )
+        .await
+        .expect("fulfillment should deliver");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_fulfillment_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(admin_reopen_fulfillment_mutation(
+            tenant_id,
+            fulfillment.id,
+            fulfillment.items[0].id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin GraphQL reopen fulfillment errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let reopen_metadata: Value = serde_json::from_str(
+        json["reopenFulfillment"]["metadata"]
+            .as_str()
+            .expect("reopen metadata should be JSON string"),
+    )
+    .expect("reopen metadata should parse");
+
+    assert_eq!(json["reopenFulfillment"]["status"], Value::from("shipped"));
+    assert_eq!(
+        json["reopenFulfillment"]["items"][0]["deliveredQuantity"],
+        Value::from(2)
+    );
+    assert_eq!(json["reopenFulfillment"]["deliveredNote"], Value::Null);
+    assert_eq!(
+        reopen_metadata["audit"]["events"][2]["type"],
+        Value::from("reopen")
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let customer_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(customer_id),
+                currency_code: "eur".to_string(),
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("GRAPHQL-RESHIP-FULFILLMENT-1".to_string()),
+                    title: "GraphQL Reship Fulfillment Order".to_string(),
+                    quantity: 2,
+                    unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-reship-fulfillment" }),
+                }],
+                metadata: serde_json::json!({ "source": "graphql-reship-fulfillment" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+    let fulfillment = FulfillmentService::new(db.clone())
+        .create_fulfillment(
+            tenant_id,
+            CreateFulfillmentInput {
+                order_id: order.id,
+                shipping_option_id: None,
+                customer_id: Some(customer_id),
+                carrier: None,
+                tracking_number: None,
+                items: Some(vec![rustok_commerce::dto::CreateFulfillmentItemInput {
+                    order_line_item_id: order.line_items[0].id,
+                    quantity: 2,
+                    metadata: serde_json::json!({ "source": "graphql-reship-fulfillment" }),
+                }]),
+                metadata: serde_json::json!({ "source": "graphql-reship-fulfillment" }),
+            },
+        )
+        .await
+        .expect("fulfillment should be created");
+    FulfillmentService::new(db.clone())
+        .ship_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            ShipFulfillmentInput {
+                carrier: "manual".to_string(),
+                tracking_number: "GRAPHQL-RESHIP-OLD".to_string(),
+                items: Some(vec![rustok_commerce::dto::FulfillmentItemQuantityInput {
+                    fulfillment_item_id: fulfillment.items[0].id,
+                    quantity: 2,
+                }]),
+                metadata: serde_json::json!({ "source": "graphql-reship-ship" }),
+            },
+        )
+        .await
+        .expect("fulfillment should ship");
+    FulfillmentService::new(db.clone())
+        .deliver_fulfillment(
+            tenant_id,
+            fulfillment.id,
+            DeliverFulfillmentInput {
+                delivered_note: Some("done".to_string()),
+                items: Some(vec![rustok_commerce::dto::FulfillmentItemQuantityInput {
+                    fulfillment_item_id: fulfillment.items[0].id,
+                    quantity: 2,
+                }]),
+                metadata: serde_json::json!({ "source": "graphql-reship-deliver" }),
+            },
+        )
+        .await
+        .expect("fulfillment should deliver");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_fulfillment_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(admin_reship_fulfillment_mutation(
+            tenant_id,
+            fulfillment.id,
+            fulfillment.items[0].id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin GraphQL reship fulfillment errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let reship_metadata: Value = serde_json::from_str(
+        json["reshipFulfillment"]["metadata"]
+            .as_str()
+            .expect("reship metadata should be JSON string"),
+    )
+    .expect("reship metadata should parse");
+
+    assert_eq!(json["reshipFulfillment"]["status"], Value::from("shipped"));
+    assert_eq!(
+        json["reshipFulfillment"]["trackingNumber"],
+        Value::from("GRAPHQL-RESHIP")
+    );
+    assert_eq!(
+        json["reshipFulfillment"]["items"][0]["deliveredQuantity"],
+        Value::from(0)
+    );
+    assert_eq!(json["reshipFulfillment"]["deliveredNote"], Value::Null);
+    assert_eq!(
+        reship_metadata["audit"]["events"][2]["type"],
+        Value::from("reship")
+    );
+}
+
+#[tokio::test]
 async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read_path() {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
@@ -2454,6 +3074,7 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
                     shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
                     sku: Some("STOREFRONT-ORDER-1".to_string()),
                     title: "Storefront Order".to_string(),
                     quantity: 2,
@@ -2564,6 +3185,7 @@ async fn storefront_graphql_order_query_rejects_foreign_customer_access() {
                     product_id: Some(Uuid::new_v4()),
                     variant_id: Some(Uuid::new_v4()),
                     shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
                     sku: Some("FOREIGN-ORDER-1".to_string()),
                     title: "Foreign Guard".to_string(),
                     quantity: 1,

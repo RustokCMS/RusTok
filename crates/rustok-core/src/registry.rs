@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::events::EventHandler;
 use crate::migrations::ModuleMigration;
-use crate::module::{EventListener, ModuleKind, RusToKModule};
+use crate::module::{
+    ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind, RusToKModule,
+};
 
 /// Registry of all platform modules.
 ///
@@ -84,14 +87,122 @@ impl ModuleRegistry {
             .collect()
     }
 
-    pub fn event_listeners(&self) -> Vec<Box<dyn EventListener>> {
-        self.list()
-            .into_iter()
-            .flat_map(|module| module.event_listeners())
-            .collect()
+    pub fn build_event_listeners(
+        &self,
+        ctx: &ModuleEventListenerContext<'_>,
+    ) -> Vec<Arc<dyn EventHandler>> {
+        let mut registry = ModuleEventListenerRegistry::new();
+        for module in self.list() {
+            module.register_event_listeners(&mut registry, ctx);
+        }
+        registry.into_handlers()
     }
 
     pub fn contains(&self, slug: &str) -> bool {
         self.core_modules.contains_key(slug) || self.optional_modules.contains_key(slug)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ModuleRegistry;
+    use crate::events::{DomainEvent, EventEnvelope, EventHandler, HandlerResult};
+    use crate::module::{
+        MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
+        ModuleRuntimeExtensions, RusToKModule,
+    };
+    use async_trait::async_trait;
+    use sea_orm::{Database, DatabaseConnection};
+    use sea_orm_migration::MigrationTrait;
+    use std::sync::Arc;
+
+    #[derive(Clone)]
+    struct TestRuntimeValue(&'static str);
+
+    struct TestHandler {
+        name: &'static str,
+    }
+
+    #[async_trait]
+    impl EventHandler for TestHandler {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+
+        fn handles(&self, _event: &DomainEvent) -> bool {
+            true
+        }
+
+        async fn handle(&self, _envelope: &EventEnvelope) -> HandlerResult {
+            Ok(())
+        }
+    }
+
+    struct DemoModule {
+        slug: &'static str,
+    }
+
+    impl MigrationSource for DemoModule {
+        fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+            Vec::new()
+        }
+    }
+
+    #[async_trait]
+    impl RusToKModule for DemoModule {
+        fn slug(&self) -> &'static str {
+            self.slug
+        }
+
+        fn name(&self) -> &'static str {
+            self.slug
+        }
+
+        fn description(&self) -> &'static str {
+            "demo module"
+        }
+
+        fn version(&self) -> &'static str {
+            "0.1.0"
+        }
+
+        fn register_event_listeners(
+            &self,
+            registry: &mut ModuleEventListenerRegistry,
+            ctx: &ModuleEventListenerContext<'_>,
+        ) {
+            let runtime = ctx
+                .extensions
+                .get::<TestRuntimeValue>()
+                .expect("runtime value should be present");
+            registry.register_boxed(Arc::new(TestHandler { name: runtime.0 }));
+        }
+    }
+
+    #[tokio::test]
+    async fn build_event_listeners_collects_handlers_from_registered_modules() {
+        let registry = ModuleRegistry::new()
+            .register(DemoModule { slug: "one" })
+            .register(DemoModule { slug: "two" });
+        let db = in_memory_db().await;
+        let mut extensions = ModuleRuntimeExtensions::default();
+        extensions.insert(TestRuntimeValue("demo_handler"));
+        let ctx = ModuleEventListenerContext {
+            db,
+            extensions: &extensions,
+        };
+
+        let handlers = registry.build_event_listeners(&ctx);
+
+        assert_eq!(handlers.len(), 2);
+        assert!(handlers
+            .iter()
+            .all(|handler| handler.name() == "demo_handler"));
+    }
+
+    async fn in_memory_db() -> DatabaseConnection {
+        Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite should connect")
     }
 }

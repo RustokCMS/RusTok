@@ -59,6 +59,7 @@ fn create_test_product_input(tags: &[&str]) -> CreateProductInput {
             weight: None,
             weight_unit: None,
         }],
+        seller_id: None,
         vendor: Some("Acme".to_string()),
         product_type: Some("Physical".to_string()),
         shipping_profile_slug: None,
@@ -198,6 +199,7 @@ async fn update_product_tags_resyncs_product_tag_relations_without_metadata_mirr
             product.id,
             UpdateProductInput {
                 translations: None,
+                seller_id: None,
                 vendor: None,
                 product_type: None,
                 shipping_profile_slug: None,
@@ -275,6 +277,7 @@ async fn update_product_tags_only_preserves_existing_non_tag_metadata() {
             product.id,
             UpdateProductInput {
                 translations: None,
+                seller_id: None,
                 vendor: None,
                 product_type: None,
                 shipping_profile_slug: None,

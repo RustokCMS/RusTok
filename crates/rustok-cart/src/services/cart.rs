@@ -4,6 +4,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
     TransactionTrait,
 };
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use tracing::instrument;
 use uuid::Uuid;
@@ -23,6 +24,18 @@ const STATUS_CHECKING_OUT: &str = "checking_out";
 const STATUS_COMPLETED: &str = "completed";
 const STATUS_ABANDONED: &str = "abandoned";
 const DEFAULT_SHIPPING_PROFILE_SLUG: &str = "default";
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct DeliveryGroupKey {
+    shipping_profile_slug: String,
+    seller_id: Option<String>,
+    seller_scope: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct DeliveryGroupSnapshot {
+    key: DeliveryGroupKey,
+}
 
 pub struct CartService {
     db: DatabaseConnection,
@@ -128,6 +141,7 @@ impl CartService {
         let cart = self.load_cart_in_tx(&txn, tenant_id, cart_id).await?;
         ensure_active(&cart.status, "add_line_item")?;
         let now = Utc::now();
+        let metadata = sanitize_line_item_metadata(input.metadata);
 
         entities::cart_line_item::ActiveModel {
             id: Set(generate_id()),
@@ -143,7 +157,7 @@ impl CartService {
             unit_price: Set(input.unit_price),
             total_price: Set(input.unit_price * Decimal::from(input.quantity)),
             currency_code: Set(cart.currency_code.clone()),
-            metadata: Set(input.metadata),
+            metadata: Set(metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -411,15 +425,9 @@ impl CartService {
             .filter(entities::cart_shipping_selection::Column::CartId.eq(cart.id))
             .all(&self.db)
             .await?;
-        let selection_map = shipping_selections
-            .into_iter()
-            .map(|selection| {
-                (
-                    selection.shipping_profile_slug,
-                    selection.selected_shipping_option_id,
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
+        let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
+        let selection_map =
+            selection_map_from_records(&delivery_group_snapshots, shipping_selections.into_iter());
         let delivery_groups = build_delivery_groups(&line_items, &selection_map);
         let selected_shipping_option_id = if delivery_groups.len() == 1 {
             delivery_groups[0].selected_shipping_option_id
@@ -447,21 +455,27 @@ impl CartService {
             completed_at: cart.completed_at.map(|value| value.with_timezone(&Utc)),
             line_items: line_items
                 .into_iter()
-                .map(|item| CartLineItemResponse {
-                    id: item.id,
-                    cart_id: item.cart_id,
-                    product_id: item.product_id,
-                    variant_id: item.variant_id,
-                    shipping_profile_slug: item.shipping_profile_slug,
-                    sku: item.sku,
-                    title: item.title,
-                    quantity: item.quantity,
-                    unit_price: item.unit_price,
-                    total_price: item.total_price,
-                    currency_code: item.currency_code,
-                    metadata: item.metadata,
-                    created_at: item.created_at.with_timezone(&Utc),
-                    updated_at: item.updated_at.with_timezone(&Utc),
+                .map(|item| {
+                    let seller_id = seller_id_from_metadata(&item.metadata);
+                    let seller_scope = seller_scope_from_metadata(&item.metadata);
+                    CartLineItemResponse {
+                        id: item.id,
+                        cart_id: item.cart_id,
+                        product_id: item.product_id,
+                        variant_id: item.variant_id,
+                        shipping_profile_slug: item.shipping_profile_slug,
+                        seller_id,
+                        seller_scope,
+                        sku: item.sku,
+                        title: item.title,
+                        quantity: item.quantity,
+                        unit_price: item.unit_price,
+                        total_price: item.total_price,
+                        currency_code: item.currency_code,
+                        metadata: item.metadata,
+                        created_at: item.created_at.with_timezone(&Utc),
+                        updated_at: item.updated_at.with_timezone(&Utc),
+                    }
                 })
                 .collect(),
             delivery_groups,
@@ -481,35 +495,35 @@ impl CartService {
             .filter(entities::cart_line_item::Column::CartId.eq(cart.id))
             .all(conn)
             .await?;
-        let available_profiles = collect_shipping_profiles(&line_items);
+        let available_group_snapshots = collect_delivery_group_snapshots(&line_items);
         let existing = entities::cart_shipping_selection::Entity::find()
             .filter(entities::cart_shipping_selection::Column::CartId.eq(cart.id))
             .all(conn)
             .await?;
-        let mut desired = existing
-            .into_iter()
-            .filter_map(|selection| {
-                available_profiles
-                    .contains(selection.shipping_profile_slug.as_str())
-                    .then_some((
-                        selection.shipping_profile_slug,
-                        selection.selected_shipping_option_id,
-                    ))
-            })
-            .collect::<BTreeMap<_, _>>();
+        let mut desired =
+            selection_map_from_records(&available_group_snapshots, existing.into_iter());
 
         if let Some(shipping_selections) = &input.shipping_selections {
             desired.clear();
             for selection in shipping_selections {
                 let normalized =
                     normalize_shipping_profile_slug(Some(selection.shipping_profile_slug.as_str()));
-                if available_profiles.contains(normalized.as_str()) {
-                    desired.insert(normalized, selection.selected_shipping_option_id);
+                let normalized_seller_id = normalize_seller_id(selection.seller_id.as_deref());
+                let normalized_seller_scope =
+                    normalize_seller_scope(selection.seller_scope.as_deref());
+                let matching_keys = matching_delivery_group_keys(
+                    &available_group_snapshots,
+                    normalized.as_str(),
+                    normalized_seller_id.as_deref(),
+                    normalized_seller_scope.as_deref(),
+                );
+                for key in matching_keys {
+                    desired.insert(key, selection.selected_shipping_option_id);
                 }
             }
-        } else if available_profiles.len() <= 1 {
-            if let Some(profile_slug) = available_profiles.iter().next() {
-                desired.insert(profile_slug.clone(), input.selected_shipping_option_id);
+        } else if available_group_snapshots.len() <= 1 {
+            if let Some(group) = available_group_snapshots.iter().next() {
+                desired.insert(group.key.clone(), input.selected_shipping_option_id);
             } else {
                 desired.clear();
             }
@@ -531,7 +545,7 @@ impl CartService {
         &self,
         conn: &C,
         cart_id: Uuid,
-        desired: BTreeMap<String, Option<Uuid>>,
+        desired: BTreeMap<DeliveryGroupKey, Option<Uuid>>,
     ) -> CartResult<()>
     where
         C: sea_orm::ConnectionTrait,
@@ -542,12 +556,21 @@ impl CartService {
             .await?;
         let existing_map = existing
             .into_iter()
-            .map(|selection| (selection.shipping_profile_slug.clone(), selection))
+            .map(|selection| {
+                (
+                    DeliveryGroupKey {
+                        shipping_profile_slug: selection.shipping_profile_slug.clone(),
+                        seller_id: normalize_seller_id(selection.seller_id.as_deref()),
+                        seller_scope: normalize_seller_scope(selection.seller_scope.as_deref()),
+                    },
+                    selection,
+                )
+            })
             .collect::<BTreeMap<_, _>>();
         let now = Utc::now();
 
-        for (shipping_profile_slug, selected_shipping_option_id) in &desired {
-            if let Some(current) = existing_map.get(shipping_profile_slug) {
+        for (group_key, selected_shipping_option_id) in &desired {
+            if let Some(current) = existing_map.get(group_key) {
                 let mut active: entities::cart_shipping_selection::ActiveModel =
                     current.clone().into();
                 active.selected_shipping_option_id = Set(*selected_shipping_option_id);
@@ -557,7 +580,9 @@ impl CartService {
                 entities::cart_shipping_selection::ActiveModel {
                     id: Set(generate_id()),
                     cart_id: Set(cart_id),
-                    shipping_profile_slug: Set(shipping_profile_slug.clone()),
+                    shipping_profile_slug: Set(group_key.shipping_profile_slug.clone()),
+                    seller_id: Set(group_key.seller_id.clone()),
+                    seller_scope: Set(group_key.seller_scope.clone()),
                     selected_shipping_option_id: Set(*selected_shipping_option_id),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),
@@ -567,8 +592,8 @@ impl CartService {
             }
         }
 
-        for (shipping_profile_slug, current) in existing_map {
-            if !desired.contains_key(&shipping_profile_slug) {
+        for (group_key, current) in existing_map {
+            if !desired.contains_key(&group_key) {
                 let active: entities::cart_shipping_selection::ActiveModel = current.into();
                 active.delete(conn).await?;
             }
@@ -590,39 +615,33 @@ impl CartService {
             .order_by_asc(entities::cart_line_item::Column::CreatedAt)
             .all(conn)
             .await?;
-        let profiles = collect_shipping_profiles(&line_items);
+        let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
         let mut desired = entities::cart_shipping_selection::Entity::find()
             .filter(entities::cart_shipping_selection::Column::CartId.eq(cart_id))
             .all(conn)
-            .await?
-            .into_iter()
-            .filter_map(|selection| {
-                profiles
-                    .contains(selection.shipping_profile_slug.as_str())
-                    .then_some((
-                        selection.shipping_profile_slug,
-                        selection.selected_shipping_option_id,
-                    ))
-            })
-            .collect::<BTreeMap<_, _>>();
+            .await
+            .map(|records| {
+                selection_map_from_records(&delivery_group_snapshots, records.into_iter())
+            })?;
 
-        if profiles.len() == 1
+        if delivery_group_snapshots.len() == 1
             && desired.is_empty()
             && cart.selected_shipping_option_id.is_some()
             && !line_items.is_empty()
         {
-            let profile_slug = profiles.iter().next().cloned().unwrap_or_default();
-            desired.insert(profile_slug, cart.selected_shipping_option_id);
+            if let Some(group) = delivery_group_snapshots.iter().next() {
+                desired.insert(group.key.clone(), cart.selected_shipping_option_id);
+            }
         }
 
         self.store_shipping_selections(conn, cart_id, desired.clone())
             .await?;
 
-        let legacy_selected_shipping_option_id = if profiles.len() == 1 {
-            profiles
+        let legacy_selected_shipping_option_id = if delivery_group_snapshots.len() == 1 {
+            delivery_group_snapshots
                 .iter()
                 .next()
-                .and_then(|profile_slug| desired.get(profile_slug).copied().flatten())
+                .and_then(|group| desired.get(&group.key).copied().flatten())
         } else {
             None
         };
@@ -675,39 +694,201 @@ fn normalize_shipping_profile_slug(value: Option<&str>) -> String {
         .unwrap_or_else(|| DEFAULT_SHIPPING_PROFILE_SLUG.to_string())
 }
 
-fn collect_shipping_profiles(line_items: &[entities::cart_line_item::Model]) -> BTreeSet<String> {
+fn normalize_seller_scope(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+fn normalize_seller_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_owned())
+}
+
+fn seller_id_from_metadata(metadata: &Value) -> Option<String> {
+    metadata
+        .get("seller")
+        .and_then(|seller| seller.get("id"))
+        .and_then(Value::as_str)
+        .and_then(|value| normalize_seller_id(Some(value)))
+        .or_else(|| {
+            metadata
+                .get("seller_id")
+                .and_then(Value::as_str)
+                .and_then(|value| normalize_seller_id(Some(value)))
+        })
+}
+
+fn seller_scope_from_metadata(metadata: &Value) -> Option<String> {
+    metadata
+        .get("seller")
+        .and_then(|seller| seller.get("scope"))
+        .and_then(Value::as_str)
+        .and_then(|value| normalize_seller_scope(Some(value)))
+        .or_else(|| {
+            metadata
+                .get("seller_scope")
+                .and_then(Value::as_str)
+                .and_then(|value| normalize_seller_scope(Some(value)))
+        })
+}
+
+fn delivery_group_snapshot_for_line_item(
+    item: &entities::cart_line_item::Model,
+) -> DeliveryGroupSnapshot {
+    DeliveryGroupSnapshot {
+        key: DeliveryGroupKey {
+            shipping_profile_slug: normalize_shipping_profile_slug(Some(
+                item.shipping_profile_slug.as_str(),
+            )),
+            seller_id: seller_id_from_metadata(&item.metadata),
+            seller_scope: seller_scope_from_metadata(&item.metadata),
+        },
+    }
+}
+
+fn collect_delivery_group_snapshots(
+    line_items: &[entities::cart_line_item::Model],
+) -> BTreeSet<DeliveryGroupSnapshot> {
     line_items
         .iter()
-        .map(|item| normalize_shipping_profile_slug(Some(item.shipping_profile_slug.as_str())))
+        .map(delivery_group_snapshot_for_line_item)
         .collect()
+}
+
+impl PartialEq for DeliveryGroupSnapshot {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+    }
+}
+
+impl Eq for DeliveryGroupSnapshot {}
+
+impl PartialOrd for DeliveryGroupSnapshot {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DeliveryGroupSnapshot {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key.cmp(&other.key)
+    }
+}
+
+fn matching_delivery_group_keys(
+    available_groups: &BTreeSet<DeliveryGroupSnapshot>,
+    shipping_profile_slug: &str,
+    seller_id: Option<&str>,
+    seller_scope: Option<&str>,
+) -> Vec<DeliveryGroupKey> {
+    available_groups
+        .iter()
+        .filter(|group| {
+            if group.key.shipping_profile_slug != shipping_profile_slug {
+                return false;
+            }
+
+            if let Some(seller_id) = seller_id {
+                return group.key.seller_id.as_deref() == Some(seller_id);
+            }
+
+            match seller_scope {
+                Some(seller_scope) => {
+                    group.key.seller_id.is_none()
+                        && group.key.seller_scope.as_deref() == Some(seller_scope)
+                }
+                None => group.key.seller_id.is_none(),
+            }
+        })
+        .map(|group| group.key.clone())
+        .collect()
+}
+
+fn selection_map_from_records<I>(
+    available_groups: &BTreeSet<DeliveryGroupSnapshot>,
+    records: I,
+) -> BTreeMap<DeliveryGroupKey, Option<Uuid>>
+where
+    I: IntoIterator<Item = entities::cart_shipping_selection::Model>,
+{
+    let mut desired = BTreeMap::new();
+    let mut legacy_records = Vec::new();
+
+    for record in records {
+        let seller_id = normalize_seller_id(record.seller_id.as_deref());
+        let seller_scope = normalize_seller_scope(record.seller_scope.as_deref());
+        if seller_id.is_some() || seller_scope.is_some() {
+            for key in matching_delivery_group_keys(
+                available_groups,
+                record.shipping_profile_slug.as_str(),
+                seller_id.as_deref(),
+                seller_scope.as_deref(),
+            ) {
+                desired.insert(key, record.selected_shipping_option_id);
+            }
+        } else {
+            legacy_records.push(record);
+        }
+    }
+
+    for record in legacy_records {
+        for key in matching_delivery_group_keys(
+            available_groups,
+            record.shipping_profile_slug.as_str(),
+            None,
+            None,
+        ) {
+            desired
+                .entry(key)
+                .or_insert(record.selected_shipping_option_id);
+        }
+    }
+
+    desired
 }
 
 fn build_delivery_groups(
     line_items: &[entities::cart_line_item::Model],
-    selection_map: &BTreeMap<String, Option<Uuid>>,
+    selection_map: &BTreeMap<DeliveryGroupKey, Option<Uuid>>,
 ) -> Vec<CartDeliveryGroupResponse> {
-    let mut groups = BTreeMap::<String, Vec<Uuid>>::new();
+    let mut groups = BTreeMap::<DeliveryGroupKey, Vec<Uuid>>::new();
     for item in line_items {
+        let snapshot = delivery_group_snapshot_for_line_item(item);
         groups
-            .entry(normalize_shipping_profile_slug(Some(
-                item.shipping_profile_slug.as_str(),
-            )))
-            .or_default()
-            .push(item.id);
+            .entry(snapshot.key)
+            .and_modify(|line_item_ids| line_item_ids.push(item.id))
+            .or_insert_with(|| vec![item.id]);
     }
 
     groups
         .into_iter()
-        .map(
-            |(shipping_profile_slug, line_item_ids)| CartDeliveryGroupResponse {
-                selected_shipping_option_id: selection_map
-                    .get(&shipping_profile_slug)
-                    .copied()
-                    .flatten(),
-                shipping_profile_slug,
-                line_item_ids,
-                available_shipping_options: Vec::new(),
-            },
-        )
+        .map(|(group_key, line_item_ids)| CartDeliveryGroupResponse {
+            selected_shipping_option_id: selection_map.get(&group_key).copied().flatten(),
+            shipping_profile_slug: group_key.shipping_profile_slug,
+            seller_id: group_key.seller_id,
+            seller_scope: group_key.seller_scope,
+            line_item_ids,
+            available_shipping_options: Vec::new(),
+        })
         .collect()
+}
+
+fn sanitize_line_item_metadata(metadata: Value) -> Value {
+    let mut metadata = match metadata {
+        Value::Object(object) => object,
+        value => return value,
+    };
+
+    metadata.remove("seller_label");
+
+    if let Some(Value::Object(mut seller)) = metadata.remove("seller") {
+        seller.remove("label");
+        metadata.insert("seller".to_string(), Value::Object(seller));
+    }
+
+    Value::Object(metadata)
 }

@@ -568,6 +568,7 @@ impl DirectTaskHandler for ProductCopyHandler {
                 product.id,
                 UpdateProductInput {
                     translations: Some(translations),
+                    seller_id: None,
                     vendor: None,
                     product_type: None,
                     shipping_profile_slug: None,

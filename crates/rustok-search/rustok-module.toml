@@ -2,9 +2,10 @@
 slug = "search"
 name = "Search"
 version = "0.1.0"
-description = "Core search module with Postgres-first engine selection and connector-ready contracts"
+description = "Postgres-first search capability with settings-driven engine selection."
 ownership = "first_party"
 trust_level = "core"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 showcase_admin_surfaces = ["next-admin"]
 

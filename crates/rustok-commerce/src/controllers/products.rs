@@ -146,6 +146,7 @@ pub async fn list_products(
                 handle: translation
                     .map(|value| value.handle.clone())
                     .unwrap_or_default(),
+                seller_id: product.seller_id,
                 vendor: product.vendor,
                 product_type: product.product_type,
                 shipping_profile_slug: Some(product_shipping_profile_slug(
@@ -284,6 +285,7 @@ pub struct ProductListItem {
     pub status: String,
     pub title: String,
     pub handle: String,
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
     pub shipping_profile_slug: Option<String>,

@@ -2,10 +2,9 @@
 slug = "cache"
 name = "Cache"
 version = "0.1.0"
-description = "Core cache backend module for Redis lifecycle, fallback, and cache health"
+description = "Centralised cache backend factory — Redis lifecycle, fallback, health checks."
 ownership = "first_party"
 trust_level = "core"
 ui_classification = "capability_only"
-
 [crate]
 entry_type = "CacheModule"

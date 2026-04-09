@@ -2,9 +2,10 @@
 slug = "forum"
 name = "Forum"
 version = "0.1.0"
-description = "Forum discussions module"
+description = "Forum categories, topics, replies, and moderation workflows"
 ownership = "first_party"
 trust_level = "verified"
+ui_classification = "dual_surface"
 recommended_admin_surfaces = ["leptos-admin"]
 
 [marketplace]

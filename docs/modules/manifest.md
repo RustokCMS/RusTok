@@ -25,6 +25,8 @@
 Локальный manifest path-модуля фиксирует:
 
 - `module.slug`, `module.name`, `module.version`, `module.description`;
+- `module.ui_classification`;
+- `[crate].entry_type` для runtime-модуля;
 - runtime-точки входа модуля;
 - admin/storefront UI wiring;
 - module-owned schema настроек;
@@ -32,6 +34,52 @@
 - зависимости и конфликты, относящиеся к самому модулю.
 
 Для path-модулей из `modules.toml` наличие `rustok-module.toml` обязательно.
+
+### `module.ui_classification`
+
+`module.ui_classification` обязателен для каждого path-модуля и должен совпадать с фактическим UI wiring.
+
+Поддерживаемые значения:
+
+- `dual_surface`
+- `admin_only`
+- `storefront_only`
+- `no_ui`
+- `capability_only`
+- `future_ui`
+
+Практическое правило для текущего platform scope:
+
+- модуль с `[provides.admin_ui]` и `[provides.storefront_ui]` должен иметь `dual_surface`;
+- модуль только с `[provides.admin_ui]` должен иметь `admin_only`;
+- модуль только с `[provides.storefront_ui]` должен иметь `storefront_only`;
+- модуль без UI может использовать `no_ui`, `capability_only` или `future_ui`, но не должен одновременно объявлять UI sub-crates.
+
+### `[crate].entry_type`
+
+Если crate реализует `RusToKModule`, `rustok-module.toml` обязан содержать `[crate].entry_type`, совпадающий с реальным runtime entry type из `src/lib.rs`.
+
+Практическое правило:
+
+- `pub struct BlogModule;` + `impl RusToKModule for BlogModule` требуют `entry_type = "BlogModule"`;
+- capability crate без `RusToKModule` может не объявлять `entry_type`.
+
+### Синхронизация runtime metadata
+
+Если crate реализует `RusToKModule`, значения `module.slug`, `module.name` и `module.description`
+в `rustok-module.toml` должны совпадать с `slug()`, `name()` и `description()` в `src/lib.rs`.
+
+### `provides.graphql` и `provides.http`
+
+Если `rustok-module.toml` объявляет:
+
+- `[provides.graphql].query`
+- `[provides.graphql].mutation`
+- `[provides.http].routes`
+- `[provides.http].webhook_routes`
+
+то соответствующие type/function symbols должны реально существовать внутри `src/**/*.rs`
+модуля. Manifest не должен ссылаться на декоративные или уже удалённые transport surfaces.
 
 ## Обязательный минимум для path-модуля
 
@@ -88,11 +136,36 @@
 - `rustok-module.toml` существует по ожидаемому пути;
 - `module.slug` совпадает со slug из `modules.toml`;
 - `module.version` в `rustok-module.toml` совпадает с версией из `Cargo.toml`;
+- `module.ui_classification` существует, использует поддерживаемое значение и согласован с реальными UI surfaces;
+- если crate реализует `RusToKModule`, `[crate].entry_type` существует и совпадает с runtime entry type;
+- если crate реализует `RusToKModule`, `module.slug`, `module.name` и `module.description` совпадают с runtime metadata в `src/lib.rs`;
+- если модуль помечен как `required = true` в `modules.toml`, runtime-тип явно возвращает `ModuleKind::Core`; optional-модуль не объявляет `ModuleKind::Core`;
+- если crate реализует `RusToKModule`, его `permissions()` не содержит дублей, использует только существующие `Permission::*` constants или валидные пары `Resource::*/Action::*` из `rustok-core`, и покрывает минимальный runtime RBAC surface там, где этот минимум уже зафиксирован platform contract-ами;
+- для модулей, у которых event-driven behavior уже переведён в module-owned runtime path (`index`, `search`, `workflow`), `src/lib.rs` публикует listeners через `register_event_listeners(...)`, а не откатывается к скрытому host-owned wiring;
+- для `workflow` webhook ingress остаётся module-owned surface: модуль держит `controllers::webhook_routes()`, а `apps/server` только реэкспортирует его через shim; cron path не смешивается с webhook/event listener wiring;
+- boundary `index != search` остаётся жёстким runtime contract: `index` публикует indexing/read-model substrate и module-owned listeners, а `search` публикует `SearchEngineKind`, `PgSearchEngine`, `SearchIngestionHandler`, `search_documents` и search UX/diagnostics surfaces, не смешивая эти слои в одном модуле;
+- `search` удерживает operator-plane contract как часть module surface: `SearchDiagnosticsService`, `SearchAnalyticsService`, `SearchSettingsService`, `SearchDictionaryService`, documented control-plane markers в `README.md` и локальный `docs/observability-runbook.md` не считаются опциональным шумом и не должны теряться при рефакторинге;
+- если объявлены `[provides.graphql]` или `[provides.http]`, соответствующие symbols реально существуют в коде модуля;
+- если для модуля существует server shim в `apps/server/src/controllers/<slug>/`, то он экспортирует `pub routes()` и/или `pub webhook_routes()` для всех объявленных HTTP surfaces;
 - `package.license` резолвится через `Cargo.toml` или workspace inheritance;
 - `module.description` достаточно полон для publish readiness;
+- `depends_on` из `modules.toml`, `[dependencies]` в `rustok-module.toml` и `RusToKModule::dependencies()` не расходятся;
+- optional-модуль имеет feature `mod-<slug>` в `apps/server/Cargo.toml`, этот feature резолвится в реальный `ModuleRegistry` entry, а его `mod-*` зависимости совпадают с `depends_on` из `modules.toml`;
+- `required = true` модуль регистрируется напрямую в `apps/server/src/modules/mod.rs`, а optional-модуль не попадает туда в обход feature/codegen wiring;
+- `settings.default_enabled` перечисляет только optional-модули; required/core-модули туда не включаются и считаются всегда активными;
+- `settings.default_enabled` образует dependency-closed optional graph: если optional-модуль включён по умолчанию, его optional-зависимости тоже присутствуют в `default_enabled`;
+- каждый slug из `settings.default_enabled` присутствует в default feature-set сервера как `mod-<slug>`;
 - root `README.md`, `docs/README.md` и `docs/implementation-plan.md` присутствуют и соответствуют минимальному формату;
 - wiring для `admin/` и `storefront/` согласован с `[provides.admin_ui]` и `[provides.storefront_ui]`;
 - если UI sub-crate объявлен в manifest, его `Cargo.toml` реально существует и версия совпадает с версией основного модуля.
+- `[provides.admin_ui]` требует не только `leptos_crate`, но и непустые `route_segment`, `nav_label` и `[provides.admin_ui.i18n]` с `default_locale`, `supported_locales`, `leptos_locales_path`.
+- `[provides.storefront_ui]` требует не только `leptos_crate`, но и непустые `slot`, `route_segment`, `page_title` и `[provides.storefront_ui.i18n]` с `default_locale`, `supported_locales`, `leptos_locales_path`.
+- если UI sub-crate объявлен в manifest, соответствующий host (`apps/admin` или `apps/storefront`) реально подключает его как dependency и прокидывает обязательные host feature links (`/hydrate`, `/ssr`) там, где sub-crate их экспортирует.
+- host dependency на UI sub-crate указывает на канонический путь модуля (`crates/<module>/admin` или `crates/<module>/storefront`), а не на произвольный совместимый crate с тем же именем.
+- если модуль публикует `admin_ui` или `storefront_ui`, host-композиция включает UI-поверхности его прямых модульных зависимостей для того же surface, когда эти зависимости тоже публикуют такой UI.
+- `apps/admin` и `apps/storefront` не содержат orphaned first-party UI dependencies: path-зависимость на `crates/*/admin` или `crates/*/storefront` допустима только если соответствующий `rustok-module.toml` действительно объявляет этот crate как `admin_ui` или `storefront_ui`.
+- `apps/admin` и `apps/storefront` не содержат orphaned host feature entries: `hydrate`/`ssr` не ссылаются на `crate/feature` для first-party module UI crate, если этот crate больше не объявлен в module manifest или уже не подключён как dependency host-а.
+- central navigation не отстаёт от manifest-wiring: `docs/modules/_index.md` содержит docs/plan links модуля, а `docs/modules/UI_PACKAGES_INDEX.md` перечисляет объявленные admin/storefront UI-поверхности.
 
 Если slug отсутствует в `modules.toml`, `xtask` возвращает `Unknown module slug`.
 
@@ -104,6 +177,7 @@
 - `default_enabled` ссылается только на реально объявленные модули;
 - `depends_on` не содержит отсутствующих slug;
 - `source`-спецификация валидна для каждого модуля;
+- `apps/server` держит module-owned event runtime path: общий `module_event_dispatcher`, без legacy `index/search` dispatchers и без ручного wiring `WorkflowTriggerHandler` в host runtime;
 - все path-модули действительно содержат `rustok-module.toml`.
 
 Этот шаг не заменяет `cargo xtask module validate <slug>`, а дополняет его.
@@ -130,8 +204,8 @@ slug = "blog"
 name = "Blog"
 version = "0.1.0"
 description = "Blog module with admin and storefront surfaces."
-ownership = "platform"
-trust_level = "first-party"
+ownership = "first_party"
+trust_level = "verified"
 
 [crate]
 entry_type = "BlogModule"

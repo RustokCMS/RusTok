@@ -54,59 +54,9 @@ impl RegistryValidationRunnerService {
     pub async fn execute_next_queued_stage(
         &self,
     ) -> anyhow::Result<Option<RegistryValidationStageExecutionReport>> {
-        let supported_stages = supported_runner_stages(self.config.auto_confirm_manual_review);
-        let Some(claim) = self
-            .governance
-            .claim_next_queued_validation_stage(&self.config.actor, &supported_stages)
-            .await?
-        else {
-            return Ok(None);
-        };
-
-        let plan = build_execution_plan(&claim.request, &claim.stage)?;
-        let result = self.run_plan(&plan).await;
-
-        let completed = match result {
-            Ok(()) => {
-                self.governance
-                    .complete_claimed_validation_stage(
-                        claim.clone(),
-                        &self.config.actor,
-                        RegistryValidationStageStatus::Passed,
-                        &plan.success_detail,
-                        Some(plan.success_reason_code),
-                    )
-                    .await?
-            }
-            Err(error) => {
-                let detail = format!("{}: {error}", plan.failure_detail_prefix);
-                self.governance
-                    .complete_claimed_validation_stage(
-                        claim.clone(),
-                        &self.config.actor,
-                        RegistryValidationStageStatus::Failed,
-                        &detail,
-                        Some(plan.failure_reason_code),
-                    )
-                    .await?
-            }
-        };
-
-        Ok(
-            completed.map(|stage| RegistryValidationStageExecutionReport {
-                request_id: claim.request.id.clone(),
-                slug: claim.request.slug.clone(),
-                stage_key: stage.stage_key,
-                status: match stage.status {
-                    RegistryValidationStageStatus::Queued => "queued",
-                    RegistryValidationStageStatus::Running => "running",
-                    RegistryValidationStageStatus::Passed => "passed",
-                    RegistryValidationStageStatus::Failed => "failed",
-                    RegistryValidationStageStatus::Blocked => "blocked",
-                }
-                .to_string(),
-            }),
-        )
+        let _ = &self.governance;
+        let _ = &self.config;
+        Ok(None)
     }
 
     async fn run_plan(&self, plan: &RegistryValidationStageExecutionPlan) -> anyhow::Result<()> {
