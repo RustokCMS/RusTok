@@ -261,6 +261,7 @@ async fn fulfillment_service_supports_shipping_and_delivery_on_migrated_schema()
                 customer_id: Some(Uuid::new_v4()),
                 carrier: None,
                 tracking_number: None,
+                items: None,
                 metadata: serde_json::json!({ "source": "migration-smoke" }),
             },
         )
@@ -275,6 +276,7 @@ async fn fulfillment_service_supports_shipping_and_delivery_on_migrated_schema()
             ShipFulfillmentInput {
                 carrier: "dhl".to_string(),
                 tracking_number: "trk_987".to_string(),
+                items: None,
                 metadata: serde_json::json!({ "step": "shipped" }),
             },
         )
@@ -288,6 +290,7 @@ async fn fulfillment_service_supports_shipping_and_delivery_on_migrated_schema()
             created.id,
             DeliverFulfillmentInput {
                 delivered_note: Some("front-desk".to_string()),
+                items: None,
                 metadata: serde_json::json!({ "step": "delivered" }),
             },
         )
@@ -492,6 +495,7 @@ fn create_product_input() -> CreateProductInput {
             weight: Some(Decimal::from_str("1.5").expect("valid decimal")),
             weight_unit: Some("kg".to_string()),
         }],
+        seller_id: None,
         vendor: Some("Migration Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
         shipping_profile_slug: None,
@@ -551,6 +555,7 @@ fn create_order_input() -> CreateOrderInput {
                 product_id: Some(Uuid::new_v4()),
                 variant_id: Some(Uuid::new_v4()),
                 shipping_profile_slug: "default".to_string(),
+                seller_id: None,
                 sku: Some(format!("ORD-SKU-{}", Uuid::new_v4())),
                 title: "Migration order product".to_string(),
                 quantity: 2,
@@ -561,6 +566,7 @@ fn create_order_input() -> CreateOrderInput {
                 product_id: None,
                 variant_id: None,
                 shipping_profile_slug: "default".to_string(),
+                seller_id: None,
                 sku: Some(format!("ORD-ADDON-{}", Uuid::new_v4())),
                 title: "Migration add-on".to_string(),
                 quantity: 1,
