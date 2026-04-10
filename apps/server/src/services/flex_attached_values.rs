@@ -3,8 +3,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use flex::{
-    persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
-    resolve_attached_payload,
+    delete_attached_localized_values, persist_localized_values, prepare_attached_values_create,
+    prepare_attached_values_update, resolve_attached_payload,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 
@@ -87,6 +87,18 @@ impl FlexAttachedValuesService {
         C: ConnectionTrait,
     {
         persist_localized_values(db, tenant_id, entity_type, entity_id, locale, values).await
+    }
+
+    pub async fn delete_localized_values<C>(
+        db: &C,
+        tenant_id: Uuid,
+        entity_type: &str,
+        entity_id: Uuid,
+    ) -> Result<u64, FlexError>
+    where
+        C: ConnectionTrait,
+    {
+        delete_attached_localized_values(db, tenant_id, entity_type, entity_id).await
     }
 }
 

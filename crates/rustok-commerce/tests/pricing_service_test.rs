@@ -9,8 +9,16 @@ use rustok_commerce::dto::{
 use rustok_commerce::entities;
 use rustok_commerce::services::{CatalogService, PriceAdjustmentKind, PricingService};
 use rustok_commerce::CommerceError;
-use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
+use rustok_test_utils::{
+    db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus, MockEventTransport,
+};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    Set,
+};
+use std::sync::Arc;
 use uuid::Uuid;
 
 mod support;
@@ -22,6 +30,21 @@ async fn setup() -> (DatabaseConnection, PricingService, CatalogService) {
     let pricing_service = PricingService::new(db.clone(), event_bus.clone());
     let catalog_service = CatalogService::new(db.clone(), event_bus);
     (db, pricing_service, catalog_service)
+}
+
+async fn setup_with_transport() -> (
+    DatabaseConnection,
+    PricingService,
+    CatalogService,
+    Arc<MockEventTransport>,
+) {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let transport = Arc::new(MockEventTransport::new());
+    let event_bus = TransactionalEventBus::new(transport.clone());
+    let pricing_service = PricingService::new(db.clone(), event_bus.clone());
+    let catalog_service = CatalogService::new(db.clone(), event_bus);
+    (db, pricing_service, catalog_service, transport)
 }
 
 async fn create_test_product(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid, Uuid) {
@@ -211,6 +234,128 @@ async fn test_set_price_with_compare_at() {
 }
 
 #[tokio::test]
+async fn test_set_price_persists_decimal_and_legacy_cents() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_price(
+            tenant_id,
+            actor_id,
+            variant_id,
+            "USD",
+            dec!(79.994),
+            Some(dec!(99.996)),
+        )
+        .await
+        .unwrap();
+
+    let price = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::CurrencyCode.eq("USD"))
+        .filter(entities::price::Column::PriceListId.is_null())
+        .filter(entities::price::Column::ChannelId.is_null())
+        .filter(entities::price::Column::MinQuantity.is_null())
+        .filter(entities::price::Column::MaxQuantity.is_null())
+        .one(&_db)
+        .await
+        .unwrap()
+        .expect("base row should exist");
+
+    assert_eq!(price.amount, dec!(79.994));
+    assert_eq!(price.compare_at_amount, Some(dec!(99.996)));
+    assert_eq!(price.legacy_amount, Some(7999));
+    assert_eq!(price.legacy_compare_at_amount, Some(10000));
+}
+
+#[tokio::test]
+async fn test_set_price_clears_compare_at_and_legacy_compare_at_on_existing_row() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_price(
+            tenant_id,
+            actor_id,
+            variant_id,
+            "USD",
+            dec!(79.99),
+            Some(dec!(99.99)),
+        )
+        .await
+        .unwrap();
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(89.99), None)
+        .await
+        .unwrap();
+
+    let price = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::CurrencyCode.eq("USD"))
+        .filter(entities::price::Column::PriceListId.is_null())
+        .filter(entities::price::Column::ChannelId.is_null())
+        .filter(entities::price::Column::MinQuantity.is_null())
+        .filter(entities::price::Column::MaxQuantity.is_null())
+        .one(&_db)
+        .await
+        .unwrap()
+        .expect("base row should exist");
+
+    assert_eq!(price.amount, dec!(89.99));
+    assert_eq!(price.compare_at_amount, None);
+    assert_eq!(price.legacy_amount, Some(8999));
+    assert_eq!(price.legacy_compare_at_amount, None);
+}
+
+#[tokio::test]
+async fn test_set_price_publishes_price_updated_event_with_rounded_cents() {
+    let (_db, service, catalog, transport) = setup_with_transport().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    transport.clear();
+
+    service
+        .set_price(
+            tenant_id,
+            actor_id,
+            variant_id,
+            "USD",
+            dec!(79.994),
+            Some(dec!(99.996)),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(transport.event_count(), 1);
+    let events = transport.events_of_type("PriceUpdated");
+    assert_eq!(events.len(), 1);
+
+    match &events[0] {
+        DomainEvent::PriceUpdated {
+            variant_id: event_variant_id,
+            product_id: event_product_id,
+            currency,
+            old_amount,
+            new_amount,
+        } => {
+            assert_eq!(*event_variant_id, variant_id);
+            assert_eq!(*event_product_id, product_id);
+            assert_eq!(currency, "USD");
+            assert_eq!(*old_amount, Some(9999));
+            assert_eq!(*new_amount, 7999);
+        }
+        other => panic!("Expected PriceUpdated event, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn test_set_price_tier_persists_quantity_window_and_resolves() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -374,6 +519,280 @@ async fn test_set_price_list_tier_rejects_inactive_price_list() {
         }
         other => panic!("Expected Validation error, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn test_set_price_list_tier_rejects_price_list_not_active_yet() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list(
+        &db,
+        tenant_id,
+        "active",
+        Some(chrono::Utc::now() + chrono::Duration::days(1)),
+        None,
+    )
+    .await;
+
+    let result = service
+        .set_price_list_tier(
+            tenant_id,
+            actor_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(70.00),
+            None,
+            None,
+            None,
+        )
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("not active yet"));
+        }
+        other => panic!("Expected Validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_set_price_list_scope_rejects_expired_price_list() {
+    let (db, service, _catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let price_list_id = create_price_list(
+        &db,
+        tenant_id,
+        "active",
+        None,
+        Some(chrono::Utc::now() - chrono::Duration::days(1)),
+    )
+    .await;
+
+    let result = service
+        .set_price_list_scope(
+            tenant_id,
+            actor_id,
+            price_list_id,
+            Some(Uuid::new_v4()),
+            Some("web-store".to_string()),
+        )
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("already expired"));
+        }
+        other => panic!("Expected Validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_set_price_list_tier_with_channel_inherits_price_list_scope() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list_with_channel(
+        &db,
+        tenant_id,
+        "active",
+        None,
+        None,
+        Some(channel_id),
+        Some("web-store"),
+    )
+    .await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+
+    service
+        .set_price_list_tier_with_channel(
+            tenant_id,
+            actor_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(75.00),
+            Some(dec!(100.00)),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let override_row = service
+        .get_variant_prices(variant_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|price| price.price_list_id == Some(price_list_id))
+        .expect("price-list override row should exist");
+
+    assert_eq!(override_row.channel_id, Some(channel_id));
+    assert_eq!(override_row.channel_slug.as_deref(), Some("web-store"));
+
+    let resolved = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: Some(price_list_id),
+                channel_id: Some(channel_id),
+                channel_slug: Some("web-store".to_string()),
+                quantity: Some(1),
+            },
+        )
+        .await
+        .unwrap()
+        .expect("scoped price-list override should resolve");
+
+    assert_eq!(resolved.amount, dec!(75.00));
+    assert_eq!(resolved.channel_id, Some(channel_id));
+    assert_eq!(resolved.channel_slug.as_deref(), Some("web-store"));
+}
+
+#[tokio::test]
+async fn test_set_price_list_tier_with_channel_rejects_scope_mismatch() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let web_channel_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list_with_channel(
+        &db,
+        tenant_id,
+        "active",
+        None,
+        None,
+        Some(web_channel_id),
+        Some("web-store"),
+    )
+    .await;
+
+    let error = service
+        .set_price_list_tier_with_channel(
+            tenant_id,
+            actor_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(75.00),
+            None,
+            Some(Uuid::new_v4()),
+            Some("mobile-app".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("match the price list channel scope"));
+        }
+        other => panic!("Expected Validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_set_price_list_scope_propagates_to_existing_override_rows() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list(&db, tenant_id, "active", None, None).await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+    service
+        .set_price_list_tier(
+            tenant_id,
+            actor_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(80.00),
+            Some(dec!(100.00)),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let updated_scope = service
+        .set_price_list_scope(
+            tenant_id,
+            actor_id,
+            price_list_id,
+            Some(channel_id),
+            Some("web-store".to_string()),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated_scope.channel_id, Some(channel_id));
+    assert_eq!(updated_scope.channel_slug.as_deref(), Some("web-store"));
+
+    let override_row = service
+        .get_variant_prices(variant_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|price| price.price_list_id == Some(price_list_id))
+        .expect("price-list override row should exist");
+
+    assert_eq!(override_row.channel_id, Some(channel_id));
+    assert_eq!(override_row.channel_slug.as_deref(), Some("web-store"));
+
+    let visible_lists = service
+        .list_active_price_lists_for_channel(tenant_id, Some(channel_id), Some("web-store"))
+        .await
+        .unwrap();
+    assert!(visible_lists.iter().any(|list| list.id == price_list_id));
+
+    let hidden_lists = service
+        .list_active_price_lists_for_channel(tenant_id, Some(Uuid::new_v4()), Some("mobile-app"))
+        .await
+        .unwrap();
+    assert!(!hidden_lists.iter().any(|list| list.id == price_list_id));
+
+    let resolved = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: Some(price_list_id),
+                channel_id: Some(channel_id),
+                channel_slug: Some("web-store".to_string()),
+                quantity: Some(1),
+            },
+        )
+        .await
+        .unwrap()
+        .expect("updated scoped override should resolve");
+
+    assert_eq!(resolved.amount, dec!(80.00));
+    assert_eq!(resolved.channel_id, Some(channel_id));
+    assert_eq!(resolved.channel_slug.as_deref(), Some("web-store"));
 }
 
 #[tokio::test]
@@ -563,6 +982,152 @@ async fn test_set_prices_bulk() {
 }
 
 #[tokio::test]
+async fn test_set_prices_persists_decimal_and_legacy_cents_for_new_scoped_row() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let channel_id = Uuid::new_v4();
+
+    service
+        .set_prices(
+            tenant_id,
+            actor_id,
+            variant_id,
+            vec![PriceInput {
+                currency_code: "USD".to_string(),
+                channel_id: Some(channel_id),
+                channel_slug: Some("WEB-STORE".to_string()),
+                amount: dec!(79.994),
+                compare_at_amount: Some(dec!(99.996)),
+            }],
+        )
+        .await
+        .unwrap();
+
+    let price = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::CurrencyCode.eq("USD"))
+        .filter(entities::price::Column::ChannelId.eq(channel_id))
+        .filter(entities::price::Column::PriceListId.is_null())
+        .filter(entities::price::Column::MinQuantity.is_null())
+        .filter(entities::price::Column::MaxQuantity.is_null())
+        .one(&_db)
+        .await
+        .unwrap()
+        .expect("scoped bulk row should exist");
+
+    assert_eq!(price.amount, dec!(79.994));
+    assert_eq!(price.compare_at_amount, Some(dec!(99.996)));
+    assert_eq!(price.channel_slug.as_deref(), Some("web-store"));
+    assert_eq!(price.legacy_amount, Some(7999));
+    assert_eq!(price.legacy_compare_at_amount, Some(10000));
+}
+
+#[tokio::test]
+async fn test_set_prices_rolls_back_existing_row_updates_when_any_price_is_invalid() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_prices(
+            tenant_id,
+            actor_id,
+            variant_id,
+            vec![
+                PriceInput {
+                    currency_code: "USD".to_string(),
+                    channel_id: None,
+                    channel_slug: None,
+                    amount: dec!(79.99),
+                    compare_at_amount: Some(dec!(99.99)),
+                },
+                PriceInput {
+                    currency_code: "EUR".to_string(),
+                    channel_id: None,
+                    channel_slug: None,
+                    amount: dec!(89.99),
+                    compare_at_amount: None,
+                },
+            ],
+        )
+        .await
+        .unwrap();
+
+    let count_before = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .count(&_db)
+        .await
+        .unwrap();
+
+    let error = service
+        .set_prices(
+            tenant_id,
+            actor_id,
+            variant_id,
+            vec![
+                PriceInput {
+                    currency_code: "USD".to_string(),
+                    channel_id: None,
+                    channel_slug: None,
+                    amount: dec!(59.99),
+                    compare_at_amount: Some(dec!(79.99)),
+                },
+                PriceInput {
+                    currency_code: "GBP".to_string(),
+                    channel_id: None,
+                    channel_slug: None,
+                    amount: dec!(70.00),
+                    compare_at_amount: Some(dec!(60.00)),
+                },
+            ],
+        )
+        .await
+        .expect_err("invalid bulk input should roll back the transaction");
+
+    match error {
+        CommerceError::InvalidPrice(message) => {
+            assert!(message.contains("Compare at price must be greater than amount"));
+        }
+        other => panic!("Expected InvalidPrice error, got {other:?}"),
+    }
+
+    let count_after = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .count(&_db)
+        .await
+        .unwrap();
+    assert_eq!(count_after, count_before);
+
+    let usd_price = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::CurrencyCode.eq("USD"))
+        .filter(entities::price::Column::PriceListId.is_null())
+        .filter(entities::price::Column::ChannelId.is_null())
+        .filter(entities::price::Column::MinQuantity.is_null())
+        .filter(entities::price::Column::MaxQuantity.is_null())
+        .one(&_db)
+        .await
+        .unwrap()
+        .expect("usd row should still exist");
+
+    assert_eq!(usd_price.amount, dec!(79.99));
+    assert_eq!(usd_price.compare_at_amount, Some(dec!(99.99)));
+    assert_eq!(usd_price.legacy_amount, Some(7999));
+    assert_eq!(usd_price.legacy_compare_at_amount, Some(9999));
+
+    let gbp_price = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::CurrencyCode.eq("GBP"))
+        .one(&_db)
+        .await
+        .unwrap();
+    assert!(gbp_price.is_none());
+}
+
+#[tokio::test]
 async fn test_set_prices_empty_list() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -574,6 +1139,78 @@ async fn test_set_prices_empty_list() {
         .await;
 
     assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_set_prices_publishes_price_updated_events_with_old_and_new_cents() {
+    let (_db, service, catalog, transport) = setup_with_transport().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    transport.clear();
+
+    service
+        .set_prices(
+            tenant_id,
+            actor_id,
+            variant_id,
+            vec![
+                PriceInput {
+                    currency_code: "USD".to_string(),
+                    channel_id: None,
+                    channel_slug: None,
+                    amount: dec!(89.994),
+                    compare_at_amount: Some(dec!(99.996)),
+                },
+                PriceInput {
+                    currency_code: "EUR".to_string(),
+                    channel_id: None,
+                    channel_slug: None,
+                    amount: dec!(79.994),
+                    compare_at_amount: Some(dec!(99.996)),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+
+    let events = transport.events_of_type("PriceUpdated");
+    assert_eq!(events.len(), 2);
+
+    match &events[0] {
+        DomainEvent::PriceUpdated {
+            variant_id: event_variant_id,
+            product_id: event_product_id,
+            currency,
+            old_amount,
+            new_amount,
+        } => {
+            assert_eq!(*event_variant_id, variant_id);
+            assert_eq!(*event_product_id, product_id);
+            assert_eq!(currency, "USD");
+            assert_eq!(*old_amount, Some(9999));
+            assert_eq!(*new_amount, 8999);
+        }
+        other => panic!("Expected first PriceUpdated event, got {other:?}"),
+    }
+
+    match &events[1] {
+        DomainEvent::PriceUpdated {
+            variant_id: event_variant_id,
+            product_id: event_product_id,
+            currency,
+            old_amount,
+            new_amount,
+        } => {
+            assert_eq!(*event_variant_id, variant_id);
+            assert_eq!(*event_product_id, product_id);
+            assert_eq!(currency, "EUR");
+            assert_eq!(*old_amount, None);
+            assert_eq!(*new_amount, 7999);
+        }
+        other => panic!("Expected second PriceUpdated event, got {other:?}"),
+    }
 }
 
 // =============================================================================
@@ -1522,6 +2159,219 @@ async fn test_apply_price_list_percentage_discount_targets_channel_scoped_overri
 }
 
 #[tokio::test]
+async fn test_apply_price_list_percentage_discount_rejects_price_list_not_active_yet_without_writing(
+) {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list(
+        &db,
+        tenant_id,
+        "active",
+        Some(chrono::Utc::now() + chrono::Duration::days(1)),
+        None,
+    )
+    .await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+
+    let count_before = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::PriceListId.eq(price_list_id))
+        .count(&db)
+        .await
+        .unwrap();
+
+    let error = service
+        .apply_price_list_percentage_discount(
+            tenant_id,
+            actor_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(10),
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("not active yet"));
+        }
+        other => panic!("Expected Validation error, got {other:?}"),
+    }
+
+    let count_after = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::PriceListId.eq(price_list_id))
+        .count(&db)
+        .await
+        .unwrap();
+
+    assert_eq!(count_before, 0);
+    assert_eq!(count_after, 0);
+}
+
+#[tokio::test]
+async fn test_apply_price_list_percentage_discount_rejects_expired_list_without_writing() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list(
+        &db,
+        tenant_id,
+        "active",
+        None,
+        Some(chrono::Utc::now() - chrono::Duration::days(1)),
+    )
+    .await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+
+    let count_before = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::PriceListId.eq(price_list_id))
+        .count(&db)
+        .await
+        .unwrap();
+
+    let error = service
+        .apply_price_list_percentage_discount(
+            tenant_id,
+            actor_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(10),
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("already expired"));
+        }
+        other => panic!("Expected Validation error, got {other:?}"),
+    }
+
+    let count_after = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::PriceListId.eq(price_list_id))
+        .count(&db)
+        .await
+        .unwrap();
+
+    assert_eq!(count_before, 0);
+    assert_eq!(count_after, 0);
+}
+
+#[tokio::test]
+async fn test_apply_price_list_percentage_discount_rejects_channel_mismatch_without_mutating_override(
+) {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let web_channel_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list_with_channel(
+        &db,
+        tenant_id,
+        "active",
+        None,
+        None,
+        Some(web_channel_id),
+        Some("web-store"),
+    )
+    .await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+    service
+        .set_price_list_tier_with_channel(
+            tenant_id,
+            actor_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(80.00),
+            Some(dec!(100.00)),
+            Some(web_channel_id),
+            Some("web-store".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let count_before = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::PriceListId.eq(price_list_id))
+        .count(&db)
+        .await
+        .unwrap();
+
+    let error = service
+        .apply_price_list_percentage_discount_with_channel(
+            tenant_id,
+            actor_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(10),
+            Some(Uuid::new_v4()),
+            Some("mobile-app".to_string()),
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("price_list_id is not available for the requested channel"));
+        }
+        other => panic!("Expected Validation error, got {other:?}"),
+    }
+
+    let count_after = entities::price::Entity::find()
+        .filter(entities::price::Column::VariantId.eq(variant_id))
+        .filter(entities::price::Column::PriceListId.eq(price_list_id))
+        .count(&db)
+        .await
+        .unwrap();
+
+    let resolved = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: Some(price_list_id),
+                channel_id: Some(web_channel_id),
+                channel_slug: Some("web-store".to_string()),
+                quantity: Some(1),
+            },
+        )
+        .await
+        .unwrap()
+        .expect("existing scoped override should stay intact");
+
+    assert_eq!(count_before, 1);
+    assert_eq!(count_after, 1);
+    assert_eq!(resolved.amount, dec!(80.00));
+    assert_eq!(resolved.compare_at_amount, Some(dec!(100.00)));
+}
+
+#[tokio::test]
 async fn test_preview_price_list_percentage_discount_rejects_inactive_list() {
     let (db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -1548,6 +2398,128 @@ async fn test_preview_price_list_percentage_discount_rejects_inactive_list() {
     match error {
         CommerceError::Validation(message) => {
             assert!(message.contains("active price list"));
+        }
+        other => panic!("Expected Validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_preview_price_list_percentage_discount_rejects_price_list_not_active_yet() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list(
+        &db,
+        tenant_id,
+        "active",
+        Some(chrono::Utc::now() + chrono::Duration::days(1)),
+        None,
+    )
+    .await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+
+    let error = service
+        .preview_price_list_percentage_discount(
+            tenant_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(10),
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("not active yet"));
+        }
+        other => panic!("Expected Validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_preview_price_list_percentage_discount_rejects_expired_list() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list(
+        &db,
+        tenant_id,
+        "active",
+        None,
+        Some(chrono::Utc::now() - chrono::Duration::days(1)),
+    )
+    .await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+
+    let error = service
+        .preview_price_list_percentage_discount(
+            tenant_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(10),
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("already expired"));
+        }
+        other => panic!("Expected Validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_preview_price_list_percentage_discount_rejects_requested_channel_mismatch() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let web_channel_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list_with_channel(
+        &db,
+        tenant_id,
+        "active",
+        None,
+        None,
+        Some(web_channel_id),
+        Some("web-store"),
+    )
+    .await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+
+    let error = service
+        .preview_price_list_percentage_discount_with_channel(
+            tenant_id,
+            variant_id,
+            price_list_id,
+            "USD",
+            dec!(10),
+            Some(Uuid::new_v4()),
+            Some("mobile-app".to_string()),
+        )
+        .await
+        .unwrap_err();
+
+    match error {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("price_list_id is not available for the requested channel"));
         }
         other => panic!("Expected Validation error, got {other:?}"),
     }
@@ -1709,6 +2681,78 @@ async fn test_resolve_variant_price_prefers_more_specific_quantity_tier() {
 }
 
 #[tokio::test]
+async fn test_resolve_variant_price_prefers_narrower_max_quantity_when_min_quantity_matches() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+
+    entities::price::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        variant_id: Set(variant_id),
+        price_list_id: Set(None),
+        channel_id: Set(None),
+        channel_slug: Set(None),
+        currency_code: Set("USD".to_string()),
+        region_id: Set(None),
+        amount: Set(dec!(88.00)),
+        compare_at_amount: Set(None),
+        legacy_amount: Set(Some(8800)),
+        legacy_compare_at_amount: Set(None),
+        min_quantity: Set(Some(10)),
+        max_quantity: Set(Some(20)),
+    }
+    .insert(&_db)
+    .await
+    .unwrap();
+
+    entities::price::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        variant_id: Set(variant_id),
+        price_list_id: Set(None),
+        channel_id: Set(None),
+        channel_slug: Set(None),
+        currency_code: Set("USD".to_string()),
+        region_id: Set(None),
+        amount: Set(dec!(86.00)),
+        compare_at_amount: Set(None),
+        legacy_amount: Set(Some(8600)),
+        legacy_compare_at_amount: Set(None),
+        min_quantity: Set(Some(10)),
+        max_quantity: Set(Some(15)),
+    }
+    .insert(&_db)
+    .await
+    .unwrap();
+
+    let resolved = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: None,
+                channel_id: None,
+                channel_slug: None,
+                quantity: Some(12),
+            },
+        )
+        .await
+        .unwrap()
+        .expect("narrower quantity window should win");
+
+    assert_eq!(resolved.amount, dec!(86.00));
+    assert_eq!(resolved.min_quantity, Some(10));
+    assert_eq!(resolved.max_quantity, Some(15));
+}
+
+#[tokio::test]
 async fn test_resolve_variant_price_falls_back_to_global_price_without_region_specific_match() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -1739,6 +2783,56 @@ async fn test_resolve_variant_price_falls_back_to_global_price_without_region_sp
 
     assert_eq!(resolved.amount, dec!(100.00));
     assert_eq!(resolved.region_id, None);
+}
+
+#[tokio::test]
+async fn test_resolve_variant_price_matches_channel_slug_without_channel_id() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+    service
+        .set_prices(
+            tenant_id,
+            actor_id,
+            variant_id,
+            vec![PriceInput {
+                currency_code: "USD".to_string(),
+                channel_id: None,
+                channel_slug: Some("web-store".to_string()),
+                amount: dec!(78.00),
+                compare_at_amount: Some(dec!(100.00)),
+            }],
+        )
+        .await
+        .unwrap();
+
+    let resolved = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: None,
+                channel_id: None,
+                channel_slug: Some("WEB-STORE".to_string()),
+                quantity: Some(1),
+            },
+        )
+        .await
+        .unwrap()
+        .expect("slug-scoped price should resolve without channel_id");
+
+    assert_eq!(resolved.amount, dec!(78.00));
+    assert_eq!(resolved.channel_id, None);
+    assert_eq!(resolved.channel_slug.as_deref(), Some("web-store"));
+    assert!(resolved.on_sale);
 }
 
 #[tokio::test]
@@ -2092,6 +3186,83 @@ async fn test_resolve_variant_price_prefers_explicit_override_over_price_list_ru
 }
 
 #[tokio::test]
+async fn test_set_price_list_percentage_rule_clears_rule_metadata() {
+    let (db, service, _catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let price_list_id = create_price_list(&db, tenant_id, "active", None, None).await;
+
+    let applied = service
+        .set_price_list_percentage_rule(tenant_id, actor_id, price_list_id, Some(dec!(12.5)))
+        .await
+        .unwrap()
+        .expect("rule metadata should be returned");
+    assert_eq!(applied.adjustment_percent, dec!(12.5));
+
+    let cleared = service
+        .set_price_list_percentage_rule(tenant_id, actor_id, price_list_id, None)
+        .await
+        .unwrap();
+    assert!(cleared.is_none());
+
+    let option = service
+        .list_active_price_lists(tenant_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|list| list.id == price_list_id)
+        .expect("active price list should stay visible");
+
+    assert_eq!(option.rule_kind, None);
+    assert_eq!(option.adjustment_percent, None);
+}
+
+#[tokio::test]
+async fn test_resolve_variant_price_falls_back_to_base_after_clearing_price_list_rule() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list(&db, tenant_id, "active", None, None).await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+    service
+        .set_price_list_percentage_rule(tenant_id, actor_id, price_list_id, Some(dec!(15)))
+        .await
+        .unwrap();
+    service
+        .set_price_list_percentage_rule(tenant_id, actor_id, price_list_id, None)
+        .await
+        .unwrap();
+
+    let resolved = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: Some(price_list_id),
+                channel_id: None,
+                channel_slug: None,
+                quantity: Some(1),
+            },
+        )
+        .await
+        .unwrap()
+        .expect("base row should resolve after rule removal");
+
+    assert_eq!(resolved.amount, dec!(100.00));
+    assert_eq!(resolved.compare_at_amount, None);
+    assert_eq!(resolved.discount_percent, None);
+    assert_eq!(resolved.price_list_id, None);
+    assert!(!resolved.on_sale);
+}
+
+#[tokio::test]
 async fn test_resolve_variant_price_rejects_inactive_price_list_context() {
     let (db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -2117,6 +3288,82 @@ async fn test_resolve_variant_price_rejects_inactive_price_list_context() {
     match result.unwrap_err() {
         CommerceError::Validation(message) => {
             assert!(message.contains("active price list"));
+        }
+        other => panic!("Expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_resolve_variant_price_rejects_price_list_not_active_yet() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list(
+        &db,
+        tenant_id,
+        "active",
+        Some(chrono::Utc::now() + chrono::Duration::days(1)),
+        None,
+    )
+    .await;
+
+    let result = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: Some(price_list_id),
+                channel_id: None,
+                channel_slug: None,
+                quantity: Some(1),
+            },
+        )
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("not active yet"));
+        }
+        other => panic!("Expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_resolve_variant_price_rejects_expired_price_list_context() {
+    let (db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+    let price_list_id = create_price_list(
+        &db,
+        tenant_id,
+        "active",
+        None,
+        Some(chrono::Utc::now() - chrono::Duration::days(1)),
+    )
+    .await;
+
+    let result = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: Some(price_list_id),
+                channel_id: None,
+                channel_slug: None,
+                quantity: Some(1),
+            },
+        )
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("already expired"));
         }
         other => panic!("Expected validation error, got {other:?}"),
     }
@@ -2170,6 +3417,78 @@ async fn test_resolve_variant_price_rejects_price_list_outside_requested_channel
 }
 
 #[tokio::test]
+async fn test_resolve_variant_price_rejects_non_positive_quantity() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+
+    let result = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: None,
+                channel_id: None,
+                channel_slug: None,
+                quantity: Some(0),
+            },
+        )
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("quantity must be at least 1"));
+        }
+        other => panic!("Expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_resolve_variant_price_rejects_non_letter_currency_code() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_price(tenant_id, actor_id, variant_id, "USD", dec!(100.00), None)
+        .await
+        .unwrap();
+
+    let result = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "US1".to_string(),
+                region_id: None,
+                price_list_id: None,
+                channel_id: None,
+                channel_slug: None,
+                quantity: Some(1),
+            },
+        )
+        .await;
+
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        CommerceError::Validation(message) => {
+            assert!(message.contains("currency_code must be a 3-letter code"));
+        }
+        other => panic!("Expected validation error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn test_resolve_variant_price_reports_discount_percent() {
     let (_db, service, catalog) = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -2206,6 +3525,48 @@ async fn test_resolve_variant_price_reports_discount_percent() {
         .expect("sale price should resolve");
 
     assert_eq!(resolved.discount_percent, Some(dec!(15.00)));
+    assert!(resolved.on_sale);
+}
+
+#[tokio::test]
+async fn test_resolve_variant_price_rounds_fractional_discount_percent() {
+    let (_db, service, catalog) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
+
+    service
+        .set_price(
+            tenant_id,
+            actor_id,
+            variant_id,
+            "USD",
+            dec!(2.00),
+            Some(dec!(3.00)),
+        )
+        .await
+        .unwrap();
+
+    let resolved = service
+        .resolve_variant_price(
+            tenant_id,
+            variant_id,
+            rustok_commerce::services::PriceResolutionContext {
+                currency_code: "USD".to_string(),
+                region_id: None,
+                price_list_id: None,
+                channel_id: None,
+                channel_slug: None,
+                quantity: Some(1),
+            },
+        )
+        .await
+        .expect("price resolution should succeed")
+        .expect("sale price should resolve");
+
+    assert_eq!(resolved.amount, dec!(2.00));
+    assert_eq!(resolved.compare_at_amount, Some(dec!(3.00)));
+    assert_eq!(resolved.discount_percent, Some(dec!(33.33)));
     assert!(resolved.on_sale);
 }
 

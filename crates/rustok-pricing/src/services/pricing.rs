@@ -1431,7 +1431,7 @@ fn decimal_to_cents(amount: Decimal) -> Option<i64> {
 
 fn normalize_resolution_currency(currency_code: &str) -> CommerceResult<String> {
     let normalized = currency_code.trim().to_ascii_uppercase();
-    if normalized.len() != 3 {
+    if normalized.len() != 3 || !normalized.chars().all(|ch| ch.is_ascii_alphabetic()) {
         return Err(CommerceError::Validation(
             "currency_code must be a 3-letter code".to_string(),
         ));

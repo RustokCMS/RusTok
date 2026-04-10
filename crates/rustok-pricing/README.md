@@ -15,7 +15,13 @@
   current tenant/time window, plus a normalized `discount_percent` on resolved
   sale prices; the resolver now also consumes host-provided `channel_id` /
   `channel_slug` and supports channel-scoped base rows and price lists without
-  making `rustok-pricing` the owner of channel identity.
+  making `rustok-pricing` the owner of channel identity. Pricing resolution
+  contracts validate `currency_code` as a three-letter ASCII ISO-style code,
+  reject non-positive quantities, and require `currency_code` whenever a caller
+  supplies resolution modifiers such as region, price list, or quantity.
+  Malformed explicit `channel_id` is also rejected, and pricing UI wrappers now
+  pre-validate that contract before falling back from native `#[server]`
+  transport to GraphQL.
 - Expose a typed percentage-adjustment preview/apply contract inside
   `PricingService`, while keeping legacy `apply_discount` as a compatibility
   wrapper over the new adjustment path; the typed path now supports both the
@@ -26,6 +32,9 @@
   semantics.
 - Expose first-class `price_list` percentage rules so an active list can derive
   effective sale prices from base rows even without explicit override rows.
+- Keep native admin `price_list` rule/scope mutation paths aligned with runtime
+  lifecycle validation, so future/expired lists and channel mismatches are
+  rejected without hidden fallback or unintended override-row writes.
 - Provide a module-owned Leptos admin UI package in `admin/` for pricing visibility,
   sale markers, currency-coverage inspection, effective price inspection, and
   operator updates for base rows and active price-list override rows on variant prices,
@@ -43,11 +52,18 @@
 - `apps/admin` consumes `rustok-pricing-admin` through manifest-driven composition,
   and now gets native module-owned base-price and active price-list override write
   actions there, plus base-row percentage-discount preview/apply and selected
-  price-list rule editing, while
-  promotion/rule-aware pricing transport is still being split from the umbrella
-  commerce surface.
+  price-list rule/scope editing; the remaining backlog is the broader promotions
+  engine rather than the core pricing transport path.
+- The parallel `rustok-commerce` GraphQL facade now also exposes admin pricing
+  write mutations for variant-price updates, percentage-discount
+  preview/apply, and selected active `price_list` rule/scope updates, so
+  GraphQL remains a supported transport alongside native `#[server]`
+  functions instead of falling back to read-only pricing behavior.
 - `apps/storefront` consumes `rustok-pricing-storefront` through manifest-driven
   composition for a public pricing atlas route.
+- Current verification baseline for this slice is a wide pricing sweep across
+  `pricing_service_test`, the full `graphql_runtime_parity_test`, and SSR suites
+  for `rustok-pricing-admin` / `rustok-pricing-storefront`.
 
 ## Entry points
 

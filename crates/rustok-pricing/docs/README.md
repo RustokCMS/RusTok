@@ -14,7 +14,11 @@
   нормализованный `discount_percent` для sale rows и effective prices; текущий
   resolver уже также учитывает host-provided `channel_id` / `channel_slug` и
   умеет выбирать channel-scoped base rows / active price lists без переноса
-  ownership channel identity в pricing boundary;
+  ownership channel identity в pricing boundary; contract validation требует
+  трёхбуквенный ASCII `currency_code`, отклоняет `quantity < 1`, не позволяет
+  передавать `region_id`, `price_list_id` или `quantity` без `currency_code` и
+  также отклоняет malformed explicit `channel_id`; pricing UI wrappers при этом
+  валидируют этот contract до fallback с native `#[server]` transport на GraphQL;
 - typed percentage-adjustment contract в `PricingService`: preview/apply helper
   для percent-based sale mutation теперь живёт в pricing boundary, а legacy
   `apply_discount` остаётся compatibility wrapper поверх canonical base-price row;
@@ -25,6 +29,9 @@
   этот read contract ещё и несёт typed rule metadata;
 - first-class `price_list` percentage rules, чтобы active list мог давать
   promotion-ready sale semantics поверх base-price rows даже без явных override rows;
+- transport parity для admin-side `price_list` rule/scope mutation paths:
+  future/expired lists и channel-scope mismatch теперь должны отклоняться без
+  hidden fallback и без побочной записи/мутации override rows;
 - module-owned admin UI пакет `rustok-pricing/admin` для price visibility,
   sale markers, currency coverage inspection и operator-side effective price preview по
   `currency + optional region_id + optional quantity` через native-first `#[server]`
@@ -51,7 +58,9 @@
   selector state; pricing detail fallback при этом тоже больше не живёт на generic
   catalog product contract и использует dedicated facade roots `storefrontPricingProduct`
   и `adminPricingProduct`, чтобы сохранять `effective_price` parity для explicit
-  `currency/price_list/channel/quantity` context; generic `product` /
+  `currency/price_list/channel/quantity` context; эти facade roots валидируют
+  resolution context так же строго, как `PricingService`, поэтому context modifiers
+  без `currencyCode` не игнорируются молча; generic `product` /
   `storefrontProduct` при этом следует трактовать только как catalog snapshot
   contract, даже если они по-прежнему несут `variants.prices` для compatibility;
 
@@ -62,14 +71,19 @@
   base-price write path для variant pricing;
 - модуль теперь владеет и публичной storefront read-side pricing-поверхностью,
   которая строит pricing atlas поверх published catalog и variant-level prices;
-- текущий active resolver использует только base-price rows и deterministic precedence
-  `requested active price_list -> base prices`, `exact region -> global`,
-  `higher min_quantity -> lower max_quantity`; promotions/rules поверх нескольких
-  list layers по-прежнему остаются отдельным follow-up;
+- текущий active resolver использует deterministic precedence
+  `explicit override row -> active price_list rule -> base prices`,
+  затем `exact region -> global` и `higher min_quantity -> lower max_quantity`;
+  promotions поверх нескольких list layers и вне price-list boundary по-прежнему
+  остаются отдельным follow-up;
 - GraphQL и REST transport для promotions/rules по-прежнему остаются в фасаде
   `rustok-commerce`, но базовый pricing write path и active price-list override authoring для admin уже вынесены в
   module-owned `rustok-pricing/admin` через native `#[server]` transport; туда же
   уже протянут typed base-row percentage adjustment path с preview/apply semantics;
+  parallel GraphQL facade при этом теперь тоже держит admin pricing write surface
+  для variant price updates, typed percentage-discount preview/apply и selected
+  active `price_list` rule/scope updates, а не только pricing-authoritative
+  read roots;
 - общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 
 ## Интеграция
@@ -88,6 +102,9 @@
 - `cargo xtask module validate pricing`
 - `cargo xtask module test pricing`
 - targeted commerce tests для pricing-домена при изменении runtime wiring
+- текущий широкий verification baseline для pricing slice включает
+  `pricing_service_test`, полный `graphql_runtime_parity_test` и SSR suites
+  `rustok-pricing-admin` / `rustok-pricing-storefront`
 
 ## Связанные документы
 

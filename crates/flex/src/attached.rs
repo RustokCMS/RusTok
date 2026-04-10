@@ -205,6 +205,28 @@ where
     Ok(())
 }
 
+pub async fn delete_attached_localized_values<C>(
+    db: &C,
+    tenant_id: Uuid,
+    entity_type: &str,
+    entity_id: Uuid,
+) -> Result<u64, FlexError>
+where
+    C: ConnectionTrait,
+{
+    match Entity::delete_many()
+        .filter(Column::TenantId.eq(tenant_id))
+        .filter(Column::EntityType.eq(entity_type))
+        .filter(Column::EntityId.eq(entity_id))
+        .exec(db)
+        .await
+    {
+        Ok(result) => Ok(result.rows_affected),
+        Err(error) if is_missing_attached_storage_error(&error.to_string()) => Ok(0),
+        Err(error) => Err(FlexError::Database(error.to_string())),
+    }
+}
+
 pub async fn load_exact_locale_values<C>(
     db: &C,
     tenant_id: Uuid,
@@ -408,16 +430,28 @@ fn normalize_owner_payload(shared_metadata: &Value) -> Result<Option<Value>, Fle
     }
 }
 
+fn is_missing_attached_storage_error(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    normalized.contains("no such table: flex_attached_localized_values")
+        || normalized.contains("relation \"flex_attached_localized_values\" does not exist")
+        || normalized.contains("relation 'flex_attached_localized_values' does not exist")
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, HashMap};
 
     use serde_json::{json, Map};
+    use sea_orm::{
+        ActiveModelTrait, ConnectionTrait, Database, DatabaseBackend, EntityTrait, Statement, Set,
+    };
+    use uuid::Uuid;
 
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
 
     use super::{
-        first_available_localized_values, prepare_attached_values_create, split_existing_metadata,
+        delete_attached_localized_values, first_available_localized_values, prepare_attached_values_create,
+        split_existing_metadata, ActiveModel, Entity,
     };
 
     fn definition(field_key: &str, is_localized: bool) -> FieldDefinition {
@@ -480,5 +514,81 @@ mod tests {
         let resolved = first_available_localized_values(localized_by_locale);
 
         assert_eq!(resolved, Some(json!({"bio": "Hello"})));
+    }
+
+    #[tokio::test]
+    async fn delete_attached_localized_values_is_noop_when_storage_is_absent() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+
+        let deleted = delete_attached_localized_values(
+            &db,
+            Uuid::new_v4(),
+            "product",
+            Uuid::new_v4(),
+        )
+        .await
+        .expect("missing storage should be tolerated");
+
+        assert_eq!(deleted, 0);
+    }
+
+    #[tokio::test]
+    async fn delete_attached_localized_values_removes_only_requested_owner_rows() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+
+        db.execute(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            r#"
+            CREATE TABLE flex_attached_localized_values (
+                id TEXT PRIMARY KEY NOT NULL,
+                tenant_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                field_key TEXT NOT NULL,
+                locale TEXT NOT NULL,
+                value TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            "#
+            .to_string(),
+        ))
+        .await
+        .expect("table should be created");
+
+        let tenant_id = Uuid::new_v4();
+        let entity_id = Uuid::new_v4();
+        let other_entity_id = Uuid::new_v4();
+
+        for (owner_id, field_key) in [(entity_id, "bio"), (other_entity_id, "tagline")] {
+            ActiveModel {
+                id: Set(Uuid::new_v4()),
+                tenant_id: Set(tenant_id),
+                entity_type: Set("product".to_string()),
+                entity_id: Set(owner_id),
+                field_key: Set(field_key.to_string()),
+                locale: Set("en".to_string()),
+                value: Set(json!(field_key)),
+                created_at: sea_orm::ActiveValue::NotSet,
+                updated_at: sea_orm::ActiveValue::NotSet,
+            }
+            .insert(&db)
+            .await
+            .expect("row should insert");
+        }
+
+        let deleted = delete_attached_localized_values(&db, tenant_id, "product", entity_id)
+            .await
+            .expect("owner rows should delete");
+
+        assert_eq!(deleted, 1);
+
+        let remaining = Entity::find().all(&db).await.expect("rows should load");
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].entity_id, other_entity_id);
     }
 }

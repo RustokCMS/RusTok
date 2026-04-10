@@ -29,7 +29,7 @@
   "pricing.detail.seller": "seller",
   "pricing.detail.subtitle": "Смотрите покрытие валют, compare-at pricing и sale visibility из pricing-owned route.",
   "pricing.detail.title": "Детали pricing",
-  "pricing.detail.transportGap": "Этот route уже владеет pricing visibility, effective-context inspection и базовыми price write actions. Promotion/rule-aware pricing transport всё ещё остаётся в umbrella ecommerce backlog.",
+  "pricing.detail.transportGap": "Этот route уже владеет pricing visibility, effective-context inspection, write actions для base row и active price list, а также редактированием rule и scope у price list. В backlog теперь остаётся уже не core pricing transport, а более широкий promotions engine.",
   "pricing.detail.untitled": "Без названия",
   "pricing.edit.addPrice": "Добавить или перезаписать валюту",
   "pricing.edit.amountInput": "Сумма",

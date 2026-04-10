@@ -12,6 +12,8 @@ use uuid::Uuid;
 use rustok_core::field_schema::{is_valid_field_key, FieldDefinition, FlexError};
 use rustok_events::EventEnvelope;
 
+const FLEX_ENTRY_ENTITY_TYPE: &str = "flex_entry";
+
 /// Standalone Flex schema view used by transport adapters.
 #[derive(Debug, Clone)]
 pub struct FlexSchemaView {
@@ -106,9 +108,18 @@ pub fn validate_create_entry_command(input: &CreateFlexEntryCommand) -> Result<(
     }
 
     if let Some(entity_type) = &input.entity_type {
-        if !is_valid_field_key(entity_type.trim()) {
+        let normalized_entity_type = entity_type.trim();
+
+        if !is_valid_field_key(normalized_entity_type) {
             return Err(FlexError::InvalidFieldKey(
                 "entity_type must match ^[a-z][a-z0-9_]{0,127}$".to_string(),
+            ));
+        }
+
+        if normalized_entity_type == FLEX_ENTRY_ENTITY_TYPE {
+            return Err(FlexError::InvalidFieldKey(
+                "standalone flex entries cannot attach to flex_entry; max relation depth is 1"
+                    .to_string(),
             ));
         }
     }
@@ -575,6 +586,25 @@ mod tests {
         assert!(validate_create_entry_command(&valid).is_ok());
     }
 
+    #[test]
+    fn validate_entry_command_rejects_recursive_flex_entry_binding() {
+        let invalid = CreateFlexEntryCommand {
+            schema_id: Uuid::new_v4(),
+            entity_type: Some("flex_entry".to_string()),
+            entity_id: Some(Uuid::new_v4()),
+            data: json!({"title": "Nested"}),
+            status: Some("draft".to_string()),
+        };
+
+        let err = validate_create_entry_command(&invalid).expect_err("recursive binding rejected");
+        match err {
+            FlexError::InvalidFieldKey(message) => {
+                assert!(message.contains("max relation depth is 1"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
     struct MockStandaloneService {
         create_schema_calls: Arc<AtomicUsize>,
         update_schema_calls: Arc<AtomicUsize>,
@@ -810,6 +840,40 @@ mod tests {
 
         assert_eq!(res.status, "draft");
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn create_entry_orchestration_skips_service_on_recursive_relation() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let service = MockStandaloneService {
+            create_schema_calls: Arc::new(AtomicUsize::new(0)),
+            update_schema_calls: Arc::new(AtomicUsize::new(0)),
+            create_entry_calls: calls.clone(),
+            update_entry_calls: Arc::new(AtomicUsize::new(0)),
+            list_schema_calls: Arc::new(AtomicUsize::new(0)),
+            find_schema_calls: Arc::new(AtomicUsize::new(0)),
+            delete_entry_calls: Arc::new(AtomicUsize::new(0)),
+            delete_schema_calls: Arc::new(AtomicUsize::new(0)),
+            list_entries_calls: Arc::new(AtomicUsize::new(0)),
+            find_entry_calls: Arc::new(AtomicUsize::new(0)),
+        };
+
+        let res = create_entry(
+            &service,
+            Uuid::new_v4(),
+            Some(Uuid::new_v4()),
+            CreateFlexEntryCommand {
+                schema_id: Uuid::new_v4(),
+                entity_type: Some("flex_entry".to_string()),
+                entity_id: Some(Uuid::new_v4()),
+                data: json!({"title": "Nested"}),
+                status: Some("draft".to_string()),
+            },
+        )
+        .await;
+
+        assert!(res.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

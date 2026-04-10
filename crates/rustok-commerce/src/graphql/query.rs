@@ -1164,19 +1164,24 @@ fn build_pricing_resolution_context(
     quantity: Option<i32>,
 ) -> Result<Option<rustok_pricing::PriceResolutionContext>> {
     let currency_code = match currency_code.map(|value| value.trim().to_ascii_uppercase()) {
-        Some(value) if value.len() == 3 => value,
+        Some(value) if value.len() == 3 && value.chars().all(|ch| ch.is_ascii_alphabetic()) => {
+            value
+        }
         Some(_) => {
             return Err(async_graphql::Error::new(
                 "currency_code must be a 3-letter code",
+            ))
+        }
+        None if region_id.is_some() || price_list_id.is_some() || quantity.is_some() => {
+            return Err(async_graphql::Error::new(
+                "currency_code is required for pricing resolution context",
             ))
         }
         None => return Ok(None),
     };
     let quantity = match quantity {
         Some(value) if value < 1 => {
-            return Err(async_graphql::Error::new(
-                "quantity must be greater than zero",
-            ))
+            return Err(async_graphql::Error::new("quantity must be at least 1"))
         }
         Some(value) => value,
         None => 1,

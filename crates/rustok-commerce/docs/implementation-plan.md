@@ -202,6 +202,11 @@ typed shipping-profile registry.
 - storefront GraphQL mutation surface покрывает `createStorefrontPaymentCollection` и `completeStorefrontCheckout`, включая guest checkout и reuse уже созданного cart-bound payment collection;
 - storefront GraphQL cart surface покрывает `storefrontCart`, `createStorefrontCart`, line-item lifecycle и tri-state patch semantics для cart context;
 - storefront GraphQL discovery/read surface включает `storefrontRegions` и `storefrontShippingOptions`, включая cart-context precedence над конфликтующим query currency; дополнительно storefront facade теперь отдаёт `storefrontPricingChannels`, `storefrontActivePriceLists(channelId, channelSlug)`, `storefrontPricingProduct` и `adminPricingProduct`, чтобы module-owned pricing fallback не терял ни channel-aware selector parity, ни variant-level `effective_price` parity.
+- admin GraphQL facade теперь также держит pricing write mutations для
+  `updateAdminPricingVariantPrice`, `previewAdminPricingVariantDiscount` и
+  `applyAdminPricingVariantDiscount`, чтобы pricing-owned admin write path имел
+  не только native `#[server]`, но и parallel GraphQL transport поверх того же
+  `PricingService`.
 - generic catalog roots `product` / `storefrontProduct` при этом зафиксированы как catalog-authoritative surface, а их `variants.prices` остаётся только compatibility snapshot без статуса pricing-authoritative контракта.
 
 ### Phase 5. Упрощение umbrella-модуля
@@ -328,7 +333,7 @@ Deliverables:
 
 ### Phase 8. Pricing 2.0 и promotions
 
-Статус: `planned`
+Статус: `in progress`
 
 Фокус:
 
@@ -347,14 +352,18 @@ Deliverables:
 
 - `rustok-pricing::PricingService` уже получил typed resolver foundation
   `PriceResolutionContext -> ResolvedPrice` поверх base-price rows;
+- pricing resolution contract уже hardened: `currency_code` валидируется как
+  трёхбуквенный ASCII business code, `quantity < 1` отклоняется, а GraphQL roots
+  `adminPricingProduct` / `storefrontPricingProduct` не принимают `region_id`,
+  `price_list_id` или `quantity` без явного `currencyCode`;
 - active precedence уже deterministic: exact `region_id` имеет приоритет над global price,
   quantity tiers выбираются по более специфичному `min_quantity` и более узкому `max_quantity`;
 - explicit active `price_list_id` overlay уже активирован в resolver, а
   module-owned pricing admin/storefront surfaces уже получили pricing-owned
   active price-list selector поверх этого read contract.
 - `rustok-pricing/admin` больше не является чисто read-only surface: module-owned
-  server-function transport уже покрывает base-price updates по variant prices, пока
-  promotion/rule-aware pricing mutations остаются следующим transport slice.
+  server-function transport уже покрывает base-price updates по variant prices,
+  active `price_list` overrides и rule/scope editing для active price lists.
 - quantity tiers теперь тоже получили минимальный write path в `rustok-pricing/admin`:
   оператор может задавать `min_quantity` / `max_quantity` для variant price rows, а
   resolver сразу использует эти окна при effective-price selection.
@@ -363,11 +372,17 @@ Deliverables:
 - поверх этого pricing runtime теперь уже возвращает typed `discount_percent` в resolved/effective
   price contract, а module-owned admin/storefront surfaces показывают sale math без ad-hoc
   вычисления только из `compare_at_amount`.
+- parallel admin GraphQL transport теперь тоже закрывает не только base-row writes:
+  `updateAdminPricingVariantPrice`, `previewAdminPricingVariantDiscount`,
+  `applyAdminPricingVariantDiscount`, `updateAdminPricingPriceListRule` и
+  `updateAdminPricingPriceListScope` работают поверх того же `PricingService`,
+  сохраняя lifecycle/scope parity с native pricing admin transport.
 - legacy service-level `apply_discount` тоже уже начал сжиматься до compatibility слоя:
   typed percentage-adjustment preview/apply path теперь живёт внутри `rustok-pricing` и
-  работает только по canonical base-price row, не затрагивая tiers или price-list overlays.
-- targeted transport parity для этого admin write path тоже уже начат: `rustok-pricing/admin`
-  имеет SSR tests на native `update-variant-price` happy path и permission gate.
+  работает по canonical base-price row или по выбранному active `price_list` override.
+- targeted transport parity для этого admin write path уже заметно расширен: `rustok-pricing/admin`
+  имеет SSR coverage не только на native `update-variant-price`, но и на
+  rule/scope lifecycle, inactive time-window guards и channel mismatch без hidden fallback.
 - поверх этого `rustok-pricing/admin` уже получил module-owned operator flow для typed
   percentage-discount preview/apply по canonical base row; теперь тот же flow уже умеет
   target'ить и selected active `price_list` override, а SSR tests покрывают не только raw
@@ -376,6 +391,10 @@ Deliverables:
   теперь может держать typed percentage rule, `PricingService::resolve_variant_price`
   умеет fallback'иться к base row через это правило при отсутствии explicit override row,
   а `rustok-pricing/admin` уже умеет редактировать этот rule через module-owned server functions.
+- pricing-focused GraphQL/runtime parity тоже уже расширен: `adminPricingProduct`,
+  `storefrontPricingProduct` и active price-list selectors проходят полный parity sweep
+  вместе с остальным `graphql_runtime_parity_test`, а clear/scope updates не оставляют
+  stale selector metadata.
 - cart/order promotion representation теперь тоже имеет typed foundation: `rustok-cart` хранит `cart_adjustments`,
   пересчитывает `subtotal_amount`, `adjustment_total` и net `total_amount`, а `rustok-order` snapshot'ит
   `order_adjustments` при checkout/create-order и отдаёт тот же summary в REST/GraphQL/Leptos-facing DTO;

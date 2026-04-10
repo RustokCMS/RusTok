@@ -16,9 +16,9 @@ pub mod standalone;
 pub struct FlexModule;
 
 pub use attached::{
-    load_exact_locale_values, load_localized_values_by_locale, persist_localized_values,
-    prepare_attached_values_create, prepare_attached_values_update, resolve_attached_payload,
-    PreparedAttachedValuesWrite,
+    delete_attached_localized_values, load_exact_locale_values, load_localized_values_by_locale,
+    persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
+    resolve_attached_payload, PreparedAttachedValuesWrite,
 };
 pub use errors::{map_flex_error, FlexMappedError, FlexMappedErrorKind};
 pub use orchestration::{

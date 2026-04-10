@@ -297,6 +297,20 @@ pub struct GqlPricingProductDetail {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlPricingAdjustmentPreview {
+    pub kind: String,
+    pub currency_code: String,
+    pub current_amount: String,
+    pub base_amount: String,
+    pub adjustment_percent: String,
+    pub adjusted_amount: String,
+    pub compare_at_amount: Option<String>,
+    pub price_list_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlCart {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -749,6 +763,38 @@ pub struct CompleteStorefrontCheckoutInput {
     pub locale: Option<String>,
     pub create_fulfillment: Option<bool>,
     pub metadata: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct UpdateAdminPricingVariantPriceInput {
+    pub currency_code: String,
+    pub amount: String,
+    pub compare_at_amount: Option<String>,
+    pub price_list_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub min_quantity: Option<i32>,
+    pub max_quantity: Option<i32>,
+}
+
+#[derive(InputObject)]
+pub struct AdminPricingVariantDiscountInput {
+    pub currency_code: String,
+    pub discount_percent: String,
+    pub price_list_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct UpdateAdminPricingPriceListRuleInput {
+    pub adjustment_percent: Option<String>,
+}
+
+#[derive(InputObject)]
+pub struct UpdateAdminPricingPriceListScopeInput {
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
 }
 
 #[derive(InputObject)]
@@ -1256,6 +1302,29 @@ impl From<rustok_pricing::StorefrontPricingProductDetail> for GqlPricingProductD
             published_at: value.published_at.map(|item| item.to_rfc3339()),
             translations: value.translations.into_iter().map(Into::into).collect(),
             variants: value.variants.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<rustok_pricing::PriceAdjustmentPreview> for GqlPricingAdjustmentPreview {
+    fn from(value: rustok_pricing::PriceAdjustmentPreview) -> Self {
+        Self {
+            kind: match value.kind {
+                rustok_pricing::PriceAdjustmentKind::PercentageDiscount => {
+                    "percentage_discount".to_string()
+                }
+            },
+            currency_code: value.currency_code,
+            current_amount: value.current_amount.normalize().to_string(),
+            base_amount: value.base_amount.normalize().to_string(),
+            adjustment_percent: value.adjustment_percent.normalize().to_string(),
+            adjusted_amount: value.adjusted_amount.normalize().to_string(),
+            compare_at_amount: value
+                .compare_at_amount
+                .map(|item| item.normalize().to_string()),
+            price_list_id: value.price_list_id,
+            channel_id: value.channel_id,
+            channel_slug: value.channel_slug,
         }
     }
 }

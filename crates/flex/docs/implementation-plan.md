@@ -257,8 +257,12 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - Typed permissions есть в `rustok-core`
   - GraphQL standalone surface использует отдельные `flex_schemas:*` и `flex_entries:*` gates
 - [ ] Indexer handler: `index_flex_entries` + `FlexIndexer` event handler
-- [ ] Cascade delete: при удалении entity удалять attached flex entries
-- [ ] Guardrail: max relation depth = 1 (no recursive populate)
+- [x] Cascade delete: при удалении entity удалять attached flex entries
+  - Shared helper `delete_attached_localized_values()` живёт в `crates/flex` и подключён в live hard-delete paths для `user`, `product` и `topic`.
+  - Helper допускает capability-optional test graphs без смонтированной таблицы `flex_attached_localized_values`, чтобы isolated donor tests не падали на cleanup-пути.
+  - Для `order` отдельный hard-delete surface в текущем live contract не реализован; cleanup будет нужен сразу при появлении такого delete-path.
+- [x] Guardrail: max relation depth = 1 (no recursive populate)
+  - `crates/flex::validate_create_entry_command()` теперь явно запрещает `entity_type = "flex_entry"`, так что standalone `FlexEntry -> FlexEntry` цепочки режутся до adapter/service layer и одинаково работают для GraphQL и REST.
 - [x] Решить publish policy для standalone surface через ghost-module manifest
   - Standalone surface остаётся server-owned adapter layer.
   - `flex` публикует capability/runtime metadata через `rustok-module.toml`, `modules.toml` и `FlexModule`, не забирая ownership transport surface.

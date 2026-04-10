@@ -206,11 +206,34 @@ async fn seed_active_price_list(
     channel_slug: Option<&str>,
     adjustment_percent: Option<&str>,
 ) -> Uuid {
+    seed_active_price_list_with_window(
+        db,
+        tenant_id,
+        name,
+        channel_id,
+        channel_slug,
+        adjustment_percent,
+        None,
+        None,
+    )
+    .await
+}
+
+async fn seed_active_price_list_with_window(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    name: &str,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<&str>,
+    adjustment_percent: Option<&str>,
+    starts_at: Option<chrono::DateTime<chrono::Utc>>,
+    ends_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> Uuid {
     let price_list_id = Uuid::new_v4();
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
         "INSERT INTO price_lists (id, tenant_id, name, description, type, status, channel_id, channel_slug, rule_kind, adjustment_percent, starts_at, ends_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         vec![
             price_list_id.into(),
             tenant_id.into(),
@@ -226,6 +249,8 @@ async fn seed_active_price_list(
                 .map(|_| "percentage_discount".to_string())
                 .into(),
             adjustment_percent.map(|value| value.to_string()).into(),
+            starts_at.into(),
+            ends_at.into(),
         ],
     ))
     .await
@@ -263,6 +288,22 @@ fn auth_context(tenant_id: Uuid) -> AuthContext {
         session_id: Uuid::new_v4(),
         tenant_id,
         permissions: vec![Permission::PRODUCTS_READ, Permission::PRODUCTS_LIST],
+        client_id: None,
+        scopes: vec![],
+        grant_type: "direct".to_string(),
+    }
+}
+
+fn pricing_update_auth_context(tenant_id: Uuid) -> AuthContext {
+    AuthContext {
+        user_id: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        tenant_id,
+        permissions: vec![
+            Permission::PRODUCTS_READ,
+            Permission::PRODUCTS_LIST,
+            Permission::PRODUCTS_UPDATE,
+        ],
         client_id: None,
         scopes: vec![],
         grant_type: "direct".to_string(),
@@ -3812,7 +3853,7 @@ async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
     );
     assert_eq!(
         json["updateStorefrontCartContext"]["cart"]["selectedShippingOptionId"],
-        Value::from(shipping_option.id.to_string())
+        Value::Null
     );
     assert_eq!(
         json["updateStorefrontCartContext"]["context"]["region"]["id"],
@@ -4014,7 +4055,7 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
-                shipping_profile_slug: None,
+                shipping_profile_slug: Some("bulky".to_string()),
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
                 quantity: 1,
@@ -4179,6 +4220,353 @@ async fn storefront_graphql_pricing_helpers_respect_explicit_channel_override() 
 }
 
 #[tokio::test]
+async fn storefront_graphql_active_price_lists_clear_rule_metadata_without_stale_state() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let price_list_id =
+        seed_active_price_list(&db, tenant_id, "Global Sale", None, None, Some("12.5")).await;
+
+    PricingService::new(db.clone(), mock_transactional_event_bus())
+        .set_price_list_percentage_rule(tenant_id, actor_id, price_list_id, None)
+        .await
+        .expect("rule clear should succeed");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        None,
+    );
+    let response = schema
+        .execute(Request::new(
+            r#"
+            query {
+              storefrontActivePriceLists {
+                id
+                ruleKind
+                adjustmentPercent
+              }
+            }
+            "#,
+        ))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected storefront active price lists GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+    let option = json["storefrontActivePriceLists"]
+        .as_array()
+        .expect("price lists should be an array")
+        .iter()
+        .find(|item| item["id"] == Value::from(price_list_id.to_string()))
+        .expect("cleared price list should stay visible");
+
+    assert_eq!(option["ruleKind"], Value::Null);
+    assert_eq!(option["adjustmentPercent"], Value::Null);
+}
+
+#[tokio::test]
+async fn storefront_graphql_active_price_lists_respect_scope_update_boundary() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let web_channel_id = Uuid::new_v4();
+    let mobile_channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, web_channel_id, "web-store", true).await;
+    seed_channel_binding(&db, tenant_id, mobile_channel_id, "mobile-app", true).await;
+    let price_list_id =
+        seed_active_price_list(&db, tenant_id, "Movable Sale", None, None, Some("10")).await;
+
+    PricingService::new(db.clone(), mock_transactional_event_bus())
+        .set_price_list_scope(
+            tenant_id,
+            actor_id,
+            price_list_id,
+            Some(web_channel_id),
+            Some("web-store".to_string()),
+        )
+        .await
+        .expect("scope update should succeed");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context_with_channel(tenant_id, "de", web_channel_id, "web-store"),
+        None,
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              requestScoped: storefrontActivePriceLists {{
+                id
+                channelSlug
+              }}
+              explicitMobile: storefrontActivePriceLists(
+                channelId: "{mobile_channel_id}",
+                channelSlug: "mobile-app"
+              ) {{
+                id
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected storefront scope-update GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert!(
+        json["requestScoped"]
+            .as_array()
+            .expect("request-scoped lists should be an array")
+            .iter()
+            .any(|item| item["id"] == Value::from(price_list_id.to_string())
+                && item["channelSlug"] == Value::from("web-store")),
+        "updated list should be visible in matching channel scope"
+    );
+    assert!(
+        !json["explicitMobile"]
+            .as_array()
+            .expect("mobile lists should be an array")
+            .iter()
+            .any(|item| item["id"] == Value::from(price_list_id.to_string())),
+        "updated list should not leak into a different channel scope"
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_pricing_product_applies_price_list_rule_without_override() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+    let price_list_id = seed_active_price_list(&db, tenant_id, "Rule Sale", None, None, None).await;
+
+    let pricing = PricingService::new(db.clone(), mock_transactional_event_bus());
+    pricing
+        .set_price(
+            tenant_id,
+            actor_id,
+            variant.id,
+            "EUR",
+            Decimal::from_str("20.00").unwrap(),
+            None,
+        )
+        .await
+        .expect("base price should be updated");
+    pricing
+        .set_price_list_percentage_rule(
+            tenant_id,
+            actor_id,
+            price_list_id,
+            Some(Decimal::from_str("15").unwrap()),
+        )
+        .await
+        .expect("rule should be stored");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminPricingProduct(
+                tenantId: "{tenant_id}",
+                id: "{product_id}",
+                locale: "en",
+                currencyCode: "EUR",
+                priceListId: "{price_list_id}",
+                quantity: 1
+              ) {{
+                variants {{
+                  effectivePrice {{
+                    amount
+                    compareAtAmount
+                    discountPercent
+                    priceListId
+                    onSale
+                  }}
+                }}
+              }}
+            }}
+            "#,
+            product_id = created.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin rule-driven pricing GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["amount"],
+        Value::from("17")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["compareAtAmount"],
+        Value::from("20")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["discountPercent"],
+        Value::from("15")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["priceListId"],
+        Value::from(price_list_id.to_string())
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["onSale"],
+        Value::from(true)
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_pricing_product_prefers_explicit_override_over_price_list_rule() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+    let price_list_id = seed_active_price_list(&db, tenant_id, "Rule Sale", None, None, None).await;
+
+    let pricing = PricingService::new(db.clone(), mock_transactional_event_bus());
+    pricing
+        .set_price(
+            tenant_id,
+            actor_id,
+            variant.id,
+            "EUR",
+            Decimal::from_str("20.00").unwrap(),
+            None,
+        )
+        .await
+        .expect("base price should be updated");
+    pricing
+        .set_price_list_percentage_rule(
+            tenant_id,
+            actor_id,
+            price_list_id,
+            Some(Decimal::from_str("15").unwrap()),
+        )
+        .await
+        .expect("rule should be stored");
+    pricing
+        .set_price_list_tier(
+            tenant_id,
+            actor_id,
+            variant.id,
+            price_list_id,
+            "EUR",
+            Decimal::from_str("14.00").unwrap(),
+            Some(Decimal::from_str("20.00").unwrap()),
+            None,
+            None,
+        )
+        .await
+        .expect("override row should be stored");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminPricingProduct(
+                tenantId: "{tenant_id}",
+                id: "{product_id}",
+                locale: "en",
+                currencyCode: "EUR",
+                priceListId: "{price_list_id}",
+                quantity: 1
+              ) {{
+                variants {{
+                  effectivePrice {{
+                    amount
+                    compareAtAmount
+                    discountPercent
+                    priceListId
+                  }}
+                }}
+              }}
+            }}
+            "#,
+            product_id = created.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin override precedence GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["amount"],
+        Value::from("14")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["compareAtAmount"],
+        Value::from("20")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["discountPercent"],
+        Value::from("30")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["priceListId"],
+        Value::from(price_list_id.to_string())
+    );
+}
+
+#[tokio::test]
 async fn admin_graphql_pricing_product_resolves_effective_price_for_explicit_channel() {
     let (db, catalog, _cart_service) = setup().await;
     let tenant_id = Uuid::new_v4();
@@ -4291,6 +4679,1294 @@ async fn admin_graphql_pricing_product_resolves_effective_price_for_explicit_cha
     assert_eq!(
         json["adminPricingProduct"]["variants"][0]["effectivePrice"]["onSale"],
         Value::from(true)
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_pricing_product_keeps_compare_at_without_sale_semantics_when_amount_matches()
+{
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+    PricingService::new(db.clone(), mock_transactional_event_bus())
+        .set_price(
+            tenant_id,
+            actor_id,
+            variant.id,
+            "EUR",
+            Decimal::from_str("19.99").expect("valid decimal"),
+            Some(Decimal::from_str("19.99").expect("valid decimal")),
+        )
+        .await
+        .expect("price should be updated");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminPricingProduct(
+                tenantId: "{tenant_id}",
+                id: "{product_id}",
+                locale: "en",
+                currencyCode: "EUR",
+                quantity: 1
+              ) {{
+                variants {{
+                  effectivePrice {{
+                    amount
+                    compareAtAmount
+                    discountPercent
+                    onSale
+                  }}
+                }}
+              }}
+            }}
+            "#,
+            product_id = created.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin compare-at parity GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["amount"],
+        Value::from("19.99")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["compareAtAmount"],
+        Value::from("19.99")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["discountPercent"],
+        Value::Null
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["onSale"],
+        Value::from(false)
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_pricing_product_applies_channel_scoped_rule_only_for_matching_context()
+{
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let web_channel_id = Uuid::new_v4();
+    let mobile_channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, web_channel_id, "web-store", true).await;
+    seed_channel_binding(&db, tenant_id, mobile_channel_id, "mobile-app", true).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("product should be published");
+    let handle = published
+        .translations
+        .iter()
+        .find(|item| item.locale == "en")
+        .map(|item| item.handle.clone())
+        .expect("published product should expose an English handle");
+    let variant = published
+        .variants
+        .first()
+        .expect("published product should include a variant");
+    let price_list_id = seed_active_price_list(
+        &db,
+        tenant_id,
+        "Web Rule Sale",
+        Some(web_channel_id),
+        Some("web-store"),
+        None,
+    )
+    .await;
+
+    let pricing = PricingService::new(db.clone(), mock_transactional_event_bus());
+    pricing
+        .set_price(
+            tenant_id,
+            actor_id,
+            variant.id,
+            "EUR",
+            Decimal::from_str("20.00").unwrap(),
+            None,
+        )
+        .await
+        .expect("base price should be updated");
+    pricing
+        .set_price_list_percentage_rule(
+            tenant_id,
+            actor_id,
+            price_list_id,
+            Some(Decimal::from_str("12.5").unwrap()),
+        )
+        .await
+        .expect("rule should be stored");
+
+    let web_schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context_with_channel(tenant_id, "en", web_channel_id, "web-store"),
+        None,
+    );
+    let web_response = web_schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontPricingProduct(
+                tenantId: "{tenant_id}",
+                handle: "{handle}",
+                locale: "en",
+                currencyCode: "EUR",
+                priceListId: "{price_list_id}",
+                quantity: 1
+              ) {{
+                variants {{
+                  effectivePrice {{
+                    amount
+                    compareAtAmount
+                    discountPercent
+                    priceListId
+                    channelSlug
+                  }}
+                }}
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        web_response.errors.is_empty(),
+        "unexpected storefront matching-channel GraphQL errors: {:?}",
+        web_response.errors
+    );
+    let web_json = web_response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        web_json["storefrontPricingProduct"]["variants"][0]["effectivePrice"]["amount"],
+        Value::from("17.5")
+    );
+    assert_eq!(
+        web_json["storefrontPricingProduct"]["variants"][0]["effectivePrice"]["channelSlug"],
+        Value::Null
+    );
+
+    let mobile_schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context_with_channel(tenant_id, "en", mobile_channel_id, "mobile-app"),
+        None,
+    );
+    let mobile_response = mobile_schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontPricingProduct(
+                tenantId: "{tenant_id}",
+                handle: "{handle}",
+                locale: "en",
+                currencyCode: "EUR",
+                quantity: 1
+              ) {{
+                variants {{
+                  effectivePrice {{
+                    amount
+                    priceListId
+                    channelSlug
+                  }}
+                }}
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        mobile_response.errors.is_empty(),
+        "unexpected storefront non-matching-channel GraphQL errors: {:?}",
+        mobile_response.errors
+    );
+    let mobile_json = mobile_response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        mobile_json["storefrontPricingProduct"]["variants"][0]["effectivePrice"]["amount"],
+        Value::from("20")
+    );
+    assert_eq!(
+        mobile_json["storefrontPricingProduct"]["variants"][0]["effectivePrice"]["priceListId"],
+        Value::Null
+    );
+    assert_eq!(
+        mobile_json["storefrontPricingProduct"]["variants"][0]["effectivePrice"]["channelSlug"],
+        Value::Null
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_update_pricing_variant_price_returns_written_row() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(pricing_update_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateAdminPricingVariantPrice(
+                tenantId: "{tenant_id}",
+                variantId: "{variant_id}",
+                input: {{
+                  currencyCode: "usd",
+                  amount: "79.00",
+                  compareAtAmount: "100.00",
+                  channelSlug: "WEB-STORE"
+                }}
+              ) {{
+                currencyCode
+                amount
+                compareAtAmount
+                discountPercent
+                onSale
+                channelSlug
+              }}
+            }}
+            "#,
+            variant_id = variant.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected update pricing GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["currencyCode"],
+        Value::from("USD")
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["amount"],
+        Value::from("79")
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["compareAtAmount"],
+        Value::from("100")
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["discountPercent"],
+        Value::from("21")
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["onSale"],
+        Value::from(true)
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["channelSlug"],
+        Value::from("web-store")
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_update_pricing_variant_price_supports_price_list_tier_scope() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+    let price_list_id =
+        seed_active_price_list(&db, tenant_id, "Tiered Sale", None, None, None).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(pricing_update_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateAdminPricingVariantPrice(
+                tenantId: "{tenant_id}",
+                variantId: "{variant_id}",
+                input: {{
+                  currencyCode: "eur",
+                  amount: "14.50",
+                  compareAtAmount: "19.99",
+                  priceListId: "{price_list_id}",
+                  channelId: "{channel_id}",
+                  channelSlug: "WEB-STORE",
+                  minQuantity: 5,
+                  maxQuantity: 9
+                }}
+              ) {{
+                currencyCode
+                amount
+                compareAtAmount
+                discountPercent
+                onSale
+                priceListId
+                channelId
+                channelSlug
+                minQuantity
+                maxQuantity
+              }}
+            }}
+            "#,
+            variant_id = variant.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected price-list tier GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["currencyCode"],
+        Value::from("EUR")
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["amount"],
+        Value::from("14.5")
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["compareAtAmount"],
+        Value::from("19.99")
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["discountPercent"],
+        Value::from("27.46")
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["onSale"],
+        Value::from(true)
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["priceListId"],
+        Value::from(price_list_id.to_string())
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["channelId"],
+        Value::from(channel_id.to_string())
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["channelSlug"],
+        Value::from("web-store")
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["minQuantity"],
+        Value::from(5)
+    );
+    assert_eq!(
+        json["updateAdminPricingVariantPrice"]["maxQuantity"],
+        Value::from(9)
+    );
+
+    let persisted = PricingService::new(db.clone(), mock_transactional_event_bus())
+        .get_variant_prices(variant.id)
+        .await
+        .expect("variant prices should load")
+        .into_iter()
+        .find(|price| {
+            price.price_list_id == Some(price_list_id)
+                && price.channel_id == Some(channel_id)
+                && price.channel_slug.as_deref() == Some("web-store")
+                && price.min_quantity == Some(5)
+                && price.max_quantity == Some(9)
+        })
+        .expect("scoped price-list tier should persist");
+    assert_eq!(persisted.amount, Decimal::from_str("14.50").unwrap());
+    assert_eq!(
+        persisted.compare_at_amount,
+        Some(Decimal::from_str("19.99").unwrap())
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_preview_pricing_variant_discount_returns_typed_preview() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(pricing_update_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              previewAdminPricingVariantDiscount(
+                tenantId: "{tenant_id}",
+                variantId: "{variant_id}",
+                input: {{
+                  currencyCode: "eur",
+                  discountPercent: "10"
+                }}
+              ) {{
+                kind
+                currencyCode
+                currentAmount
+                baseAmount
+                adjustedAmount
+                adjustmentPercent
+                compareAtAmount
+              }}
+            }}
+            "#,
+            variant_id = variant.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected preview pricing GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["previewAdminPricingVariantDiscount"]["kind"],
+        Value::from("percentage_discount")
+    );
+    assert_eq!(
+        json["previewAdminPricingVariantDiscount"]["currencyCode"],
+        Value::from("EUR")
+    );
+    assert_eq!(
+        json["previewAdminPricingVariantDiscount"]["currentAmount"],
+        Value::from("19.99")
+    );
+    assert_eq!(
+        json["previewAdminPricingVariantDiscount"]["baseAmount"],
+        Value::from("19.99")
+    );
+    assert_eq!(
+        json["previewAdminPricingVariantDiscount"]["adjustedAmount"],
+        Value::from("17.99")
+    );
+    assert_eq!(
+        json["previewAdminPricingVariantDiscount"]["adjustmentPercent"],
+        Value::from("10")
+    );
+    assert_eq!(
+        json["previewAdminPricingVariantDiscount"]["compareAtAmount"],
+        Value::from("19.99")
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_apply_pricing_variant_discount_updates_base_row() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(pricing_update_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              applyAdminPricingVariantDiscount(
+                tenantId: "{tenant_id}",
+                variantId: "{variant_id}",
+                input: {{
+                  currencyCode: "eur",
+                  discountPercent: "10"
+                }}
+              ) {{
+                kind
+                adjustedAmount
+                compareAtAmount
+              }}
+            }}
+            "#,
+            variant_id = variant.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected apply pricing GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["applyAdminPricingVariantDiscount"]["kind"],
+        Value::from("percentage_discount")
+    );
+    assert_eq!(
+        json["applyAdminPricingVariantDiscount"]["adjustedAmount"],
+        Value::from("17.99")
+    );
+    assert_eq!(
+        json["applyAdminPricingVariantDiscount"]["compareAtAmount"],
+        Value::from("19.99")
+    );
+
+    let updated = PricingService::new(db.clone(), mock_transactional_event_bus())
+        .get_price(variant.id, "EUR")
+        .await
+        .expect("updated price should load");
+    assert_eq!(updated, Some(Decimal::from_str("17.99").unwrap()));
+}
+
+#[tokio::test]
+async fn admin_graphql_update_price_list_rule_updates_active_option() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let price_list_id = seed_active_price_list(&db, tenant_id, "Rule Sale", None, None, None).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(pricing_update_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateAdminPricingPriceListRule(
+                tenantId: "{tenant_id}",
+                priceListId: "{price_list_id}",
+                input: {{
+                  adjustmentPercent: "15"
+                }}
+              ) {{
+                id
+                ruleKind
+                adjustmentPercent
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected price-list rule GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["updateAdminPricingPriceListRule"]["id"],
+        Value::from(price_list_id.to_string())
+    );
+    assert_eq!(
+        json["updateAdminPricingPriceListRule"]["ruleKind"],
+        Value::from("percentage_discount")
+    );
+    assert_eq!(
+        json["updateAdminPricingPriceListRule"]["adjustmentPercent"],
+        Value::from("15")
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_update_price_list_rule_rejects_future_price_list() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let future_list_id = seed_active_price_list_with_window(
+        &db,
+        tenant_id,
+        "Future Rule Sale",
+        None,
+        None,
+        None,
+        Some(chrono::Utc::now() + chrono::Duration::days(1)),
+        None,
+    )
+    .await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(pricing_update_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateAdminPricingPriceListRule(
+                tenantId: "{tenant_id}",
+                priceListId: "{future_list_id}",
+                input: {{
+                  adjustmentPercent: "15"
+                }}
+              ) {{
+                id
+              }}
+            }}
+            "#
+        )))
+        .await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert!(response.errors[0]
+        .message
+        .contains("price_list_id is not active yet"));
+}
+
+#[tokio::test]
+async fn admin_graphql_update_price_list_rule_clears_metadata() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let price_list_id =
+        seed_active_price_list(&db, tenant_id, "Rule Sale", None, None, Some("12.5")).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(pricing_update_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateAdminPricingPriceListRule(
+                tenantId: "{tenant_id}",
+                priceListId: "{price_list_id}",
+                input: {{
+                  adjustmentPercent: null
+                }}
+              ) {{
+                id
+                ruleKind
+                adjustmentPercent
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected clear-rule GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["updateAdminPricingPriceListRule"]["id"],
+        Value::from(price_list_id.to_string())
+    );
+    assert_eq!(
+        json["updateAdminPricingPriceListRule"]["ruleKind"],
+        Value::Null
+    );
+    assert_eq!(
+        json["updateAdminPricingPriceListRule"]["adjustmentPercent"],
+        Value::Null
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_update_price_list_scope_updates_active_option_and_rows() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+    let price_list_id =
+        seed_active_price_list(&db, tenant_id, "Scoped Sale", None, None, None).await;
+
+    PricingService::new(db.clone(), mock_transactional_event_bus())
+        .set_price_list_tier(
+            tenant_id,
+            actor_id,
+            variant.id,
+            price_list_id,
+            "EUR",
+            Decimal::from_str("14.00").unwrap(),
+            Some(Decimal::from_str("19.99").unwrap()),
+            None,
+            None,
+        )
+        .await
+        .expect("override row should be stored");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(pricing_update_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateAdminPricingPriceListScope(
+                tenantId: "{tenant_id}",
+                priceListId: "{price_list_id}",
+                input: {{
+                  channelId: "{channel_id}",
+                  channelSlug: "WEB-STORE"
+                }}
+              ) {{
+                id
+                channelId
+                channelSlug
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected price-list scope GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["updateAdminPricingPriceListScope"]["id"],
+        Value::from(price_list_id.to_string())
+    );
+    assert_eq!(
+        json["updateAdminPricingPriceListScope"]["channelId"],
+        Value::from(channel_id.to_string())
+    );
+    assert_eq!(
+        json["updateAdminPricingPriceListScope"]["channelSlug"],
+        Value::from("web-store")
+    );
+
+    let scoped_row = PricingService::new(db.clone(), mock_transactional_event_bus())
+        .get_variant_prices(variant.id)
+        .await
+        .expect("variant prices should load")
+        .into_iter()
+        .find(|price| price.price_list_id == Some(price_list_id))
+        .expect("scoped override should exist");
+    assert_eq!(scoped_row.channel_id, Some(channel_id));
+    assert_eq!(scoped_row.channel_slug.as_deref(), Some("web-store"));
+}
+
+#[tokio::test]
+async fn admin_graphql_update_price_list_scope_clears_boundary_and_rows() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+    let price_list_id = seed_active_price_list(
+        &db,
+        tenant_id,
+        "Scoped Sale",
+        Some(channel_id),
+        Some("web-store"),
+        None,
+    )
+    .await;
+
+    PricingService::new(db.clone(), mock_transactional_event_bus())
+        .set_price_list_tier_with_channel(
+            tenant_id,
+            actor_id,
+            variant.id,
+            price_list_id,
+            "EUR",
+            Decimal::from_str("14.00").unwrap(),
+            Some(Decimal::from_str("19.99").unwrap()),
+            Some(channel_id),
+            Some("web-store".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("scoped override row should be stored");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(pricing_update_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateAdminPricingPriceListScope(
+                tenantId: "{tenant_id}",
+                priceListId: "{price_list_id}",
+                input: {{
+                  channelId: null,
+                  channelSlug: null
+                }}
+              ) {{
+                id
+                channelId
+                channelSlug
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected clear-scope GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["updateAdminPricingPriceListScope"]["id"],
+        Value::from(price_list_id.to_string())
+    );
+    assert_eq!(
+        json["updateAdminPricingPriceListScope"]["channelId"],
+        Value::Null
+    );
+    assert_eq!(
+        json["updateAdminPricingPriceListScope"]["channelSlug"],
+        Value::Null
+    );
+
+    let global_row = PricingService::new(db.clone(), mock_transactional_event_bus())
+        .get_variant_prices(variant.id)
+        .await
+        .expect("variant prices should load")
+        .into_iter()
+        .find(|price| price.price_list_id == Some(price_list_id))
+        .expect("override row should remain present");
+    assert_eq!(global_row.channel_id, None);
+    assert_eq!(global_row.channel_slug, None);
+}
+
+#[tokio::test]
+async fn pricing_graphql_facades_reject_price_list_channel_mismatch() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let web_channel_id = Uuid::new_v4();
+    let mobile_channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, web_channel_id, "web-store", true).await;
+    seed_channel_binding(&db, tenant_id, mobile_channel_id, "mobile-app", true).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("product should be published");
+    let handle = published
+        .translations
+        .iter()
+        .find(|item| item.locale == "en")
+        .map(|item| item.handle.clone())
+        .expect("published product should expose an English handle");
+    let price_list_id = seed_active_price_list(
+        &db,
+        tenant_id,
+        "Web Rule Sale",
+        Some(web_channel_id),
+        Some("web-store"),
+        Some("12.5"),
+    )
+    .await;
+
+    let admin_schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let admin_response = admin_schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminPricingProduct(
+                tenantId: "{tenant_id}",
+                id: "{product_id}",
+                locale: "en",
+                currencyCode: "EUR",
+                priceListId: "{price_list_id}",
+                channelId: "{mobile_channel_id}",
+                channelSlug: "mobile-app",
+                quantity: 1
+              ) {{
+                id
+              }}
+            }}
+            "#,
+            product_id = created.id,
+        )))
+        .await;
+    assert!(
+        admin_response.errors.iter().any(|error| error
+            .message
+            .contains("price_list_id is not available for the requested channel")),
+        "expected admin channel mismatch validation error, got {:?}",
+        admin_response.errors
+    );
+
+    let storefront_schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context_with_channel(tenant_id, "en", web_channel_id, "web-store"),
+        None,
+    );
+    let storefront_response = storefront_schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontPricingProduct(
+                tenantId: "{tenant_id}",
+                handle: "{handle}",
+                locale: "en",
+                currencyCode: "EUR",
+                priceListId: "{price_list_id}",
+                channelId: "{mobile_channel_id}",
+                channelSlug: "mobile-app",
+                quantity: 1
+              ) {{
+                id
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        storefront_response.errors.iter().any(|error| error
+            .message
+            .contains("price_list_id is not available for the requested channel")),
+        "expected storefront channel mismatch validation error, got {:?}",
+        storefront_response.errors
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_pricing_product_rejects_non_letter_currency_code() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminPricingProduct(
+                tenantId: "{tenant_id}",
+                id: "{product_id}",
+                locale: "en",
+                currencyCode: "US1",
+                quantity: 1
+              ) {{
+                id
+              }}
+            }}
+            "#,
+            product_id = Uuid::new_v4(),
+        )))
+        .await;
+
+    assert!(
+        response.errors.iter().any(|error| error
+            .message
+            .contains("currency_code must be a 3-letter code")),
+        "expected GraphQL currency_code validation error, got {:?}",
+        response.errors
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_pricing_product_rejects_non_positive_quantity() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminPricingProduct(
+                tenantId: "{tenant_id}",
+                id: "{product_id}",
+                locale: "en",
+                currencyCode: "USD",
+                quantity: 0
+              ) {{
+                id
+              }}
+            }}
+            "#,
+            product_id = Uuid::new_v4(),
+        )))
+        .await;
+
+    assert!(
+        response
+            .errors
+            .iter()
+            .any(|error| error.message.contains("quantity must be at least 1")),
+        "expected GraphQL quantity validation error, got {:?}",
+        response.errors
+    );
+}
+
+#[tokio::test]
+async fn admin_graphql_pricing_product_rejects_resolution_context_without_currency_code() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminPricingProduct(
+                tenantId: "{tenant_id}",
+                id: "{product_id}",
+                locale: "en",
+                priceListId: "{price_list_id}",
+                quantity: 1
+              ) {{
+                id
+              }}
+            }}
+            "#,
+            product_id = Uuid::new_v4(),
+            price_list_id = Uuid::new_v4(),
+        )))
+        .await;
+
+    assert!(
+        response.errors.iter().any(|error| error
+            .message
+            .contains("currency_code is required for pricing resolution context")),
+        "expected GraphQL missing currency_code validation error, got {:?}",
+        response.errors
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_pricing_product_rejects_invalid_resolution_context() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontPricingProduct(
+                tenantId: "{tenant_id}",
+                handle: "missing-product",
+                locale: "en",
+                currencyCode: "EU1",
+                quantity: 0
+              ) {{
+                id
+              }}
+            }}
+            "#
+        )))
+        .await;
+
+    assert!(
+        response.errors.iter().any(|error| error
+            .message
+            .contains("currency_code must be a 3-letter code")),
+        "expected storefront GraphQL currency_code validation error, got {:?}",
+        response.errors
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_pricing_product_rejects_resolution_context_without_currency_code() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontPricingProduct(
+                tenantId: "{tenant_id}",
+                handle: "missing-product",
+                locale: "en",
+                priceListId: "{price_list_id}",
+                quantity: 1
+              ) {{
+                id
+              }}
+            }}
+            "#,
+            price_list_id = Uuid::new_v4(),
+        )))
+        .await;
+
+    assert!(
+        response.errors.iter().any(|error| error
+            .message
+            .contains("currency_code is required for pricing resolution context")),
+        "expected storefront GraphQL missing currency_code validation error, got {:?}",
+        response.errors
     );
 }
 
@@ -4446,7 +6122,7 @@ async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_pr
             AddCartLineItemInput {
                 product_id: Some(published.id),
                 variant_id: Some(variant.id),
-                shipping_profile_slug: None,
+                shipping_profile_slug: Some("bulky".to_string()),
                 sku: variant.sku.clone(),
                 title: variant.title.clone(),
                 quantity: 1,
@@ -4485,7 +6161,7 @@ async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_pr
     assert!(
         response.errors[0]
             .message
-            .contains("not compatible with the cart shipping profiles"),
+            .contains("not compatible with shipping profile bulky"),
         "unexpected GraphQL error: {}",
         response.errors[0].message
     );

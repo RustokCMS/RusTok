@@ -1,7 +1,7 @@
 use chrono::Utc;
 use flex::{
-    persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
-    resolve_attached_payload,
+    delete_attached_localized_values, persist_localized_values, prepare_attached_values_create,
+    prepare_attached_values_update, resolve_attached_payload,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
@@ -27,6 +27,15 @@ use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use crate::entities::product_tag;
 
 const PRODUCT_SCOPE_VALUE: &str = "product";
+
+fn map_flex_cleanup_error(error: rustok_core::field_schema::FlexError) -> CommerceError {
+    match error {
+        rustok_core::field_schema::FlexError::Database(message) => {
+            CommerceError::Database(sea_orm::DbErr::Custom(message))
+        }
+        other => CommerceError::Validation(other.to_string()),
+    }
+}
 
 fn normalize_seller_id(value: Option<&str>) -> Option<String> {
     value
@@ -1277,6 +1286,10 @@ impl CatalogService {
         entities::product::Entity::delete_by_id(product_id)
             .exec(&txn)
             .await?;
+
+        delete_attached_localized_values(&txn, tenant_id, "product", product_id)
+            .await
+            .map_err(map_flex_cleanup_error)?;
 
         self.event_bus
             .publish_in_tx(

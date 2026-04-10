@@ -29,7 +29,7 @@
   "pricing.detail.seller": "seller",
   "pricing.detail.subtitle": "Inspect currency coverage, compare-at pricing and sale visibility from the pricing-owned route.",
   "pricing.detail.title": "Pricing Detail",
-  "pricing.detail.transportGap": "This route now owns pricing visibility, effective-context inspection and base-price write actions. Promotion/rule-aware pricing transport still remains in the umbrella ecommerce backlog.",
+  "pricing.detail.transportGap": "This route already owns pricing visibility, effective-context inspection, base-row and active price-list write actions, plus price-list rule and scope editing. The remaining backlog is the broader promotions engine, not the core pricing transport path.",
   "pricing.detail.untitled": "Untitled",
   "pricing.edit.addPrice": "Add or overwrite currency",
   "pricing.edit.amountInput": "Amount",

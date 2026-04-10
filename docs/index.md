@@ -62,10 +62,10 @@
   заставляет UI жить на raw UUID-only вводе; кроме того, `rustok-pricing/admin`
   уже перестал быть чисто read-only route и получил module-owned base-price write path
   для variant prices, включая минимальный quantity-tier authoring по `min_quantity` /
-  `max_quantity`, а теперь ещё и active price-list override authoring поверх base rows;
-  targeted SSR tests уже покрывают этот admin transport path, а read-side contract теперь
-  ещё и отдаёт typed `discount_percent` для sale rows/effective prices; promotion/rule-aware
-  pricing mutations остаются следующим slice. Параллельно legacy `apply_discount`
+  `max_quantity`, active price-list override authoring поверх base rows и selected
+  active `price_list` rule/scope editing; targeted SSR tests уже покрывают этот admin
+  transport path, а read-side contract теперь ещё и отдаёт typed `discount_percent`
+  для sale rows/effective prices. Параллельно legacy `apply_discount`
   уже переведён на typed percentage-adjustment helper поверх canonical base-price row, а
   `rustok-pricing/admin` уже даёт operator-side preview/apply flow для такого adjustment path
   без смешивания его с quantity tiers; теперь этот flow уже умеет target'ить и выбранный
@@ -75,8 +75,20 @@
   получил typed foundation через `cart_adjustments` / `order_adjustments`, `subtotal_amount`,
   `adjustment_total` и net `total_amount` без хранения localized display labels в ecommerce storage;
   pricing-authoritative GraphQL reads теперь живут в dedicated roots `adminPricingProduct` /
-  `storefrontPricingProduct`, а generic `product` / `storefrontProduct` с `variants.prices`
-  остаются только catalog compatibility snapshot contract.
+  `storefrontPricingProduct`, где explicit resolution modifiers требуют валидный
+  трёхбуквенный `currencyCode`, malformed explicit `channel_id` отклоняется и такие inputs
+  не игнорируются молча, а pricing UI wrappers валидируют этот contract ещё до
+  fallback с native `#[server]` transport на GraphQL; параллельный admin GraphQL
+  transport теперь уже умеет и `updateAdminPricingVariantPrice`,
+  `previewAdminPricingVariantDiscount`, `applyAdminPricingVariantDiscount`,
+  `updateAdminPricingPriceListRule`, `updateAdminPricingPriceListScope`,
+  так что pricing write path больше не ограничен только server-function слоем;
+  generic `product` / `storefrontProduct` с `variants.prices`
+  остаются только catalog compatibility snapshot contract; последний широкий
+  parity sweep также зафиксировал, что admin-side `price_list` rule/scope mutation
+  paths режут future/expired lists без hidden fallback, clear rule metadata не
+  оставляет stale selector state, а pricing-focused GraphQL helper/read roots
+  сохраняют rule/channel parity отдельно от остального storefront suite.
 - [Спец-план rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 
 ## UI и клиентские поверхности

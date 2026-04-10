@@ -11,7 +11,9 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{
-    entities::{price, product, product_translation, product_variant, variant_translation},
+    entities::{
+        price, price_list, product, product_translation, product_variant, variant_translation,
+    },
     storefront_channel::{
         is_metadata_visible_for_public_channel,
         load_available_inventory_for_variant_in_public_channel, normalize_public_channel_slug,
@@ -21,7 +23,8 @@ use crate::{
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
     CartService, CatalogService, CheckoutService, CustomerService, FulfillmentOrchestrationService,
-    FulfillmentService, OrderService, PaymentService, ShippingProfileService, StoreContextService,
+    FulfillmentService, OrderService, PaymentService, PricingService, ShippingProfileService,
+    StoreContextService,
 };
 
 use super::{require_commerce_permission, types::*, MODULE_SLUG};
@@ -31,6 +34,244 @@ pub struct CommerceMutation;
 
 #[Object]
 impl CommerceMutation {
+    async fn update_admin_pricing_variant_price(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+        input: UpdateAdminPricingVariantPriceInput,
+    ) -> Result<GqlPricingPrice> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let auth = require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let service = PricingService::new(db.clone(), event_bus.clone());
+        let currency_code = parse_pricing_currency_code(&input.currency_code)?;
+        let amount = parse_decimal(&input.amount)?;
+        let compare_at_amount = parse_optional_decimal(input.compare_at_amount.as_deref())?;
+        let channel_slug = normalize_pricing_channel_slug(input.channel_slug.as_deref());
+
+        if let Some(price_list_id) = input.price_list_id {
+            service
+                .set_price_list_tier_with_channel(
+                    tenant_id,
+                    auth.user_id,
+                    variant_id,
+                    price_list_id,
+                    currency_code.as_str(),
+                    amount,
+                    compare_at_amount,
+                    input.channel_id,
+                    channel_slug.clone(),
+                    input.min_quantity,
+                    input.max_quantity,
+                )
+                .await
+                .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        } else {
+            service
+                .set_price_tier_with_channel(
+                    tenant_id,
+                    auth.user_id,
+                    variant_id,
+                    currency_code.as_str(),
+                    amount,
+                    compare_at_amount,
+                    input.channel_id,
+                    channel_slug.clone(),
+                    input.min_quantity,
+                    input.max_quantity,
+                )
+                .await
+                .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        }
+
+        let price = load_pricing_price_row(
+            &service,
+            variant_id,
+            &currency_code,
+            input.price_list_id,
+            input.channel_id,
+            channel_slug.as_deref(),
+            input.min_quantity,
+            input.max_quantity,
+        )
+        .await?;
+
+        Ok(price)
+    }
+
+    async fn preview_admin_pricing_variant_discount(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+        input: AdminPricingVariantDiscountInput,
+    ) -> Result<GqlPricingAdjustmentPreview> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_READ, Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:read required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let service = PricingService::new(db.clone(), event_bus.clone());
+        let currency_code = parse_pricing_currency_code(&input.currency_code)?;
+        let discount_percent = parse_decimal(&input.discount_percent)?;
+        let channel_slug = normalize_pricing_channel_slug(input.channel_slug.as_deref());
+
+        let preview = if let Some(price_list_id) = input.price_list_id {
+            service
+                .preview_price_list_percentage_discount_with_channel(
+                    tenant_id,
+                    variant_id,
+                    price_list_id,
+                    currency_code.as_str(),
+                    discount_percent,
+                    input.channel_id,
+                    channel_slug,
+                )
+                .await
+        } else {
+            service
+                .preview_percentage_discount_with_channel(
+                    variant_id,
+                    currency_code.as_str(),
+                    discount_percent,
+                    input.channel_id,
+                    channel_slug,
+                )
+                .await
+        }
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(preview.into())
+    }
+
+    async fn apply_admin_pricing_variant_discount(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        variant_id: Uuid,
+        input: AdminPricingVariantDiscountInput,
+    ) -> Result<GqlPricingAdjustmentPreview> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let auth = require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let service = PricingService::new(db.clone(), event_bus.clone());
+        let currency_code = parse_pricing_currency_code(&input.currency_code)?;
+        let discount_percent = parse_decimal(&input.discount_percent)?;
+        let channel_slug = normalize_pricing_channel_slug(input.channel_slug.as_deref());
+
+        let preview = if let Some(price_list_id) = input.price_list_id {
+            service
+                .apply_price_list_percentage_discount_with_channel(
+                    tenant_id,
+                    auth.user_id,
+                    variant_id,
+                    price_list_id,
+                    currency_code.as_str(),
+                    discount_percent,
+                    input.channel_id,
+                    channel_slug,
+                )
+                .await
+        } else {
+            service
+                .apply_percentage_discount_with_channel(
+                    tenant_id,
+                    auth.user_id,
+                    variant_id,
+                    currency_code.as_str(),
+                    discount_percent,
+                    input.channel_id,
+                    channel_slug,
+                )
+                .await
+        }
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(preview.into())
+    }
+
+    async fn update_admin_pricing_price_list_rule(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        price_list_id: Uuid,
+        input: UpdateAdminPricingPriceListRuleInput,
+    ) -> Result<GqlActivePriceListOption> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let auth = require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        validate_active_price_list_for_rule_update(db, tenant_id, price_list_id).await?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let service = PricingService::new(db.clone(), event_bus.clone());
+        let adjustment_percent = parse_optional_decimal(input.adjustment_percent.as_deref())?;
+
+        service
+            .set_price_list_percentage_rule(
+                tenant_id,
+                auth.user_id,
+                price_list_id,
+                adjustment_percent,
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        load_active_price_list_option(&service, tenant_id, price_list_id).await
+    }
+
+    async fn update_admin_pricing_price_list_scope(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        price_list_id: Uuid,
+        input: UpdateAdminPricingPriceListScopeInput,
+    ) -> Result<GqlActivePriceListOption> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let auth = require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_UPDATE],
+            "Permission denied: products:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let service = PricingService::new(db.clone(), event_bus.clone());
+
+        let option = service
+            .set_price_list_scope(
+                tenant_id,
+                auth.user_id,
+                price_list_id,
+                input.channel_id,
+                normalize_pricing_channel_slug(input.channel_slug.as_deref()),
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(option.into())
+    }
+
     async fn create_storefront_cart(
         &self,
         ctx: &Context<'_>,
@@ -1295,6 +1536,23 @@ fn parse_optional_decimal(value: Option<&str>) -> Result<Option<Decimal>> {
     value.map(parse_decimal).transpose()
 }
 
+fn parse_pricing_currency_code(value: &str) -> Result<String> {
+    let normalized = value.trim().to_ascii_uppercase();
+    if normalized.len() != 3 || !normalized.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        return Err(async_graphql::Error::new(
+            "currency_code must be a 3-letter code",
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_pricing_channel_slug(channel_slug: Option<&str>) -> Option<String> {
+    channel_slug
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
 fn parse_optional_metadata(value: Option<&str>) -> Result<Value> {
     match value.map(str::trim) {
         None | Some("") => Ok(Value::Object(Default::default())),
@@ -1350,6 +1608,130 @@ fn merge_graphql_metadata(current: Value, patch: Value) -> Value {
         }
         (_, patch) => patch,
     }
+}
+
+fn map_price_row_to_gql_price(price: crate::entities::price::Model) -> GqlPricingPrice {
+    let on_sale = price
+        .compare_at_amount
+        .filter(|compare_at| *compare_at > Decimal::ZERO)
+        .map(|compare_at| compare_at > price.amount)
+        .unwrap_or(false);
+    let discount_percent = price.compare_at_amount.and_then(|compare_at_amount| {
+        if compare_at_amount <= Decimal::ZERO || compare_at_amount <= price.amount {
+            return None;
+        }
+
+        Some(
+            (((compare_at_amount - price.amount) / compare_at_amount) * Decimal::from(100))
+                .round_dp(2)
+                .normalize()
+                .to_string(),
+        )
+    });
+
+    GqlPricingPrice {
+        currency_code: price.currency_code,
+        amount: price.amount.normalize().to_string(),
+        compare_at_amount: price
+            .compare_at_amount
+            .map(|item| item.normalize().to_string()),
+        discount_percent,
+        on_sale,
+        price_list_id: price.price_list_id,
+        channel_id: price.channel_id,
+        channel_slug: price.channel_slug,
+        min_quantity: price.min_quantity,
+        max_quantity: price.max_quantity,
+    }
+}
+
+async fn load_pricing_price_row(
+    service: &PricingService,
+    variant_id: Uuid,
+    currency_code: &str,
+    price_list_id: Option<Uuid>,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<&str>,
+    min_quantity: Option<i32>,
+    max_quantity: Option<i32>,
+) -> Result<GqlPricingPrice> {
+    let normalized_channel_slug = normalize_pricing_channel_slug(channel_slug);
+    let prices = service
+        .get_variant_prices(variant_id)
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+    let price = prices
+        .into_iter()
+        .find(|price| {
+            price.currency_code.eq_ignore_ascii_case(currency_code)
+                && price.price_list_id == price_list_id
+                && price.channel_id == channel_id
+                && normalize_pricing_channel_slug(price.channel_slug.as_deref())
+                    == normalized_channel_slug
+                && price.min_quantity == min_quantity
+                && price.max_quantity == max_quantity
+        })
+        .ok_or_else(|| async_graphql::Error::new("Updated pricing row was not found"))?;
+
+    Ok(map_price_row_to_gql_price(price))
+}
+
+async fn load_active_price_list_option(
+    service: &PricingService,
+    tenant_id: Uuid,
+    price_list_id: Uuid,
+) -> Result<GqlActivePriceListOption> {
+    let option = service
+        .list_active_price_lists(tenant_id)
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?
+        .into_iter()
+        .find(|item| item.id == price_list_id)
+        .ok_or_else(|| {
+            async_graphql::Error::new("price_list_id must reference an active price list")
+        })?;
+
+    Ok(option.into())
+}
+
+async fn validate_active_price_list_for_rule_update(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    price_list_id: Uuid,
+) -> Result<()> {
+    let price_list = price_list::Entity::find_by_id(price_list_id)
+        .filter(price_list::Column::TenantId.eq(tenant_id))
+        .one(db)
+        .await?
+        .ok_or_else(|| async_graphql::Error::new("price_list_id was not found"))?;
+
+    if !price_list.status.eq_ignore_ascii_case("active") {
+        return Err(async_graphql::Error::new(
+            "price_list_id must reference an active price list",
+        ));
+    }
+
+    let now = chrono::Utc::now();
+    if price_list
+        .starts_at
+        .map(|item| item.with_timezone(&chrono::Utc) > now)
+        .unwrap_or(false)
+    {
+        return Err(async_graphql::Error::new("price_list_id is not active yet"));
+    }
+
+    if price_list
+        .ends_at
+        .map(|item| item.with_timezone(&chrono::Utc) < now)
+        .unwrap_or(false)
+    {
+        return Err(async_graphql::Error::new(
+            "price_list_id is already expired",
+        ));
+    }
+
+    Ok(())
 }
 
 fn cart_context_metadata(

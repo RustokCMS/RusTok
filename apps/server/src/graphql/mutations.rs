@@ -753,16 +753,30 @@ impl RootMutation {
             ));
         }
 
+        let txn = app_ctx
+            .db
+            .begin()
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
         let user = users::Entity::find_by_id(id)
             .filter(UsersColumn::TenantId.eq(tenant.id))
-            .one(&app_ctx.db)
+            .one(&txn)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
             .ok_or_else(|| FieldError::new("User not found"))?;
 
+        FlexAttachedValuesService::delete_localized_values(&txn, tenant.id, "user", id)
+            .await
+            .map_err(map_custom_field_error)?;
+
         let model: users::ActiveModel = user.into();
         model
-            .delete(&app_ctx.db)
+            .delete(&txn)
+            .await
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
+
+        txn.commit()
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 

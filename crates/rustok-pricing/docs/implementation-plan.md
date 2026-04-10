@@ -1,8 +1,9 @@
 # План реализации `rustok-pricing`
 
 Статус: pricing boundary выделен как отдельный модуль; модуль держит pricing runtime
-baseline, module-owned admin UI уже включает base-price write path, а promotion/rule-aware
-transport и полный `pricing 2.0` остаются в активном backlog umbrella `rustok-commerce`.
+baseline, module-owned admin UI уже включает base-row, active `price_list` override,
+rule и scope write paths, а полный promotions engine и остальной `pricing 2.0`
+остаются в активном backlog umbrella `rustok-commerce`.
 
 ## Область работ
 
@@ -26,7 +27,9 @@ transport и полный `pricing 2.0` остаются в активном bac
   price lists поверх existing effective context;
 - storefront package по-прежнему остаётся read-side surface, но admin package уже
   использует native-first `#[server]` transport не только для read-side, но и для
-  base-price write actions, оставляя product GraphQL контракт как fallback для чтения.
+  base-row writes, active `price_list` overrides, typed percentage adjustments и
+  `price_list` rule/scope editing, оставляя product GraphQL контракт как fallback
+  для чтения.
 
 ## Этапы
 
@@ -36,7 +39,7 @@ transport и полный `pricing 2.0` остаются в активном bac
 - [x] удерживать зависимость `pricing -> product` без цикла на umbrella;
 - [x] вынести pricing admin UI в module-owned пакет `rustok-pricing/admin`;
 - [x] вынести pricing storefront UI в module-owned пакет `rustok-pricing/storefront`;
-- [ ] удерживать sync между pricing runtime contract, admin UI, commerce transport
+- [x] удерживать sync между pricing runtime contract, admin UI, commerce transport
   и module metadata.
 
 ### 2. Pricing transport split
@@ -64,6 +67,15 @@ transport и полный `pricing 2.0` остаются в активном bac
   compatibility option;
 - [x] протянуть effective price context в module-owned storefront/admin read-side surfaces
   через native-first `#[server]` transport с GraphQL fallback;
+- [x] выровнять validation contract для `PriceResolutionContext` между runtime,
+  dedicated GraphQL facade roots и native `#[server]` transport: `currency_code`
+  должен быть трёхбуквенным ASCII business code, `quantity < 1` отклоняется,
+  а `region_id`, `price_list_id` или `quantity` без `currency_code` не
+  игнорируются молча; malformed explicit `channel_id` тоже отклоняется, а не
+  fallback'ится к host channel context;
+- [x] вынести тот же validation step в pricing UI fetch wrappers до попытки
+  native-first `#[server]` transport, чтобы invalid input не проваливался в
+  бессмысленный GraphQL fallback и не размывал transport contract;
 - [x] добавить explicit channel selector в storefront/admin effective-context controls,
   чтобы channel-aware resolution можно было переключать без raw query editing и без
   возврата к package-local fallback chain;
@@ -79,7 +91,7 @@ transport и полный `pricing 2.0` остаются в активном bac
 - [x] отдать active tenant-scoped price lists как pricing-owned read contract,
   чтобы admin/storefront route выбирали overlays без raw UUID-only UX;
 - [~] добавить tiers, adjustments и promotion-ready semantics;
-- [ ] покрывать deterministic price resolution и rounding targeted tests.
+- [~] покрывать deterministic price resolution и rounding targeted tests.
 
 Что уже закрыто дополнительно:
 
@@ -93,9 +105,70 @@ transport и полный `pricing 2.0` остаются в активном bac
 - runtime tests уже покрывают `set_price_tier` для quantity windows, invalid tier ranges
   и normalized `discount_percent` в `ResolvedPrice`, а admin/storefront surfaces
   уже показывают sale math поверх typed read-side contract.
+- targeted runtime/transport tests уже покрывают strict resolution validation:
+  service-level resolver, GraphQL roots `adminPricingProduct` / `storefrontPricingProduct`
+  и native `#[server]` helpers в `rustok-pricing/admin` / `rustok-pricing/storefront`
+  отклоняют invalid `currency_code`, `quantity < 1`, malformed explicit `channel_id`
+  и modifiers без currency.
 - тот же runtime теперь ещё и покрывает channel-aware deterministic resolution:
   channel-scoped base row выигрывает у global только при совпавшем host channel,
   а active price list selector не отдаёт channel-scoped list вне его scope.
+- targeted runtime tests теперь ещё и фиксируют tie-break по `max_quantity`
+  при одинаковом `min_quantity`, slug-only channel matching без `channel_id`
+  и fractional `discount_percent` rounding для обычных sale rows.
+- service-level pricing tests теперь ещё и фиксируют channel-scope semantics у
+  active `price_list`: inheritance в `set_price_list_tier_with_channel`,
+  rejection mismatched explicit scope и propagation нового scope на existing
+  override rows через `set_price_list_scope`.
+- те же service-level tests теперь ещё и фиксируют active time-window invariants:
+  future `starts_at` и expired `ends_at` отклоняются и в read-side resolution,
+  и в write-side authoring / scope update paths, а не только скрываются из
+  `list_active_price_lists`.
+- service-level tests теперь ещё и фиксируют lifecycle typed percentage rule:
+  снятие rule metadata через `set_price_list_percentage_rule(..., None)` очищает
+  `rule_kind` / `adjustment_percent`, а resolver с explicit `price_list_id`
+  после этого детерминированно fallback'ит к base row без stale discount state.
+- promotion-ready preview path теперь тоже зафиксирован targeted tests: preview
+  price-list percentage adjustment отклоняет future/expired `price_list` и
+  channel-scope mismatch, а не только `draft` status.
+- apply path для price-list percentage adjustment теперь тоже зафиксирован
+  targeted tests: future/expired `price_list` и channel-scope mismatch
+  отклоняются без побочной записи нового override row и без мутации существующего
+  scoped override.
+- admin SSR transport parity теперь тоже закрывает `price_list` rule/scope mutation
+  lifecycle: clear rule metadata не оставляет stale `rule_kind` / `adjustment_percent`,
+  update rule path режет future/expired lists тем же contract, а scope clear
+  возвращает active option и existing override rows к global boundary.
+- pricing-focused GraphQL parity теперь ещё и фиксирует rule-driven effective
+  price resolution без explicit override, precedence explicit override над rule,
+  selector lifecycle после clear/scope update и channel-mismatch validation для
+  `adminPricingProduct` / `storefrontPricingProduct`.
+- GraphQL facade теперь уже закрывает не только pricing-authoritative reads:
+  admin write-side mutations `updateAdminPricingVariantPrice`,
+  `previewAdminPricingVariantDiscount`, `applyAdminPricingVariantDiscount`,
+  `updateAdminPricingPriceListRule` и `updateAdminPricingPriceListScope`
+  тоже работают поверх `PricingService`, сохраняя parallel transport contract
+  рядом с native `#[server]` path и active-option parity для rule/scope editing.
+- compare-at invariants теперь тоже зафиксированы шире, чем только service-level
+  runtime: admin SSR transport режет invalid `compare_at < amount` без мутации
+  base row или existing `price_list` override, а GraphQL parity отдельно
+  подтверждает, что `compare_at == amount` не протекает в ложный sale state
+  (`discount_percent = null`, `on_sale = false`).
+- storage-level money sync теперь тоже покрыт targeted tests: `set_price` держит
+  decimal fields и legacy cents fields в одном состоянии даже на дробных значениях,
+  а clearing `compare_at` обнуляет и decimal, и legacy compare-at representation
+  как в service write path, так и в admin native transport; admin `update-variant-price`
+  отдельно фиксирует тот же decimal-to-cents sync и для дробных operator-side inputs.
+- bulk write path `set_prices` теперь тоже зафиксирован отдельно: channel-scoped
+  rows нормализуют `channel_slug`, синхронно пишут decimal + legacy cents
+  representation, а невалидный один input откатывает всю пачку без partial update
+  уже существующих rows.
+- event payload parity для pricing write paths теперь тоже покрыт service-level
+  tests: `PriceUpdated.old_amount/new_amount` публикуются в rounded cents contract
+  и для `set_price`, и для bulk `set_prices`, включая кейсы `update existing row`
+  против `insert new row`.
+- текущий широкий verification baseline теперь уже проходит и полным
+  `graphql_runtime_parity_test`, а не только pricing-focused subset.
 - legacy `apply_discount` больше не живёт как отдельная ad-hoc mutation: pricing runtime
   теперь держит typed `preview_percentage_discount` / `apply_percentage_discount` поверх
   canonical base-price row, а старый helper остаётся compatibility wrapper.
@@ -106,14 +179,18 @@ transport и полный `pricing 2.0` остаются в активном bac
 ### 4. Operability
 
 - [x] документировать новые pricing guarantees одновременно с изменением runtime surface;
-- [ ] удерживать local docs и `README.md` синхронизированными;
-- [ ] обновлять umbrella commerce docs при изменении pricing/promotion scope.
+- [x] удерживать local docs и `README.md` синхронизированными;
+- [x] обновлять umbrella commerce docs при изменении pricing/promotion scope.
 
 ## Проверка
 
 - `cargo xtask module validate pricing`
 - `cargo xtask module test pricing`
 - targeted tests для price resolution, pricing transport и money semantics
+- текущий широкий verification baseline для этого slice:
+  `cargo test -p rustok-commerce --test pricing_service_test`,
+  `cargo test -p rustok-commerce --test graphql_runtime_parity_test`,
+  и SSR/lib sweeps для `rustok-pricing-admin` / `rustok-pricing-storefront`
 
 ## Правила обновления
 

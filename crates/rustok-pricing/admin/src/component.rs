@@ -684,7 +684,7 @@ pub fn PricingAdmin() -> impl IntoView {
                                 </div>
 
                                 <div class="rounded-2xl border border-border bg-background p-5 text-sm text-muted-foreground">
-                                    {t(ui_locale_for_detail.as_deref(), "pricing.detail.transportGap", "Dedicated pricing mutations are not split out yet. This route owns price visibility and operator inspection, while price-changing transport still remains in the umbrella ecommerce backlog.")}
+                                    {t(ui_locale_for_detail.as_deref(), "pricing.detail.transportGap", "This route already owns pricing visibility, effective-context inspection, base-row and active price-list write actions, plus price-list rule and scope editing. The remaining backlog is the broader promotions engine, not the core pricing transport path.")}
                                 </div>
 
                                 <div class="rounded-2xl border border-border bg-background p-5">

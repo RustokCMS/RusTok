@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
 use flex::{
-    persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
-    resolve_attached_payload,
+    delete_attached_localized_values, persist_localized_values, prepare_attached_values_create,
+    prepare_attached_values_update, resolve_attached_payload,
 };
 use sea_orm::{
     sea_query::{Expr, Query, SelectStatement},
@@ -43,6 +43,15 @@ use crate::services::vote::{VoteService, VoteSummary};
 
 mod topic_field_definitions_storage {
     rustok_core::define_field_definitions_entity!("topic_field_definitions");
+}
+
+fn map_flex_cleanup_error(error: rustok_core::field_schema::FlexError) -> ForumError {
+    match error {
+        rustok_core::field_schema::FlexError::Database(message) => {
+            ForumError::Database(sea_orm::DbErr::Custom(message))
+        }
+        other => ForumError::Validation(other.to_string()),
+    }
 }
 
 pub struct TopicService {
@@ -341,6 +350,9 @@ impl TopicService {
         forum_topic::Entity::delete_by_id(topic_id)
             .exec(&txn)
             .await?;
+        delete_attached_localized_values(&txn, tenant_id, "topic", topic_id)
+            .await
+            .map_err(map_flex_cleanup_error)?;
         CategoryService::adjust_counters_in_tx(
             &txn,
             tenant_id,
