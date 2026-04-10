@@ -12,6 +12,7 @@
 - `FieldDefinitionService` trait.
 - `FieldDefRegistry` runtime registry.
 - Command/view DTOs for field-definition CRUD orchestration.
+- `FlexModule` capability-only runtime metadata for the manifest-driven module registry.
 
 ## Multilingual status
 
@@ -22,7 +23,10 @@ The current Flex multilingual contract is already partially live and must be tre
 - Standalone schema UI copy (`name`, `description`) no longer belongs in `flex_schemas`; it is stored in `flex_schema_translations`.
 - Standalone entry payloads no longer treat inline locale-aware JSON as the canonical path: shared values stay in `flex_entries.data`, while locale-aware values now live in `flex_entry_localized_values`.
 - Generic attached localized value storage now lives in the shared `flex` crate and persists into `flex_attached_localized_values`; live donor read/write paths now exist for `user`, `product`, `order`, and `topic`.
-- `topic` is no longer schema-only: forum topics now use `forum_topics.metadata` as the donor payload, and locale-aware Flex keys are resolved through the same attached multilingual contract as the other live donors. Any locale-aware JSON payloads that still live inline in donor metadata or entry data remain transitional fallback, not the target storage standard.
+- `topic` is no longer schema-only: forum topics now use `forum_topics.metadata` as the donor payload, and locale-aware Flex keys are resolved through the same attached multilingual contract as the other live donors.
+- Cleanup migrations remove residual inline locale-aware Flex payloads from donor metadata and standalone entry base rows; runtime resolves only shared payload plus parallel localized records.
+- Standalone GraphQL and REST schemas/entries surfaces are now live in `apps/server`; rollout/governance stays server-owned and is enforced through the `capability_only` ghost-module manifest, `mod-flex` host wiring, explicit `flex_schemas:*` / `flex_entries:*` RBAC, and repo-side validation (`cargo xtask validate-manifest`, `cargo xtask module validate flex`, `node scripts/verify/verify-flex-multilingual-contract.mjs`).
+- Full end-to-end integration coverage remains an explicit verification debt; do not treat it as a contract gap or as permission to reintroduce inline localized storage.
 
 Do not implement new Flex multilingual behavior from older plans that assume inline localized copy in base rows or treat JSON blobs as the canonical multilingual storage path.
 
@@ -30,10 +34,12 @@ Do not implement new Flex multilingual behavior from older plans that assume inl
 
 - Depends on `rustok-core` (`FlexError`, `FieldType`, `ValidationRule`).
 - Depends on `rustok-events` (`EventEnvelope`).
-- Consumed by `apps/server` GraphQL and bootstrap wiring.
+- Registered in `modules.toml` as a capability-only ghost module with `flex_schemas:*` and `flex_entries:*` permissions.
+- Consumed by `apps/server` GraphQL, REST, and bootstrap wiring; transport stays server-owned.
 
 ## Entry points
 
+- `flex::FlexModule`
 - `flex::FieldDefRegistry`
 - `flex::FieldDefinitionService`
 - `flex::{CreateFieldDefinitionCommand, UpdateFieldDefinitionCommand, FieldDefinitionView}`

@@ -1,15 +1,20 @@
 //! GraphQL queries for Flex field definitions.
 
 use async_graphql::{Context, FieldError, Object, Result};
+use rustok_core::Permission;
 use uuid::Uuid;
 
 use crate::context::{AuthContext, TenantContext};
 use crate::graphql::common::PaginationInput;
 use crate::graphql::errors::GraphQLError;
 use crate::services::field_definition_cache::FieldDefinitionCache;
+use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
 use flex::{FieldDefRegistry, FieldDefinitionView};
 
-use super::{map_flex_error, resolve_entity_type, types::FieldDefinitionObject};
+use super::{
+    map_flex_error, require_permission, resolve_entity_type,
+    types::{FieldDefinitionObject, FlexEntryObject, FlexSchemaObject},
+};
 
 /// Queries for field definitions.
 ///
@@ -70,6 +75,67 @@ impl FlexQuery {
         flex::find_field_definition(registry, &app_ctx.db, tenant.id, &entity_type, id)
             .await
             .map(|row| row.map(FieldDefinitionObject::from))
+            .map_err(map_flex_error)
+    }
+
+    /// List standalone Flex schemas for the authenticated tenant.
+    async fn flex_schemas(&self, ctx: &Context<'_>) -> Result<Vec<FlexSchemaObject>> {
+        require_permission(ctx, Permission::FLEX_SCHEMAS_LIST)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+
+        flex::list_schemas(&service, tenant.id)
+            .await
+            .map(|rows| rows.into_iter().map(FlexSchemaObject::from).collect())
+            .map_err(map_flex_error)
+    }
+
+    /// Find a single standalone Flex schema by id.
+    async fn flex_schema(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<FlexSchemaObject>> {
+        require_permission(ctx, Permission::FLEX_SCHEMAS_READ)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+
+        flex::find_schema(&service, tenant.id, id)
+            .await
+            .map(|row| row.map(FlexSchemaObject::from))
+            .map_err(map_flex_error)
+    }
+
+    /// List entries for a standalone Flex schema.
+    async fn flex_entries(
+        &self,
+        ctx: &Context<'_>,
+        schema_id: Uuid,
+    ) -> Result<Vec<FlexEntryObject>> {
+        require_permission(ctx, Permission::FLEX_ENTRIES_LIST)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+
+        flex::list_entries(&service, tenant.id, schema_id)
+            .await
+            .map(|rows| rows.into_iter().map(FlexEntryObject::from).collect())
+            .map_err(map_flex_error)
+    }
+
+    /// Find a single standalone Flex entry by id.
+    async fn flex_entry(
+        &self,
+        ctx: &Context<'_>,
+        schema_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<FlexEntryObject>> {
+        require_permission(ctx, Permission::FLEX_ENTRIES_READ)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+
+        flex::find_entry(&service, tenant.id, schema_id, id)
+            .await
+            .map(|row| row.map(FlexEntryObject::from))
             .map_err(map_flex_error)
     }
 }

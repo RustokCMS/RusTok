@@ -8,6 +8,8 @@
 - `CartModule` и `CartService`;
 - persisted cart context snapshot: `region_id`, `country_code`, `locale_code`, `selected_shipping_option_id`,
   `customer_id`, `email`, `currency_code`;
+- typed `cart_adjustments` для promotion/discount snapshot: `source_type/source_id`, `amount/currency_code`,
+  optional line-item binding и language-neutral metadata без display label;
 - lifecycle корзины: `active -> checking_out -> completed` и `active -> abandoned`;
 - CRUD line items, расчёт totals, seller-aware delivery-group snapshot с canonical `seller_id` и нормализация locale/country snapshot для storefront-контекста;
 - module-owned storefront пакет `rustok-cart/storefront` для cart inspection и безопасных line-item decrement/remove действий.
@@ -26,6 +28,8 @@
 - модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
 - transport и GraphQL по-прежнему публикуются через `rustok-commerce`, но storefront cart read-side, seller-aware delivery-group snapshot и безопасный line-item write-side уже вынесены в отдельный module-owned surface `rustok-cart/storefront`;
 - `seller_scope` в cart contract остаётся только transitional compatibility field для legacy snapshot'ов без `seller_id`; canonical grouping и shipping selection теперь опираются на `seller_id`.
+- `cart_adjustments` являются source of truth для скидочного snapshot в cart: `subtotal_amount`, `adjustment_total`
+  и net `total_amount` не зависят от default locale или localized promotion label.
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями;
 - storefront package использует native Leptos `#[server]` functions как default data layer и сохраняет GraphQL storefront contract как fallback.
 

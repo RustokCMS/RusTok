@@ -8,6 +8,7 @@
 
 - Own the order write-side schema, service, and status transitions.
 - Persist order snapshots and line items independently from catalog ownership.
+- Persist typed order adjustments as language-neutral promotion/discount snapshots.
 - Resolve order-owned Flex attached custom fields through the shared `flex`
   multilingual attached-value contract while preserving non-Flex operational
   metadata in `orders.metadata`.
@@ -24,6 +25,8 @@
 - Used by `rustok-commerce` as the default order submodule of the ecommerce family.
 - Keeps product and variant references as snapshots so the order domain does not depend on
   the product module as a lower-level shared layer.
+- Snapshots adjustment source identity in `source_type/source_id` and keeps localized promotion display
+  labels outside order-owned business storage.
 - `apps/admin` consumes `rustok-order-admin` through manifest-driven composition,
   while GraphQL/REST order transport remains in `rustok-commerce`.
 

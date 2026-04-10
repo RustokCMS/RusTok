@@ -76,6 +76,51 @@ pub struct ProductDetail {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductPricingDetail {
+    pub variants: Vec<ProductPricingVariant>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductPricingVariant {
+    pub id: String,
+    pub prices: Vec<ProductScopedPrice>,
+    #[serde(rename = "effectivePrice")]
+    pub effective_price: Option<ProductEffectivePrice>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductScopedPrice {
+    #[serde(rename = "currencyCode")]
+    pub currency_code: String,
+    pub amount: String,
+    #[serde(rename = "compareAtAmount")]
+    pub compare_at_amount: Option<String>,
+    #[serde(rename = "discountPercent", default)]
+    pub discount_percent: Option<String>,
+    #[serde(rename = "onSale")]
+    pub on_sale: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProductEffectivePrice {
+    #[serde(rename = "currencyCode")]
+    pub currency_code: String,
+    pub amount: String,
+    #[serde(rename = "compareAtAmount")]
+    pub compare_at_amount: Option<String>,
+    #[serde(rename = "discountPercent", default)]
+    pub discount_percent: Option<String>,
+    #[serde(rename = "onSale")]
+    pub on_sale: bool,
+    #[serde(rename = "priceListId", default)]
+    pub price_list_id: Option<String>,
+    #[serde(rename = "channelId", default)]
+    pub channel_id: Option<String>,
+    #[serde(rename = "channelSlug", default)]
+    pub channel_slug: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ProductTranslation {
     pub locale: String,
     pub title: String,

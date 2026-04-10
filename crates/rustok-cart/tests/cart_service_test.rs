@@ -1,6 +1,7 @@
 use rust_decimal::Decimal;
 use rustok_cart::dto::{
-    AddCartLineItemInput, CartShippingSelectionInput, CreateCartInput, UpdateCartContextInput,
+    AddCartLineItemInput, CartShippingSelectionInput, CreateCartInput, SetCartAdjustmentInput,
+    UpdateCartContextInput,
 };
 use rustok_cart::error::CartError;
 use rustok_cart::services::CartService;
@@ -59,7 +60,52 @@ async fn create_cart_and_add_line_item_updates_totals() {
     assert_eq!(updated.status, "active");
     assert_eq!(updated.currency_code, "USD");
     assert_eq!(updated.line_items.len(), 1);
+    assert_eq!(updated.subtotal_amount, Decimal::from_str("31.00").unwrap());
+    assert_eq!(updated.adjustment_total, Decimal::ZERO);
     assert_eq!(updated.total_amount, Decimal::from_str("31.00").unwrap());
+}
+
+#[tokio::test]
+async fn set_adjustments_recalculates_cart_total_without_localized_labels() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+
+    let cart = service
+        .create_cart(tenant_id, create_cart_input())
+        .await
+        .unwrap();
+    let cart = service
+        .add_line_item(tenant_id, cart.id, line_item_input())
+        .await
+        .unwrap();
+    let line_item_id = cart.line_items[0].id;
+
+    let updated = service
+        .set_adjustments(
+            tenant_id,
+            cart.id,
+            vec![SetCartAdjustmentInput {
+                line_item_id: Some(line_item_id),
+                source_type: "Promotion".to_string(),
+                source_id: Some("promo-spring".to_string()),
+                amount: Decimal::from_str("5.00").unwrap(),
+                metadata: serde_json::json!({
+                    "rule_code": "spring",
+                    "label": "Spring sale"
+                }),
+            }],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.subtotal_amount, Decimal::from_str("31.00").unwrap());
+    assert_eq!(updated.adjustment_total, Decimal::from_str("5.00").unwrap());
+    assert_eq!(updated.total_amount, Decimal::from_str("26.00").unwrap());
+    assert_eq!(updated.adjustments.len(), 1);
+    assert_eq!(updated.adjustments[0].line_item_id, Some(line_item_id));
+    assert_eq!(updated.adjustments[0].source_type, "promotion");
+    assert_eq!(updated.adjustments[0].currency_code, "USD");
+    assert!(updated.adjustments[0].metadata.get("label").is_none());
 }
 
 #[tokio::test]

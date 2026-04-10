@@ -129,10 +129,13 @@
   storefront-side split тоже продвинут: `rustok-region`, `rustok-product`, `rustok-pricing` и `rustok-cart` уже публикуют собственные
   storefront packages, а `rustok-commerce-storefront` сжат до aggregate checkout workspace с seller-aware delivery-group shipping selection и без catalog/pricing ownership;
   остальные commerce storefront flows ещё предстоит вынести из umbrella route там, где ownership boundary уже устойчива.
-- `rustok-mcp`, `rustok-ai` и `flex` считаются capability/support
+- `rustok-mcp` и `rustok-ai` считаются capability/support
   layers и индексируются здесь для навигации, даже если не входят в taxonomy
   `Core/Optional`; при этом `rustok-ai` уже публикует крупные operator/admin
   UI-поверхности для Leptos и Next.js host-ов.
+- `flex` тоже остаётся capability-layer по своей роли, но теперь формализован в
+  `modules.toml` как `capability_only` ghost module; donor persistence ownership
+  при этом всё равно остаётся у модулей-потребителей.
 - при изменении runtime-контракта или ownership сначала обновляются локальные docs
   компонента, затем этот индекс и остальные central registry docs.
 
@@ -147,3 +150,8 @@
 
 - `rustok-blog`: `apps/next-admin/packages/blog/`
 - `rustok-search`: `apps/next-admin/packages/search/`
+
+## Примечание по `module-system`
+
+- Финальный repo-side статус `Registry V1/V2`, actor-aware governance contract, `registry_only` и thin runner path фиксируется в [module-system-plan.md](./module-system-plan.md).
+- Audit UI-классификации path-модулей (`dual-surface` / `admin-only` / `storefront-only` / `no-ui`) тоже ведётся там; этот индекс остаётся только навигацией по локальным docs.

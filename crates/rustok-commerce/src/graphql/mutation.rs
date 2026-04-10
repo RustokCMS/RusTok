@@ -1247,6 +1247,8 @@ fn convert_create_product_input(
 
                     Ok(crate::dto::PriceInput {
                         currency_code: price.currency_code,
+                        channel_id: price.channel_id,
+                        channel_slug: price.channel_slug,
                         amount,
                         compare_at_amount,
                     })

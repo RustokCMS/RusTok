@@ -1,14 +1,14 @@
-use rustok_cart::entities::{cart, cart_line_item, cart_shipping_selection};
+use rustok_cart::entities::{cart, cart_adjustment, cart_line_item, cart_shipping_selection};
 use rustok_channel::entities::{channel, channel_module_binding};
 use rustok_commerce::entities::{
-    inventory_item, inventory_level, price, product, product_image, product_image_translation,
-    product_option, product_option_translation, product_option_value,
+    inventory_item, inventory_level, price, price_list, product, product_image,
+    product_image_translation, product_option, product_option_translation, product_option_value,
     product_option_value_translation, product_translation, product_variant, region,
     reservation_item, shipping_profile, stock_location, variant_translation,
 };
 use rustok_customer::entities::customer;
 use rustok_fulfillment::entities::{fulfillment, fulfillment_item, shipping_option};
-use rustok_order::entities::{order, order_line_item};
+use rustok_order::entities::{order, order_adjustment, order_line_item};
 use rustok_payment::entities::{payment, payment_collection};
 use rustok_product::entities::product_tag;
 use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
@@ -136,6 +136,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
+        schema.create_table_from_entity(cart_adjustment::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
         schema.create_table_from_entity(cart_shipping_selection::Entity),
     )
     .await;
@@ -162,6 +168,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(order_line_item::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(order_adjustment::Entity),
     )
     .await;
     create_entity_table(
@@ -213,6 +225,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     )
     .await;
     ensure_tenant_tables(db).await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(price_list::Entity),
+    )
+    .await;
     ensure_field_definition_tables(db).await;
     create_entity_table(
         db,

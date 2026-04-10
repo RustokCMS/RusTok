@@ -25,7 +25,7 @@ use crate::{
         load_cart_shipping_profile_slugs, product_shipping_profile_slug,
     },
     CatalogService, CommerceError, CustomerService, FulfillmentService, OrderService,
-    PaymentService, RegionService, ShippingProfileService, StoreContextService,
+    PaymentService, PricingService, RegionService, ShippingProfileService, StoreContextService,
 };
 
 use super::{require_commerce_permission, types::*, MODULE_SLUG};
@@ -35,6 +35,204 @@ pub struct CommerceQuery;
 
 #[Object]
 impl CommerceQuery {
+    /// Pricing-authoritative admin product detail.
+    ///
+    /// Use this root when the caller needs raw scoped price rows or effective
+    /// prices for an explicit currency/region/price-list/channel/quantity context.
+    async fn admin_pricing_product(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        id: Uuid,
+        locale: Option<String>,
+        currency_code: Option<String>,
+        region_id: Option<Uuid>,
+        price_list_id: Option<Uuid>,
+        channel_id: Option<Uuid>,
+        channel_slug: Option<String>,
+        quantity: Option<i32>,
+    ) -> Result<Option<GqlPricingProductDetail>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PRODUCTS_READ],
+            "Permission denied: products:read required",
+        )?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let request_context = ctx.data_opt::<RequestContext>();
+        let requested_locale = locale
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| tenant.default_locale.clone());
+        let selected_channel_id =
+            channel_id.or_else(|| request_context.and_then(|item| item.channel_id));
+        let selected_channel_slug = normalize_pricing_channel_slug(channel_slug.as_deref())
+            .or_else(|| {
+                request_context
+                    .and_then(|item| normalize_pricing_channel_slug(item.channel_slug.as_deref()))
+            });
+        let resolution_context = build_pricing_resolution_context(
+            currency_code,
+            region_id,
+            price_list_id,
+            selected_channel_id,
+            selected_channel_slug.clone(),
+            quantity,
+        )?;
+        let service = PricingService::new(db.clone(), event_bus.clone());
+        let detail = match service
+            .get_admin_product_pricing_with_locale_fallback(
+                tenant_id,
+                id,
+                requested_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+                resolution_context
+                    .as_ref()
+                    .and_then(|context| context.price_list_id),
+            )
+            .await
+        {
+            Ok(detail) => Some(detail),
+            Err(CommerceError::ProductNotFound(_)) => None,
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        match detail {
+            Some(detail) => {
+                let mut detail = GqlPricingProductDetail::from(detail);
+                if let Some(context) = resolution_context.as_ref() {
+                    attach_effective_prices(&service, tenant_id, &mut detail, context).await?;
+                }
+                Ok(Some(detail))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn storefront_pricing_channels(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Vec<GqlPricingChannelOption>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let channel_service = rustok_channel::ChannelService::new(db.clone());
+        let (channels, _) = channel_service
+            .list_channels(tenant_id, 1, 250)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(channels.into_iter().map(Into::into).collect())
+    }
+
+    async fn storefront_active_price_lists(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Option<Uuid>,
+        channel_id: Option<Uuid>,
+        channel_slug: Option<String>,
+    ) -> Result<Vec<GqlActivePriceListOption>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let request_context = ctx.data_opt::<RequestContext>();
+        let selected_channel_id =
+            channel_id.or_else(|| request_context.and_then(|item| item.channel_id));
+        let selected_channel_slug = normalize_public_channel_slug(channel_slug.as_deref())
+            .or_else(|| request_context.and_then(public_channel_slug_from_request));
+        let service = PricingService::new(db.clone(), event_bus.clone());
+        let items = service
+            .list_active_price_lists_for_channel(
+                tenant_id,
+                selected_channel_id,
+                selected_channel_slug.as_deref(),
+            )
+            .await?;
+
+        Ok(items.into_iter().map(Into::into).collect())
+    }
+
+    /// Pricing-authoritative published product detail for storefront consumers.
+    ///
+    /// Use this root when the caller needs effective prices for an explicit
+    /// currency/region/price-list/channel/quantity context.
+    async fn storefront_pricing_product(
+        &self,
+        ctx: &Context<'_>,
+        handle: String,
+        locale: Option<String>,
+        currency_code: Option<String>,
+        region_id: Option<Uuid>,
+        price_list_id: Option<Uuid>,
+        channel_id: Option<Uuid>,
+        channel_slug: Option<String>,
+        quantity: Option<i32>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<Option<GqlPricingProductDetail>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        super::require_storefront_channel_enabled(ctx).await?;
+
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let request_context = ctx.data_opt::<RequestContext>();
+        let requested_locale = locale
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| request_context.map(|item| item.locale.clone()))
+            .unwrap_or_else(|| tenant.default_locale.clone());
+        let selected_channel_id =
+            channel_id.or_else(|| request_context.and_then(|item| item.channel_id));
+        let selected_channel_slug = normalize_pricing_channel_slug(channel_slug.as_deref())
+            .or_else(|| request_public_channel_slug(ctx));
+        let resolution_context = build_pricing_resolution_context(
+            currency_code,
+            region_id,
+            price_list_id,
+            selected_channel_id,
+            selected_channel_slug.clone(),
+            quantity,
+        )?;
+        let service = PricingService::new(db.clone(), event_bus.clone());
+        let detail = service
+            .get_published_product_pricing_by_handle_with_locale_fallback(
+                tenant_id,
+                handle.trim(),
+                requested_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+                selected_channel_slug.as_deref(),
+            )
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        match detail {
+            Some(detail) => {
+                let mut detail = GqlPricingProductDetail::from(detail);
+                if let Some(context) = resolution_context.as_ref() {
+                    attach_effective_prices(&service, tenant_id, &mut detail, context).await?;
+                }
+                Ok(Some(detail))
+            }
+            None => Ok(None),
+        }
+    }
+
     async fn storefront_regions(
         &self,
         ctx: &Context<'_>,
@@ -642,6 +840,10 @@ impl CommerceQuery {
         })
     }
 
+    /// Catalog-authoritative admin product detail.
+    ///
+    /// Variant `prices` here are compatibility snapshots for catalog/product
+    /// consumers; pricing-authoritative reads live under `adminPricingProduct`.
     async fn product(
         &self,
         ctx: &Context<'_>,
@@ -765,6 +967,10 @@ impl CommerceQuery {
         })
     }
 
+    /// Catalog-authoritative published product detail.
+    ///
+    /// Variant `prices` here are compatibility snapshots for catalog/product
+    /// consumers; pricing-authoritative reads live under `storefrontPricingProduct`.
     async fn storefront_product(
         &self,
         ctx: &Context<'_>,
@@ -940,6 +1146,67 @@ impl CommerceQuery {
             has_next: page * per_page < total,
         })
     }
+}
+
+fn normalize_pricing_channel_slug(channel_slug: Option<&str>) -> Option<String> {
+    channel_slug
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
+fn build_pricing_resolution_context(
+    currency_code: Option<String>,
+    region_id: Option<Uuid>,
+    price_list_id: Option<Uuid>,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<String>,
+    quantity: Option<i32>,
+) -> Result<Option<rustok_pricing::PriceResolutionContext>> {
+    let currency_code = match currency_code.map(|value| value.trim().to_ascii_uppercase()) {
+        Some(value) if value.len() == 3 => value,
+        Some(_) => {
+            return Err(async_graphql::Error::new(
+                "currency_code must be a 3-letter code",
+            ))
+        }
+        None => return Ok(None),
+    };
+    let quantity = match quantity {
+        Some(value) if value < 1 => {
+            return Err(async_graphql::Error::new(
+                "quantity must be greater than zero",
+            ))
+        }
+        Some(value) => value,
+        None => 1,
+    };
+
+    Ok(Some(rustok_pricing::PriceResolutionContext {
+        currency_code,
+        region_id,
+        price_list_id,
+        channel_id,
+        channel_slug: normalize_pricing_channel_slug(channel_slug.as_deref()),
+        quantity: Some(quantity),
+    }))
+}
+
+async fn attach_effective_prices(
+    service: &PricingService,
+    tenant_id: Uuid,
+    detail: &mut GqlPricingProductDetail,
+    context: &rustok_pricing::PriceResolutionContext,
+) -> Result<()> {
+    for variant in &mut detail.variants {
+        let effective_price = service
+            .resolve_variant_price(tenant_id, variant.id, context.clone())
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        variant.effective_price = effective_price.map(Into::into);
+    }
+
+    Ok(())
 }
 
 async fn load_product_list_items(

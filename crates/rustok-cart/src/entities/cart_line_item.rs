@@ -30,11 +30,19 @@ pub enum Relation {
         to = "super::cart::Column::Id"
     )]
     Cart,
+    #[sea_orm(has_many = "super::cart_adjustment::Entity")]
+    Adjustments,
 }
 
 impl Related<super::cart::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Cart.def()
+    }
+}
+
+impl Related<super::cart_adjustment::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Adjustments.def()
     }
 }
 

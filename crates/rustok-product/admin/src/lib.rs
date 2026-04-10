@@ -9,13 +9,16 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
-use crate::model::{ProductAdminBootstrap, ProductDetail, ProductDraft, ShippingProfile};
+use crate::model::{
+    ProductAdminBootstrap, ProductDetail, ProductDraft, ProductPricingDetail, ShippingProfile,
+};
 
 #[component]
 pub fn ProductAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
     let initial_locale = ui_locale.clone().unwrap_or_else(|| "en".to_string());
+    let initial_selected_product_id = route_context.query_value("id").map(ToOwned::to_owned);
     let token = use_token();
     let tenant = use_tenant();
 
@@ -41,6 +44,7 @@ pub fn ProductAdmin() -> impl IntoView {
     let (status_filter, set_status_filter) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
+    let (query_selection_applied, set_query_selection_applied) = signal(false);
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get()),
@@ -80,6 +84,41 @@ pub fn ProductAdmin() -> impl IntoView {
             let bootstrap = api::fetch_bootstrap(token_value.clone(), tenant_value.clone()).await?;
             api::fetch_shipping_profiles(token_value, tenant_value, bootstrap.current_tenant.id)
                 .await
+        },
+    );
+    let selected_pricing = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                refresh_nonce.get(),
+                locale.get(),
+                selected.get().map(|product| {
+                    (
+                        product.id.clone(),
+                        primary_catalog_currency(Some(&product))
+                            .unwrap_or_else(|| "USD".to_string()),
+                    )
+                }),
+            )
+        },
+        move |(token_value, tenant_value, _, locale_value, selected_product)| async move {
+            let Some((product_id, currency_code)) = selected_product else {
+                return Ok(None);
+            };
+            let bootstrap = api::fetch_bootstrap(token_value.clone(), tenant_value.clone())
+                .await
+                .map_err(|err| err.to_string())?;
+            api::fetch_product_pricing(
+                token_value,
+                tenant_value,
+                bootstrap.current_tenant.id,
+                product_id,
+                locale_value,
+                Some(currency_code),
+            )
+            .await
+            .map_err(|err| err.to_string())
         },
     );
 
@@ -123,6 +162,49 @@ pub fn ProductAdmin() -> impl IntoView {
         "product.error.deleteReturnedFalse",
         "Delete returned false.",
     );
+    let initial_product_not_found_label = product_not_found_label.clone();
+    let initial_load_product_error_label = load_product_error_label.clone();
+    Effect::new(move |_| {
+        if query_selection_applied.get() {
+            return;
+        }
+        let Some(product_id) = initial_selected_product_id.clone() else {
+            set_query_selection_applied.set(true);
+            return;
+        };
+        let Some(bootstrap) = bootstrap.get().and_then(Result::ok) else {
+            return;
+        };
+        set_query_selection_applied.set(true);
+        open_product_for_edit(
+            bootstrap,
+            token.get(),
+            tenant.get(),
+            locale.get(),
+            product_id,
+            initial_product_not_found_label.clone(),
+            initial_load_product_error_label.clone(),
+            set_busy,
+            set_error,
+            set_editing_id,
+            set_selected,
+            set_locale,
+            set_title,
+            set_handle,
+            set_description,
+            set_seller_id,
+            set_vendor,
+            set_product_type,
+            set_shipping_profile_slug,
+            set_sku,
+            set_barcode,
+            set_currency_code,
+            set_amount,
+            set_compare_at_amount,
+            set_inventory_quantity,
+            set_publish_now,
+        );
+    });
 
     let reset_form_initial_locale = initial_locale.clone();
     let reset_form = move || {
@@ -249,6 +331,7 @@ pub fn ProductAdmin() -> impl IntoView {
     let ui_locale_for_submit = ui_locale.clone();
     let ui_locale_for_profile_panel = ui_locale.clone();
     let ui_locale_for_summary_title = ui_locale.clone();
+    let pricing_module_route_base = route_context.module_route_base("pricing");
 
     view! {
         <section class="space-y-6">
@@ -385,47 +468,34 @@ pub fn ProductAdmin() -> impl IntoView {
                                                                 set_error.set(Some(bootstrap_loading_label_for_edit.clone()));
                                                                 return;
                                                             };
-                                                            set_busy.set(true);
-                                                            set_error.set(None);
-                                                            let token_value = token.get_untracked();
-                                                            let tenant_value = tenant.get_untracked();
-                                                            let locale_value = locale.get_untracked();
-                                                            let edit_id_value = edit_id.clone();
-                                                            let product_not_found_label = product_not_found_label_for_edit.clone();
-                                                            let load_product_error_label = load_product_error_label_for_edit.clone();
-                                                            spawn_local(async move {
-                                                                match api::fetch_product(
-                                                                    token_value,
-                                                                    tenant_value,
-                                                                    bootstrap.current_tenant.id,
-                                                                    edit_id_value.clone(),
-                                                                    locale_value,
-                                                                ).await {
-                                                                    Ok(Some(product)) => apply_product(
-                                                                        &product,
-                                                                        set_editing_id,
-                                                                        set_selected,
-                                                                        set_locale,
-                                                                        set_title,
-                                                                        set_handle,
-                                                                        set_description,
-                                                                        set_seller_id,
-                                                                        set_vendor,
-                                                                        set_product_type,
-                                                                        set_shipping_profile_slug,
-                                                                        set_sku,
-                                                                        set_barcode,
-                                                                        set_currency_code,
-                                                                        set_amount,
-                                                                        set_compare_at_amount,
-                                                                        set_inventory_quantity,
-                                                                        set_publish_now,
-                                                                    ),
-                                                                    Ok(None) => set_error.set(Some(product_not_found_label)),
-                                                                    Err(err) => set_error.set(Some(format!("{load_product_error_label}: {err}"))),
-                                                                }
-                                                                set_busy.set(false);
-                                                            });
+                                                            open_product_for_edit(
+                                                                bootstrap,
+                                                                token.get_untracked(),
+                                                                tenant.get_untracked(),
+                                                                locale.get_untracked(),
+                                                                edit_id.clone(),
+                                                                product_not_found_label_for_edit.clone(),
+                                                                load_product_error_label_for_edit.clone(),
+                                                                set_busy,
+                                                                set_error,
+                                                                set_editing_id,
+                                                                set_selected,
+                                                                set_locale,
+                                                                set_title,
+                                                                set_handle,
+                                                                set_description,
+                                                                set_seller_id,
+                                                                set_vendor,
+                                                                set_product_type,
+                                                                set_shipping_profile_slug,
+                                                                set_sku,
+                                                                set_barcode,
+                                                                set_currency_code,
+                                                                set_amount,
+                                                                set_compare_at_amount,
+                                                                set_inventory_quantity,
+                                                                set_publish_now,
+                                                            );
                                                         }>
                                                             {t(item_locale_for_edit.as_deref(), "product.action.edit", "Edit")}
                                                         </button>
@@ -624,13 +694,85 @@ pub fn ProductAdmin() -> impl IntoView {
                             {t(ui_locale_for_summary_title.as_deref(), "product.summary.title", "Selected product")}
                         </h3>
                         <div class="mt-4 rounded-2xl border border-border bg-background p-4 text-sm text-muted-foreground">
-                            {move || selected.get().map(|product| summarize_selected(ui_locale_for_summary.as_deref(), &product)).unwrap_or_else(|| t(ui_locale_for_summary.as_deref(), "product.summary.empty", "Open a product to inspect its localized copy, primary variant pricing and shipping-profile binding."))}
+                            <SelectedProductSummary
+                                locale=ui_locale_for_summary.clone()
+                                product=selected.get()
+                                pricing_state=selected_pricing.get()
+                                pricing_route_base=pricing_module_route_base.clone()
+                            />
                         </div>
                     </section>
                 </section>
             </div>
         </section>
     }
+}
+
+fn open_product_for_edit(
+    bootstrap: ProductAdminBootstrap,
+    token: Option<String>,
+    tenant: Option<String>,
+    locale: String,
+    product_id: String,
+    product_not_found_label: String,
+    load_product_error_label: String,
+    set_busy: WriteSignal<bool>,
+    set_error: WriteSignal<Option<String>>,
+    set_editing_id: WriteSignal<Option<String>>,
+    set_selected: WriteSignal<Option<ProductDetail>>,
+    set_locale: WriteSignal<String>,
+    set_title: WriteSignal<String>,
+    set_handle: WriteSignal<String>,
+    set_description: WriteSignal<String>,
+    set_seller_id: WriteSignal<String>,
+    set_vendor: WriteSignal<String>,
+    set_product_type: WriteSignal<String>,
+    set_shipping_profile_slug: WriteSignal<String>,
+    set_sku: WriteSignal<String>,
+    set_barcode: WriteSignal<String>,
+    set_currency_code: WriteSignal<String>,
+    set_amount: WriteSignal<String>,
+    set_compare_at_amount: WriteSignal<String>,
+    set_inventory_quantity: WriteSignal<i32>,
+    set_publish_now: WriteSignal<bool>,
+) {
+    set_busy.set(true);
+    set_error.set(None);
+    spawn_local(async move {
+        match api::fetch_product(
+            token,
+            tenant,
+            bootstrap.current_tenant.id,
+            product_id,
+            locale,
+        )
+        .await
+        {
+            Ok(Some(product)) => apply_product(
+                &product,
+                set_editing_id,
+                set_selected,
+                set_locale,
+                set_title,
+                set_handle,
+                set_description,
+                set_seller_id,
+                set_vendor,
+                set_product_type,
+                set_shipping_profile_slug,
+                set_sku,
+                set_barcode,
+                set_currency_code,
+                set_amount,
+                set_compare_at_amount,
+                set_inventory_quantity,
+                set_publish_now,
+            ),
+            Ok(None) => set_error.set(Some(product_not_found_label)),
+            Err(err) => set_error.set(Some(format!("{load_product_error_label}: {err}"))),
+        }
+        set_busy.set(false);
+    });
 }
 
 fn apply_product(
@@ -759,38 +901,265 @@ fn mutate_status(
     });
 }
 
-fn summarize_selected(locale: Option<&str>, product: &ProductDetail) -> String {
+#[component]
+fn SelectedProductSummary(
+    locale: Option<String>,
+    product: Option<ProductDetail>,
+    pricing_state: Option<Result<Option<ProductPricingDetail>, String>>,
+    pricing_route_base: String,
+) -> impl IntoView {
+    let Some(product) = product else {
+        return view! {
+            <p>
+                {t(
+                    locale.as_deref(),
+                    "product.summary.empty",
+                    "Open a product to inspect its localized copy, catalog snapshot and pricing module preview.",
+                )}
+            </p>
+        }
+        .into_any();
+    };
+
     let title = product
         .translations
         .first()
         .map(|item| item.title.clone())
-        .unwrap_or_else(|| t(locale, "product.summary.untitled", "Untitled"));
-    let variant = product.variants.first();
-    let price = variant
-        .and_then(|item| item.prices.first())
-        .map(|price| format!("{} {}", price.currency_code, price.amount))
-        .unwrap_or_else(|| t(locale, "product.summary.noPricing", "no pricing"));
-    let inventory = variant.map(|item| item.inventory_quantity).unwrap_or(0);
-    let shipping_profile = product
-        .shipping_profile_slug
-        .clone()
-        .unwrap_or_else(|| t(locale, "product.summary.unassigned", "unassigned"));
-    format!(
-        "{title} | {} {} | {} {price} | {} {inventory} | {} {shipping_profile}",
-        t(locale, "product.summary.status", "status"),
-        localized_product_status(locale, product.status.as_str()),
+        .unwrap_or_else(|| t(locale.as_deref(), "product.summary.untitled", "Untitled"));
+    let inventory = product
+        .variants
+        .first()
+        .map(|item| item.inventory_quantity)
+        .unwrap_or(0);
+    let shipping_profile = product.shipping_profile_slug.clone().unwrap_or_else(|| {
         t(
-            locale,
-            "product.summary.primaryVariantPrice",
-            "primary variant price"
+            locale.as_deref(),
+            "product.summary.unassigned",
+            "unassigned",
+        )
+    });
+    let catalog_snapshot = format_catalog_snapshot_price(locale.as_deref(), Some(&product));
+
+    let pricing_preview = match pricing_state {
+        None => t(
+            locale.as_deref(),
+            "product.summary.pricingLoading",
+            "Loading pricing module preview...",
         ),
-        t(locale, "product.summary.inventory", "inventory"),
-        t(
-            locale,
-            "product.summary.shippingProfile",
-            "shipping profile"
+        Some(Err(err)) => format!(
+            "{}: {err}",
+            t(
+                locale.as_deref(),
+                "product.summary.pricingError",
+                "Pricing module preview failed",
+            )
         ),
-    )
+        Some(Ok(None)) => t(
+            locale.as_deref(),
+            "product.summary.pricingUnavailable",
+            "Pricing module preview is unavailable.",
+        ),
+        Some(Ok(Some(pricing))) => format_pricing_preview(locale.as_deref(), Some(&pricing)),
+    };
+    let pricing_href = build_admin_pricing_href(pricing_route_base.as_str(), &product);
+
+    view! {
+        <div class="space-y-3">
+            <p class="font-medium text-card-foreground">{title}</p>
+            <p>
+                {format!(
+                    "{} {} | {} {inventory} | {} {shipping_profile}",
+                    t(locale.as_deref(), "product.summary.status", "status"),
+                    localized_product_status(locale.as_deref(), product.status.as_str()),
+                    t(locale.as_deref(), "product.summary.inventory", "inventory"),
+                    t(locale.as_deref(), "product.summary.shippingProfile", "shipping profile"),
+                )}
+            </p>
+            <p>
+                {format!(
+                    "{}: {}",
+                    t(
+                        locale.as_deref(),
+                        "product.summary.catalogSnapshot",
+                        "catalog snapshot",
+                    ),
+                    catalog_snapshot,
+                )}
+            </p>
+            <p>
+                {format!(
+                    "{}: {}",
+                    t(
+                        locale.as_deref(),
+                        "product.summary.pricingPreview",
+                        "pricing module preview",
+                    ),
+                    pricing_preview,
+                )}
+            </p>
+            <div class="pt-1">
+                <a
+                    class="inline-flex rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition hover:bg-accent"
+                    href=pricing_href
+                >
+                    {t(
+                        locale.as_deref(),
+                        "product.summary.openPricing",
+                        "Open pricing module",
+                    )}
+                </a>
+            </div>
+        </div>
+    }
+    .into_any()
+}
+
+fn primary_catalog_currency(product: Option<&ProductDetail>) -> Option<String> {
+    product.and_then(|item| {
+        item.variants
+            .first()
+            .and_then(|variant| variant.prices.first())
+            .map(|price| price.currency_code.clone())
+    })
+}
+
+fn format_catalog_snapshot_price(locale: Option<&str>, product: Option<&ProductDetail>) -> String {
+    product
+        .and_then(|item| item.variants.first())
+        .and_then(|variant| variant.prices.first())
+        .map(|price| {
+            format_scoped_price(
+                locale,
+                &price.currency_code,
+                &price.amount,
+                price.compare_at_amount.as_deref(),
+                None,
+            )
+        })
+        .unwrap_or_else(|| t(locale, "product.summary.noPricing", "no pricing"))
+}
+
+fn format_pricing_preview(locale: Option<&str>, pricing: Option<&ProductPricingDetail>) -> String {
+    let Some(pricing) = pricing else {
+        return t(
+            locale,
+            "product.summary.pricingUnavailable",
+            "Pricing module preview is unavailable.",
+        );
+    };
+
+    let Some(variant) = pricing.variants.first() else {
+        return t(locale, "product.summary.noPricing", "no pricing");
+    };
+
+    if let Some(price) = variant.effective_price.as_ref() {
+        let mut label = format_scoped_price(
+            locale,
+            &price.currency_code,
+            &price.amount,
+            price.compare_at_amount.as_deref(),
+            price.discount_percent.as_deref(),
+        );
+        if let Some(scope) = format_pricing_scope(
+            locale,
+            price.price_list_id.as_deref(),
+            price.channel_slug.as_deref(),
+            price.channel_id.as_deref(),
+        ) {
+            label.push_str(format!(" | {scope}").as_str());
+        }
+        return label;
+    }
+
+    variant
+        .prices
+        .first()
+        .map(|price| {
+            format_scoped_price(
+                locale,
+                &price.currency_code,
+                &price.amount,
+                price.compare_at_amount.as_deref(),
+                price.discount_percent.as_deref(),
+            )
+        })
+        .unwrap_or_else(|| t(locale, "product.summary.noPricing", "no pricing"))
+}
+
+fn format_scoped_price(
+    locale: Option<&str>,
+    currency_code: &str,
+    amount: &str,
+    compare_at_amount: Option<&str>,
+    discount_percent: Option<&str>,
+) -> String {
+    let mut label = if let Some(compare_at_amount) = compare_at_amount {
+        format!(
+            "{} {} ({})",
+            currency_code,
+            amount,
+            t(locale, "product.summary.compareAt", "compare-at {value}")
+                .replace("{value}", compare_at_amount),
+        )
+    } else {
+        format!("{currency_code} {amount}")
+    };
+
+    if let Some(discount_percent) = discount_percent.filter(|value| !value.trim().is_empty()) {
+        label.push_str(format!(" (-{discount_percent}%)").as_str());
+    }
+
+    label
+}
+
+fn format_pricing_scope(
+    locale: Option<&str>,
+    price_list_id: Option<&str>,
+    channel_slug: Option<&str>,
+    channel_id: Option<&str>,
+) -> Option<String> {
+    let price_list_id = price_list_id.filter(|value| !value.trim().is_empty());
+    let channel_slug = channel_slug.filter(|value| !value.trim().is_empty());
+    let channel_id = channel_id.filter(|value| !value.trim().is_empty());
+
+    if price_list_id.is_none() && channel_slug.is_none() && channel_id.is_none() {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    if let Some(price_list_id) = price_list_id {
+        parts.push(t(locale, "product.summary.priceList", "price list") + " " + price_list_id);
+    }
+    match (channel_slug, channel_id) {
+        (Some(channel_slug), Some(channel_id)) => parts.push(
+            t(locale, "product.summary.channel", "channel")
+                + " "
+                + channel_slug
+                + " ("
+                + channel_id
+                + ")",
+        ),
+        (Some(channel_slug), None) => {
+            parts.push(t(locale, "product.summary.channel", "channel") + " " + channel_slug)
+        }
+        (None, Some(channel_id)) => {
+            parts.push(t(locale, "product.summary.channel", "channel") + " " + channel_id)
+        }
+        (None, None) => {}
+    }
+
+    Some(parts.join(" | "))
+}
+
+fn build_admin_pricing_href(module_route_base: &str, product: &ProductDetail) -> String {
+    let mut params = vec![format!("id={}", product.id)];
+    if let Some(currency_code) =
+        primary_catalog_currency(Some(product)).filter(|value| !value.trim().is_empty())
+    {
+        params.push(format!("currency={currency_code}"));
+    }
+    params.push("quantity=1".to_string());
+    format!("{module_route_base}?{}", params.join("&"))
 }
 
 fn format_known_shipping_profiles(locale: Option<&str>, profiles: &[ShippingProfile]) -> String {

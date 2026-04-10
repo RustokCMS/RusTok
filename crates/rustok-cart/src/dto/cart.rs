@@ -51,6 +51,17 @@ pub struct UpdateCartContextInput {
     pub shipping_selections: Option<Vec<CartShippingSelectionInput>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct SetCartAdjustmentInput {
+    pub line_item_id: Option<Uuid>,
+    #[validate(length(min = 1, max = 64))]
+    pub source_type: String,
+    #[validate(length(max = 191))]
+    pub source_id: Option<String>,
+    pub amount: Decimal,
+    pub metadata: Value,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CartResponse {
     pub id: Uuid,
@@ -65,12 +76,15 @@ pub struct CartResponse {
     pub selected_shipping_option_id: Option<Uuid>,
     pub status: String,
     pub currency_code: String,
+    pub subtotal_amount: Decimal,
+    pub adjustment_total: Decimal,
     pub total_amount: Decimal,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
     pub line_items: Vec<CartLineItemResponse>,
+    pub adjustments: Vec<CartAdjustmentResponse>,
     pub delivery_groups: Vec<CartDeliveryGroupResponse>,
 }
 
@@ -88,6 +102,20 @@ pub struct CartLineItemResponse {
     pub quantity: i32,
     pub unit_price: Decimal,
     pub total_price: Decimal,
+    pub currency_code: String,
+    pub metadata: Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CartAdjustmentResponse {
+    pub id: Uuid,
+    pub cart_id: Uuid,
+    pub line_item_id: Option<Uuid>,
+    pub source_type: String,
+    pub source_id: Option<String>,
+    pub amount: Decimal,
     pub currency_code: String,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,

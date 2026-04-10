@@ -49,6 +49,8 @@ fn create_test_product_input() -> CreateProductInput {
             option3: None,
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
+                channel_id: None,
+                channel_slug: None,
                 amount: Decimal::from_str("99.99").unwrap(),
                 compare_at_amount: Some(Decimal::from_str("149.99").unwrap()),
             }],
@@ -458,6 +460,8 @@ async fn test_create_product_with_multiple_variants() {
         option3: None,
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
+            channel_id: None,
+            channel_slug: None,
             amount: Decimal::from_str("79.99").unwrap(),
             compare_at_amount: None,
         }],
@@ -478,6 +482,8 @@ async fn test_create_product_with_multiple_variants() {
         option3: None,
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
+            channel_id: None,
+            channel_slug: None,
             amount: Decimal::from_str("119.99").unwrap(),
             compare_at_amount: Some(Decimal::from_str("169.99").unwrap()),
         }],
@@ -932,6 +938,8 @@ async fn test_variant_price_in_prices_vec() {
     let mut input = create_test_product_input();
     input.variants[0].prices = vec![PriceInput {
         currency_code: "USD".to_string(),
+        channel_id: None,
+        channel_slug: None,
         amount: Decimal::from_str("100.00").unwrap(),
         compare_at_amount: None,
     }];
@@ -958,6 +966,8 @@ async fn test_multiple_variants_different_prices() {
     let mut input = create_test_product_input();
     input.variants[0].prices = vec![PriceInput {
         currency_code: "USD".to_string(),
+        channel_id: None,
+        channel_slug: None,
         amount: Decimal::from_str("50.00").unwrap(),
         compare_at_amount: None,
     }];
@@ -973,6 +983,8 @@ async fn test_multiple_variants_different_prices() {
         option3: None,
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
+            channel_id: None,
+            channel_slug: None,
             amount: Decimal::from_str("150.00").unwrap(),
             compare_at_amount: None,
         }],

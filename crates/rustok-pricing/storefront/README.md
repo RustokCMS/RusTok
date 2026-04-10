@@ -10,7 +10,24 @@ public pricing discovery.
 - Render the public pricing atlas for published catalog entries.
 - Read pricing summary and variant-level price data through native `#[server]`
   functions backed by `rustok-pricing::PricingService`.
-- Keep the existing GraphQL storefront contract as a parallel fallback path.
+- Surface effective variant pricing from the typed resolver when the route carries
+  optional pricing context query values such as `currency`, `region_id`,
+  `price_list_id`, `channel_id` / `channel_slug`, and `quantity`.
+- Surface normalized `discount_percent` for sale rows and effective prices so
+  storefront pricing UI does not have to derive sale math from `compare_at`
+  fields on its own.
+- Surface active tenant-scoped price lists and available channels as pricing-owned
+  selectors when the route already carries an effective pricing context.
+- Surfaces `seller_id` in pricing cards as the language-neutral seller boundary;
+  `vendor` remains a catalog merchandising label and is not used for ownership.
+- Links back to the product storefront module with `handle` when available,
+  keeping display labels out of the pricing-owned route state.
+- Keep the existing GraphQL storefront contract as a parallel fallback path; the
+  fallback now also reads `storefrontPricingChannels` and
+  `storefrontActivePriceLists(channelId, channelSlug)` from the commerce facade so
+  channel-aware selector state stays aligned when native server functions are not
+  available, and uses `storefrontPricingProduct` to keep variant-level
+  `effective_price` parity for explicit pricing context.
 - Consume the host-provided effective locale from `UiRouteContext`.
 
 ## Entry points

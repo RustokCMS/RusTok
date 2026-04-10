@@ -1,8 +1,10 @@
 //! GraphQL module for Flex — custom field definitions (Phase 2).
 
-use async_graphql::{FieldError, Result};
+use async_graphql::{Context, FieldError, Result};
 use rustok_core::field_schema::is_valid_field_key;
+use rustok_core::Permission;
 
+use crate::context::AuthContext;
 use crate::graphql::errors::GraphQLError;
 
 mod mutation;
@@ -155,4 +157,25 @@ mod tests {
             .extend();
         assert_eq!(error_code(&gql).as_deref(), Some("BAD_USER_INPUT"));
     }
+}
+
+pub(super) fn auth_has_permission(auth: &AuthContext, permission: Permission) -> bool {
+    rustok_rbac::has_effective_permission_in_set(&auth.permissions, &permission)
+}
+
+pub(super) fn require_permission<'a>(
+    ctx: &'a Context<'a>,
+    permission: Permission,
+) -> Result<&'a AuthContext> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+    if !auth_has_permission(auth, permission) {
+        return Err(<FieldError as GraphQLError>::permission_denied(&format!(
+            "{permission} required"
+        )));
+    }
+
+    Ok(auth)
 }

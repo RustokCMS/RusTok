@@ -14,6 +14,7 @@ ssr = [
   "dep:loco-rs",
   "dep:rustok-commerce-foundation",
   "dep:rustok-product",
+  "dep:rustok-pricing",
 ]
 
 [dependencies]
@@ -24,4 +25,6 @@ loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
 rustok-commerce-foundation = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
+rustok-pricing = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
+uuid.workspace = true

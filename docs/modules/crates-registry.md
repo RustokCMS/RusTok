@@ -64,7 +64,7 @@
 | `rustok-telemetry` | Общий observability-foundation слой: telemetry bootstrap, metrics/tracing wiring и общие instrumentation helper-ы для host/runtime-слоя. | `init`, `TelemetryConfig`, `render_metrics`, `current_trace_id`. | Настраивать разрозненные telemetry pipelines в разных модулях или тянуть сюда domain-specific observability logic. |
 | `rustok-mcp` | Тонкая MCP adapter/server-поверхность поверх `rmcp`: typed tools, runtime binding, access policy, audit hooks и Alloy-related scaffold/review/apply vertical; persisted management/control plane и DB-backed runtime bridges живут в `apps/server`. | `RusToKMcpServer`, `McpServerConfig`, `McpSessionContext`, `McpRuntimeBinding`, `McpAccessResolver`, `McpAuditSink`, `McpScaffoldDraftStore`, `ScaffoldModuleRequest`, `StageModuleScaffoldResponse`, `ReviewModuleScaffoldRequest`, `ApplyModuleScaffoldRequest`, `serve_stdio`, tool re-exports. | Реализовывать отдельные MCP entrypoints в приложениях, если сценарий уже покрывает `rustok-mcp`; дублировать upstream MCP/rmcp spec и security docs в локальных файлах; считать текущий draft-store-контракт финальной заменой remote MCP bootstrap и полного codegen/publish pipeline. |
 | `rustok-ai` | Capability crate AI host/orchestrator-слоя: multiprovider-реестр (`OpenAI-compatible`, `Anthropic`, `Gemini`), `AiRouter`, task profiles, hybrid direct/MCP execution model, persisted control-plane service layer для provider/task/tool profiles, sessions/runs/traces/approvals, direct first-party verticals (`alloy_code`, `image_asset`, `product_copy`, `blog_draft`), bounded live streaming через `aiSessionEvents` с native text/tool-call streaming для всех текущих семейств provider-ов, bounded recent stream-event history через `aiRecentRunStreamEvents`, bounded recent run history через `aiRecentRuns`, а также bounded runtime observability snapshot + Prometheus module/span telemetry для router/run outcomes. | `ModelProvider`, `OpenAiCompatibleProvider`, `AnthropicProvider`, `GeminiProvider`, `AiRouter`, `AiRuntime`, `McpClientAdapter`, `DirectExecutionRegistry`, `ExecutionMode`, `ExecutionOverride`, `TaskProfile`, `ToolTrace`, `AiManagementService`. | Расширять `rustok-mcp` до model-хоста; прятать AI-авторизацию за `MCP_MANAGE` вместо RBAC-first permission-модели; делать MCP обязательной внутренней шиной для собственных AI-workflow; обходить канонические domain services (`Alloy`, `MediaService`, `CatalogService`, `PostService`) в direct verticals; дублировать AI business UI в `apps/admin` или `apps/next-admin` вместо capability-owned пакетов. |
-| `flex` | Capability crate системы custom fields: attached/standalone-контракты, field definitions, registry/orchestration helper-ы и localized attached values; donor ownership остаётся у модулей-потребителей. | `CustomFieldsSchema`, standalone/attached-контракты, registry/orchestration helper-ы из `crates/flex`, module-local docs и plan. | Превращать `flex` в самостоятельный бизнес-модуль, забирать donor persistence себе или тянуть стандартные модули в зависимость от Flex как обязательного слоя. |
+| `flex` | Capability crate системы custom fields: attached/standalone-контракты, field definitions, registry/orchestration helper-ы и localized attached values; donor ownership остаётся у модулей-потребителей. При этом crate теперь формализован и как `capability_only` ghost module в `modules.toml`. | `FlexModule`, `CustomFieldsSchema`, standalone/attached-контракты, registry/orchestration helper-ы из `crates/flex`, module-local docs и plan. | Превращать `flex` в самостоятельный бизнес-модуль, забирать donor persistence себе, тянуть стандартные модули в зависимость от Flex как обязательного слоя или считать server-owned transport surfaces доказательством, что ownership donor contracts переехал в `flex`. |
 | `rustok-test-utils` | Общий testing-support crate: database setup helper-ы, mock event bus/transport, fixtures и reusable test helper-ы для RusToK crates/apps. | `setup_test_db`, `MockEventBus`, `MockEventTransport`, `fixtures::*`, `helpers::*`. | Дублировать одни и те же fixtures и mocks локально в модулях вместо использования общего testing-слоя. |
 
 ## RBAC-контракт runtime-реестра
@@ -98,6 +98,10 @@ RBAC-контракт задаётся тремя источниками:
 Alloy остаётся capability-oriented слоем с permission-поверхностью `scripts:*`,
 но при этом входит в runtime-реестр как обычный optional модуль.
 
+`flex` теперь тоже входит в runtime-реестр как capability-only ghost module и
+держит permission-поверхность `flex_schemas:*` / `flex_entries:*`, не забирая
+себе donor persistence ownership.
+
 ## Регламент актуализации
 
 При изменении владения, точек входа, runtime-границ или anti-pattern rules у crate:
@@ -113,5 +117,4 @@ Alloy остаётся capability-oriented слоем с permission-поверх
 - [Индекс документации по модулям](./_index.md)
 - [Контракт `rustok-module.toml`](./manifest.md)
 - [Шаблон документации модуля](../templates/module_contract.md)
-
 

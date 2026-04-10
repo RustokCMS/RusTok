@@ -9,6 +9,7 @@ description = "Flex attached-mode contracts and orchestration primitives for Rus
 rustok-core.workspace = true
 rustok-events.workspace = true
 sea-orm.workspace = true
+sea-orm-migration.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 async-trait.workspace = true

@@ -13,6 +13,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 ## Текущее состояние
 
 - `orders` и `order_line_items` уже module-owned;
+- `order_adjustments` уже module-owned и фиксируют language-neutral promotion/discount snapshot без display labels;
 - write-side lifecycle и order events уже закреплены внутри модуля;
 - product/variant связи хранятся как snapshot references, без cross-module FK;
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`;
@@ -23,6 +24,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 ### 1. Contract stability
 
 - [x] закрепить order-owned lifecycle и snapshot model;
+- [x] добавить typed order adjustment snapshot с `subtotal_amount`, `adjustment_total` и net `total_amount`;
 - [x] удерживать event publication частью module boundary;
 - [x] вынести admin order UI в module-owned пакет `rustok-order/admin`;
 - [ ] удерживать sync между order runtime contract, commerce transport и module metadata.
@@ -43,7 +45,7 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 
 - `cargo xtask module validate order`
 - `cargo xtask module test order`
-- targeted tests для order lifecycle, outbox events и snapshot invariants
+- targeted tests для order lifecycle, typed adjustments, outbox events и snapshot invariants
 
 ## Правила обновления
 

@@ -20,6 +20,7 @@ Leptos storefront UI package for the `rustok-commerce` module.
 - Uses host-provided locale plus native `#[server]` extraction of `RequestContext` and `TenantContext`.
 - Remains the aggregate storefront hub while `rustok-region/storefront`, `rustok-product/storefront`, `rustok-pricing/storefront`, and `rustok-cart/storefront` own module-specific storefront surfaces.
 - Owns the remaining checkout workspace for delivery-group shipping selection, `payment collection` reuse, and `complete checkout` actions over `?cart_id=`.
+- Carries cart adjustment summary through the checkout workspace without owning promotion display labels or localized adjustment metadata.
 - Keeps checkout-context, delivery-selection, payment-collection, and other cross-domain orchestration concerns out of the host app.
 - Should remain compatible with the host storefront slot and generic module page contract, including locale-prefixed routes via `UiRouteContext::module_route_base()`.
 

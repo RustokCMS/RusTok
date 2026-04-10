@@ -70,6 +70,7 @@ mod contract_tests {
     const TAXONOMY_README: &str = include_str!("../../../../crates/rustok-taxonomy/README.md");
     const WORKFLOW_README: &str = include_str!("../../../../crates/rustok-workflow/README.md");
     const ALLOY_README: &str = include_str!("../../../../crates/alloy/README.md");
+    const FLEX_README: &str = include_str!("../../../../crates/flex/README.md");
     const FLEX_MUTATION: &str = include_str!("../graphql/flex/mutation.rs");
 
     #[test]
@@ -100,6 +101,7 @@ mod contract_tests {
             ("taxonomy", TAXONOMY_README),
             ("workflow", WORKFLOW_README),
             ("alloy", ALLOY_README),
+            ("flex", FLEX_README),
         ] {
             assert!(
                 readme.contains("## Interactions"),
@@ -130,6 +132,7 @@ mod contract_tests {
         let taxonomy = registry.get("taxonomy").expect("taxonomy module");
         let workflow = registry.get("workflow").expect("workflow module");
         let alloy = registry.get("alloy").expect("alloy module");
+        let flex = registry.get("flex").expect("flex module");
 
         assert!(auth.permissions().contains(&Permission::USERS_MANAGE));
         assert!(channel.permissions().is_empty());
@@ -166,6 +169,12 @@ mod contract_tests {
             .permissions()
             .contains(&Permission::WORKFLOWS_MANAGE));
         assert!(alloy.permissions().contains(&Permission::SCRIPTS_MANAGE));
+        assert!(flex
+            .permissions()
+            .contains(&Permission::FLEX_SCHEMAS_MANAGE));
+        assert!(flex
+            .permissions()
+            .contains(&Permission::FLEX_ENTRIES_MANAGE));
     }
 
     #[test]
@@ -186,6 +195,7 @@ mod contract_tests {
         let taxonomy = registry.get("taxonomy").expect("taxonomy module");
         let workflow = registry.get("workflow").expect("workflow module");
         let alloy = registry.get("alloy").expect("alloy module");
+        let flex = registry.get("flex").expect("flex module");
 
         assert!(registry.is_core("channel"));
         assert!(registry.is_core("outbox"));
@@ -217,6 +227,7 @@ mod contract_tests {
         assert_eq!(taxonomy.dependencies(), &["content"]);
         assert!(workflow.dependencies().is_empty());
         assert!(alloy.dependencies().is_empty());
+        assert!(flex.dependencies().is_empty());
     }
 
     #[test]

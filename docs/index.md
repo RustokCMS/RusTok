@@ -26,7 +26,7 @@
 
 - [Обзор модульной платформы](./modules/overview.md)
 - [План и текущее состояние модульной системы](./modules/module-system-plan.md)
-- [Контракт `rustok-module.toml`](./modules/manifest.md)
+- [Контракт `rustok-module.toml`](./modules/manifest.md) — включая capability-only ghost modules вроде `alloy` и `flex`
 - [Реестр модулей и приложений](./modules/registry.md)
 - [Реестр crate-ов модульной платформы](./modules/crates-registry.md)
 - [Индекс документации по модулям](./modules/_index.md)
@@ -50,6 +50,33 @@
 - Cross-cutting трек `Marketplace Foundations` тоже уже начат: `seller_id` стал canonical
   multivendor key в product/cart/order/checkout/fulfillment contract, а `seller_scope`
   оставлен только как transitional compatibility field для legacy snapshot'ов.
+- `Phase 8` тоже уже начат с pricing foundation: `rustok-pricing` получил typed
+  `currency + region + quantity` resolver поверх base-price rows, пока без активации
+  полноценного price-list/promotions слоя; `rustok-pricing/storefront` и
+  `rustok-pricing/admin` уже протянули этот effective-price context в
+  module-owned UI surfaces через native-first `#[server]` transport с GraphQL fallback,
+  а resolver теперь ещё и умеет explicit active `price_list_id` overlay поверх base prices,
+  плюс уже начал channel-aware slice через host-provided `channel_id/channel_slug`,
+  channel-scoped base rows и channel-filtered active price lists,
+  причём pricing-owned read-side уже отдаёт active price lists как selector, а не
+  заставляет UI жить на raw UUID-only вводе; кроме того, `rustok-pricing/admin`
+  уже перестал быть чисто read-only route и получил module-owned base-price write path
+  для variant prices, включая минимальный quantity-tier authoring по `min_quantity` /
+  `max_quantity`, а теперь ещё и active price-list override authoring поверх base rows;
+  targeted SSR tests уже покрывают этот admin transport path, а read-side contract теперь
+  ещё и отдаёт typed `discount_percent` для sale rows/effective prices; promotion/rule-aware
+  pricing mutations остаются следующим slice. Параллельно legacy `apply_discount`
+  уже переведён на typed percentage-adjustment helper поверх canonical base-price row, а
+  `rustok-pricing/admin` уже даёт operator-side preview/apply flow для такого adjustment path
+  без смешивания его с quantity tiers; теперь этот flow уже умеет target'ить и выбранный
+  active `price_list` override. Следующий promotion-ready слой тоже уже начат:
+  active `price_list` может держать typed percentage rule, а resolver fallback'ится к
+  base row через него, если explicit override row не задан; cart/order promotion snapshot тоже
+  получил typed foundation через `cart_adjustments` / `order_adjustments`, `subtotal_amount`,
+  `adjustment_total` и net `total_amount` без хранения localized display labels в ecommerce storage;
+  pricing-authoritative GraphQL reads теперь живут в dedicated roots `adminPricingProduct` /
+  `storefrontPricingProduct`, а generic `product` / `storefrontProduct` с `variants.prices`
+  остаются только catalog compatibility snapshot contract.
 - [Спец-план rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 
 ## UI и клиентские поверхности
@@ -89,7 +116,10 @@
 
 ## Проверка платформы
 
+- [Инструмент workspace CLI `xtask`](../xtask/README.md)
 - [Главный README по верификации](./verification/README.md)
+- Flex multilingual contract теперь имеет отдельный repo-side guardrail:
+  `node scripts/verify/verify-flex-multilingual-contract.mjs`
 - [Сводный план верификации](./verification/PLATFORM_VERIFICATION_PLAN.md)
 - [Верификация foundation-слоя](./verification/platform-foundation-verification-plan.md)
 - [Верификация API-поверхностей](./verification/platform-api-surfaces-verification-plan.md)
@@ -109,6 +139,7 @@
 ## Документация приложений
 
 - [Документация Server](../apps/server/docs/README.md)
+  Server docs теперь фиксируют live `flex` standalone GraphQL + REST surfaces и их tenant-scoped RBAC contract.
 - [Документация Admin](../apps/admin/docs/README.md)
 - [Документация Storefront](../apps/storefront/docs/README.md)
 - [Документация Next Admin](../apps/next-admin/docs/README.md)

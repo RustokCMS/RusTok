@@ -5,10 +5,22 @@
 
 ---
 
+## Область работ
+
+Этот план фиксирует доведение `flex` до целевого capability-only состояния в трёх плоскостях:
+
+- attached-mode contracts и donor integrations;
+- standalone schema/entry runtime и transport surfaces;
+- manifest/module-system/governance contract без превращения `flex` в owner donor persistence.
+
+## Текущее состояние
+
+`flex` уже имеет live attached-mode contract, live standalone GraphQL/REST surfaces в `apps/server` и формализованный Phase 4.6 module-system wiring как capability-only ghost module.
+
 ## Текущий статус
 
 > **Важная пометка для следующих change set'ов:** старые планы, где multilingual copy живёт inline в base rows или в canonical JSON blobs, больше не актуальны.
-> Текущий live contract для `flex`: `FieldDefinition.is_localized` уже проведён через core/runtime/DB, registered attached consumers сейчас `user`/`product`/`order`/`topic`, standalone schema copy вынесен в `flex_schema_translations`, standalone entry values теперь разделены на `flex_entries.data` + `flex_entry_localized_values`, а attached-mode generic localized-value storage вынесен в shared `crates/flex` и пишет в `flex_attached_localized_values`. Live donor read/write path уже закрыт для `user`, `product`, `order` и `topic`. Следующий обязательный шаг — cleanup/backfill residual legacy locale-aware JSON payload-ов и доведение standalone surface/API до публичного контракта.
+> Текущий live contract для `flex`: `FieldDefinition.is_localized` уже проведён через core/runtime/DB, registered attached consumers сейчас `user`/`product`/`order`/`topic`, standalone schema copy вынесен в `flex_schema_translations`, standalone entry values теперь разделены на `flex_entries.data` + `flex_entry_localized_values`, attached-mode generic localized-value storage вынесен в shared `crates/flex` и пишет в `flex_attached_localized_values`, а standalone GraphQL и REST surfaces для schemas/entries уже live в `apps/server`. Cleanup migration убирает residual inline locale-aware Flex payload-ы из donor metadata и standalone base rows. Rollout/governance contract для standalone уже зафиксирован через capability-only manifest, server-owned transport и repo-side verification; следующий обязательный шаг — полный integration verification и Phase 5 follow-up backlog.
 
 | Фаза | Описание | Статус |
 |------|----------|--------|
@@ -18,9 +30,28 @@
 | Phase 3 | Admin API (GraphQL CRUD, RBAC, кеш, пагинация) | ✅ Done |
 | Phase 4 | Attached-mode consumers (`user`, `product`, `order`, `topic`) | ✅ Закрыто: docs/migrator/is_localized выровнены, generic localized-value storage есть, live donor read/write path закрыт для `user`, `product`, `order` и `topic` |
 | Phase 4.5 | Вынос в `crates/flex` | 🔄 Почти завершён, остаются verification/docs долги |
-| Phase 4.6 | Ghost-module manifest integration | ⬜ Не начат |
-| Phase 5 | Standalone mode | 🔄 В активной реализации: schema-level copy и standalone entry-value split уже live в storage/service layer, публичный API surface и cleanup ещё не закрыты |
+| Phase 4.6 | Ghost-module manifest integration | ✅ Done: `modules.toml` + `rustok-module.toml` + `FlexModule` + xtask/server/docs alignment |
+| Phase 5 | Standalone mode | 🔄 В активной реализации: schema-level copy, standalone entry-value split, GraphQL и REST surfaces уже live; rollout/governance contract зафиксирован, integration verification и follow-up backlog ещё не закрыты |
 | Phase 6 | Advanced features | ⬜ Не начат |
+
+---
+
+## Этапы
+
+Ниже фазы остаются каноническим breakdown implementation scope. Phase 4.x закрывает attached/runtime/module-system debts, Phase 5 отвечает за standalone surface, Phase 6 остаётся future backlog.
+
+## Проверка
+
+- `cargo xtask validate-manifest`
+- `cargo xtask module validate flex`
+- `node scripts/verify/verify-flex-multilingual-contract.mjs`
+- targeted `cargo check -p flex`
+
+## Правила обновления
+
+- менять статус фаз только после того, как код, docs и verification path реально синхронизированы;
+- не возвращать в план старые допущения про inline localized payload как canonical path;
+- staged rollout и внешние blockers фиксировать явно, а не прятать под формулировку "почти готово".
 
 ---
 
@@ -59,7 +90,7 @@ Flex в attached-mode уже умеет хранить field definitions и ма
   - `is_localized = true` не должен в финальном состоянии означать хранение multilingual business value внутри donor `metadata`.
   - Generic table `flex_attached_localized_values` уже введена, а shared entity/helpers теперь живут в `crates/flex`.
   - `user` и `product` уже используют этот path в live read/write flow.
-  - Следующий срез: убрать residual legacy JSON fallback и довести standalone public surface до того же locale-aware контракта.
+  - Cleanup/backfill legacy inline payload-ов вынесен в отдельные миграции, runtime больше не должен читать donor/base-row inline localized copy как canonical fallback.
 
 ### Тесты (integration pending)
 
@@ -117,23 +148,23 @@ Flex в attached-mode уже умеет хранить field definitions и ма
 
 ### Checklist
 
-- [ ] Добавить `crates/flex/rustok-module.toml`
-  - Минимальный contract должен быть выровнен с capability-модулями наподобие `alloy`.
-  - Manifest не должен заявлять ownership над donor persistence (`users.metadata`, `orders.metadata`, `nodes.metadata` и т.д.).
-- [ ] Зафиксировать в manifest и docs семантику ghost module
+- [x] Добавить `crates/flex/rustok-module.toml`
+  - Manifest выровнен с capability-модулями наподобие `alloy`, но без претензии на donor persistence ownership.
+- [x] Зафиксировать в manifest и docs семантику ghost module
   - `flex` расширяет donor modules custom contracts.
   - Данные attached-mode остаются в donor tables и donor write-path.
-  - Сам `flex` поставляет shared orchestration / runtime capability, а не новый bounded context.
-- [ ] Определить policy для runtime surfaces
-  - Если standalone API ещё не live, manifest не должен притворяться publish-ready модулем с завершённым GraphQL/HTTP contract.
-  - Если standalone surface будет открываться поэтапно, manifest и docs должны явно отражать staged rollout.
-- [ ] Прогнать manifest validation flow
-  - `cargo xtask module validate flex`
-  - `cargo xtask module test flex`
-- [ ] Обновить central module docs после появления manifest
+  - `FlexModule` публикует capability/runtime metadata и RBAC surface, а transport остаётся server-owned adapter-слоем.
+- [x] Определить policy для runtime surfaces
+  - Standalone GraphQL/REST уже live в `apps/server`, но в module manifest `flex` не делает вид, что это module-owned transport crate.
+  - Capability-only server feature `mod-flex` нужен для registry/codegen wiring; сам crate при этом может оставаться always-linked support dependency сервера.
+- [~] Прогнать manifest validation flow
+  - `cargo xtask validate-manifest` / `cargo xtask module validate flex` стали частью acceptance path для `flex`
+  - `cargo xtask module test flex` остаётся зависимым от общего server test graph
+- [x] Обновить central module docs после появления manifest
   - `docs/modules/_index.md`
   - `docs/modules/registry.md`
-  - при необходимости `docs/modules/manifest.md`
+  - `docs/modules/manifest.md`
+  - `xtask/README.md`
 
 ---
 
@@ -213,26 +244,29 @@ CREATE INDEX idx_flex_entry_localized_values_owner
 - [x] SeaORM entities *(добавлены `flex_schemas`, `flex_entries`, `flex_schema_translations` и `flex_entry_localized_values` в `apps/server/src/models/_entities` + re-export в `models/`)*
 - [x] Validation service (использует `CustomFieldsSchema` из core) *(добавлен `apps/server/src/services/flex_standalone_validation_service.rs`, включая normalize/apply_defaults/strip_unknown/validate pipeline)*
 - [x] CRUD services *(добавлен SeaORM adapter `FlexStandaloneSeaOrmService` в `apps/server/src/services/flex_standalone_service.rs`, реализующий `flex::FlexStandaloneService` с tenant-scoped CRUD для schemas/entries)*
-- [~] Multilingual storage contract для standalone mode
+- [x] Multilingual storage contract для standalone mode
   - schema-level localized copy (`name`, `description`) больше не считается base-row данными
   - `flex_schema_translations` уже является live storage path для schema-level copy
   - entry payload теперь split на `flex_entries.data` (shared) и `flex_entry_localized_values` (locale-aware values)
   - read/write service path уже мерджит parallel localized rows обратно в effective entry payload
-  - residual inline localized keys в `flex_entries.data` считаются только transitional fallback до полного cleanup/backfill
-- [~] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; в `crates/flex` добавлены transport-agnostic envelope helper-ы и orchestration helper-ы `*_with_event()`, emission wiring в adapters pending)*
-- [ ] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{slug}/entries`
-- [ ] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations
-- [~] RBAC permissions: `flex.schemas.*`, `flex.entries.*`
-  - Typed permissions уже есть в `rustok-core`
-  - Standalone surfaces пока не используют полный `flex.entries.*` contract
+  - cleanup/backfill вынесен в follow-up migrations; runtime читает shared payload плюс parallel localized rows
+- [x] Events: `FlexSchemaCreated/Updated/Deleted`, `FlexEntryCreated/Updated/Deleted` *(event contracts + schema registry добавлены в `rustok-events`; `crates/flex` даёт transport-agnostic envelope helper-ы и orchestration helper-ы `*_with_event()`, а GraphQL/REST adapters в `apps/server` уже публикуют эти envelopes в event bus)*
+- [x] REST API: `/api/v1/flex/schemas`, `/api/v1/flex/schemas/{schema_id}/entries` *(live в `apps/server`, tenant-scoped и с отдельными `flex_schemas:*` / `flex_entries:*` permission gates)*
+- [x] GraphQL: `FlexSchema`, `FlexEntry`, queries/mutations *(live в `apps/server`, tenant-scoped и с отдельными `flex_schemas:*` / `flex_entries:*` permission gates)*
+- [x] RBAC permissions: `flex.schemas.*`, `flex.entries.*`
+  - Typed permissions есть в `rustok-core`
+  - GraphQL standalone surface использует отдельные `flex_schemas:*` и `flex_entries:*` gates
 - [ ] Indexer handler: `index_flex_entries` + `FlexIndexer` event handler
 - [ ] Cascade delete: при удалении entity удалять attached flex entries
 - [ ] Guardrail: max relation depth = 1 (no recursive populate)
-- [ ] Решить publish policy для standalone surface через ghost-module manifest
+- [x] Решить publish policy для standalone surface через ghost-module manifest
+  - Standalone surface остаётся server-owned adapter layer.
+  - `flex` публикует capability/runtime metadata через `rustok-module.toml`, `modules.toml` и `FlexModule`, не забирая ownership transport surface.
+  - Acceptance path: `cargo xtask validate-manifest`, `cargo xtask module validate flex`, `node scripts/verify/verify-flex-multilingual-contract.mjs`.
 - [ ] Тесты: unit + integration
-- [~] Документация
-  - Контракты и data model описаны
-  - Live API / rollout / governance contract для standalone surface ещё не задокументирован как completed
+- [x] Документация
+  - Контракты, data model и live GraphQL/REST surfaces описаны
+  - Rollout / governance contract для standalone surface задокументирован как completed
 
 ### События standalone mode
 

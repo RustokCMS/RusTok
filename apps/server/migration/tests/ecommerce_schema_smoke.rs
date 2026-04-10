@@ -487,6 +487,8 @@ fn create_product_input() -> CreateProductInput {
             option3: None,
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
+                channel_id: None,
+                channel_slug: None,
                 amount: Decimal::from_str("99.99").expect("valid decimal"),
                 compare_at_amount: Some(Decimal::from_str("149.99").expect("valid decimal")),
             }],
@@ -574,6 +576,7 @@ fn create_order_input() -> CreateOrderInput {
                 metadata: serde_json::json!({ "source": "migration-smoke", "slot": 2 }),
             },
         ],
+        adjustments: Vec::new(),
         metadata: serde_json::json!({ "source": "migration-smoke" }),
     }
 }

@@ -11,7 +11,7 @@ use rustok_commerce::dto::{
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::{
     CartService, CatalogService, CheckoutService, CustomerService, FulfillmentService,
-    OrderService, PaymentService, ShippingProfileService,
+    OrderService, PaymentService, PricingService, ShippingProfileService,
 };
 use rustok_core::Permission;
 use rustok_region::dto::CreateRegionInput;
@@ -98,6 +98,8 @@ fn create_product_input() -> CreateProductInput {
             option3: None,
             prices: vec![PriceInput {
                 currency_code: "EUR".to_string(),
+                channel_id: None,
+                channel_slug: None,
                 amount: Decimal::from_str("19.99").expect("valid decimal"),
                 compare_at_amount: None,
             }],
@@ -194,6 +196,42 @@ async fn seed_channel_binding(
     ))
     .await
     .expect("channel binding should be inserted");
+}
+
+async fn seed_active_price_list(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    name: &str,
+    channel_id: Option<Uuid>,
+    channel_slug: Option<&str>,
+    adjustment_percent: Option<&str>,
+) -> Uuid {
+    let price_list_id = Uuid::new_v4();
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO price_lists (id, tenant_id, name, description, type, status, channel_id, channel_slug, rule_kind, adjustment_percent, starts_at, ends_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        vec![
+            price_list_id.into(),
+            tenant_id.into(),
+            name.into(),
+            Some(format!("GraphQL pricing helper {name}")).into(),
+            "sale".into(),
+            "active".into(),
+            channel_id.into(),
+            channel_slug
+                .map(|value| value.to_ascii_lowercase())
+                .into(),
+            adjustment_percent
+                .map(|_| "percentage_discount".to_string())
+                .into(),
+            adjustment_percent.map(|value| value.to_string()).into(),
+        ],
+    ))
+    .await
+    .expect("active price list should be inserted");
+
+    price_list_id
 }
 
 async fn set_stock_location_channel_visibility(
@@ -2439,6 +2477,7 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
                     unit_price: Decimal::from_str("25.00").expect("valid decimal"),
                     metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
                 }],
+                adjustments: Vec::new(),
                 metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
             },
         )
@@ -2621,6 +2660,7 @@ async fn admin_graphql_create_fulfillment_supports_typed_manual_post_order_items
                         }
                     }),
                 }],
+                adjustments: Vec::new(),
                 metadata: serde_json::json!({ "source": "graphql-manual-fulfillment" }),
             },
         )
@@ -2717,6 +2757,7 @@ async fn admin_graphql_ship_and_deliver_support_partial_item_progress() {
                     unit_price: Decimal::from_str("25.00").expect("valid decimal"),
                     metadata: serde_json::json!({ "source": "graphql-partial-fulfillment" }),
                 }],
+                adjustments: Vec::new(),
                 metadata: serde_json::json!({ "source": "graphql-partial-fulfillment" }),
             },
         )
@@ -2814,6 +2855,7 @@ async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
                     unit_price: Decimal::from_str("25.00").expect("valid decimal"),
                     metadata: serde_json::json!({ "source": "graphql-reopen-fulfillment" }),
                 }],
+                adjustments: Vec::new(),
                 metadata: serde_json::json!({ "source": "graphql-reopen-fulfillment" }),
             },
         )
@@ -2938,6 +2980,7 @@ async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
                     unit_price: Decimal::from_str("25.00").expect("valid decimal"),
                     metadata: serde_json::json!({ "source": "graphql-reship-fulfillment" }),
                 }],
+                adjustments: Vec::new(),
                 metadata: serde_json::json!({ "source": "graphql-reship-fulfillment" }),
             },
         )
@@ -3081,6 +3124,7 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
                     unit_price: Decimal::from_str("15.00").expect("valid decimal"),
                     metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
                 }],
+                adjustments: Vec::new(),
                 metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
             },
         )
@@ -3192,6 +3236,7 @@ async fn storefront_graphql_order_query_rejects_foreign_customer_access() {
                     unit_price: Decimal::from_str("9.99").expect("valid decimal"),
                     metadata: serde_json::json!({ "source": "storefront-graphql-order-foreign" }),
                 }],
+                adjustments: Vec::new(),
                 metadata: serde_json::json!({ "source": "storefront-graphql-order-foreign" }),
             },
         )
@@ -4020,6 +4065,316 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
             "name": "Bulky Freight",
             "allowedShippingProfileSlugs": ["bulky"]
         }])
+    );
+}
+
+#[tokio::test]
+async fn storefront_graphql_pricing_helpers_respect_explicit_channel_override() {
+    let (db, _catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let web_channel_id = Uuid::new_v4();
+    let mobile_channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    seed_channel_binding(&db, tenant_id, web_channel_id, "web-store", true).await;
+    seed_channel_binding(&db, tenant_id, mobile_channel_id, "mobile-app", true).await;
+
+    let global_list_id =
+        seed_active_price_list(&db, tenant_id, "Global Sale", None, None, Some("12.5")).await;
+    let web_list_id = seed_active_price_list(
+        &db,
+        tenant_id,
+        "Web Sale",
+        Some(web_channel_id),
+        Some("web-store"),
+        None,
+    )
+    .await;
+    let mobile_list_id = seed_active_price_list(
+        &db,
+        tenant_id,
+        "Mobile Sale",
+        Some(mobile_channel_id),
+        Some("mobile-app"),
+        None,
+    )
+    .await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context_with_channel(tenant_id, "de", web_channel_id, "web-store"),
+        None,
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontPricingChannels {{
+                id
+                slug
+                name
+              }}
+              requestScoped: storefrontActivePriceLists {{
+                id
+                channelSlug
+                adjustmentPercent
+              }}
+              explicitMobile: storefrontActivePriceLists(
+                channelId: "{mobile_channel_id}",
+                channelSlug: "mobile-app"
+              ) {{
+                id
+                channelSlug
+              }}
+            }}
+            "#
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected storefront pricing helper GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    let channel_slugs = json["storefrontPricingChannels"]
+        .as_array()
+        .expect("channels should be an array")
+        .iter()
+        .filter_map(|item| item["slug"].as_str().map(ToOwned::to_owned))
+        .collect::<Vec<_>>();
+    assert!(channel_slugs.contains(&"web-store".to_string()));
+    assert!(channel_slugs.contains(&"mobile-app".to_string()));
+
+    let request_scoped_ids = json["requestScoped"]
+        .as_array()
+        .expect("request-scoped lists should be an array")
+        .iter()
+        .filter_map(|item| item["id"].as_str().map(ToOwned::to_owned))
+        .collect::<Vec<_>>();
+    assert!(request_scoped_ids.contains(&global_list_id.to_string()));
+    assert!(request_scoped_ids.contains(&web_list_id.to_string()));
+    assert!(!request_scoped_ids.contains(&mobile_list_id.to_string()));
+
+    let explicit_mobile_ids = json["explicitMobile"]
+        .as_array()
+        .expect("explicit mobile lists should be an array")
+        .iter()
+        .filter_map(|item| item["id"].as_str().map(ToOwned::to_owned))
+        .collect::<Vec<_>>();
+    assert!(explicit_mobile_ids.contains(&global_list_id.to_string()));
+    assert!(explicit_mobile_ids.contains(&mobile_list_id.to_string()));
+    assert!(!explicit_mobile_ids.contains(&web_list_id.to_string()));
+
+    let global_rule = json["requestScoped"]
+        .as_array()
+        .expect("request-scoped lists should be an array")
+        .iter()
+        .find(|item| item["id"] == Value::from(global_list_id.to_string()))
+        .expect("global list should be present");
+    assert_eq!(global_rule["adjustmentPercent"], Value::from("12.5"));
+}
+
+#[tokio::test]
+async fn admin_graphql_pricing_product_resolves_effective_price_for_explicit_channel() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+    PricingService::new(db.clone(), mock_transactional_event_bus())
+        .set_prices(
+            tenant_id,
+            actor_id,
+            variant.id,
+            vec![PriceInput {
+                currency_code: "EUR".to_string(),
+                channel_id: Some(channel_id),
+                channel_slug: Some("web-store".to_string()),
+                amount: Decimal::from_str("15.99").expect("valid decimal"),
+                compare_at_amount: Some(Decimal::from_str("19.99").expect("valid decimal")),
+            }],
+        )
+        .await
+        .expect("channel-scoped price should be stored");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminPricingProduct(
+                tenantId: "{tenant_id}",
+                id: "{product_id}",
+                locale: "en",
+                currencyCode: "EUR",
+                channelId: "{channel_id}",
+                channelSlug: "web-store",
+                quantity: 1
+              ) {{
+                id
+                variants {{
+                  id
+                  prices {{
+                    currencyCode
+                    amount
+                    channelId
+                    channelSlug
+                  }}
+                  effectivePrice {{
+                    currencyCode
+                    amount
+                    compareAtAmount
+                    onSale
+                    channelId
+                    channelSlug
+                  }}
+                }}
+              }}
+            }}
+            "#,
+            product_id = created.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin pricing product GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    let prices = json["adminPricingProduct"]["variants"][0]["prices"]
+        .as_array()
+        .expect("prices should be an array");
+    assert!(prices.iter().any(|item| {
+        item["channelId"] == Value::from(channel_id.to_string())
+            && item["channelSlug"] == Value::from("web-store")
+            && item["amount"] == Value::from("15.99")
+    }));
+
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["amount"],
+        Value::from("15.99")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["channelId"],
+        Value::from(channel_id.to_string())
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["channelSlug"],
+        Value::from("web-store")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["compareAtAmount"],
+        Value::from("19.99")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["variants"][0]["effectivePrice"]["onSale"],
+        Value::from(true)
+    );
+}
+
+#[tokio::test]
+async fn pricing_graphql_facades_preserve_seller_id_as_identity_boundary() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let mut input = create_product_input();
+    input.seller_id = Some("seller-alpha-id".to_string());
+    input.vendor = Some("Localized Vendor Display".to_string());
+    let created = catalog
+        .create_product(tenant_id, actor_id, input)
+        .await
+        .expect("product should be created");
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .expect("product should be published");
+    let handle = published
+        .translations
+        .iter()
+        .find(|item| item.locale == "en")
+        .map(|item| item.handle.clone())
+        .expect("published product should have an English handle");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              adminPricingProduct(
+                tenantId: "{tenant_id}",
+                id: "{product_id}",
+                locale: "en"
+              ) {{
+                sellerId
+                vendor
+              }}
+              storefrontPricingProduct(
+                tenantId: "{tenant_id}",
+                handle: "{handle}",
+                locale: "en"
+              ) {{
+                sellerId
+                vendor
+              }}
+            }}
+            "#,
+            product_id = published.id,
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected pricing facade GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        json["adminPricingProduct"]["sellerId"],
+        Value::from("seller-alpha-id")
+    );
+    assert_eq!(
+        json["storefrontPricingProduct"]["sellerId"],
+        Value::from("seller-alpha-id")
+    );
+    assert_eq!(
+        json["adminPricingProduct"]["vendor"],
+        Value::from("Localized Vendor Display")
+    );
+    assert_eq!(
+        json["storefrontPricingProduct"]["vendor"],
+        Value::from("Localized Vendor Display")
     );
 }
 

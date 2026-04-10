@@ -128,6 +128,17 @@ use utoipa::OpenApi;
         // Admin Events
         crate::controllers::admin_events::list_dlq,
         crate::controllers::admin_events::replay_dlq_event,
+        // Flex standalone
+        crate::controllers::flex::list_schemas,
+        crate::controllers::flex::get_schema,
+        crate::controllers::flex::create_schema,
+        crate::controllers::flex::update_schema,
+        crate::controllers::flex::delete_schema,
+        crate::controllers::flex::list_entries,
+        crate::controllers::flex::get_entry,
+        crate::controllers::flex::create_entry,
+        crate::controllers::flex::update_entry,
+        crate::controllers::flex::delete_entry,
     ),
     components(
         schemas(
@@ -258,6 +269,15 @@ use utoipa::OpenApi;
             crate::controllers::admin_events::DlqEventItem,
             crate::controllers::admin_events::DlqListResponse,
             crate::controllers::admin_events::DlqReplayResponse,
+
+            // Flex standalone
+            crate::controllers::flex::CreateFlexSchemaRequest,
+            crate::controllers::flex::UpdateFlexSchemaRequest,
+            crate::controllers::flex::CreateFlexEntryRequest,
+            crate::controllers::flex::UpdateFlexEntryRequest,
+            crate::controllers::flex::FlexSchemaResponse,
+            crate::controllers::flex::FlexEntryResponse,
+            crate::controllers::flex::DeleteFlexResponse,
         )
     ),
     modifiers(&SecurityAddon),
@@ -269,6 +289,7 @@ use utoipa::OpenApi;
         (name = "commerce", description = "Ecommerce endpoints"),
         (name = "store", description = "Storefront ecommerce endpoints"),
         (name = "marketplace", description = "Marketplace registry and catalog endpoints"),
+        (name = "flex", description = "Flex standalone schemas and entries endpoints"),
         (name = "health", description = "Health check endpoints"),
         (name = "observability", description = "Observability and metrics endpoints"),
         (name = "admin", description = "Admin operations")
@@ -473,6 +494,17 @@ mod tests {
             openapi.paths.paths.contains_key("/v2/catalog/yank"),
             "OpenAPI spec must include /v2/catalog/yank"
         );
+        assert!(
+            openapi.paths.paths.contains_key("/api/v1/flex/schemas"),
+            "OpenAPI spec must include /api/v1/flex/schemas"
+        );
+        assert!(
+            openapi
+                .paths
+                .paths
+                .contains_key("/api/v1/flex/schemas/{schema_id}/entries/{entry_id}"),
+            "OpenAPI spec must include /api/v1/flex/schemas/{{schema_id}}/entries/{{entry_id}}"
+        );
     }
 
     #[test]
@@ -519,5 +551,6 @@ mod tests {
         assert!(!openapi.paths.paths.contains_key("/v2/catalog/yank"));
         assert!(!openapi.paths.paths.contains_key("/api/auth/login"));
         assert!(!openapi.paths.paths.contains_key("/api/admin/events/dlq"));
+        assert!(!openapi.paths.paths.contains_key("/api/v1/flex/schemas"));
     }
 }

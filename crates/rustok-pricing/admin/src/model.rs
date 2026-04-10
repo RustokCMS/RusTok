@@ -8,9 +8,41 @@ pub struct CurrentTenant {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PricingChannelOption {
+    pub id: String,
+    pub slug: String,
+    pub name: String,
+    #[serde(rename = "isActive")]
+    pub is_active: bool,
+    #[serde(rename = "isDefault")]
+    pub is_default: bool,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PricingPriceListOption {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "listType")]
+    pub list_type: String,
+    #[serde(rename = "channelId", default)]
+    pub channel_id: Option<String>,
+    #[serde(rename = "channelSlug", default)]
+    pub channel_slug: Option<String>,
+    #[serde(rename = "ruleKind", default)]
+    pub rule_kind: Option<String>,
+    #[serde(rename = "adjustmentPercent", default)]
+    pub adjustment_percent: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PricingAdminBootstrap {
     #[serde(rename = "currentTenant")]
     pub current_tenant: CurrentTenant,
+    #[serde(rename = "availableChannels", default)]
+    pub available_channels: Vec<PricingChannelOption>,
+    #[serde(rename = "activePriceLists", default)]
+    pub active_price_lists: Vec<PricingPriceListOption>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -28,6 +60,8 @@ pub struct PricingProductList {
 pub struct PricingProductListItem {
     pub id: String,
     pub status: String,
+    #[serde(rename = "sellerId")]
+    pub seller_id: Option<String>,
     pub title: String,
     pub handle: String,
     pub vendor: Option<String>,
@@ -46,6 +80,8 @@ pub struct PricingProductListItem {
 pub struct PricingProductDetail {
     pub id: String,
     pub status: String,
+    #[serde(rename = "sellerId")]
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     #[serde(rename = "productType")]
     pub product_type: Option<String>,
@@ -81,6 +117,8 @@ pub struct PricingVariant {
     pub option2: Option<String>,
     pub option3: Option<String>,
     pub prices: Vec<PricingPrice>,
+    #[serde(rename = "effectivePrice")]
+    pub effective_price: Option<PricingEffectivePrice>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -90,6 +128,128 @@ pub struct PricingPrice {
     pub amount: String,
     #[serde(rename = "compareAtAmount")]
     pub compare_at_amount: Option<String>,
+    #[serde(rename = "discountPercent", default)]
+    pub discount_percent: Option<String>,
     #[serde(rename = "onSale")]
     pub on_sale: bool,
+    #[serde(rename = "priceListId", default)]
+    pub price_list_id: Option<String>,
+    #[serde(rename = "channelId", default)]
+    pub channel_id: Option<String>,
+    #[serde(rename = "channelSlug", default)]
+    pub channel_slug: Option<String>,
+    #[serde(rename = "minQuantity", default)]
+    pub min_quantity: Option<i32>,
+    #[serde(rename = "maxQuantity", default)]
+    pub max_quantity: Option<i32>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PricingPriceDraft {
+    #[serde(rename = "currencyCode")]
+    pub currency_code: String,
+    pub amount: String,
+    #[serde(rename = "compareAtAmount")]
+    pub compare_at_amount: String,
+    #[serde(rename = "priceListId")]
+    pub price_list_id: String,
+    #[serde(rename = "channelId")]
+    pub channel_id: String,
+    #[serde(rename = "channelSlug")]
+    pub channel_slug: String,
+    #[serde(rename = "minQuantity")]
+    pub min_quantity: String,
+    #[serde(rename = "maxQuantity")]
+    pub max_quantity: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PricingDiscountDraft {
+    #[serde(rename = "currencyCode")]
+    pub currency_code: String,
+    #[serde(rename = "discountPercent")]
+    pub discount_percent: String,
+    #[serde(rename = "priceListId")]
+    pub price_list_id: String,
+    #[serde(rename = "channelId")]
+    pub channel_id: String,
+    #[serde(rename = "channelSlug")]
+    pub channel_slug: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PricingPriceListRuleDraft {
+    #[serde(rename = "adjustmentPercent")]
+    pub adjustment_percent: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PricingPriceListScopeDraft {
+    #[serde(rename = "channelId")]
+    pub channel_id: String,
+    #[serde(rename = "channelSlug")]
+    pub channel_slug: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PricingAdjustmentPreview {
+    pub kind: String,
+    #[serde(rename = "currencyCode")]
+    pub currency_code: String,
+    #[serde(rename = "currentAmount")]
+    pub current_amount: String,
+    #[serde(rename = "baseAmount")]
+    pub base_amount: String,
+    #[serde(rename = "adjustmentPercent")]
+    pub adjustment_percent: String,
+    #[serde(rename = "adjustedAmount")]
+    pub adjusted_amount: String,
+    #[serde(rename = "compareAtAmount")]
+    pub compare_at_amount: Option<String>,
+    #[serde(rename = "priceListId", default)]
+    pub price_list_id: Option<String>,
+    #[serde(rename = "channelId", default)]
+    pub channel_id: Option<String>,
+    #[serde(rename = "channelSlug", default)]
+    pub channel_slug: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PricingResolutionContext {
+    #[serde(rename = "currencyCode")]
+    pub currency_code: String,
+    #[serde(rename = "regionId")]
+    pub region_id: Option<String>,
+    #[serde(rename = "priceListId")]
+    pub price_list_id: Option<String>,
+    #[serde(rename = "channelId", default)]
+    pub channel_id: Option<String>,
+    #[serde(rename = "channelSlug", default)]
+    pub channel_slug: Option<String>,
+    pub quantity: i32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PricingEffectivePrice {
+    #[serde(rename = "currencyCode")]
+    pub currency_code: String,
+    pub amount: String,
+    #[serde(rename = "compareAtAmount")]
+    pub compare_at_amount: Option<String>,
+    #[serde(rename = "discountPercent", default)]
+    pub discount_percent: Option<String>,
+    #[serde(rename = "onSale")]
+    pub on_sale: bool,
+    #[serde(rename = "regionId")]
+    pub region_id: Option<String>,
+    #[serde(rename = "priceListId")]
+    pub price_list_id: Option<String>,
+    #[serde(rename = "channelId", default)]
+    pub channel_id: Option<String>,
+    #[serde(rename = "channelSlug", default)]
+    pub channel_slug: Option<String>,
+    #[serde(rename = "minQuantity")]
+    pub min_quantity: Option<i32>,
+    #[serde(rename = "maxQuantity")]
+    pub max_quantity: Option<i32>,
 }

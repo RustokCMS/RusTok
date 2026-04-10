@@ -54,6 +54,9 @@ Build-time wiring генерируется из `modules.toml` и `rustok-module
 - `commerce/create-payment-collection`
 - `commerce/complete-checkout`
 - `pricing/storefront-data`
+- `pricing/storefront-data` теперь также может показывать effective pricing preview,
+  если storefront route несёт optional query context (`currency`, `region_id`, `price_list_id`, `quantity`),
+  и выводит pricing-owned selector активных price lists поверх этого context;
 - `product/storefront-data`
 - `region/storefront-data`
 - `forum/storefront-data`

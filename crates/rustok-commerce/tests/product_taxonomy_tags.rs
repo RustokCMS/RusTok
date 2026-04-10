@@ -51,6 +51,8 @@ fn create_test_product_input(tags: &[&str]) -> CreateProductInput {
             option3: None,
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
+                channel_id: None,
+                channel_slug: None,
                 amount: Decimal::from_str("99.99").unwrap(),
                 compare_at_amount: None,
             }],

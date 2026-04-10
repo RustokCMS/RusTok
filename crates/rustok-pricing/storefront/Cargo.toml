@@ -12,6 +12,7 @@ ssr = [
   "leptos/ssr",
   "dep:leptos_axum",
   "dep:loco-rs",
+  "dep:rustok-channel",
   "dep:rustok-pricing",
 ]
 
@@ -21,5 +22,7 @@ leptos_axum = { workspace = true, optional = true }
 leptos-graphql.workspace = true
 loco-rs = { workspace = true, optional = true }
 rustok-api.workspace = true
+rustok-channel = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
+uuid.workspace = true

@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
-use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+use rustok_order::dto::{CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput};
 use rustok_order::error::OrderError;
 use rustok_order::services::OrderService;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
@@ -48,6 +48,7 @@ fn create_order_input() -> CreateOrderInput {
                 metadata: serde_json::json!({ "slot": 2 }),
             },
         ],
+        adjustments: Vec::new(),
         metadata: serde_json::json!({ "source": "order-test" }),
     }
 }
@@ -66,7 +67,52 @@ async fn create_order_persists_snapshot_and_total() {
     assert_eq!(created.status, "pending");
     assert_eq!(created.currency_code, "USD");
     assert_eq!(created.line_items.len(), 2);
+    assert_eq!(created.subtotal_amount, Decimal::from_str("43.98").unwrap());
+    assert_eq!(created.adjustment_total, Decimal::ZERO);
     assert_eq!(created.total_amount, Decimal::from_str("43.98").unwrap());
+}
+
+#[tokio::test]
+async fn create_order_persists_typed_adjustments_and_net_total() {
+    let service = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    let created = service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                adjustments: vec![CreateOrderAdjustmentInput {
+                    line_item_index: Some(0),
+                    source_type: "Promotion".to_string(),
+                    source_id: Some("promo-spring".to_string()),
+                    amount: Decimal::from_str("3.98").unwrap(),
+                    metadata: serde_json::json!({
+                        "rule_code": "spring",
+                        "display_label": "Spring sale"
+                    }),
+                }],
+                ..create_order_input()
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(created.subtotal_amount, Decimal::from_str("43.98").unwrap());
+    assert_eq!(created.adjustment_total, Decimal::from_str("3.98").unwrap());
+    assert_eq!(created.total_amount, Decimal::from_str("40.00").unwrap());
+    assert_eq!(created.adjustments.len(), 1);
+    assert_eq!(
+        created.adjustments[0].line_item_id,
+        Some(created.line_items[0].id)
+    );
+    assert_eq!(created.adjustments[0].source_type, "promotion");
+    assert_eq!(created.adjustments[0].currency_code, "USD");
+    assert!(created.adjustments[0]
+        .metadata
+        .get("display_label")
+        .is_none());
 }
 
 #[tokio::test]

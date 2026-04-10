@@ -22,6 +22,8 @@ pub struct StorefrontCheckoutCart {
     pub id: String,
     pub status: String,
     pub currency_code: String,
+    pub subtotal_amount: String,
+    pub adjustment_total: String,
     pub total_amount: String,
     pub channel_slug: Option<String>,
     pub email: Option<String>,
@@ -31,6 +33,7 @@ pub struct StorefrontCheckoutCart {
     pub locale_code: Option<String>,
     pub selected_shipping_option_id: Option<String>,
     pub line_item_count: u64,
+    pub adjustment_count: u64,
     pub delivery_group_count: u64,
     pub delivery_groups: Vec<StorefrontCheckoutDeliveryGroup>,
 }

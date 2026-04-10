@@ -7,8 +7,11 @@ pub mod migrations;
 pub mod services;
 
 pub use services::{
-    PricingService, StorefrontPricingPrice, StorefrontPricingProductDetail,
-    StorefrontPricingProductList, StorefrontPricingProductListItem,
+    ActivePriceListOption, AdminPricingPrice, AdminPricingProductDetail, AdminPricingProductList,
+    AdminPricingProductListItem, AdminPricingProductTranslation, AdminPricingVariant,
+    PriceAdjustmentKind, PriceAdjustmentPreview, PriceListRule, PriceListRuleKind,
+    PriceResolutionContext, PricingService, ResolvedPrice, StorefrontPricingPrice,
+    StorefrontPricingProductDetail, StorefrontPricingProductList, StorefrontPricingProductListItem,
     StorefrontPricingProductTranslation, StorefrontPricingVariant,
 };
 

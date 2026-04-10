@@ -42,7 +42,7 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_CHECKOUT_QUERY: &str = "query StorefrontCheckoutWorkspace($id: UUID!) { storefrontCart(id: $id) { id status currencyCode totalAmount channelSlug email customerId regionId countryCode localeCode selectedShippingOptionId lineItems { id } deliveryGroups { shippingProfileSlug sellerId sellerScope lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
+const STOREFRONT_CHECKOUT_QUERY: &str = "query StorefrontCheckoutWorkspace($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal totalAmount channelSlug email customerId regionId countryCode localeCode selectedShippingOptionId lineItems { id } adjustments { id } deliveryGroups { shippingProfileSlug sellerId sellerScope lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
 const CREATE_STOREFRONT_PAYMENT_COLLECTION_MUTATION: &str = "mutation CreateStorefrontPaymentCollection($input: CreateStorefrontPaymentCollectionInput!) { createStorefrontPaymentCollection(input: $input) { id status currencyCode amount authorizedAmount capturedAmount orderId providerId createdAt updatedAt payments { id } } }";
 const COMPLETE_STOREFRONT_CHECKOUT_MUTATION: &str = "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!) { completeStorefrontCheckout(input: $input) { order { id status currencyCode totalAmount } paymentCollection { id status currencyCode } fulfillments { id } context { locale currencyCode } } }";
 const SELECT_STOREFRONT_SHIPPING_OPTION_MUTATION: &str = "mutation SelectStorefrontShippingOption($cartId: UUID!, $input: UpdateStorefrontCartContextInput!) { updateStorefrontCartContext(cartId: $cartId, input: $input) { cart { id } } }";
@@ -64,6 +64,10 @@ struct GraphqlCheckoutCart {
     status: String,
     #[serde(rename = "currencyCode")]
     currency_code: String,
+    #[serde(rename = "subtotalAmount")]
+    subtotal_amount: String,
+    #[serde(rename = "adjustmentTotal")]
+    adjustment_total: String,
     #[serde(rename = "totalAmount")]
     total_amount: String,
     #[serde(rename = "channelSlug")]
@@ -81,12 +85,16 @@ struct GraphqlCheckoutCart {
     selected_shipping_option_id: Option<String>,
     #[serde(rename = "lineItems")]
     line_items: Vec<GraphqlCheckoutLineItem>,
+    adjustments: Vec<GraphqlCheckoutAdjustment>,
     #[serde(rename = "deliveryGroups")]
     delivery_groups: Vec<GraphqlCheckoutDeliveryGroup>,
 }
 
 #[derive(Debug, Deserialize)]
 struct GraphqlCheckoutLineItem {}
+
+#[derive(Debug, Deserialize)]
+struct GraphqlCheckoutAdjustment {}
 
 #[derive(Debug, Deserialize)]
 struct GraphqlCheckoutDeliveryGroup {
@@ -423,6 +431,8 @@ fn map_graphql_checkout_cart(value: GraphqlCheckoutCart) -> StorefrontCheckoutCa
         id: value.id,
         status: value.status,
         currency_code: value.currency_code,
+        subtotal_amount: value.subtotal_amount,
+        adjustment_total: value.adjustment_total,
         total_amount: value.total_amount,
         channel_slug: value.channel_slug,
         email: value.email,
@@ -432,6 +442,7 @@ fn map_graphql_checkout_cart(value: GraphqlCheckoutCart) -> StorefrontCheckoutCa
         locale_code: value.locale_code,
         selected_shipping_option_id: value.selected_shipping_option_id,
         line_item_count: value.line_items.len() as u64,
+        adjustment_count: value.adjustments.len() as u64,
         delivery_group_count,
         delivery_groups,
     }
@@ -590,6 +601,8 @@ fn map_native_checkout_cart(value: rustok_commerce::CartResponse) -> StorefrontC
         id: value.id.to_string(),
         status: value.status,
         currency_code: value.currency_code,
+        subtotal_amount: value.subtotal_amount.normalize().to_string(),
+        adjustment_total: value.adjustment_total.normalize().to_string(),
         total_amount: value.total_amount.normalize().to_string(),
         channel_slug: value.channel_slug,
         email: value.email,
@@ -601,6 +614,7 @@ fn map_native_checkout_cart(value: rustok_commerce::CartResponse) -> StorefrontC
             .selected_shipping_option_id
             .map(|value| value.to_string()),
         line_item_count: value.line_items.len() as u64,
+        adjustment_count: value.adjustments.len() as u64,
         delivery_group_count: delivery_groups.len() as u64,
         delivery_groups,
     }

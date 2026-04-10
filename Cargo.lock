@@ -3730,6 +3730,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "sea-orm",
+ "sea-orm-migration",
  "serde_json",
  "tokio",
  "uuid",
@@ -10593,9 +10594,29 @@ dependencies = [
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
+ "leptos_axum",
+ "loco-rs",
+ "rust_decimal",
  "rustok-api",
+ "rustok-cart",
+ "rustok-channel",
+ "rustok-commerce",
+ "rustok-commerce-foundation",
+ "rustok-core",
+ "rustok-customer",
+ "rustok-fulfillment",
+ "rustok-order",
+ "rustok-payment",
+ "rustok-pricing",
+ "rustok-product",
+ "rustok-taxonomy",
+ "rustok-tenant",
+ "rustok-test-utils",
+ "sea-orm",
  "serde",
  "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -10607,8 +10628,10 @@ dependencies = [
  "leptos_axum",
  "loco-rs",
  "rustok-api",
+ "rustok-channel",
  "rustok-pricing",
  "serde",
+ "uuid",
 ]
 
 [[package]]
@@ -10656,8 +10679,10 @@ dependencies = [
  "loco-rs",
  "rustok-api",
  "rustok-commerce-foundation",
+ "rustok-pricing",
  "rustok-product",
  "serde",
+ "uuid",
 ]
 
 [[package]]

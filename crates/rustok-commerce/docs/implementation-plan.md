@@ -73,7 +73,7 @@ typed shipping-profile registry.
 - полноценные channel-aware publication и availability semantics для admin write-path, pricing/inventory/fulfillment и остальных commerce entities beyond storefront baseline;
 - post-order delivery changes и item-level delivery recovery поверх уже введённого seller-aware deliverability baseline, typed fulfillment-item model, manual post-order create path и partial ship/deliver baseline;
 - seller portal, merchant RBAC surfaces, commissions/payouts/settlement и disputes/returns marketplace-policy сознательно вынесены за рамки ближайшего scope и не входят в foundation slice;
-- channel-aware price resolution всё ещё не реализован и переносится в `Phase 8`, несмотря на уже закрытый channel-aware catalog/inventory baseline;
+- channel-aware price resolution больше не является чистым backlog: `Phase 8` уже получил host-channel-aware resolver foundation (`channel_id/channel_slug`, channel-scoped base rows и channel-filtered active price lists), но promotion/rule layering и полноценный authoring UX всё ещё остаются внутри `Phase 8`;
 - полноценный promotion/discount domain поверх price rules, а не только `compare_at_amount` и service-level `apply_discount`;
 - отдельный tax domain: сейчас tax фактически живёт в `region` как `tax_rate` / `tax_included`;
 - post-order слой уровня Medusa: returns, exchanges, claims, order changes, draft/edit flows, refund transport;
@@ -201,7 +201,8 @@ typed shipping-profile registry.
 - storefront GraphQL read parity покрывает `storefrontMe` и `storefrontOrder`, включая ownership guard для чужого заказа;
 - storefront GraphQL mutation surface покрывает `createStorefrontPaymentCollection` и `completeStorefrontCheckout`, включая guest checkout и reuse уже созданного cart-bound payment collection;
 - storefront GraphQL cart surface покрывает `storefrontCart`, `createStorefrontCart`, line-item lifecycle и tri-state patch semantics для cart context;
-- storefront GraphQL discovery/read surface включает `storefrontRegions` и `storefrontShippingOptions`, включая cart-context precedence над конфликтующим query currency.
+- storefront GraphQL discovery/read surface включает `storefrontRegions` и `storefrontShippingOptions`, включая cart-context precedence над конфликтующим query currency; дополнительно storefront facade теперь отдаёт `storefrontPricingChannels`, `storefrontActivePriceLists(channelId, channelSlug)`, `storefrontPricingProduct` и `adminPricingProduct`, чтобы module-owned pricing fallback не терял ни channel-aware selector parity, ни variant-level `effective_price` parity.
+- generic catalog roots `product` / `storefrontProduct` при этом зафиксированы как catalog-authoritative surface, а их `variants.prices` остаётся только compatibility snapshot без статуса pricing-authoritative контракта.
 
 ### Phase 5. Упрощение umbrella-модуля
 
@@ -245,7 +246,7 @@ Deliverables:
 - cart line-item mutations больше не принимают товары, скрытые для текущего storefront channel;
 - storefront product detail и cart line-item quantity checks теперь считают доступный inventory только по stock locations, видимым для текущего storefront channel;
 - checkout service теперь повторно валидирует cart line items против текущей product visibility и channel-visible inventory, чтобы stale cart не завершался в заказ с hidden product или уже недоступным остатком;
-- channel-aware price resolution сознательно не считается закрытым в этой фазе и переносится в `Phase 8`, чтобы не смешивать storefront availability с pricing 2.0;
+- channel-aware price resolution сознательно не считается полностью закрытым в этой фазе: foundation уже уехал в `Phase 8`, но promotion/rule layering и authoring UX там ещё продолжаются, чтобы не смешивать storefront availability с pricing 2.0;
 - transport и service tests уже покрывают disabled channel module, hidden products, hidden shipping options и checkout reject path для channel-hidden shipping option.
 
 Обязательные проверки:
@@ -315,6 +316,7 @@ Deliverables:
 - product create/update/read contracts теперь включают nullable `seller_id`;
 - cart line items, `cart_shipping_selections`, order line items и fulfillment delivery-group metadata теперь несут `seller_id` как canonical key;
 - cart grouping и checkout/manual fulfillment validation теперь опираются на `(shipping_profile_slug, seller_id)` и fallback'ятся к `seller_scope` только для legacy записей без `seller_id`;
+- typed `cart_adjustments` и `order_adjustments` закрепляют promotion/discount snapshot как language-neutral бизнес-данные: source identity хранится через `source_type/source_id`, суммы через `amount/currency_code`, а display label не попадает в ecommerce storage;
 - REST, GraphQL и Leptos `#[server]` contracts для product/cart/checkout/manual fulfillment уже расширены полем `seller_id`;
 - seller display label больше не персистится в ecommerce storage, а legacy `seller_scope` сохраняется только как transitional compatibility field.
 
@@ -338,13 +340,53 @@ Deliverables:
 
 - pricing context `channel + region + currency + customer segment` там, где он действительно нужен;
 - price lists и rule-driven resolution;
-- cart/order adjustments;
+- typed cart/order adjustments как отдельный business snapshot слой, не смешанный с base price rows, price-list rows или localized display metadata;
 - promotion engine для item/order/shipping discounts без смешивания с базовой price storage.
+
+Что уже начато в текущем срезе:
+
+- `rustok-pricing::PricingService` уже получил typed resolver foundation
+  `PriceResolutionContext -> ResolvedPrice` поверх base-price rows;
+- active precedence уже deterministic: exact `region_id` имеет приоритет над global price,
+  quantity tiers выбираются по более специфичному `min_quantity` и более узкому `max_quantity`;
+- explicit active `price_list_id` overlay уже активирован в resolver, а
+  module-owned pricing admin/storefront surfaces уже получили pricing-owned
+  active price-list selector поверх этого read contract.
+- `rustok-pricing/admin` больше не является чисто read-only surface: module-owned
+  server-function transport уже покрывает base-price updates по variant prices, пока
+  promotion/rule-aware pricing mutations остаются следующим transport slice.
+- quantity tiers теперь тоже получили минимальный write path в `rustok-pricing/admin`:
+  оператор может задавать `min_quantity` / `max_quantity` для variant price rows, а
+  resolver сразу использует эти окна при effective-price selection.
+- тот же module-owned admin write path теперь уже умеет и active `price_list_id`
+  overrides поверх base prices, а transport parity покрыт SSR tests на happy path и permission gate.
+- поверх этого pricing runtime теперь уже возвращает typed `discount_percent` в resolved/effective
+  price contract, а module-owned admin/storefront surfaces показывают sale math без ad-hoc
+  вычисления только из `compare_at_amount`.
+- legacy service-level `apply_discount` тоже уже начал сжиматься до compatibility слоя:
+  typed percentage-adjustment preview/apply path теперь живёт внутри `rustok-pricing` и
+  работает только по canonical base-price row, не затрагивая tiers или price-list overlays.
+- targeted transport parity для этого admin write path тоже уже начат: `rustok-pricing/admin`
+  имеет SSR tests на native `update-variant-price` happy path и permission gate.
+- поверх этого `rustok-pricing/admin` уже получил module-owned operator flow для typed
+  percentage-discount preview/apply по canonical base row; теперь тот же flow уже умеет
+  target'ить и selected active `price_list` override, а SSR tests покрывают не только raw
+  price row updates, но и admin transport parity для adjustment path.
+- следующий promotion-ready слой тоже уже начат внутри pricing boundary: active `price_list`
+  теперь может держать typed percentage rule, `PricingService::resolve_variant_price`
+  умеет fallback'иться к base row через это правило при отсутствии explicit override row,
+  а `rustok-pricing/admin` уже умеет редактировать этот rule через module-owned server functions.
+- cart/order promotion representation теперь тоже имеет typed foundation: `rustok-cart` хранит `cart_adjustments`,
+  пересчитывает `subtotal_amount`, `adjustment_total` и net `total_amount`, а `rustok-order` snapshot'ит
+  `order_adjustments` при checkout/create-order и отдаёт тот же summary в REST/GraphQL/Leptos-facing DTO;
+  этот слой не хранит seller/product/promotion display labels и остаётся устойчивым к смене default locale.
 
 Обязательные проверки:
 
 - deterministic price-resolution tests;
 - contract tests на priority/override semantics;
+- cart/order adjustment snapshot tests: net total, source identity, line-item binding и отсутствие localized display labels в storage;
+- checkout regression tests: cart adjustments должны snapshot'иться в order adjustments, а payment collection должен использовать net `cart.total_amount`;
 - regression tests на rounding и decimal money contract;
 - transport tests на price + promotion representation в `/store/*`, `/admin/*` и GraphQL.
 

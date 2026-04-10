@@ -40,46 +40,6 @@ pub const INSTALL_MODULE_MUTATION: &str =
     "mutation InstallModule($slug: String!, $version: String!) { installModule(slug: $slug, version: $version) { id status stage progress modulesDelta requestedBy reason createdAt updatedAt finishedAt } }";
 
 #[cfg(feature = "ssr")]
-const REGISTRY_REJECT_REASON_CODES: &[&str] = &[
-    "policy_mismatch",
-    "quality_gate_failed",
-    "ownership_mismatch",
-    "security_risk",
-    "legal",
-    "other",
-];
-#[cfg(feature = "ssr")]
-const REGISTRY_REQUEST_CHANGES_REASON_CODES: &[&str] = &[
-    "artifact_mismatch",
-    "quality_gap",
-    "policy_gap",
-    "docs_gap",
-    "other",
-];
-#[cfg(feature = "ssr")]
-const REGISTRY_HOLD_REASON_CODES: &[&str] = &[
-    "release_window",
-    "incident",
-    "legal_hold",
-    "security_review",
-    "other",
-];
-#[cfg(feature = "ssr")]
-const REGISTRY_RESUME_REASON_CODES: &[&str] = &[
-    "review_complete",
-    "incident_closed",
-    "legal_cleared",
-    "other",
-];
-#[cfg(feature = "ssr")]
-const REGISTRY_APPROVE_OVERRIDE_REASON_CODES: &[&str] = &[
-    "manual_review_complete",
-    "trusted_first_party",
-    "expedited_release",
-    "governance_override",
-    "other",
-];
-#[cfg(feature = "ssr")]
 const REGISTRY_OWNER_TRANSFER_REASON_CODES: &[&str] = &[
     "maintenance_handoff",
     "team_restructure",
@@ -2081,85 +2041,13 @@ fn derive_registry_governance_actions(
     latest_request: Option<&RegistryPublishRequestLifecycle>,
     latest_release: Option<&RegistryReleaseLifecycle>,
     owner_binding: Option<&RegistryOwnerLifecycle>,
-    validation_stages: &[RegistryValidationStageLifecycle],
+    _validation_stages: &[RegistryValidationStageLifecycle],
 ) -> Vec<RegistryGovernanceActionLifecycle> {
+    // Summary lifecycle stays actor-agnostic. Request-level interactive actions
+    // are loaded separately from the actor-aware publish status endpoint.
     let mut actions = Vec::new();
 
     if let Some(request) = latest_request {
-        let approval_override_required = request.status.eq_ignore_ascii_case("approved")
-            && validation_stages
-                .iter()
-                .any(|stage| !stage.status.eq_ignore_ascii_case("passed"));
-
-        if request.status.eq_ignore_ascii_case("artifact_uploaded")
-            || request.status.eq_ignore_ascii_case("submitted")
-        {
-            actions.push(registry_governance_action(
-                "validate",
-                false,
-                false,
-                &[],
-                false,
-            ));
-        }
-
-        if request.status.eq_ignore_ascii_case("approved") {
-            actions.push(registry_governance_action(
-                "approve",
-                approval_override_required,
-                approval_override_required,
-                if approval_override_required {
-                    REGISTRY_APPROVE_OVERRIDE_REASON_CODES
-                } else {
-                    &[]
-                },
-                false,
-            ));
-            actions.push(registry_governance_action(
-                "request_changes",
-                true,
-                true,
-                REGISTRY_REQUEST_CHANGES_REASON_CODES,
-                false,
-            ));
-        }
-
-        if request.status.eq_ignore_ascii_case("submitted")
-            || request.status.eq_ignore_ascii_case("approved")
-            || request.status.eq_ignore_ascii_case("changes_requested")
-        {
-            actions.push(registry_governance_action(
-                "hold",
-                true,
-                true,
-                REGISTRY_HOLD_REASON_CODES,
-                false,
-            ));
-        }
-
-        if request.status.eq_ignore_ascii_case("on_hold") {
-            actions.push(registry_governance_action(
-                "resume",
-                true,
-                true,
-                REGISTRY_RESUME_REASON_CODES,
-                false,
-            ));
-        }
-
-        if !request.status.eq_ignore_ascii_case("rejected")
-            && !request.status.eq_ignore_ascii_case("published")
-            && !request.status.eq_ignore_ascii_case("on_hold")
-        {
-            actions.push(registry_governance_action(
-                "reject",
-                true,
-                true,
-                REGISTRY_REJECT_REASON_CODES,
-                true,
-            ));
-        }
-
         if request
             .publisher_identity
             .as_ref()

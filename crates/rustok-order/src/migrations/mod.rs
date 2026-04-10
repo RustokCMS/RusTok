@@ -2,6 +2,7 @@ mod m20260325_000101_create_order_tables;
 mod m20260402_000102_add_order_channel_columns;
 mod m20260405_000103_add_order_line_item_shipping_profiles;
 mod m20260409_000104_add_order_line_item_seller_id;
+mod m20260410_000105_create_order_adjustments;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -11,5 +12,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260402_000102_add_order_channel_columns::Migration),
         Box::new(m20260405_000103_add_order_line_item_shipping_profiles::Migration),
         Box::new(m20260409_000104_add_order_line_item_seller_id::Migration),
+        Box::new(m20260410_000105_create_order_adjustments::Migration),
     ]
 }

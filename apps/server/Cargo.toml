@@ -29,6 +29,7 @@ default = [
     "mod-pages",
     "mod-taxonomy",
     "mod-alloy",
+    "mod-flex",
     "mod-media",
     "mod-workflow",
 ]
@@ -56,6 +57,7 @@ mod-comments  = ["dep:rustok-comments"]
 mod-pages     = ["dep:rustok-pages", "mod-content"]
 mod-taxonomy  = ["dep:rustok-taxonomy", "mod-content"]
 mod-alloy     = ["dep:alloy"]
+mod-flex      = []
 mod-media     = ["dep:rustok-media", "dep:rustok-storage"]
 mod-workflow  = ["dep:rustok-workflow"]
 

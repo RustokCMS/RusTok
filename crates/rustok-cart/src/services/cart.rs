@@ -13,8 +13,8 @@ use validator::Validate;
 use rustok_core::generate_id;
 
 use crate::dto::{
-    AddCartLineItemInput, CartDeliveryGroupResponse, CartLineItemResponse, CartResponse,
-    CreateCartInput, UpdateCartContextInput,
+    AddCartLineItemInput, CartAdjustmentResponse, CartDeliveryGroupResponse, CartLineItemResponse,
+    CartResponse, CreateCartInput, SetCartAdjustmentInput, UpdateCartContextInput,
 };
 use crate::entities;
 use crate::error::{CartError, CartResult};
@@ -202,11 +202,91 @@ impl CartService {
         active.region_id = Set(input.region_id);
         active.country_code = Set(country_code);
         active.locale_code = Set(locale_code);
+        active.selected_shipping_option_id = Set(input.selected_shipping_option_id);
         active.updated_at = Set(Utc::now().into());
         active.update(&txn).await?;
         self.apply_shipping_selection_patch(&txn, &cart, &shipping_patch_input)
             .await?;
 
+        txn.commit().await?;
+        self.get_cart(tenant_id, cart_id).await
+    }
+
+    pub async fn set_adjustments(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        adjustments: Vec<SetCartAdjustmentInput>,
+    ) -> CartResult<CartResponse> {
+        for adjustment in &adjustments {
+            adjustment
+                .validate()
+                .map_err(|error| CartError::Validation(error.to_string()))?;
+            if adjustment.amount <= Decimal::ZERO {
+                return Err(CartError::Validation(
+                    "adjustment amount must be greater than zero".to_string(),
+                ));
+            }
+        }
+
+        let txn = self.db.begin().await?;
+        let cart = self.load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        ensure_active(&cart.status, "set_adjustments")?;
+
+        let line_items = entities::cart_line_item::Entity::find()
+            .filter(entities::cart_line_item::Column::CartId.eq(cart_id))
+            .all(&txn)
+            .await?;
+        let line_item_ids = line_items
+            .iter()
+            .map(|item| item.id)
+            .collect::<BTreeSet<_>>();
+        let subtotal_amount = subtotal_amount(&line_items);
+        let adjustment_total = adjustments
+            .iter()
+            .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount);
+        if adjustment_total > subtotal_amount {
+            return Err(CartError::Validation(
+                "adjustment total cannot exceed cart subtotal".to_string(),
+            ));
+        }
+
+        for adjustment in &adjustments {
+            if let Some(line_item_id) = adjustment.line_item_id {
+                if !line_item_ids.contains(&line_item_id) {
+                    return Err(CartError::Validation(format!(
+                        "cart line item {line_item_id} does not belong to cart {cart_id}"
+                    )));
+                }
+            }
+        }
+
+        entities::cart_adjustment::Entity::delete_many()
+            .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))
+            .exec(&txn)
+            .await?;
+
+        let now = Utc::now();
+        for adjustment in adjustments {
+            entities::cart_adjustment::ActiveModel {
+                id: Set(generate_id()),
+                cart_id: Set(cart_id),
+                cart_line_item_id: Set(adjustment.line_item_id),
+                source_type: Set(normalize_adjustment_source_type(&adjustment.source_type)?),
+                source_id: Set(normalize_adjustment_source_id(
+                    adjustment.source_id.as_deref(),
+                )),
+                amount: Set(adjustment.amount),
+                currency_code: Set(cart.currency_code.clone()),
+                metadata: Set(sanitize_adjustment_metadata(adjustment.metadata)),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            }
+            .insert(&txn)
+            .await?;
+        }
+
+        self.recalculate_totals(&txn, cart).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
     }
@@ -263,6 +343,10 @@ impl CartService {
             .one(&txn)
             .await?
             .ok_or(CartError::CartLineItemNotFound(line_item_id))?;
+        entities::cart_adjustment::Entity::delete_many()
+            .filter(entities::cart_adjustment::Column::CartLineItemId.eq(line_item_id))
+            .exec(&txn)
+            .await?;
         let active: entities::cart_line_item::ActiveModel = line_item.into();
         active.delete(&txn).await?;
 
@@ -384,9 +468,11 @@ impl CartService {
             .filter(entities::cart_line_item::Column::CartId.eq(cart.id))
             .all(conn)
             .await?;
-        let total_amount = line_items
-            .into_iter()
-            .fold(Decimal::ZERO, |acc, item| acc + item.total_price);
+        let adjustments = entities::cart_adjustment::Entity::find()
+            .filter(entities::cart_adjustment::Column::CartId.eq(cart.id))
+            .all(conn)
+            .await?;
+        let total_amount = net_total(subtotal_amount(&line_items), adjustment_total(&adjustments));
 
         let mut active: entities::cart::ActiveModel = cart.into();
         active.total_amount = Set(total_amount);
@@ -421,18 +507,26 @@ impl CartService {
             .order_by_asc(entities::cart_line_item::Column::CreatedAt)
             .all(&self.db)
             .await?;
+        let adjustments = entities::cart_adjustment::Entity::find()
+            .filter(entities::cart_adjustment::Column::CartId.eq(cart.id))
+            .order_by_asc(entities::cart_adjustment::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
         let shipping_selections = entities::cart_shipping_selection::Entity::find()
             .filter(entities::cart_shipping_selection::Column::CartId.eq(cart.id))
             .all(&self.db)
             .await?;
+        let subtotal_amount = subtotal_amount(&line_items);
+        let adjustment_total = adjustment_total(&adjustments);
+        let total_amount = net_total(subtotal_amount, adjustment_total);
         let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
         let selection_map =
             selection_map_from_records(&delivery_group_snapshots, shipping_selections.into_iter());
         let delivery_groups = build_delivery_groups(&line_items, &selection_map);
-        let selected_shipping_option_id = if delivery_groups.len() == 1 {
-            delivery_groups[0].selected_shipping_option_id
-        } else {
-            None
+        let selected_shipping_option_id = match delivery_groups.len() {
+            0 => cart.selected_shipping_option_id,
+            1 => delivery_groups[0].selected_shipping_option_id,
+            _ => None,
         };
 
         Ok(CartResponse {
@@ -448,7 +542,9 @@ impl CartService {
             selected_shipping_option_id,
             status: cart.status,
             currency_code: cart.currency_code,
-            total_amount: cart.total_amount,
+            subtotal_amount,
+            adjustment_total,
+            total_amount,
             metadata: cart.metadata,
             created_at: cart.created_at.with_timezone(&Utc),
             updated_at: cart.updated_at.with_timezone(&Utc),
@@ -476,6 +572,21 @@ impl CartService {
                         created_at: item.created_at.with_timezone(&Utc),
                         updated_at: item.updated_at.with_timezone(&Utc),
                     }
+                })
+                .collect(),
+            adjustments: adjustments
+                .into_iter()
+                .map(|adjustment| CartAdjustmentResponse {
+                    id: adjustment.id,
+                    cart_id: adjustment.cart_id,
+                    line_item_id: adjustment.cart_line_item_id,
+                    source_type: adjustment.source_type,
+                    source_id: adjustment.source_id,
+                    amount: adjustment.amount,
+                    currency_code: adjustment.currency_code,
+                    metadata: adjustment.metadata,
+                    created_at: adjustment.created_at.with_timezone(&Utc),
+                    updated_at: adjustment.updated_at.with_timezone(&Utc),
                 })
                 .collect(),
             delivery_groups,
@@ -637,13 +748,13 @@ impl CartService {
         self.store_shipping_selections(conn, cart_id, desired.clone())
             .await?;
 
-        let legacy_selected_shipping_option_id = if delivery_group_snapshots.len() == 1 {
-            delivery_group_snapshots
+        let legacy_selected_shipping_option_id = match delivery_group_snapshots.len() {
+            0 => cart.selected_shipping_option_id,
+            1 => delivery_group_snapshots
                 .iter()
                 .next()
-                .and_then(|group| desired.get(&group.key).copied().flatten())
-        } else {
-            None
+                .and_then(|group| desired.get(&group.key).copied().flatten()),
+            _ => None,
         };
         let mut active: entities::cart::ActiveModel = cart.into();
         active.selected_shipping_option_id = Set(legacy_selected_shipping_option_id);
@@ -706,6 +817,43 @@ fn normalize_seller_id(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_owned())
+}
+
+fn normalize_adjustment_source_type(value: &str) -> CartResult<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() || normalized.len() > 64 {
+        return Err(CartError::Validation(
+            "adjustment source_type must be 1-64 characters".to_string(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_adjustment_source_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_owned())
+}
+
+fn subtotal_amount(line_items: &[entities::cart_line_item::Model]) -> Decimal {
+    line_items
+        .iter()
+        .fold(Decimal::ZERO, |acc, item| acc + item.total_price)
+}
+
+fn adjustment_total(adjustments: &[entities::cart_adjustment::Model]) -> Decimal {
+    adjustments
+        .iter()
+        .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount)
+}
+
+fn net_total(subtotal_amount: Decimal, adjustment_total: Decimal) -> Decimal {
+    if adjustment_total > subtotal_amount {
+        Decimal::ZERO
+    } else {
+        subtotal_amount - adjustment_total
+    }
 }
 
 fn seller_id_from_metadata(metadata: &Value) -> Option<String> {
@@ -889,6 +1037,19 @@ fn sanitize_line_item_metadata(metadata: Value) -> Value {
         seller.remove("label");
         metadata.insert("seller".to_string(), Value::Object(seller));
     }
+
+    Value::Object(metadata)
+}
+
+fn sanitize_adjustment_metadata(metadata: Value) -> Value {
+    let mut metadata = match metadata {
+        Value::Object(object) => object,
+        value => return value,
+    };
+
+    metadata.remove("label");
+    metadata.remove("display_label");
+    metadata.remove("localized_label");
 
     Value::Object(metadata)
 }

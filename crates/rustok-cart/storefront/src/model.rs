@@ -11,6 +11,8 @@ pub struct StorefrontCart {
     pub id: String,
     pub status: String,
     pub currency_code: String,
+    pub subtotal_amount: String,
+    pub adjustment_total: String,
     pub total_amount: String,
     pub channel_slug: Option<String>,
     pub email: Option<String>,
@@ -19,6 +21,7 @@ pub struct StorefrontCart {
     pub country_code: Option<String>,
     pub locale_code: Option<String>,
     pub line_items: Vec<StorefrontCartLineItem>,
+    pub adjustments: Vec<StorefrontCartAdjustment>,
     pub delivery_groups: Vec<StorefrontCartDeliveryGroup>,
 }
 
@@ -34,6 +37,16 @@ pub struct StorefrontCartLineItem {
     pub shipping_profile_slug: String,
     pub seller_id: Option<String>,
     pub seller_scope: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StorefrontCartAdjustment {
+    pub id: String,
+    pub line_item_id: Option<String>,
+    pub source_type: String,
+    pub source_id: Option<String>,
+    pub amount: String,
+    pub currency_code: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

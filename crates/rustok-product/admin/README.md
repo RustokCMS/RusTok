@@ -18,6 +18,15 @@ Leptos admin UI package for the `rustok-product` module.
 
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
 - Uses the `rustok-commerce` GraphQL contract for product CRUD while ownership moves to module-owned UI.
+- Treats `product -> variants.prices` as a catalog compatibility snapshot and now
+  renders pricing-authoritative preview through a separate `adminPricingProduct`
+  hook instead of presenting catalog snapshot rows as resolved prices.
+- Links directly into `rustok-pricing/admin` with prefilled product id and
+  pricing context so operators can move from catalog editing to pricing control
+  without reselecting the product.
+- Accepts product edit deep links through query `id=` so neighboring
+  module-owned admin routes can return to the exact catalog item without using
+  display fields as identity.
 - Reads the effective UI locale from `UiRouteContext.locale`; package-local translations must stay aligned with the host locale contract.
 
 ## Documentation

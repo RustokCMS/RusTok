@@ -76,6 +76,8 @@
 ### Optional/admin-поверхности
 
 - `rustok-product` admin UI: [README](../../crates/rustok-product/admin/README.md)
+- Ecommerce admin UI routes `rustok-product` <-> `rustok-pricing` поддерживают
+  stable deep links через product `id`; display-поля не используются как identity.
 - `rustok-fulfillment` admin UI: [README](../../crates/rustok-fulfillment/admin/README.md)
 - `rustok-customer` admin UI: [README](../../crates/rustok-customer/admin/README.md)
 - `rustok-region` admin UI: [README](../../crates/rustok-region/admin/README.md)
@@ -100,6 +102,11 @@
 - `rustok-pages` storefront UI: [README](../../crates/rustok-pages/storefront/README.md)
 - `rustok-pricing` storefront UI: [README](../../crates/rustok-pricing/storefront/README.md)
 - `rustok-product` storefront UI: [README](../../crates/rustok-product/storefront/README.md)
+- Ecommerce storefront UI routes `rustok-product` <-> `rustok-pricing`
+  сохраняют навигационный context через `handle` и pricing query-поля, а locale
+  продолжают брать только из host `UiRouteContext`.
+- Storefront product/pricing UI показывает stable `seller_id` как seller boundary;
+  `vendor` остаётся merchandising/display label и не используется как identity.
 - `rustok-region` storefront UI: [README](../../crates/rustok-region/storefront/README.md)
 - `rustok-search` storefront UI: [README](../../crates/rustok-search/storefront/README.md)
 

@@ -12,6 +12,7 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 ## Текущее состояние
 
 - `carts` и `cart_line_items` уже module-owned;
+- `cart_adjustments` уже module-owned и фиксируют language-neutral promotion/discount snapshot без display labels;
 - cart lifecycle и persisted storefront context snapshot уже встроены в базовый contract;
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`, без цикла зависимостей;
 - storefront cart inspection, safe decrement/remove write-side и seller-aware delivery-group snapshot уже вынесены в `rustok-cart/storefront`;
@@ -23,6 +24,7 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 
 - [x] зафиксировать cart lifecycle и storefront context snapshot;
 - [x] удерживать line-item CRUD и totals внутри `rustok-cart`;
+- [x] добавить typed cart adjustment snapshot с `subtotal_amount`, `adjustment_total` и net `total_amount`;
 - [x] удерживать sync между cart runtime contract, commerce orchestration, storefront route ownership и module metadata.
 
 ### 2. Storefront ownership
@@ -49,7 +51,7 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 
 - `cargo xtask module validate cart`
 - `cargo xtask module test cart`
-- targeted tests для cart lifecycle, line items, snapshot context и checkout-preflight semantics
+- targeted tests для cart lifecycle, line items, typed adjustments, snapshot context и checkout-preflight semantics
 
 ## Правила обновления
 

@@ -1,10 +1,45 @@
 # Flex — Custom Fields System
 
 > **Статус attached mode:** Phases 0–4 реализованы. Phase 4.5 (вынос в `crates/flex`) — в процессе.
-> **Статус standalone mode:** Phase 5 — начат (добавлены transport-agnostic контракты в `crates/flex/src/standalone.rs`, event envelope helper-ы в `crates/flex/src/events.rs` и orchestration helper-ы `*_with_event()`; persistence/API ещё не реализованы).
+> **Статус standalone mode:** Phase 5 — в активной реализации (transport-agnostic контракты, persistence/service layer, GraphQL и REST surfaces уже live; rollout/governance contract уже зафиксирован, полный integration verification остаётся отдельным verification debt).
+> **Статус module-system wiring:** Phase 4.6 теперь живая: `flex` занесён в `modules.toml` как `capability_only` ghost module с `rustok-module.toml` и runtime `FlexModule`, но transport-слой остаётся в `apps/server`.
 > Нереализованное → [`implementation-plan.md`](./implementation-plan.md)
 
 > **Важно по многоязычности:** для `flex` уже действует общий platform contract. `FieldDefinition.is_localized` является live-частью DB/runtime контракта; standalone schema copy (`name`, `description`) хранится в `flex_schema_translations`; standalone entry values теперь разделены на `flex_entries.data` (shared/non-localized payload) и `flex_entry_localized_values` (locale-aware payload per `entry_id + locale`); attached-mode locale-aware values имеют canonical storage-path в `flex_attached_localized_values`, а shared entity/helpers для этого path живут в `crates/flex`. Live write/read path уже проведён для `user`, `product`, `order` и `topic`; для `topic` donor payload теперь живёт в `forum_topics.metadata`, а locale-aware Flex values идут в parallel attached rows по тому же контракту.
+> Cleanup/backfill residual inline locale-aware payload-ов должен выполняться миграциями; runtime path не должен читать donor/base-row inline localized JSON как канонический fallback.
+
+---
+
+## Назначение
+
+`flex` задаёт capability-слой custom fields для RusToK: attached-mode расширяет donor-модули, а standalone mode даёт schema/entry runtime для extension-сценариев без превращения `flex` в отдельный business bounded context.
+
+## Зона ответственности
+
+- transport-agnostic field definition contracts и registry/orchestration helpers;
+- multilingual storage/runtime contract для attached и standalone Flex payload;
+- capability-only module metadata для `modules.toml` / `rustok-module.toml` / `ModuleRegistry`;
+- правила, по которым donor persistence ownership остаётся у модулей-потребителей.
+
+## Интеграция
+
+- `rustok-core::field_schema` поставляет базовые типы, validation rules и migration helpers;
+- `crates/flex` держит shared attached/standalone contracts и runtime metadata через `FlexModule`;
+- `apps/server` остаётся adapter-слоем для SeaORM, GraphQL, REST, RBAC, bootstrap и event emission;
+- donor write/read paths сейчас живые для `user`, `product`, `order` и `topic`.
+
+## Проверка
+
+- `cargo xtask validate-manifest`
+- `cargo xtask module validate flex`
+- `node scripts/verify/verify-flex-multilingual-contract.mjs`
+
+## Связанные документы
+
+- [`implementation-plan.md`](./implementation-plan.md)
+- [`../README.md`](../README.md)
+- [`../../../docs/modules/manifest.md`](../../../docs/modules/manifest.md)
+- [`../../../docs/architecture/database.md`](../../../docs/architecture/database.md)
 
 ---
 
@@ -18,7 +53,9 @@
 - `crates/flex` хранит transport-agnostic orchestration, registry и standalone contracts;
 - `apps/server` держит adapter/wiring слой: SeaORM, GraphQL, cache/RBAC gates, event emission и bootstrap.
 
-Attached mode считается рабочим production contract. Standalone mode начат, но ещё не является live API surface платформы.
+Attached mode считается рабочим production contract. Standalone mode уже имеет live GraphQL и REST API surfaces в `apps/server`; rollout/governance policy для этого surface теперь тоже зафиксирован, а незакрытым остаётся именно полный integration verification.
+
+`flex` не считается обычным bounded-context модулем. В module-system он живёт как capability-only ghost module: registry/RBAC/runtime metadata формализованы manifest-слоем, но owner'ом donor persistence остаются модули-потребители.
 
 ---
 
@@ -82,11 +119,11 @@ rustok-content  ←✗→ flex
 ```
 "Дай мне кастомные поля для users"
   → user_field_definitions (таблица определений)
-  + users.metadata (non-localized / legacy transitional data)
+  + users.metadata (shared / non-localized data)
   + flex_attached_localized_values (locale-aware attached values)
 ```
 
-### Standalone mode (Phase 5, частично реализовано: контракты)
+### Standalone mode (Phase 5, live GraphQL surface + незавершённый rollout)
 
 Произвольные схемы и записи без привязки к существующим сущностям:
 
@@ -476,9 +513,9 @@ pub enum FlexError {
 
 ---
 
-## 12. Standalone mode (Phase 5 — начат, persistence/API pending)
+## 12. Standalone mode (Phase 5 — GraphQL + REST live, rollout/governance contract зафиксирован)
 
-На текущем этапе в `crates/flex` добавлены только transport-agnostic контракты:
+На текущем этапе для standalone mode уже live:
 
 - `FlexSchemaView`, `FlexEntryView`
 - `CreateFlexSchemaCommand`, `UpdateFlexSchemaCommand`
@@ -486,8 +523,20 @@ pub enum FlexError {
 - `FlexStandaloneService`
 - Guardrail validators: `validate_create_schema_command`, `validate_update_schema_command`, `validate_create_entry_command`, `validate_update_entry_command`
 - Orchestration helpers: `list/find/create/update/delete` для schemas и entries
+- SeaORM adapter `FlexStandaloneSeaOrmService`
+- GraphQL queries/mutations в `apps/server` для schemas и entries с отдельными `flex_schemas:*` и `flex_entries:*` permission gates
+- REST endpoints в `apps/server`: `/api/v1/flex/schemas*` и `/api/v1/flex/schemas/{schema_id}/entries*` с теми же tenant-scoped RBAC gates
 
-Спецификация для будущей реализации.
+Для standalone surface уже действует live rollout/governance contract:
+
+- transport остаётся server-owned adapter layer в `apps/server`, а не module-owned surface в `crates/flex`;
+- `flex` зарегистрирован в `modules.toml` как `capability_only` ghost module с `rustok-module.toml` и runtime `FlexModule`;
+- capability wiring проверяется через `cargo xtask validate-manifest` и `cargo xtask module validate flex`;
+- multilingual DB/runtime drift проверяется через `node scripts/verify/verify-flex-multilingual-contract.mjs`;
+- доступ к schemas/entries идёт только через tenant-scoped `flex_schemas:*` и `flex_entries:*` permission gates;
+- server остаётся каноническим валидатором lifecycle и transport policy; thin clients не вводят свой rollout/governance contract локально.
+
+Незакрытым остаётся полный integration verification и follow-up backlog вроде indexer/cascade-delete.
 
 ### Data model
 

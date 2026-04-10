@@ -2,10 +2,10 @@ use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-use crate::model::{
-    CurrentTenant, CustomerAdminBootstrap, CustomerDetail, CustomerDraft, CustomerList,
-    CustomerListItem, CustomerProfileRecord, CustomerRecord,
-};
+use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerDraft, CustomerList};
+
+#[cfg(feature = "ssr")]
+use crate::model::{CurrentTenant, CustomerListItem, CustomerProfileRecord, CustomerRecord};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {

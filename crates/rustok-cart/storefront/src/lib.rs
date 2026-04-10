@@ -8,7 +8,8 @@ use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
 use crate::model::{
-    StorefrontCart, StorefrontCartData, StorefrontCartDeliveryGroup, StorefrontCartLineItem,
+    StorefrontCart, StorefrontCartAdjustment, StorefrontCartData, StorefrontCartDeliveryGroup,
+    StorefrontCartLineItem,
 };
 
 #[component]
@@ -170,6 +171,7 @@ fn CartWorkspace(
                 <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
                     <div class="space-y-6">
                         <CartSummaryCard cart=cart.clone() />
+                        <AdjustmentsCard adjustments=cart.adjustments.clone() />
                         <DeliveryGroupsCard groups=cart.delivery_groups />
                     </div>
                     <LineItemsRail
@@ -221,6 +223,8 @@ fn CartSummaryCard(cart: StorefrontCart) -> impl IntoView {
             </div>
             <div class="mt-6 grid gap-3 md:grid-cols-2">
                 <MetricCard title=t(locale.as_deref(), "cart.summary.status", "Status") value=cart.status />
+                <MetricCard title=t(locale.as_deref(), "cart.summary.subtotal", "Subtotal") value=format!("{} {}", cart.currency_code, cart.subtotal_amount) />
+                <MetricCard title=t(locale.as_deref(), "cart.summary.adjustments", "Adjustments") value=format!("{} {}", cart.currency_code, cart.adjustment_total) />
                 <MetricCard title=t(locale.as_deref(), "cart.summary.total", "Total") value=format!("{} {}", cart.currency_code, cart.total_amount) />
                 <MetricCard title=t(locale.as_deref(), "cart.summary.email", "Email") value=email />
                 <MetricCard title=t(locale.as_deref(), "cart.summary.channel", "Channel") value=channel />
@@ -229,6 +233,47 @@ fn CartSummaryCard(cart: StorefrontCart) -> impl IntoView {
                 <MetricCard title=t(locale.as_deref(), "cart.summary.country", "Country") value=country />
                 <MetricCard title=t(locale.as_deref(), "cart.summary.locale", "Locale") value=locale_code />
             </div>
+        </article>
+    }
+}
+
+#[component]
+fn AdjustmentsCard(adjustments: Vec<StorefrontCartAdjustment>) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+
+    view! {
+        <article class="rounded-3xl border border-border bg-background p-8">
+            <div class="flex items-center justify-between gap-3">
+                <h3 class="text-lg font-semibold text-card-foreground">{t(locale.as_deref(), "cart.adjustments.title", "Adjustments")}</h3>
+                <span class="text-sm text-muted-foreground">{adjustments.len().to_string()}</span>
+            </div>
+            {if adjustments.is_empty() {
+                view! {
+                    <p class="mt-4 text-sm text-muted-foreground">
+                        {t(locale.as_deref(), "cart.adjustments.empty", "No typed cart adjustments are attached to this cart yet.")}
+                    </p>
+                }.into_any()
+            } else {
+                view! {
+                    <div class="mt-4 space-y-3">
+                        {adjustments.into_iter().map(|adjustment| {
+                            let locale = locale.clone();
+                            let source = adjustment.source_id.unwrap_or_else(|| t(locale.as_deref(), "cart.summary.empty", "not set"));
+                            let line_item = adjustment.line_item_id.unwrap_or_else(|| t(locale.as_deref(), "cart.summary.empty", "not set"));
+                            view! {
+                                <article class="rounded-2xl border border-border bg-card p-4">
+                                    <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{adjustment.source_type}</div>
+                                    <div class="mt-2 grid gap-2 md:grid-cols-3">
+                                        <MetricCard title=t(locale.as_deref(), "cart.adjustments.source", "Source") value=source />
+                                        <MetricCard title=t(locale.as_deref(), "cart.adjustments.lineItem", "Line item") value=line_item />
+                                        <MetricCard title=t(locale.as_deref(), "cart.adjustments.amount", "Amount") value=format!("{} {}", adjustment.currency_code, adjustment.amount) />
+                                    </div>
+                                </article>
+                            }
+                        }).collect_view()}
+                    </div>
+                }.into_any()
+            }}
         </article>
     }
 }

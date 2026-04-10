@@ -3,6 +3,7 @@ pub mod auth;
 pub mod blog;
 pub mod channel;
 pub mod commerce;
+pub mod flex;
 pub mod forum;
 pub mod graphql;
 pub mod health;

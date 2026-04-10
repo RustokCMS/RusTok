@@ -31,9 +31,16 @@
 
 - GraphQL и native Leptos `#[server]` path должны сосуществовать параллельно; `#[server]` не заменяет `/api/graphql`.
 - Текущий data-layer для admin поддерживает dual-path модель: host сначала использует native `#[server]` surface там, где он уже есть, и только затем откатывается к GraphQL или legacy REST, если это предусмотрено конкретной поверхностью.
+- `rustok-pricing/admin` теперь относится к таким dual-path surfaces: pricing package
+  по умолчанию ходит в native `#[server]` pricing runtime, оставляя GraphQL
+  fallback, и показывает operator-side effective price context для
+  `currency + optional region_id + optional price_list_id + optional quantity`,
+  включая pricing-owned selector активных price lists, а также выполняет base-price
+  variant updates через module-owned server-function transport.
 - `apps/admin` остаётся CSR-first host; наличие feature-профилей `hydrate` и `ssr` не означает, что runtime уже перешёл на полноценный SSR/service-layer contract.
 - WebSocket transport `/api/graphql/ws` остаётся действующим путём для live update сценариев, включая build/progress и subscription-based surfaces.
-- Host-owned `/modules` governance UI не держит локальные policy-эвристики: `registryLifecycle` остаётся summary/read-model, а authoritative request-level contract для interactive governance читается отдельным actor-aware fetch к `GET /v2/catalog/publish/{request_id}` по текущему полю `Actor`; `reason` / `reason_code` и request-level availability берутся из этого статуса, а `owner-transfer` / `yank` остаются server-driven release-management actions из summary lifecycle.
+- Для целей `module-system` `/modules` считается закрытым repo-side operator surface: установка, удаление, upgrade/deploy модулей и progress feedback доступны из Admin UI без отдельного ручного backend workflow.
+- Host-owned `/modules` governance UI не держит локальные policy-эвристики: `registryLifecycle` остаётся summary/read-model, но actor-agnostic `governanceActions` там теперь сведены только к release-management hints (`owner-transfer`, `yank`), а authoritative request-level contract для interactive governance читается отдельным actor-aware fetch к `GET /v2/catalog/publish/{request_id}` по текущему полю `Actor`; `reason` / `reason_code` и request-level availability берутся только из этого статуса.
 - Для `apps/admin` это считается конечным repo-side contract: дальше здесь не нужен новый client-owned lifecycle, а только targeted verification mapping и периодическая сверка `/modules` UX с server-driven policy surface.
 
 ## Contract для module-owned admin UI

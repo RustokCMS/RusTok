@@ -3,23 +3,28 @@
 //! RBAC is enforced with explicit `flex_schemas:*` permissions resolved by the
 //! server RBAC runtime.
 
-use async_graphql::{Context, FieldError, Object, Result};
+use async_graphql::{Context, Object, Result};
 use uuid::Uuid;
 
 use rustok_core::{field_schema::FieldType, Permission};
 use rustok_events::EventEnvelope;
 
-use crate::context::{AuthContext, TenantContext};
-use crate::graphql::errors::GraphQLError;
+use crate::context::TenantContext;
 use crate::services::event_bus::event_bus_from_context;
 use crate::services::field_definition_cache::FieldDefinitionCache;
-use flex::{CreateFieldDefinitionCommand, FieldDefRegistry, UpdateFieldDefinitionCommand};
+use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
+use flex::{
+    CreateFieldDefinitionCommand, CreateFlexEntryCommand, CreateFlexSchemaCommand,
+    FieldDefRegistry, UpdateFieldDefinitionCommand, UpdateFlexEntryCommand,
+    UpdateFlexSchemaCommand,
+};
 
 use super::{
-    bad_user_input, map_flex_error, resolve_entity_type,
+    bad_user_input, map_flex_error, require_permission, resolve_entity_type,
     types::{
-        CreateFieldDefinitionInput, DeleteFieldDefinitionPayload, FieldDefinitionObject,
-        UpdateFieldDefinitionInput,
+        CreateFieldDefinitionInput, CreateFlexEntryInput, CreateFlexSchemaInput,
+        DeleteFieldDefinitionPayload, DeleteFlexPayload, FieldDefinitionObject, FlexEntryObject,
+        FlexSchemaObject, UpdateFieldDefinitionInput, UpdateFlexEntryInput, UpdateFlexSchemaInput,
     },
 };
 
@@ -225,24 +230,188 @@ impl FlexMutation {
 
         Ok(rows.into_iter().map(FieldDefinitionObject::from).collect())
     }
-}
 
-fn auth_has_permission(auth: &AuthContext, permission: Permission) -> bool {
-    rustok_rbac::has_effective_permission_in_set(&auth.permissions, &permission)
-}
+    /// Create a standalone Flex schema.
+    ///
+    /// Requires `flex_schemas:create`.
+    async fn create_flex_schema(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateFlexSchemaInput,
+    ) -> Result<FlexSchemaObject> {
+        let auth = require_permission(ctx, Permission::FLEX_SCHEMAS_CREATE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
 
-fn require_permission<'a>(ctx: &'a Context<'a>, permission: Permission) -> Result<&'a AuthContext> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        let (view, event) = flex::create_schema_with_event(
+            &service,
+            tenant.id,
+            Some(auth.user_id),
+            CreateFlexSchemaCommand {
+                slug: input.slug,
+                name: input.name,
+                description: input.description,
+                fields_config: parse_fields_config(input.fields_config)?,
+                settings: input.settings,
+                is_active: input.is_active,
+            },
+        )
+        .await
+        .map_err(map_flex_error)?;
 
-    if !auth_has_permission(auth, permission) {
-        return Err(<FieldError as GraphQLError>::permission_denied(&format!(
-            "{permission} required"
-        )));
+        publish_event(ctx, event);
+        Ok(FlexSchemaObject::from(view))
     }
 
-    Ok(auth)
+    /// Update a standalone Flex schema.
+    ///
+    /// Requires `flex_schemas:update`.
+    async fn update_flex_schema(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: UpdateFlexSchemaInput,
+    ) -> Result<FlexSchemaObject> {
+        let auth = require_permission(ctx, Permission::FLEX_SCHEMAS_UPDATE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+
+        let (view, event) = flex::update_schema_with_event(
+            &service,
+            tenant.id,
+            Some(auth.user_id),
+            id,
+            UpdateFlexSchemaCommand {
+                name: input.name,
+                description: input.description,
+                fields_config: input.fields_config.map(parse_fields_config).transpose()?,
+                settings: input.settings,
+                is_active: input.is_active,
+            },
+        )
+        .await
+        .map_err(map_flex_error)?;
+
+        publish_event(ctx, event);
+        Ok(FlexSchemaObject::from(view))
+    }
+
+    /// Delete a standalone Flex schema.
+    ///
+    /// Requires `flex_schemas:delete`.
+    async fn delete_flex_schema(&self, ctx: &Context<'_>, id: Uuid) -> Result<DeleteFlexPayload> {
+        let auth = require_permission(ctx, Permission::FLEX_SCHEMAS_DELETE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+
+        let event = flex::delete_schema_with_event(&service, tenant.id, Some(auth.user_id), id)
+            .await
+            .map_err(map_flex_error)?;
+
+        publish_event(ctx, event);
+        Ok(DeleteFlexPayload { success: true })
+    }
+
+    /// Create a standalone Flex entry.
+    ///
+    /// Requires `flex_entries:create`.
+    async fn create_flex_entry(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateFlexEntryInput,
+    ) -> Result<FlexEntryObject> {
+        let auth = require_permission(ctx, Permission::FLEX_ENTRIES_CREATE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+
+        let (view, event) = flex::create_entry_with_event(
+            &service,
+            tenant.id,
+            Some(auth.user_id),
+            CreateFlexEntryCommand {
+                schema_id: input.schema_id,
+                entity_type: input.entity_type,
+                entity_id: input.entity_id,
+                data: input.data,
+                status: input.status,
+            },
+        )
+        .await
+        .map_err(map_flex_error)?;
+
+        publish_event(ctx, event);
+        Ok(FlexEntryObject::from(view))
+    }
+
+    /// Update a standalone Flex entry.
+    ///
+    /// Requires `flex_entries:update`.
+    async fn update_flex_entry(
+        &self,
+        ctx: &Context<'_>,
+        schema_id: Uuid,
+        id: Uuid,
+        input: UpdateFlexEntryInput,
+    ) -> Result<FlexEntryObject> {
+        let auth = require_permission(ctx, Permission::FLEX_ENTRIES_UPDATE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+
+        let (view, event) = flex::update_entry_with_event(
+            &service,
+            tenant.id,
+            Some(auth.user_id),
+            schema_id,
+            id,
+            UpdateFlexEntryCommand {
+                data: input.data,
+                status: input.status,
+            },
+        )
+        .await
+        .map_err(map_flex_error)?;
+
+        publish_event(ctx, event);
+        Ok(FlexEntryObject::from(view))
+    }
+
+    /// Delete a standalone Flex entry.
+    ///
+    /// Requires `flex_entries:delete`.
+    async fn delete_flex_entry(
+        &self,
+        ctx: &Context<'_>,
+        schema_id: Uuid,
+        id: Uuid,
+    ) -> Result<DeleteFlexPayload> {
+        let auth = require_permission(ctx, Permission::FLEX_ENTRIES_DELETE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
+        let service = FlexStandaloneSeaOrmService::new(app_ctx.db.clone());
+
+        let event =
+            flex::delete_entry_with_event(&service, tenant.id, Some(auth.user_id), schema_id, id)
+                .await
+                .map_err(map_flex_error)?;
+
+        publish_event(ctx, event);
+        Ok(DeleteFlexPayload { success: true })
+    }
+}
+
+fn parse_fields_config(
+    value: serde_json::Value,
+) -> Result<Vec<rustok_core::field_schema::FieldDefinition>> {
+    serde_json::from_value(value).map_err(|_| {
+        bad_user_input(
+            "fields_config must be a valid JSON array of FieldDefinition-compatible objects",
+        )
+    })
 }
 
 async fn invalidate_field_def_cache(ctx: &Context<'_>, tenant_id: Uuid, entity_type: &str) {
@@ -263,8 +432,8 @@ fn publish_event(ctx: &Context<'_>, event: EventEnvelope) {
 
 #[cfg(test)]
 mod tests {
-    use super::auth_has_permission;
     use crate::context::AuthContext;
+    use crate::graphql::flex::auth_has_permission;
     use rustok_core::Permission;
     use uuid::Uuid;
 

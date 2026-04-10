@@ -113,8 +113,8 @@ Current-state вывод:
 - schema-level language-agnostic state живёт в base tables
 - localized schema copy живёт в translations tables
 - attached localized values вынесены в dedicated locale-aware storage
-- legacy inline localized JSON считается transitional fallback, а не конечной
-  формой
+- cleanup/backfill legacy inline localized payload-ов должен происходить миграциями,
+  а не постоянным runtime fallback на base-row JSON
 
 ## Index/read-side таблицы
 

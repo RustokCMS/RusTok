@@ -24,7 +24,10 @@ pub use rustok_fulfillment::FulfillmentService;
 pub use rustok_inventory::InventoryService;
 pub use rustok_order::OrderService;
 pub use rustok_payment::PaymentService;
-pub use rustok_pricing::PricingService;
+pub use rustok_pricing::{
+    PriceAdjustmentKind, PriceAdjustmentPreview, PriceResolutionContext, PricingService,
+    ResolvedPrice,
+};
 pub use rustok_product::CatalogService;
 pub use rustok_region::RegionService;
 pub use shipping_profile::ShippingProfileService;

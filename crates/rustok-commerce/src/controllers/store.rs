@@ -1575,12 +1575,15 @@ mod tests {
             selected_shipping_option_id: None,
             status: "active".to_string(),
             currency_code: "USD".to_string(),
+            subtotal_amount: Decimal::ZERO,
+            adjustment_total: Decimal::ZERO,
             total_amount: Decimal::ZERO,
             metadata: serde_json::json!({}),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             completed_at: None,
             line_items: Vec::new(),
+            adjustments: Vec::new(),
             delivery_groups: Vec::new(),
         }
     }
@@ -2644,6 +2647,8 @@ mod tests {
                 option3: None,
                 prices: vec![PriceInput {
                     currency_code: "EUR".to_string(),
+                    channel_id: None,
+                    channel_slug: None,
                     amount: Decimal::from_str("19.99").expect("valid decimal"),
                     compare_at_amount: None,
                 }],

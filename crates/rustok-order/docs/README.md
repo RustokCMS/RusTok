@@ -4,7 +4,7 @@
 
 ## Назначение
 
-- схема `orders` и `order_line_items`;
+- схема `orders`, `order_line_items` и `order_adjustments`;
 - `OrderModule` и `OrderService`;
 - write-side lifecycle заказа: `pending -> confirmed -> paid -> shipped -> delivered/cancelled`;
 - публикация order events через transactional outbox;
@@ -16,6 +16,8 @@
 - product/variant ссылки в заказе хранятся как snapshot references, а не как
   обязательные cross-module foreign keys;
 - order line items теперь тоже несут nullable `seller_id` как canonical multivendor snapshot key;
+- order adjustments хранят promotion/discount snapshot как typed business data: `source_type/source_id`,
+  `amount/currency_code`, optional line-item binding и metadata без localized display label;
 - GraphQL и REST transport пока остаются в фасаде `rustok-commerce`;
 - admin UI ownership вынесен в `rustok-order/admin`.
 
@@ -29,6 +31,8 @@
   storage/runtime-границу без возврата ответственности в umbrella `rustok-commerce`;
 - transport и GraphQL публикуются через `rustok-commerce`, а operator UX для
   order list/detail/lifecycle публикуется через `rustok-order/admin`;
+- checkout/create-order snapshot передаёт typed adjustments в `rustok-order`, а `subtotal_amount`,
+  `adjustment_total` и net `total_amount` остаются устойчивыми к смене default locale;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce`
   и соседними split-модулями.
 

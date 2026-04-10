@@ -62,17 +62,8 @@ impl FlexStandaloneSeaOrmService {
         localized_data: Option<&JsonValue>,
         localized_keys: &HashSet<String>,
     ) -> flex::FlexEntryView {
-        let (mut shared_data, legacy_localized) =
-            Self::split_entry_data(&model.data, localized_keys);
-        let resolved_localized = localized_data
-            .and_then(|value| value.as_object().cloned())
-            .or_else(|| {
-                if legacy_localized.is_empty() {
-                    None
-                } else {
-                    Some(legacy_localized)
-                }
-            });
+        let (mut shared_data, _) = Self::split_entry_data(&model.data, localized_keys);
+        let resolved_localized = localized_data.and_then(|value| value.as_object().cloned());
 
         if let Some(localized) = resolved_localized {
             for (key, value) in localized {
@@ -776,6 +767,26 @@ mod tests {
         );
 
         assert_eq!(view.data, json!({"slug": "landing", "title": "Привет"}));
+    }
+
+    #[test]
+    fn entry_to_view_does_not_use_inline_localized_legacy_payload() {
+        let now = Utc::now().fixed_offset();
+        let row = flex_entries::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            schema_id: Uuid::new_v4(),
+            entity_type: None,
+            entity_id: None,
+            data: json!({"slug": "landing", "title": "legacy"}),
+            status: "draft".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        let localized_keys = HashSet::from([String::from("title")]);
+        let view = FlexStandaloneSeaOrmService::entry_to_view(row, None, &localized_keys);
+
+        assert_eq!(view.data, json!({"slug": "landing"}));
     }
 
     #[tokio::test]

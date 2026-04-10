@@ -19,6 +19,7 @@
 # Запустить скрипт напрямую (всегда полный вывод)
 ./scripts/verify/verify-tenant-isolation.sh
 ./scripts/verify/verify-deployment-profiles.sh
+node scripts/verify/verify-flex-multilingual-contract.mjs
 ```
 
 ## Когда запускать
@@ -35,6 +36,7 @@
 | Подозрение на дыру в RBAC | `./scripts/verify/verify-all.sh rbac-coverage` |
 | Аудит безопасности | `./scripts/verify/verify-security.sh` |
 | Проверка deployment profile matrix | `./scripts/verify/verify-all.sh deployment-profiles` |
+| Проверка drift в Flex multilingual contract | `node scripts/verify/verify-flex-multilingual-contract.mjs` |
 
 ## Описание скриптов
 
@@ -266,6 +268,18 @@ smoke покрывает тот же expanded V2 surface (`publish`, `validate`,
 Важно: anti-bypass аудит не требует «бездумно всё выносить в модули». Разбор кандидатов делается вручную с учётом допустимого platform/core слоя и frontend-library слоя.
 
 **Severity:** MEDIUM→HIGH. Цель — системно ловить drift и фиксировать migration-task с корректным target-слоем: доменная логика → `crates/rustok-<domain>`, platform/core orchestration → `apps/server` + `crates/rustok-core`, frontend дублирование → самописные frontend-библиотеки.
+
+---
+### `verify-flex-multilingual-contract.mjs`
+Focused repo-side guardrail for the live Flex multilingual contract.
+
+Что ищет:
+- cleanup migration `m20260410_000001_cleanup_flex_attached_legacy_inline_metadata` подключена в canonical server migrator;
+- standalone runtime не возвращается к inline localized fallback в `flex_entries.data`;
+- attached runtime не возвращается к inline localized fallback в donor `metadata`;
+- `crates/flex` docs продолжают фиксировать migration-based cleanup как канонический путь.
+
+**Severity:** HIGH. Возврат к inline localized fallback снова размажет единый multilingual storage contract.
 
 ---
 ### `verify-all.sh`

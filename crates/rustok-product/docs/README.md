@@ -17,6 +17,15 @@
 - product CRUD в admin UI уже вынесен из `rustok-commerce-admin`
   в module-owned route `product`, но transport-контракт для этих форм по-прежнему
   приходит через umbrella `rustok-commerce` GraphQL surface;
+- generic GraphQL roots `product` / `storefrontProduct`, на которые пока опираются
+  module-owned product UI packages, считаются catalog-authoritative surface:
+  `variants.prices` в них остаётся compatibility snapshot без explicit
+  currency/region/price-list/channel resolution и не должен трактоваться как
+  pricing source of truth рядом с `adminPricingProduct` / `storefrontPricingProduct`;
+- module-owned `rustok-product/admin` и `rustok-product/storefront` теперь тоже
+  синхронизированы с этим split: UI больше не показывает generic catalog
+  `variants.prices` как resolved price, а держит отдельный pricing-module preview
+  hook для `adminPricingProduct` / `storefrontPricingProduct`;
 - Общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 - canonical vocabulary и attach semantics для product tags живут в
   `rustok-taxonomy` + `product_tags`, а public contract использует first-class

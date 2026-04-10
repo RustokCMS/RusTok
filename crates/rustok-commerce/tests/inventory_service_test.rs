@@ -49,6 +49,8 @@ async fn create_test_product(catalog: &CatalogService, tenant_id: Uuid) -> (Uuid
             option3: None,
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
+                channel_id: None,
+                channel_slug: None,
                 amount: Decimal::from_str("99.99").unwrap(),
                 compare_at_amount: None,
             }],

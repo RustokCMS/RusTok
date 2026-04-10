@@ -18,8 +18,8 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
-    CreateOrderInput, CreateOrderLineItemInput, ListOrdersInput, OrderLineItemResponse,
-    OrderResponse,
+    CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput, ListOrdersInput,
+    OrderAdjustmentResponse, OrderLineItemResponse, OrderResponse,
 };
 use crate::entities;
 use crate::error::{OrderError, OrderResult};
@@ -91,11 +91,19 @@ impl OrderService {
             .clone()
             .unwrap_or_else(|| serde_json::json!({}));
 
-        let mut total_amount = Decimal::ZERO;
+        let mut subtotal_amount = Decimal::ZERO;
         for item in &input.line_items {
             Self::validate_line_item(item)?;
-            total_amount += item.unit_price * Decimal::from(item.quantity);
+            subtotal_amount += item.unit_price * Decimal::from(item.quantity);
         }
+        let adjustment_total =
+            Self::validate_adjustments(&input.adjustments, input.line_items.len())?;
+        if adjustment_total > subtotal_amount {
+            return Err(OrderError::Validation(
+                "adjustment total cannot exceed order subtotal".to_string(),
+            ));
+        }
+        let total_amount = subtotal_amount - adjustment_total;
 
         let order_id = generate_id();
         let now = Utc::now();
@@ -137,9 +145,11 @@ impl OrderService {
                 .map_err(|error| OrderError::Validation(error.to_string()))?;
         }
 
+        let mut order_line_item_ids = Vec::with_capacity(input.line_items.len());
         for item in &input.line_items {
+            let order_line_item_id = generate_id();
             entities::order_line_item::ActiveModel {
-                id: Set(generate_id()),
+                id: Set(order_line_item_id),
                 order_id: Set(order_id),
                 product_id: Set(item.product_id),
                 variant_id: Set(item.variant_id),
@@ -152,6 +162,27 @@ impl OrderService {
                 total_price: Set(item.unit_price * Decimal::from(item.quantity)),
                 currency_code: Set(currency_code.clone()),
                 metadata: Set(item.metadata.clone()),
+                created_at: Set(now.into()),
+            }
+            .insert(&txn)
+            .await?;
+            order_line_item_ids.push(order_line_item_id);
+        }
+
+        for adjustment in &input.adjustments {
+            entities::order_adjustment::ActiveModel {
+                id: Set(generate_id()),
+                order_id: Set(order_id),
+                order_line_item_id: Set(adjustment
+                    .line_item_index
+                    .map(|index| order_line_item_ids[index])),
+                source_type: Set(normalize_adjustment_source_type(&adjustment.source_type)?),
+                source_id: Set(normalize_adjustment_source_id(
+                    adjustment.source_id.as_deref(),
+                )),
+                amount: Set(adjustment.amount),
+                currency_code: Set(currency_code.clone()),
+                metadata: Set(sanitize_adjustment_metadata(adjustment.metadata.clone())),
                 created_at: Set(now.into()),
             }
             .insert(&txn)
@@ -538,6 +569,11 @@ impl OrderService {
             .order_by_asc(entities::order_line_item::Column::CreatedAt)
             .all(&self.db)
             .await?;
+        let adjustments = entities::order_adjustment::Entity::find()
+            .filter(entities::order_adjustment::Column::OrderId.eq(order.id))
+            .order_by_asc(entities::order_adjustment::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
         let resolved_metadata = self
             .resolve_order_metadata(
                 order.tenant_id,
@@ -547,6 +583,8 @@ impl OrderService {
                 &order.metadata,
             )
             .await?;
+        let subtotal_amount = subtotal_amount(&line_items);
+        let adjustment_total = adjustment_total(&adjustments);
 
         Ok(OrderResponse {
             id: order.id,
@@ -556,6 +594,8 @@ impl OrderService {
             customer_id: order.customer_id,
             status: order.status,
             currency_code: order.currency_code,
+            subtotal_amount,
+            adjustment_total,
             total_amount: order.total_amount,
             metadata: resolved_metadata,
             payment_id: order.payment_id,
@@ -590,6 +630,20 @@ impl OrderService {
                     created_at: item.created_at.with_timezone(&Utc),
                 })
                 .collect(),
+            adjustments: adjustments
+                .into_iter()
+                .map(|adjustment| OrderAdjustmentResponse {
+                    id: adjustment.id,
+                    order_id: adjustment.order_id,
+                    line_item_id: adjustment.order_line_item_id,
+                    source_type: adjustment.source_type,
+                    source_id: adjustment.source_id,
+                    amount: adjustment.amount,
+                    currency_code: adjustment.currency_code,
+                    metadata: adjustment.metadata,
+                    created_at: adjustment.created_at.with_timezone(&Utc),
+                })
+                .collect(),
         })
     }
 
@@ -602,6 +656,32 @@ impl OrderService {
             ));
         }
         Ok(())
+    }
+
+    fn validate_adjustments(
+        adjustments: &[CreateOrderAdjustmentInput],
+        line_item_count: usize,
+    ) -> OrderResult<Decimal> {
+        let mut adjustment_total = Decimal::ZERO;
+        for adjustment in adjustments {
+            adjustment
+                .validate()
+                .map_err(|error| OrderError::Validation(error.to_string()))?;
+            if adjustment.amount <= Decimal::ZERO {
+                return Err(OrderError::Validation(
+                    "adjustment amount must be greater than zero".to_string(),
+                ));
+            }
+            if let Some(index) = adjustment.line_item_index {
+                if index >= line_item_count {
+                    return Err(OrderError::Validation(format!(
+                        "adjustment line_item_index {index} is out of range"
+                    )));
+                }
+            }
+            adjustment_total += adjustment.amount;
+        }
+        Ok(adjustment_total)
     }
 
     async fn prepare_order_custom_fields_for_create(
@@ -700,6 +780,18 @@ fn decimal_to_minor_units(amount: Decimal) -> Option<i64> {
     (amount.round_dp(2) * Decimal::from(100)).to_i64()
 }
 
+fn subtotal_amount(line_items: &[entities::order_line_item::Model]) -> Decimal {
+    line_items
+        .iter()
+        .fold(Decimal::ZERO, |acc, item| acc + item.total_price)
+}
+
+fn adjustment_total(adjustments: &[entities::order_adjustment::Model]) -> Decimal {
+    adjustments
+        .iter()
+        .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount)
+}
+
 async fn load_order_custom_fields_schema(
     db: &DatabaseConnection,
     tenant_id: Uuid,
@@ -790,4 +882,34 @@ fn normalize_seller_id(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_owned())
+}
+
+fn normalize_adjustment_source_type(value: &str) -> OrderResult<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() || normalized.len() > 64 {
+        return Err(OrderError::Validation(
+            "adjustment source_type must be 1-64 characters".to_string(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_adjustment_source_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_owned())
+}
+
+fn sanitize_adjustment_metadata(metadata: Value) -> Value {
+    let mut metadata = match metadata {
+        Value::Object(object) => object,
+        value => return value,
+    };
+
+    metadata.remove("label");
+    metadata.remove("display_label");
+    metadata.remove("localized_label");
+
+    Value::Object(metadata)
 }

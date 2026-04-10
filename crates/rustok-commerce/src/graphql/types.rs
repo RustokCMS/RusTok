@@ -30,6 +30,10 @@ impl From<GqlProductStatus> for crate::entities::product::ProductStatus {
     }
 }
 
+/// Catalog-authoritative product detail.
+///
+/// For pricing-authoritative reads with explicit currency/region/price-list/channel
+/// context, use `adminPricingProduct` or `storefrontPricingProduct`.
 #[derive(SimpleObject)]
 pub struct GqlProduct {
     pub id: Uuid,
@@ -65,6 +69,7 @@ pub struct GqlProductOption {
     pub position: i32,
 }
 
+/// Catalog variant snapshot returned by the generic product roots.
 #[derive(SimpleObject)]
 pub struct GqlVariant {
     pub id: Uuid,
@@ -75,12 +80,20 @@ pub struct GqlVariant {
     pub option1: Option<String>,
     pub option2: Option<String>,
     pub option3: Option<String>,
+    /// Catalog-side compatibility price snapshot.
+    ///
+    /// This field is kept for catalog/product consumers and legacy fallbacks, but
+    /// it is not the pricing-authoritative contract once `rustok-pricing` is present.
+    #[graphql(
+        deprecation = "Catalog compatibility snapshot only; use adminPricingProduct/storefrontPricingProduct or rustok-pricing module surfaces for pricing-authoritative reads."
+    )]
     pub prices: Vec<GqlPrice>,
     pub inventory_quantity: i32,
     pub inventory_policy: String,
     pub in_stock: bool,
 }
 
+/// Catalog price snapshot without effective pricing context.
 #[derive(SimpleObject)]
 pub struct GqlPrice {
     pub currency_code: String,
@@ -205,6 +218,85 @@ pub struct GqlStoreContext {
 }
 
 #[derive(SimpleObject)]
+pub struct GqlPricingChannelOption {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub is_active: bool,
+    pub is_default: bool,
+    pub status: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlActivePriceListOption {
+    pub id: Uuid,
+    pub name: String,
+    pub list_type: String,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub rule_kind: Option<String>,
+    pub adjustment_percent: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPricingEffectivePrice {
+    pub currency_code: String,
+    pub amount: String,
+    pub compare_at_amount: Option<String>,
+    pub discount_percent: Option<String>,
+    pub on_sale: bool,
+    pub region_id: Option<Uuid>,
+    pub price_list_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub min_quantity: Option<i32>,
+    pub max_quantity: Option<i32>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPricingPrice {
+    pub currency_code: String,
+    pub amount: String,
+    pub compare_at_amount: Option<String>,
+    pub discount_percent: Option<String>,
+    pub on_sale: bool,
+    pub price_list_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
+    pub min_quantity: Option<i32>,
+    pub max_quantity: Option<i32>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPricingVariant {
+    pub id: Uuid,
+    pub sku: Option<String>,
+    pub barcode: Option<String>,
+    pub shipping_profile_slug: Option<String>,
+    pub title: String,
+    pub option1: Option<String>,
+    pub option2: Option<String>,
+    pub option3: Option<String>,
+    pub prices: Vec<GqlPricingPrice>,
+    pub effective_price: Option<GqlPricingEffectivePrice>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPricingProductDetail {
+    pub id: Uuid,
+    pub status: String,
+    pub seller_id: Option<String>,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
+    pub shipping_profile_slug: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub published_at: Option<String>,
+    pub translations: Vec<GqlProductTranslation>,
+    pub variants: Vec<GqlPricingVariant>,
+}
+
+#[derive(SimpleObject)]
 pub struct GqlCart {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -218,12 +310,15 @@ pub struct GqlCart {
     pub selected_shipping_option_id: Option<Uuid>,
     pub status: String,
     pub currency_code: String,
+    pub subtotal_amount: String,
+    pub adjustment_total: String,
     pub total_amount: String,
     pub metadata: String,
     pub created_at: String,
     pub updated_at: String,
     pub completed_at: Option<String>,
     pub line_items: Vec<GqlCartLineItem>,
+    pub adjustments: Vec<GqlCartAdjustment>,
     pub delivery_groups: Vec<GqlCartDeliveryGroup>,
 }
 
@@ -241,6 +336,20 @@ pub struct GqlCartLineItem {
     pub quantity: i32,
     pub unit_price: String,
     pub total_price: String,
+    pub currency_code: String,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlCartAdjustment {
+    pub id: Uuid,
+    pub cart_id: Uuid,
+    pub line_item_id: Option<Uuid>,
+    pub source_type: String,
+    pub source_id: Option<String>,
+    pub amount: String,
     pub currency_code: String,
     pub metadata: String,
     pub created_at: String,
@@ -293,6 +402,8 @@ pub struct GqlOrder {
     pub customer_id: Option<Uuid>,
     pub status: String,
     pub currency_code: String,
+    pub subtotal_amount: String,
+    pub adjustment_total: String,
     pub total_amount: String,
     pub metadata: String,
     pub payment_id: Option<String>,
@@ -309,6 +420,7 @@ pub struct GqlOrder {
     pub delivered_at: Option<String>,
     pub cancelled_at: Option<String>,
     pub line_items: Vec<GqlOrderLineItem>,
+    pub adjustments: Vec<GqlOrderAdjustment>,
 }
 
 #[derive(SimpleObject)]
@@ -324,6 +436,19 @@ pub struct GqlOrderLineItem {
     pub quantity: i32,
     pub unit_price: String,
     pub total_price: String,
+    pub currency_code: String,
+    pub metadata: String,
+    pub created_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlOrderAdjustment {
+    pub id: Uuid,
+    pub order_id: Uuid,
+    pub line_item_id: Option<Uuid>,
+    pub source_type: String,
+    pub source_id: Option<String>,
+    pub amount: String,
     pub currency_code: String,
     pub metadata: String,
     pub created_at: String,
@@ -477,6 +602,8 @@ pub struct CreateVariantInput {
 #[derive(InputObject)]
 pub struct PriceInput {
     pub currency_code: String,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
     pub amount: String,
     pub compare_at_amount: Option<String>,
 }
@@ -944,6 +1071,195 @@ impl From<dto::StoreContextResponse> for GqlStoreContext {
     }
 }
 
+impl From<rustok_channel::ChannelResponse> for GqlPricingChannelOption {
+    fn from(value: rustok_channel::ChannelResponse) -> Self {
+        Self {
+            id: value.id,
+            slug: value.slug,
+            name: value.name,
+            is_active: value.is_active,
+            is_default: value.is_default,
+            status: value.status,
+        }
+    }
+}
+
+impl From<rustok_pricing::ActivePriceListOption> for GqlActivePriceListOption {
+    fn from(value: rustok_pricing::ActivePriceListOption) -> Self {
+        Self {
+            id: value.id,
+            name: value.name,
+            list_type: value.list_type,
+            channel_id: value.channel_id,
+            channel_slug: value.channel_slug,
+            rule_kind: value.rule_kind,
+            adjustment_percent: value
+                .adjustment_percent
+                .map(|item| item.normalize().to_string()),
+        }
+    }
+}
+
+impl From<rustok_pricing::ResolvedPrice> for GqlPricingEffectivePrice {
+    fn from(value: rustok_pricing::ResolvedPrice) -> Self {
+        Self {
+            currency_code: value.currency_code,
+            amount: value.amount.normalize().to_string(),
+            compare_at_amount: value
+                .compare_at_amount
+                .map(|item| item.normalize().to_string()),
+            discount_percent: value
+                .discount_percent
+                .map(|item| item.normalize().to_string()),
+            on_sale: value.on_sale,
+            region_id: value.region_id,
+            price_list_id: value.price_list_id,
+            channel_id: value.channel_id,
+            channel_slug: value.channel_slug,
+            min_quantity: value.min_quantity,
+            max_quantity: value.max_quantity,
+        }
+    }
+}
+
+impl From<rustok_pricing::AdminPricingPrice> for GqlPricingPrice {
+    fn from(value: rustok_pricing::AdminPricingPrice) -> Self {
+        Self {
+            currency_code: value.currency_code,
+            amount: value.amount.normalize().to_string(),
+            compare_at_amount: value
+                .compare_at_amount
+                .map(|item| item.normalize().to_string()),
+            discount_percent: value
+                .discount_percent
+                .map(|item| item.normalize().to_string()),
+            on_sale: value.on_sale,
+            price_list_id: value.price_list_id,
+            channel_id: value.channel_id,
+            channel_slug: value.channel_slug,
+            min_quantity: value.min_quantity,
+            max_quantity: value.max_quantity,
+        }
+    }
+}
+
+impl From<rustok_pricing::StorefrontPricingPrice> for GqlPricingPrice {
+    fn from(value: rustok_pricing::StorefrontPricingPrice) -> Self {
+        Self {
+            currency_code: value.currency_code,
+            amount: value.amount.normalize().to_string(),
+            compare_at_amount: value
+                .compare_at_amount
+                .map(|item| item.normalize().to_string()),
+            discount_percent: value
+                .discount_percent
+                .map(|item| item.normalize().to_string()),
+            on_sale: value.on_sale,
+            price_list_id: None,
+            channel_id: None,
+            channel_slug: None,
+            min_quantity: None,
+            max_quantity: None,
+        }
+    }
+}
+
+impl From<rustok_pricing::AdminPricingVariant> for GqlPricingVariant {
+    fn from(value: rustok_pricing::AdminPricingVariant) -> Self {
+        Self {
+            id: value.id,
+            sku: value.sku,
+            barcode: value.barcode,
+            shipping_profile_slug: value.shipping_profile_slug,
+            title: value.title,
+            option1: value.option1,
+            option2: value.option2,
+            option3: value.option3,
+            prices: value.prices.into_iter().map(Into::into).collect(),
+            effective_price: None,
+        }
+    }
+}
+
+impl From<rustok_pricing::StorefrontPricingVariant> for GqlPricingVariant {
+    fn from(value: rustok_pricing::StorefrontPricingVariant) -> Self {
+        Self {
+            id: value.id,
+            sku: value.sku,
+            barcode: None,
+            shipping_profile_slug: None,
+            title: value.title,
+            option1: None,
+            option2: None,
+            option3: None,
+            prices: value.prices.into_iter().map(Into::into).collect(),
+            effective_price: None,
+        }
+    }
+}
+
+impl From<rustok_pricing::AdminPricingProductTranslation> for GqlProductTranslation {
+    fn from(value: rustok_pricing::AdminPricingProductTranslation) -> Self {
+        Self {
+            locale: value.locale,
+            title: value.title,
+            handle: value.handle,
+            description: value.description,
+            meta_title: None,
+            meta_description: None,
+        }
+    }
+}
+
+impl From<rustok_pricing::StorefrontPricingProductTranslation> for GqlProductTranslation {
+    fn from(value: rustok_pricing::StorefrontPricingProductTranslation) -> Self {
+        Self {
+            locale: value.locale,
+            title: value.title,
+            handle: value.handle,
+            description: value.description,
+            meta_title: None,
+            meta_description: None,
+        }
+    }
+}
+
+impl From<rustok_pricing::AdminPricingProductDetail> for GqlPricingProductDetail {
+    fn from(value: rustok_pricing::AdminPricingProductDetail) -> Self {
+        Self {
+            id: value.id,
+            status: value.status.to_string(),
+            seller_id: value.seller_id,
+            vendor: value.vendor,
+            product_type: value.product_type,
+            shipping_profile_slug: value.shipping_profile_slug,
+            created_at: Some(value.created_at.to_rfc3339()),
+            updated_at: Some(value.updated_at.to_rfc3339()),
+            published_at: value.published_at.map(|item| item.to_rfc3339()),
+            translations: value.translations.into_iter().map(Into::into).collect(),
+            variants: value.variants.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<rustok_pricing::StorefrontPricingProductDetail> for GqlPricingProductDetail {
+    fn from(value: rustok_pricing::StorefrontPricingProductDetail) -> Self {
+        Self {
+            id: value.id,
+            status: value.status.to_string(),
+            seller_id: value.seller_id,
+            vendor: value.vendor,
+            product_type: value.product_type,
+            shipping_profile_slug: None,
+            created_at: None,
+            updated_at: None,
+            published_at: value.published_at.map(|item| item.to_rfc3339()),
+            translations: value.translations.into_iter().map(Into::into).collect(),
+            variants: value.variants.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 impl From<dto::CartResponse> for GqlCart {
     fn from(value: dto::CartResponse) -> Self {
         Self {
@@ -959,12 +1275,15 @@ impl From<dto::CartResponse> for GqlCart {
             selected_shipping_option_id: value.selected_shipping_option_id,
             status: value.status,
             currency_code: value.currency_code,
+            subtotal_amount: value.subtotal_amount.to_string(),
+            adjustment_total: value.adjustment_total.to_string(),
             total_amount: value.total_amount.to_string(),
             metadata: value.metadata.to_string(),
             created_at: value.created_at.to_rfc3339(),
             updated_at: value.updated_at.to_rfc3339(),
             completed_at: value.completed_at.map(|value| value.to_rfc3339()),
             line_items: value.line_items.into_iter().map(Into::into).collect(),
+            adjustments: value.adjustments.into_iter().map(Into::into).collect(),
             delivery_groups: value.delivery_groups.into_iter().map(Into::into).collect(),
         }
     }
@@ -985,6 +1304,23 @@ impl From<dto::CartLineItemResponse> for GqlCartLineItem {
             quantity: value.quantity,
             unit_price: value.unit_price.to_string(),
             total_price: value.total_price.to_string(),
+            currency_code: value.currency_code,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::CartAdjustmentResponse> for GqlCartAdjustment {
+    fn from(value: dto::CartAdjustmentResponse) -> Self {
+        Self {
+            id: value.id,
+            cart_id: value.cart_id,
+            line_item_id: value.line_item_id,
+            source_type: value.source_type,
+            source_id: value.source_id,
+            amount: value.amount.to_string(),
             currency_code: value.currency_code,
             metadata: value.metadata.to_string(),
             created_at: value.created_at.to_rfc3339(),
@@ -1056,6 +1392,8 @@ impl From<dto::OrderResponse> for GqlOrder {
             customer_id: order.customer_id,
             status: order.status,
             currency_code: order.currency_code,
+            subtotal_amount: order.subtotal_amount.to_string(),
+            adjustment_total: order.adjustment_total.to_string(),
             total_amount: order.total_amount.to_string(),
             metadata: order.metadata.to_string(),
             payment_id: order.payment_id,
@@ -1072,6 +1410,7 @@ impl From<dto::OrderResponse> for GqlOrder {
             delivered_at: order.delivered_at.map(|value| value.to_rfc3339()),
             cancelled_at: order.cancelled_at.map(|value| value.to_rfc3339()),
             line_items: order.line_items.into_iter().map(Into::into).collect(),
+            adjustments: order.adjustments.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -1090,6 +1429,22 @@ impl From<dto::OrderLineItemResponse> for GqlOrderLineItem {
             quantity: item.quantity,
             unit_price: item.unit_price.to_string(),
             total_price: item.total_price.to_string(),
+            currency_code: item.currency_code,
+            metadata: item.metadata.to_string(),
+            created_at: item.created_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::OrderAdjustmentResponse> for GqlOrderAdjustment {
+    fn from(item: dto::OrderAdjustmentResponse) -> Self {
+        Self {
+            id: item.id,
+            order_id: item.order_id,
+            line_item_id: item.line_item_id,
+            source_type: item.source_type,
+            source_id: item.source_id,
+            amount: item.amount.to_string(),
             currency_code: item.currency_code,
             metadata: item.metadata.to_string(),
             created_at: item.created_at.to_rfc3339(),

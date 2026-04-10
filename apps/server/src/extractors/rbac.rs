@@ -139,6 +139,26 @@ define_permission_extractor!(
     RequireFlexSchemasList,
     rustok_core::Permission::FLEX_SCHEMAS_LIST
 );
+define_permission_extractor!(
+    RequireFlexEntriesCreate,
+    rustok_core::Permission::FLEX_ENTRIES_CREATE
+);
+define_permission_extractor!(
+    RequireFlexEntriesRead,
+    rustok_core::Permission::FLEX_ENTRIES_READ
+);
+define_permission_extractor!(
+    RequireFlexEntriesUpdate,
+    rustok_core::Permission::FLEX_ENTRIES_UPDATE
+);
+define_permission_extractor!(
+    RequireFlexEntriesDelete,
+    rustok_core::Permission::FLEX_ENTRIES_DELETE
+);
+define_permission_extractor!(
+    RequireFlexEntriesList,
+    rustok_core::Permission::FLEX_ENTRIES_LIST
+);
 
 define_permission_extractor!(
     RequireAnalyticsRead,

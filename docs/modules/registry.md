@@ -7,8 +7,9 @@ capability crate-ов и host-приложений в RusToK.
 
 1. `Core` и `Optional` модули берутся только из `modules.toml`.
 2. `crate` — это способ упаковки в Cargo, а не автоматически платформенный модуль.
-3. Shared/support/capability crate-ы живут рядом с module crate-ами, но не обязаны
-   входить в taxonomy `Core` / `Optional`.
+3. Shared/support/capability crate-ы живут рядом с module crate-ами; capability-only
+   ghost modules при этом могут быть заведены в `modules.toml`, если им нужен formal
+   runtime/module contract.
 4. Этот реестр даёт только центральную карту ownership и ролей; источник истины для runtime-контракта живёт в локальных `README.md` и `docs/README.md` самих компонентов.
 
 ## Контракт документации
@@ -65,6 +66,7 @@ graph TD
         TAXONOMY["rustok-taxonomy"]
         MEDIA["rustok-media"]
         WORKFLOW["rustok-workflow"]
+        FLEX["flex"]
     end
 
     subgraph SupportCrates["Support / capability crates"]
@@ -79,7 +81,6 @@ graph TD
         MCP["rustok-mcp"]
         AI["rustok-ai"]
         ALLOY["alloy"]
-        FLEX["flex"]
     end
 
     SERVER --> AUTH
@@ -161,14 +162,14 @@ graph TD
 | Slug | Crate | Зависимости | Роль |
 |---|---|---|---|
 | `content` | `rustok-content` | — | Shared content helpers, orchestration, rich-text/locale contract |
-| `cart` | `rustok-cart` | — | Cart lifecycle, line items, snapshot storefront context, canonical `seller_id` delivery-group ownership, cart-owned storefront inspection UI |
+| `cart` | `rustok-cart` | — | Cart lifecycle, line items, snapshot storefront context, canonical `seller_id` delivery-group ownership, typed cart adjustments, cart-owned storefront inspection UI |
 | `customer` | `rustok-customer` | — | Storefront customer profile boundary и customer-owned admin operations UI |
 | `product` | `rustok-product` | `taxonomy` | Product catalog, variants, tags, shipping profile bindings, nullable `seller_id` ownership contract, product-owned admin catalog UI и storefront catalog UI |
 | `profiles` | `rustok-profiles` | `taxonomy` | Public profile layer поверх `users`, author/member summary |
 | `region` | `rustok-region` | — | Region, country, currency, tax baseline, region-owned admin CRUD UI и storefront discovery UI |
 | `pricing` | `rustok-pricing` | `product` | Pricing domain baseline, pricing-owned admin visibility UI и storefront pricing atlas UI |
 | `inventory` | `rustok-inventory` | `product` | Inventory, stock availability baseline и inventory-owned admin visibility UI |
-| `order` | `rustok-order` | — | Order lifecycle, order snapshots with canonical `seller_id`, и order-owned admin operations UI |
+| `order` | `rustok-order` | — | Order lifecycle, order snapshots with canonical `seller_id`, typed order adjustments, и order-owned admin operations UI |
 | `payment` | `rustok-payment` | — | Payment collections и payments |
 | `fulfillment` | `rustok-fulfillment` | — | Shipping options, fulfillments и fulfillment-owned shipping-option admin UI |
 | `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Umbrella/root ecommerce orchestration, typed shipping-profile registry и marketplace foundation вокруг canonical `seller_id` |
@@ -180,6 +181,7 @@ graph TD
 | `media` | `rustok-media` | — | Media lifecycle, upload, storage-facing API |
 | `workflow` | `rustok-workflow` | — | Workflow execution, templates, webhook ingress |
 | `alloy` | `alloy` | — | Script execution, scheduler, hook runtime и capability-oriented automation surface |
+| `flex` | `flex` | — | Capability-only ghost module custom fields: attached/standalone orchestration, RBAC/runtime metadata и extension contracts без donor persistence ownership |
 
 ## Общие библиотечные crate-ы
 
@@ -201,7 +203,6 @@ graph TD
 | `rustok-telemetry` | Observability bootstrap и shared telemetry helpers |
 | `rustok-mcp` | MCP adapter/server tool surface |
 | `rustok-ai` | AI host/orchestrator capability with large operator/admin UI surfaces for Leptos and Next.js hosts |
-| `flex` | Custom fields capability и attached/standalone contracts |
 
 ## Приложения
 
@@ -218,8 +219,9 @@ graph TD
 1. Если компонент объявлен как платформенный модуль в `modules.toml`, он обязан быть
    либо `Core`, либо `Optional`.
 2. `ModuleRegistry` — runtime composition point, а не отдельная taxonomy.
-3. Support/capability crates могут участвовать в runtime composition, но не
-   становятся от этого автоматически tenant-toggled modules.
+3. Capability-only ghost modules могут участвовать в runtime composition через
+   `modules.toml`, но это не делает их автоматически обычными bounded-context
+   модулями или owner'ами donor persistence.
 4. Module-owned UI должен поставляться самим модулем, а host-приложения
    должны только монтировать его через manifest-driven wiring.
 5. Описание роли в этом реестре должно совпадать с локальными docs компонента; если поменялся ownership/runtime-контракт, сначала обновляются local docs, затем этот central registry.

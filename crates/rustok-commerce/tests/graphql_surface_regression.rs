@@ -3,14 +3,15 @@ fn admin_graphql_queries_keep_catalog_contract_stable() {
     let source = include_str!("../admin/src/api.rs");
 
     for required in [
-        "query CommerceProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter)",
-        "products(tenantId: $tenantId, locale: $locale, filter: $filter)",
-        "query CommerceProduct($tenantId: UUID!, $id: UUID!, $locale: String)",
-        "product(tenantId: $tenantId, id: $id, locale: $locale)",
-        "mutation CommerceCreateProduct($tenantId: UUID!, $userId: UUID!, $input: CreateProductInput!)",
-        "createProduct(tenantId: $tenantId, userId: $userId, input: $input)",
-        "mutation CommerceUpdateProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!, $input: UpdateProductInput!)",
-        "updateProduct(tenantId: $tenantId, userId: $userId, id: $id, input: $input)",
+        "query CommerceAdminBootstrap { currentTenant { id slug name } }",
+        "query CommerceShippingProfiles($tenantId: UUID!, $filter: ShippingProfilesFilter)",
+        "shippingProfiles(tenantId: $tenantId, filter: $filter)",
+        "query CommerceShippingProfile($tenantId: UUID!, $id: UUID!)",
+        "shippingProfile(tenantId: $tenantId, id: $id)",
+        "mutation CommerceCreateShippingProfile($tenantId: UUID!, $input: CreateShippingProfileInput!)",
+        "createShippingProfile(tenantId: $tenantId, input: $input)",
+        "mutation CommerceUpdateShippingProfile($tenantId: UUID!, $id: UUID!, $input: UpdateShippingProfileInput!)",
+        "updateShippingProfile(tenantId: $tenantId, id: $id, input: $input)",
     ] {
         assert!(
             source.contains(required),
@@ -28,7 +29,7 @@ fn admin_graphql_queries_keep_catalog_contract_stable() {
     ] {
         assert!(
             !source.contains(forbidden),
-            "admin catalog GraphQL queries must stay isolated from store cart snapshot marker `{forbidden}`"
+            "admin aggregate GraphQL queries must stay isolated from store cart snapshot marker `{forbidden}`"
         );
     }
 }
@@ -38,13 +39,14 @@ fn storefront_graphql_queries_keep_read_path_stable() {
     let source = include_str!("../storefront/src/api.rs");
 
     for required in [
-        "query StorefrontCommerceProducts($locale: String, $filter: StorefrontProductsFilter)",
-        "storefrontProducts(locale: $locale, filter: $filter)",
-        "query StorefrontCommerceProduct($locale: String, $handle: String!)",
-        "storefrontProduct(locale: $locale, handle: $handle)",
-        "items { id status title handle vendor productType createdAt publishedAt }",
-        "translations { locale title handle description }",
-        "variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } }",
+        "query StorefrontCheckoutWorkspace($id: UUID!)",
+        "storefrontCart(id: $id)",
+        "mutation CreateStorefrontPaymentCollection($input: CreateStorefrontPaymentCollectionInput!)",
+        "createStorefrontPaymentCollection(input: $input)",
+        "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!)",
+        "completeStorefrontCheckout(input: $input)",
+        "mutation SelectStorefrontShippingOption($cartId: UUID!, $input: UpdateStorefrontCartContextInput!)",
+        "updateStorefrontCartContext(cartId: $cartId, input: $input)",
     ] {
         assert!(
             source.contains(required),
@@ -53,17 +55,15 @@ fn storefront_graphql_queries_keep_read_path_stable() {
     }
 
     for forbidden in [
-        "cartId",
-        "regionId",
-        "countryCode",
-        "localeCode",
-        "selectedShippingOptionId",
-        "paymentCollection",
-        "completeCheckout",
+        "storefrontProducts(",
+        "storefrontProduct(",
+        "createProduct(",
+        "updateProduct(",
+        "shippingProfiles(",
     ] {
         assert!(
             !source.contains(forbidden),
-            "storefront read-path GraphQL queries must not depend on store cart snapshot marker `{forbidden}`"
+            "storefront aggregate checkout GraphQL queries must stay isolated from marker `{forbidden}`"
         );
     }
 }
@@ -79,8 +79,12 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         "async fn storefront_cart(",
         "async fn storefront_me(",
         "async fn storefront_order(",
+        "async fn admin_pricing_product(",
         "async fn storefront_regions(",
         "async fn storefront_shipping_options(",
+        "async fn storefront_pricing_channels(",
+        "async fn storefront_active_price_lists(",
+        "async fn storefront_pricing_product(",
         "async fn storefront_product(",
         "async fn storefront_products(",
         "async fn payment_collections(",
@@ -108,6 +112,23 @@ fn commerce_graphql_module_keeps_expected_root_fields() {
         assert!(
             mutation_source.contains(required),
             "commerce GraphQL mutation module must keep root field `{required}`"
+        );
+    }
+}
+
+#[test]
+fn commerce_graphql_marks_generic_catalog_prices_as_non_authoritative() {
+    let query_source = include_str!("../src/graphql/query.rs");
+    let types_source = include_str!("../src/graphql/types.rs");
+
+    for required in [
+        "pricing-authoritative reads live under `adminPricingProduct`",
+        "pricing-authoritative reads live under `storefrontPricingProduct`",
+        "Catalog compatibility snapshot only; use adminPricingProduct/storefrontPricingProduct or rustok-pricing module surfaces for pricing-authoritative reads.",
+    ] {
+        assert!(
+            query_source.contains(required) || types_source.contains(required),
+            "commerce GraphQL source must keep semantic-boundary marker `{required}`"
         );
     }
 }

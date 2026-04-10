@@ -13,6 +13,8 @@ pub struct CreateOrderInput {
     pub currency_code: String,
     #[validate(length(min = 1))]
     pub line_items: Vec<CreateOrderLineItemInput>,
+    #[serde(default)]
+    pub adjustments: Vec<CreateOrderAdjustmentInput>,
     pub metadata: Value,
 }
 
@@ -30,6 +32,17 @@ pub struct CreateOrderLineItemInput {
     #[validate(range(min = 1))]
     pub quantity: i32,
     pub unit_price: Decimal,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct CreateOrderAdjustmentInput {
+    pub line_item_index: Option<usize>,
+    #[validate(length(min = 1, max = 64))]
+    pub source_type: String,
+    #[validate(length(max = 191))]
+    pub source_id: Option<String>,
+    pub amount: Decimal,
     pub metadata: Value,
 }
 
@@ -76,6 +89,8 @@ pub struct OrderResponse {
     pub customer_id: Option<Uuid>,
     pub status: String,
     pub currency_code: String,
+    pub subtotal_amount: Decimal,
+    pub adjustment_total: Decimal,
     pub total_amount: Decimal,
     pub metadata: Value,
     pub payment_id: Option<String>,
@@ -92,6 +107,7 @@ pub struct OrderResponse {
     pub delivered_at: Option<DateTime<Utc>>,
     pub cancelled_at: Option<DateTime<Utc>>,
     pub line_items: Vec<OrderLineItemResponse>,
+    pub adjustments: Vec<OrderAdjustmentResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -107,6 +123,19 @@ pub struct OrderLineItemResponse {
     pub quantity: i32,
     pub unit_price: Decimal,
     pub total_price: Decimal,
+    pub currency_code: String,
+    pub metadata: Value,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct OrderAdjustmentResponse {
+    pub id: Uuid,
+    pub order_id: Uuid,
+    pub line_item_id: Option<Uuid>,
+    pub source_type: String,
+    pub source_id: Option<String>,
+    pub amount: Decimal,
     pub currency_code: String,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,

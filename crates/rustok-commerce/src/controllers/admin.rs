@@ -1765,6 +1765,7 @@ mod tests {
                         unit_price: Decimal::from_str("25.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-order-transport" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-order-transport" }),
                 },
             )
@@ -1882,6 +1883,7 @@ mod tests {
                         unit_price: Decimal::from_str("15.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-order-list" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-order-list" }),
                 },
             )
@@ -1905,6 +1907,7 @@ mod tests {
                         unit_price: Decimal::from_str("20.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-order-list" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-order-list" }),
                 },
             )
@@ -2005,6 +2008,7 @@ mod tests {
                         unit_price: Decimal::from_str("15.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-payment-list" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-payment-list" }),
                 },
             )
@@ -2028,6 +2032,7 @@ mod tests {
                         unit_price: Decimal::from_str("20.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-payment-list" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-payment-list" }),
                 },
             )
@@ -2615,6 +2620,7 @@ mod tests {
                         unit_price: Decimal::from_str("15.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-fulfillment-list" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-list" }),
                 },
             )
@@ -2638,6 +2644,7 @@ mod tests {
                         unit_price: Decimal::from_str("20.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-fulfillment-list" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-list" }),
                 },
             )
@@ -2808,6 +2815,7 @@ mod tests {
                         unit_price: Decimal::from_str("30.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-order-lifecycle" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-order-lifecycle" }),
                 },
             )
@@ -2962,6 +2970,7 @@ mod tests {
                         unit_price: Decimal::from_str("10.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-order-cancel" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-order-cancel" }),
                 },
             )
@@ -3090,6 +3099,7 @@ mod tests {
                         unit_price: Decimal::from_str("25.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-payment-transport" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-payment-transport" }),
                 },
             )
@@ -3271,6 +3281,7 @@ mod tests {
                             }
                         }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-create" }),
                 },
             )
@@ -3382,6 +3393,7 @@ mod tests {
                         unit_price: Decimal::from_str("25.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-fulfillment-over" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-over" }),
                 },
             )
@@ -3501,6 +3513,7 @@ mod tests {
                         unit_price: Decimal::from_str("25.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-fulfillment-transport" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-transport" }),
                 },
             )
@@ -3669,6 +3682,7 @@ mod tests {
                         unit_price: Decimal::from_str("25.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-fulfillment-partial" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-partial" }),
                 },
             )
@@ -3818,6 +3832,7 @@ mod tests {
                         unit_price: Decimal::from_str("25.00").expect("valid decimal"),
                         metadata: json!({ "source": "admin-fulfillment-reopen" }),
                     }],
+                    adjustments: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-reopen" }),
                 },
             )

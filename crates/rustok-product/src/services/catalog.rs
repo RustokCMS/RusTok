@@ -338,6 +338,10 @@ impl CatalogService {
                     id: Set(generate_id()),
                     variant_id: Set(variant_id),
                     price_list_id: Set(None),
+                    channel_id: Set(price_input.channel_id),
+                    channel_slug: Set(normalize_public_channel_slug(
+                        price_input.channel_slug.as_deref(),
+                    )),
                     currency_code: Set(price_input.currency_code.clone()),
                     region_id: Set(None),
                     amount: Set(price_input.amount),

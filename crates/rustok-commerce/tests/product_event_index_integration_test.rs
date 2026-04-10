@@ -44,6 +44,8 @@ fn create_product_input(handle: &str, title: &str, sku: &str) -> CreateProductIn
             option3: None,
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
+                channel_id: None,
+                channel_slug: None,
                 amount: Decimal::from_str("99.99").unwrap(),
                 compare_at_amount: Some(Decimal::from_str("149.99").unwrap()),
             }],
@@ -229,6 +231,8 @@ async fn test_variant_creation_triggers_event() {
         option3: None,
         prices: vec![PriceInput {
             currency_code: "USD".to_string(),
+            channel_id: None,
+            channel_slug: None,
             amount: Decimal::from_str("119.99").unwrap(),
             compare_at_amount: Some(Decimal::from_str("169.99").unwrap()),
         }],

@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CompleteCheckoutInput, CompleteCheckoutResponse,
-    CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
+    CreateFulfillmentInput, CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput,
     CreatePaymentCollectionInput, ResolveStoreContextInput,
 };
 use crate::entities::{product, product_variant};
@@ -194,6 +194,7 @@ impl CheckoutService {
                                 ),
                             })
                             .collect(),
+                        adjustments: checkout_order_adjustments(&cart),
                         metadata: order_metadata.clone(),
                     },
                     cart.channel_id,
@@ -802,6 +803,25 @@ fn checkout_order_line_item_metadata(cart_line_item_id: Uuid) -> serde_json::Val
             "cart_line_item_id": cart_line_item_id,
         }
     })
+}
+
+fn checkout_order_adjustments(
+    cart: &rustok_cart::dto::CartResponse,
+) -> Vec<CreateOrderAdjustmentInput> {
+    cart.adjustments
+        .iter()
+        .map(|adjustment| CreateOrderAdjustmentInput {
+            line_item_index: adjustment.line_item_id.and_then(|line_item_id| {
+                cart.line_items
+                    .iter()
+                    .position(|item| item.id == line_item_id)
+            }),
+            source_type: adjustment.source_type.clone(),
+            source_id: adjustment.source_id.clone(),
+            amount: adjustment.amount,
+            metadata: adjustment.metadata.clone(),
+        })
+        .collect()
 }
 
 fn cart_line_item_id_from_order_line_item(

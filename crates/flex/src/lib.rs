@@ -1,5 +1,10 @@
-//! Flex attached-mode shared contracts.
-//! Extracted from `apps/server` as part of Phase 4.5.
+//! Flex capability contracts shared across attached and standalone modes.
+//! Extracted from `apps/server` as part of Phase 4.5 and formalized as a
+//! capability-only runtime module during Phase 4.6.
+
+use async_trait::async_trait;
+use rustok_core::{MigrationSource, Permission, RusToKModule};
+use sea_orm_migration::MigrationTrait;
 
 pub mod attached;
 pub mod errors;
@@ -7,6 +12,8 @@ pub mod events;
 pub mod orchestration;
 pub mod registry;
 pub mod standalone;
+
+pub struct FlexModule;
 
 pub use attached::{
     load_exact_locale_values, load_localized_values_by_locale, persist_localized_values,
@@ -37,3 +44,45 @@ pub use events::{
     flex_entry_created_event, flex_entry_deleted_event, flex_entry_updated_event,
     flex_schema_created_event, flex_schema_deleted_event, flex_schema_updated_event,
 };
+
+impl MigrationSource for FlexModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        Vec::new()
+    }
+}
+
+#[async_trait]
+impl RusToKModule for FlexModule {
+    fn slug(&self) -> &'static str {
+        "flex"
+    }
+
+    fn name(&self) -> &'static str {
+        "Flex"
+    }
+
+    fn description(&self) -> &'static str {
+        "Capability-only custom fields runtime for attached and standalone extension flows"
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![
+            Permission::FLEX_SCHEMAS_CREATE,
+            Permission::FLEX_SCHEMAS_READ,
+            Permission::FLEX_SCHEMAS_UPDATE,
+            Permission::FLEX_SCHEMAS_DELETE,
+            Permission::FLEX_SCHEMAS_LIST,
+            Permission::FLEX_SCHEMAS_MANAGE,
+            Permission::FLEX_ENTRIES_CREATE,
+            Permission::FLEX_ENTRIES_READ,
+            Permission::FLEX_ENTRIES_UPDATE,
+            Permission::FLEX_ENTRIES_DELETE,
+            Permission::FLEX_ENTRIES_LIST,
+            Permission::FLEX_ENTRIES_MANAGE,
+        ]
+    }
+}

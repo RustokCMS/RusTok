@@ -7,19 +7,69 @@
 - price-related service logic;
 - pricing migrations;
 - `PricingModule` и `PricingService`;
+- typed resolver foundation `PriceResolutionContext -> ResolvedPrice` для
+  deterministic price selection по `currency_code`, optional `region_id` и optional
+  `quantity`, а также explicit `price_list_id` overlay для активных price list
+  без ввода полноценного promotions слоя; read-side теперь ещё и возвращает
+  нормализованный `discount_percent` для sale rows и effective prices; текущий
+  resolver уже также учитывает host-provided `channel_id` / `channel_slug` и
+  умеет выбирать channel-scoped base rows / active price lists без переноса
+  ownership channel identity в pricing boundary;
+- typed percentage-adjustment contract в `PricingService`: preview/apply helper
+  для percent-based sale mutation теперь живёт в pricing boundary, а legacy
+  `apply_discount` остаётся compatibility wrapper поверх canonical base-price row;
+  typed adjustment path уже умеет target'ить не только base row, но и active
+  `price_list` override rows, включая channel-scoped canonical rows;
+- pricing-owned read contract для active tenant-scoped price lists, чтобы
+  admin/storefront surfaces не жили на raw UUID-only selector semantics; теперь
+  этот read contract ещё и несёт typed rule metadata;
+- first-class `price_list` percentage rules, чтобы active list мог давать
+  promotion-ready sale semantics поверх base-price rows даже без явных override rows;
 - module-owned admin UI пакет `rustok-pricing/admin` для price visibility,
-  sale markers и currency coverage inspection.
+  sale markers, currency coverage inspection и operator-side effective price preview по
+  `currency + optional region_id + optional quantity` через native-first `#[server]`
+  transport с GraphQL fallback, а также для authoring базовых variant price rows и
+  active `price_list_id` override rows, включая quantity tiers по `min_quantity` /
+  `max_quantity`, а теперь ещё и для typed percentage-discount preview/apply по
+  canonical base row или выбранному active `price_list` override, плюс для editing
+  selected active `price_list` rule и channel scope у variant price rows / active
+  price lists; channel scope authoring при этом теперь берёт selector options из
+  `rustok-channel` read model, а не из raw UUID/slug text inputs; active
+  `price_list` selector в admin effective context при этом тоже уже
+  пересчитывается от явно выбранного `channel_id` / `channel_slug`, а не
+  живёт на bootstrap snapshot host context;
 - module-owned storefront UI пакет `rustok-pricing/storefront` для public pricing
-  discovery, currency coverage и sale-marker visibility.
+  discovery, currency coverage, sale-marker visibility и effective price preview по
+  optional route context (`currency`, `region_id`, `price_list_id`, `channel_id`,
+  `channel_slug`, `quantity`) через native server functions;
+  effective context для channel-aware pricing при этом не строится из package-local
+  fallback chain: locale остаётся host-owned, а channel override приходит только как
+  explicit route/server-function input или из host `RequestContext`; GraphQL fallback
+  при этом теперь тоже получает `available_channels` и channel-aware active
+  `price_lists` через storefront facade поля `storefrontPricingChannels` и
+  `storefrontActivePriceLists(channelId, channelSlug)`, а не деградирует до пустого
+  selector state; pricing detail fallback при этом тоже больше не живёт на generic
+  catalog product contract и использует dedicated facade roots `storefrontPricingProduct`
+  и `adminPricingProduct`, чтобы сохранять `effective_price` parity для explicit
+  `currency/price_list/channel/quantity` context; generic `product` /
+  `storefrontProduct` при этом следует трактовать только как catalog snapshot
+  contract, даже если они по-прежнему несут `variants.prices` для compatibility;
 
 ## Зона ответственности
 
 - runtime dependency: `product`;
-- модуль владеет pricing boundary и операторской read-side UI-поверхностью для цен;
+- модуль владеет pricing boundary и операторской UI-поверхностью для цен, включая
+  base-price write path для variant pricing;
 - модуль теперь владеет и публичной storefront read-side pricing-поверхностью,
   которая строит pricing atlas поверх published catalog и variant-level prices;
-- GraphQL и REST transport пока остаются в фасаде `rustok-commerce`, а dedicated
-  pricing write transport ещё не вынесен в отдельный module-owned surface;
+- текущий active resolver использует только base-price rows и deterministic precedence
+  `requested active price_list -> base prices`, `exact region -> global`,
+  `higher min_quantity -> lower max_quantity`; promotions/rules поверх нескольких
+  list layers по-прежнему остаются отдельным follow-up;
+- GraphQL и REST transport для promotions/rules по-прежнему остаются в фасаде
+  `rustok-commerce`, но базовый pricing write path и active price-list override authoring для admin уже вынесены в
+  module-owned `rustok-pricing/admin` через native `#[server]` transport; туда же
+  уже протянут typed base-row percentage adjustment path с preview/apply semantics;
 - общие DTO, entities и error surface приходят из `rustok-commerce-foundation`.
 
 ## Интеграция
@@ -27,7 +77,9 @@
 - модуль входит в ecommerce family и должен сохранять собственную storage/runtime-границу
   без возврата ответственности в umbrella `rustok-commerce`;
 - transport и GraphQL пока публикуются через `rustok-commerce`, а pricing-owned admin/storefront
-  UX уже публикуется через `rustok-pricing/admin` и `rustok-pricing/storefront`;
+  UX уже публикуется через `rustok-pricing/admin` и `rustok-pricing/storefront`,
+  при этом admin surface уже переключился на native-first `#[server]`
+  data layer с GraphQL fallback;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce`
   и соседними split-модулями.
 

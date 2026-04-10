@@ -5,7 +5,7 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::models::user_field_definitions::Model;
-use flex::FieldDefinitionView;
+use flex::{FieldDefinitionView, FlexEntryView, FlexSchemaView};
 
 /// GraphQL representation of a field definition.
 #[derive(Debug, Clone, SimpleObject)]
@@ -114,5 +114,101 @@ pub struct UpdateFieldDefinitionInput {
 
 #[derive(Debug, Clone, SimpleObject)]
 pub struct DeleteFieldDefinitionPayload {
+    pub success: bool,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct FlexSchemaObject {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub fields_config: JsonValue,
+    pub settings: JsonValue,
+    pub is_active: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<FlexSchemaView> for FlexSchemaObject {
+    fn from(view: FlexSchemaView) -> Self {
+        Self {
+            id: view.id,
+            slug: view.slug,
+            name: view.name,
+            description: view.description,
+            fields_config: serde_json::to_value(view.fields_config)
+                .unwrap_or_else(|_| JsonValue::Array(Vec::new())),
+            settings: view.settings,
+            is_active: view.is_active,
+            created_at: view.created_at,
+            updated_at: view.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct FlexEntryObject {
+    pub id: Uuid,
+    pub schema_id: Uuid,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<Uuid>,
+    pub data: JsonValue,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<FlexEntryView> for FlexEntryObject {
+    fn from(view: FlexEntryView) -> Self {
+        Self {
+            id: view.id,
+            schema_id: view.schema_id,
+            entity_type: view.entity_type,
+            entity_id: view.entity_id,
+            data: view.data,
+            status: view.status,
+            created_at: view.created_at,
+            updated_at: view.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateFlexSchemaInput {
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub fields_config: JsonValue,
+    pub settings: Option<JsonValue>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateFlexSchemaInput {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub fields_config: Option<JsonValue>,
+    pub settings: Option<JsonValue>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct CreateFlexEntryInput {
+    pub schema_id: Uuid,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<Uuid>,
+    pub data: JsonValue,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, InputObject)]
+pub struct UpdateFlexEntryInput {
+    pub data: Option<JsonValue>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, SimpleObject)]
+pub struct DeleteFlexPayload {
     pub success: bool,
 }

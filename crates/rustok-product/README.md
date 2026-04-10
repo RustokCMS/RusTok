@@ -25,6 +25,13 @@
 - Publish a module-owned Leptos storefront UI package in `storefront/` for
   published catalog discovery, handle-based product selection, and
   channel-aware inventory visibility.
+- Keep generic catalog price snapshots available for product-owned CRUD and
+  discovery flows, while treating pricing-authoritative reads as the
+  responsibility of `rustok-pricing` surfaces (`adminPricingProduct` /
+  `storefrontPricingProduct`).
+- Keep product-owned admin/storefront UI aligned with that split by rendering
+  catalog snapshot pricing separately from pricing-module previews instead of
+  using generic `variants.prices` as resolved pricing.
 - Product module metadata for runtime registration.
 
 ## Interactions

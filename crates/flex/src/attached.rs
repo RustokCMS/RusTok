@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use sea_orm::entity::prelude::*;
 use sea_orm::{
@@ -66,13 +66,14 @@ pub async fn prepare_attached_values_update<C>(
 where
     C: ConnectionTrait,
 {
-    let (_, localized_keys) = split_definitions(&schema);
-    let (_, legacy_localized) = split_existing_metadata(existing_metadata, &localized_keys);
     let exact_locale = canonical_locale(locale);
+    let localized_by_locale =
+        load_localized_values_by_locale(db, tenant_id, entity_type, entity_id).await?;
     let existing_localized =
         load_exact_locale_values(db, tenant_id, entity_type, entity_id, exact_locale.as_str())
             .await?
-            .unwrap_or_else(|| Value::Object(legacy_localized.into_iter().collect()));
+            .or_else(|| first_available_localized_values(localized_by_locale))
+            .unwrap_or_else(|| Value::Object(Map::new()));
 
     prepare_write(
         schema,
@@ -101,8 +102,7 @@ where
     }
 
     let (_, localized_keys) = split_definitions(&schema);
-    let (shared_values, legacy_localized) =
-        split_existing_metadata(shared_metadata, &localized_keys);
+    let (shared_values, _) = split_existing_metadata(shared_metadata, &localized_keys);
     let localized_by_locale =
         load_localized_values_by_locale(db, tenant_id, entity_type, entity_id).await?;
 
@@ -123,13 +123,7 @@ where
                 .find(|(locale, _)| locale_tags_match(locale, candidate))
                 .map(|(_, values)| values.clone())
         })
-        .or_else(|| {
-            if legacy_localized.is_empty() {
-                None
-            } else {
-                Some(legacy_localized)
-            }
-        });
+        .or_else(|| localized_by_locale.values().next().cloned());
 
     let mut merged = shared_values;
     if let Some(localized) = resolved_localized {
@@ -246,7 +240,7 @@ pub async fn load_localized_values_by_locale<C>(
     tenant_id: Uuid,
     entity_type: &str,
     entity_id: Uuid,
-) -> Result<HashMap<String, Map<String, Value>>, FlexError>
+) -> Result<BTreeMap<String, Map<String, Value>>, FlexError>
 where
     C: ConnectionTrait,
 {
@@ -258,7 +252,7 @@ where
         .await
         .map_err(|error| FlexError::Database(error.to_string()))?;
 
-    let mut localized_by_locale: HashMap<String, Map<String, Value>> = HashMap::new();
+    let mut localized_by_locale: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
     for row in rows {
         let locale = canonical_locale(&row.locale);
         localized_by_locale
@@ -268,6 +262,12 @@ where
     }
 
     Ok(localized_by_locale)
+}
+
+fn first_available_localized_values(
+    localized_by_locale: BTreeMap<String, Map<String, Value>>,
+) -> Option<Value> {
+    localized_by_locale.into_values().next().map(Value::Object)
 }
 
 fn prepare_write(
@@ -410,13 +410,15 @@ fn normalize_owner_payload(shared_metadata: &Value) -> Result<Option<Value>, Fle
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
-    use serde_json::json;
+    use serde_json::{json, Map};
 
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
 
-    use super::{prepare_attached_values_create, split_existing_metadata};
+    use super::{
+        first_available_localized_values, prepare_attached_values_create, split_existing_metadata,
+    };
 
     fn definition(field_key: &str, is_localized: bool) -> FieldDefinition {
         FieldDefinition {
@@ -461,5 +463,22 @@ mod tests {
         assert_eq!(prepared.metadata, Some(json!({"nickname": "neo"})));
         assert_eq!(prepared.localized_values, Some(json!({"bio": "Привет"})));
         assert_eq!(prepared.locale.as_deref(), Some("ru"));
+    }
+
+    #[test]
+    fn first_available_localized_values_uses_deterministic_locale_order() {
+        let mut localized_by_locale = BTreeMap::new();
+        localized_by_locale.insert(
+            "ru".to_string(),
+            Map::from_iter([("bio".into(), json!("Привет"))]),
+        );
+        localized_by_locale.insert(
+            "en".to_string(),
+            Map::from_iter([("bio".into(), json!("Hello"))]),
+        );
+
+        let resolved = first_available_localized_values(localized_by_locale);
+
+        assert_eq!(resolved, Some(json!({"bio": "Hello"})));
     }
 }

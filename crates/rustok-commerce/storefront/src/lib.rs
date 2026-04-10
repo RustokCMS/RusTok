@@ -316,8 +316,11 @@ fn CheckoutWorkspace(
                         <div class="mt-6 grid gap-3 md:grid-cols-2">
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.id", "Cart") value=cart.id.clone() />
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.status", "Cart status") value=cart.status.clone() />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.subtotal", "Cart subtotal") value=format!("{} {}", cart.currency_code, cart.subtotal_amount) />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.adjustments", "Cart adjustments") value=format!("{} {}", cart.currency_code, cart.adjustment_total) />
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.total", "Cart total") value=format!("{} {}", cart.currency_code, cart.total_amount) />
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.lineItems", "Line items") value=cart.line_item_count.to_string() />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.adjustmentCount", "Adjustment rows") value=cart.adjustment_count.to_string() />
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.groups", "Delivery groups") value=cart.delivery_group_count.to_string() />
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.shipping", "Legacy shipping shortcut") value=cart.selected_shipping_option_id.clone().unwrap_or_else(|| t(locale.as_deref(), "commerce.context.empty", "not resolved")) />
                         </div>

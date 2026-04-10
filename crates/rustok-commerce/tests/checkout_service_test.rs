@@ -2,7 +2,7 @@ use rust_decimal::Decimal;
 use rustok_commerce::dto::{
     AddCartLineItemInput, CartShippingSelectionInput, CompleteCheckoutInput, CreateCartInput,
     CreateProductInput, CreateShippingOptionInput, CreateVariantInput, PriceInput,
-    ProductTranslationInput, UpdateCartContextInput,
+    ProductTranslationInput, SetCartAdjustmentInput, UpdateCartContextInput,
 };
 use rustok_commerce::services::{
     CartService, CatalogService, CheckoutError, CheckoutService, FulfillmentService, PaymentService,
@@ -63,6 +63,8 @@ fn create_product_input() -> CreateProductInput {
             option3: None,
             prices: vec![PriceInput {
                 currency_code: "USD".to_string(),
+                channel_id: None,
+                channel_slug: None,
                 amount: Decimal::from_str("25.00").expect("valid decimal"),
                 compare_at_amount: None,
             }],
@@ -261,6 +263,164 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
     assert_eq!(
         completed.fulfillments[0].metadata["delivery_group"]["shipping_profile_slug"],
         serde_json::json!("default")
+    );
+}
+
+#[tokio::test]
+async fn complete_checkout_snapshots_cart_adjustments_into_order_and_payment_total() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                name: "United States".to_string(),
+                currency_code: "usd".to_string(),
+                tax_rate: Decimal::ZERO,
+                tax_included: false,
+                countries: vec!["us".to_string()],
+                metadata: serde_json::json!({ "source": "checkout-adjustment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                name: "Standard".to_string(),
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: None,
+                metadata: serde_json::json!({ "source": "checkout-adjustment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("adjusted@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("us".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-adjustment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
+                sku: Some("ADJ-1".to_string()),
+                title: "Adjusted Checkout Product".to_string(),
+                quantity: 2,
+                unit_price: Decimal::from_str("30.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+    let line_item_id = cart.line_items[0].id;
+    let cart = cart_service
+        .set_adjustments(
+            tenant_id,
+            cart.id,
+            vec![SetCartAdjustmentInput {
+                line_item_id: Some(line_item_id),
+                source_type: "Promotion".to_string(),
+                source_id: Some("promo-checkout".to_string()),
+                amount: Decimal::from_str("10.00").expect("valid decimal"),
+                metadata: serde_json::json!({
+                    "rule_code": "checkout",
+                    "localized_label": "Checkout promo"
+                }),
+            }],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.subtotal_amount, Decimal::from_str("60.00").unwrap());
+    assert_eq!(cart.adjustment_total, Decimal::from_str("10.00").unwrap());
+    assert_eq!(cart.total_amount, Decimal::from_str("50.00").unwrap());
+
+    let completed = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                shipping_selections: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-adjustment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        completed.cart.subtotal_amount,
+        Decimal::from_str("60.00").unwrap()
+    );
+    assert_eq!(
+        completed.cart.adjustment_total,
+        Decimal::from_str("10.00").unwrap()
+    );
+    assert_eq!(
+        completed.cart.total_amount,
+        Decimal::from_str("50.00").unwrap()
+    );
+    assert_eq!(
+        completed.order.subtotal_amount,
+        Decimal::from_str("60.00").unwrap()
+    );
+    assert_eq!(
+        completed.order.adjustment_total,
+        Decimal::from_str("10.00").unwrap()
+    );
+    assert_eq!(
+        completed.order.total_amount,
+        Decimal::from_str("50.00").unwrap()
+    );
+    assert_eq!(completed.order.adjustments.len(), 1);
+    assert_eq!(completed.order.adjustments[0].source_type, "promotion");
+    assert_eq!(
+        completed.order.adjustments[0].source_id.as_deref(),
+        Some("promo-checkout")
+    );
+    assert_eq!(
+        completed.order.adjustments[0].line_item_id,
+        Some(completed.order.line_items[0].id)
+    );
+    assert!(completed.order.adjustments[0]
+        .metadata
+        .get("localized_label")
+        .is_none());
+    assert_eq!(
+        completed.payment_collection.amount,
+        Decimal::from_str("50.00").unwrap()
+    );
+    assert_eq!(
+        completed.payment_collection.captured_amount,
+        Decimal::from_str("50.00").unwrap()
     );
 }
 

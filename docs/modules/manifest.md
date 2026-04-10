@@ -131,6 +131,8 @@
 
 `cargo xtask module validate <slug>` работает только для slug из `modules.toml` и валидирует фактический scoped contract:
 
+`cargo xtask module validate` без slug проходит все локальные `source = "path"` модули из `modules.toml`. Это не auto-discovery по `crates/`: новый crate становится платформенным модулем только после добавления в `[modules]`.
+
 - slug существует в `modules.toml`;
 - для `source = "path"` задан `path`;
 - `rustok-module.toml` существует по ожидаемому пути;
@@ -151,6 +153,7 @@
 - `module.description` достаточно полон для publish readiness;
 - `depends_on` из `modules.toml`, `[dependencies]` в `rustok-module.toml` и `RusToKModule::dependencies()` не расходятся;
 - optional-модуль имеет feature `mod-<slug>` в `apps/server/Cargo.toml`, этот feature резолвится в реальный `ModuleRegistry` entry, а его `mod-*` зависимости совпадают с `depends_on` из `modules.toml`;
+- для `capability_only` ghost module допустим always-linked server dependency path: `mod-<slug>` может быть пустым feature-guard'ом для registry/codegen wiring, если сам crate уже подключён в `apps/server` как shared capability dependency;
 - `required = true` модуль регистрируется напрямую в `apps/server/src/modules/mod.rs`, а optional-модуль не попадает туда в обход feature/codegen wiring;
 - `settings.default_enabled` перечисляет только optional-модули; required/core-модули туда не включаются и считаются всегда активными;
 - `settings.default_enabled` образует dependency-closed optional graph: если optional-модуль включён по умолчанию, его optional-зависимости тоже присутствуют в `default_enabled`;
@@ -181,6 +184,8 @@
 - все path-модули действительно содержат `rustok-module.toml`.
 
 Этот шаг не заменяет `cargo xtask module validate <slug>`, а дополняет его.
+
+Описание самого workspace-инструмента, его зон ответственности и operator entrypoints живёт в [`xtask/README.md`](../../xtask/README.md).
 
 ## Минимальный пример `modules.toml`
 
@@ -251,6 +256,7 @@ description = "Blog module with admin and storefront surfaces."
 
 - Platform modules живут в `modules.toml` и проходят scoped validation через `cargo xtask module validate <slug>`.
 - Foundation/shared/support/capability crates могут иметь локальные docs и собственные контракты, но не обязаны иметь slug в `modules.toml`.
+- Если capability crate нужен formal runtime/module contract, его можно завести в `modules.toml` как `capability_only` ghost module. Текущие живые примеры такого паттерна: `alloy` и `flex`.
 
 Для таких crates всё равно действует documentation minimum:
 
@@ -261,6 +267,26 @@ description = "Blog module with admin and storefront surfaces."
 Если support/capability crate уже публикует локальные docs, для него рекомендуется тот же структурный стандарт, что и для платформенных модулей: английский root `README.md`, русский `docs/README.md`, русский `docs/implementation-plan.md`.
 
 Но они не проходят `module validate`, пока не становятся платформенным модулем.
+
+## Как добавить новый платформенный модуль
+
+`xtask` узнаёт о новом платформенном модуле только из `modules.toml`. Наличие crate в `crates/` само по себе не делает его модулем.
+
+Минимальный порядок добавления:
+
+1. Создать crate, обычно `crates/rustok-<slug>/`, и убедиться, что он входит в Cargo workspace.
+2. Добавить обязательные локальные документы: корневой `README.md`, `docs/README.md`, `docs/implementation-plan.md`.
+3. Добавить `rustok-module.toml` с корректными `module.slug`, `module.version`, `module.ui_classification`, metadata зависимостей и `[crate].entry_type`, если crate реализует `RusToKModule`.
+4. Добавить slug в `[modules]` внутри `modules.toml`; `required = true` использовать только для core-модулей, остальные модули оставлять optional.
+5. Синхронизировать зависимости в трёх местах: `modules.toml.depends_on`, `[dependencies]` в `rustok-module.toml`, `RusToKModule::dependencies()`.
+6. Для optional runtime-модуля добавить `mod-<slug>` feature и server wiring в `apps/server/Cargo.toml`.
+   Для обычного optional-модуля это означает `dep:<crate>`, а для `capability_only` ghost module допустим пустой feature-guard, если crate уже always-linked как shared capability dependency сервера.
+7. Для required runtime-модуля добавить прямую регистрацию в `apps/server/src/modules/mod.rs`.
+8. Для module-owned UI объявлять `[provides.admin_ui]` и/или `[provides.storefront_ui]` только вместе с реальным UI sub-crate и host wiring.
+9. Обновить навигацию: `docs/modules/_index.md`, `docs/modules/registry.md`, а для UI-модулей также `docs/modules/UI_PACKAGES_INDEX.md`.
+10. Прогнать локальный preflight: `cargo xtask validate-manifest`, `cargo xtask module validate <slug>`, `cargo xtask module test <slug>`.
+
+Шаблон файлов и минимальных разделов живёт в [шаблоне документации модуля](../templates/module_contract.md).
 
 ## Рекомендуемый локальный preflight
 

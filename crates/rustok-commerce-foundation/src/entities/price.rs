@@ -9,6 +9,8 @@ pub struct Model {
     pub id: Uuid,
     pub variant_id: Uuid,
     pub price_list_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
+    pub channel_slug: Option<String>,
     pub currency_code: String,
     pub region_id: Option<Uuid>,
     #[sea_orm(column_name = "amount_decimal")]

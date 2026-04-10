@@ -37,13 +37,14 @@ Shared foundation / support crates:
 ## Runtime surface
 
 - `/api/graphql` и `/api/fn/*` являются параллельными transport-слоями; Leptos server functions не заменяют GraphQL API.
+- `flex` standalone schemas/entries сейчас публикуются через `/api/graphql` и `/api/v1/flex/schemas*`; это live tenant-scoped surface с отдельными `flex_schemas:*` и `flex_entries:*` permission gates.
 - Health/observability surface публикуется через `/health*` и `/metrics`.
 - Module/runtime wiring опирается на `modules.toml`, `rustok-module.toml` и generated host integration.
 - Module-owned event listeners собираются из `ModuleRegistry` в общий `EventDispatcher`; `apps/server` больше не держит отдельные host-owned index/search/workflow listener paths.
 - `apps/server` может работать как `full` host или как `registry_only`, но `host_mode` не заменяет deployment profile и не меняет build/deploy semantics.
 - Для registry/governance surfaces именно сервер остаётся каноническим валидатором lifecycle policy, `reason` / `reason_code` contract и allowed action set; thin clients могут делать preflight, но не определяют policy локально.
 - `GET /v2/catalog/publish/{request_id}` остаётся machine-readable operator status contract: без `x-rustok-actor` он возвращает status-driven superset `governanceActions`, а при наличии actor header режет только request-level действия до реально разрешённых для этого actor.
-- Repo-side surface для текущего `module-system` считается стабилизированным в рамках уже существующего action set; незакрытым в коде остаётся только targeted verification и поддержание docs/audit, а rollout `modules.rustok.dev` остаётся внешней infra-задачей.
+- Repo-side surface для текущего `module-system` считается закрытым для цели Admin-driven install/uninstall/upgrade/deploy с progress feedback; дальше остаётся поддерживать targeted verification и docs/audit, а rollout `modules.rustok.dev` остаётся внешней infra-задачей.
 
 ## Границы ответственности
 

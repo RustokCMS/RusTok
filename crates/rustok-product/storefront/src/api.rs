@@ -3,9 +3,12 @@ use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlReques
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-use crate::model::{ProductDetail, ProductList, StorefrontProductsData};
+use crate::model::{
+    ProductDetail, ProductEffectivePrice, ProductList, ProductListItem, ProductPricingContext,
+    ProductPricingDetail, ProductPricingVariant, ProductScopedPrice, StorefrontProductsData,
+};
 #[cfg(feature = "ssr")]
-use crate::model::{ProductListItem, ProductPrice, ProductTranslation, ProductVariant};
+use crate::model::{ProductPrice, ProductTranslation, ProductVariant};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -36,8 +39,9 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontCommerceProducts($locale: String, $filter: StorefrontProductsFilter) { storefrontProducts(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle vendor productType tags createdAt publishedAt } } }";
-const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status vendor productType tags publishedAt translations { locale title handle description } variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } } } }";
+const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontCommerceProducts($locale: String, $filter: StorefrontProductsFilter) { storefrontProducts(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType tags createdAt publishedAt } } }";
+const STOREFRONT_PRODUCT_QUERY: &str = "query StorefrontCommerceProduct($locale: String, $handle: String!) { storefrontProduct(locale: $locale, handle: $handle) { id status sellerId vendor productType tags publishedAt translations { locale title handle description } variants { id title sku inventoryQuantity inStock prices { currencyCode amount compareAtAmount onSale } } } }";
+const STOREFRONT_PRICING_PRODUCT_QUERY: &str = "query StorefrontProductPricing($locale: String, $handle: String!, $currencyCode: String, $regionId: UUID, $priceListId: UUID, $channelId: UUID, $channelSlug: String, $quantity: Int) { storefrontPricingProduct(locale: $locale, handle: $handle, currencyCode: $currencyCode, regionId: $regionId, priceListId: $priceListId, channelId: $channelId, channelSlug: $channelSlug, quantity: $quantity) { variants { id title sku prices { currencyCode amount compareAtAmount discountPercent onSale } effectivePrice { currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug } } } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontProductsResponse {
@@ -51,6 +55,12 @@ struct StorefrontProductResponse {
     storefront_product: Option<ProductDetail>,
 }
 
+#[derive(Debug, Deserialize)]
+struct StorefrontPricingProductResponse {
+    #[serde(rename = "storefrontPricingProduct")]
+    storefront_pricing_product: Option<ProductPricingDetail>,
+}
+
 #[derive(Debug, Serialize)]
 struct StorefrontProductsVariables {
     locale: Option<String>,
@@ -61,6 +71,23 @@ struct StorefrontProductsVariables {
 struct StorefrontProductVariables {
     locale: Option<String>,
     handle: String,
+}
+
+#[derive(Debug, Serialize)]
+struct StorefrontPricingProductVariables {
+    locale: Option<String>,
+    handle: String,
+    #[serde(rename = "currencyCode")]
+    currency_code: Option<String>,
+    #[serde(rename = "regionId")]
+    region_id: Option<String>,
+    #[serde(rename = "priceListId")]
+    price_list_id: Option<String>,
+    #[serde(rename = "channelId")]
+    channel_id: Option<String>,
+    #[serde(rename = "channelSlug")]
+    channel_slug: Option<String>,
+    quantity: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -129,28 +156,136 @@ where
     .map_err(ApiError::from)
 }
 
+fn sanitize_currency_code(currency_code: Option<String>) -> Option<String> {
+    currency_code
+        .map(|value| value.trim().to_ascii_uppercase())
+        .filter(|value| value.len() == 3)
+}
+
+fn sanitize_uuid_string(value: Option<String>) -> Option<String> {
+    value
+        .map(|item| item.trim().to_string())
+        .filter(|item| !item.is_empty() && uuid::Uuid::parse_str(item).is_ok())
+}
+
+fn sanitize_channel_slug(channel_slug: Option<String>) -> Option<String> {
+    channel_slug
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+}
+
+fn sanitize_quantity(quantity: Option<i32>) -> Option<i32> {
+    quantity.filter(|value| *value > 0)
+}
+
+fn derive_pricing_currency(
+    selected_product: Option<&ProductDetail>,
+    currency_code: Option<String>,
+) -> Option<String> {
+    sanitize_currency_code(currency_code).or_else(|| {
+        selected_product.and_then(|product| {
+            product
+                .variants
+                .first()
+                .and_then(|variant| variant.prices.first())
+                .map(|price| price.currency_code.clone())
+                .and_then(|currency| sanitize_currency_code(Some(currency)))
+        })
+    })
+}
+
+fn build_pricing_context(
+    selected_product: Option<&ProductDetail>,
+    currency_code: Option<String>,
+    region_id: Option<String>,
+    price_list_id: Option<String>,
+    channel_id: Option<String>,
+    channel_slug: Option<String>,
+    quantity: Option<i32>,
+) -> Option<ProductPricingContext> {
+    let currency_code = derive_pricing_currency(selected_product, currency_code)?;
+    Some(ProductPricingContext {
+        currency_code,
+        region_id: sanitize_uuid_string(region_id),
+        price_list_id: sanitize_uuid_string(price_list_id),
+        channel_id: sanitize_uuid_string(channel_id),
+        channel_slug: sanitize_channel_slug(channel_slug),
+        quantity: sanitize_quantity(quantity).unwrap_or(1),
+    })
+}
+
 pub async fn fetch_storefront_products(
     selected_handle: Option<String>,
     locale: Option<String>,
+    currency_code: Option<String>,
+    region_id: Option<String>,
+    price_list_id: Option<String>,
+    channel_id: Option<String>,
+    channel_slug: Option<String>,
+    quantity: Option<i32>,
 ) -> Result<StorefrontProductsData, ApiError> {
-    match fetch_storefront_products_server(selected_handle.clone(), locale.clone()).await {
+    match fetch_storefront_products_server(
+        selected_handle.clone(),
+        locale.clone(),
+        currency_code.clone(),
+        region_id.clone(),
+        price_list_id.clone(),
+        channel_id.clone(),
+        channel_slug.clone(),
+        quantity,
+    )
+    .await
+    {
         Ok(data) => Ok(data),
-        Err(_) => fetch_storefront_products_graphql(selected_handle, locale).await,
+        Err(_) => {
+            fetch_storefront_products_graphql(
+                selected_handle,
+                locale,
+                currency_code,
+                region_id,
+                price_list_id,
+                channel_id,
+                channel_slug,
+                quantity,
+            )
+            .await
+        }
     }
 }
 
 pub async fn fetch_storefront_products_server(
     selected_handle: Option<String>,
     locale: Option<String>,
+    currency_code: Option<String>,
+    region_id: Option<String>,
+    price_list_id: Option<String>,
+    channel_id: Option<String>,
+    channel_slug: Option<String>,
+    quantity: Option<i32>,
 ) -> Result<StorefrontProductsData, ApiError> {
-    storefront_products_native(selected_handle, locale)
-        .await
-        .map_err(ApiError::from)
+    storefront_products_native(
+        selected_handle,
+        locale,
+        currency_code,
+        region_id,
+        price_list_id,
+        channel_id,
+        channel_slug,
+        quantity,
+    )
+    .await
+    .map_err(ApiError::from)
 }
 
 pub async fn fetch_storefront_products_graphql(
     selected_handle: Option<String>,
     locale: Option<String>,
+    currency_code: Option<String>,
+    region_id: Option<String>,
+    price_list_id: Option<String>,
+    channel_id: Option<String>,
+    channel_slug: Option<String>,
+    quantity: Option<i32>,
 ) -> Result<StorefrontProductsData, ApiError> {
     let products_response: StorefrontProductsResponse = request(
         STOREFRONT_PRODUCTS_QUERY,
@@ -179,7 +314,10 @@ pub async fn fetch_storefront_products_graphql(
     let selected_product = if let Some(handle) = resolved_handle.clone() {
         let response: StorefrontProductResponse = request(
             STOREFRONT_PRODUCT_QUERY,
-            StorefrontProductVariables { locale, handle },
+            StorefrontProductVariables {
+                locale: locale.clone(),
+                handle,
+            },
         )
         .await?;
         response.storefront_product
@@ -187,14 +325,54 @@ pub async fn fetch_storefront_products_graphql(
         None
     };
 
+    let resolution_context = build_pricing_context(
+        selected_product.as_ref(),
+        currency_code,
+        region_id,
+        price_list_id,
+        channel_id,
+        channel_slug,
+        quantity,
+    );
+    let selected_pricing = if let Some(handle) = resolved_handle.clone() {
+        let response: StorefrontPricingProductResponse = request(
+            STOREFRONT_PRICING_PRODUCT_QUERY,
+            StorefrontPricingProductVariables {
+                locale: locale.clone(),
+                handle,
+                currency_code: resolution_context
+                    .as_ref()
+                    .map(|context| context.currency_code.clone()),
+                region_id: resolution_context
+                    .as_ref()
+                    .and_then(|context| context.region_id.clone()),
+                price_list_id: resolution_context
+                    .as_ref()
+                    .and_then(|context| context.price_list_id.clone()),
+                channel_id: resolution_context
+                    .as_ref()
+                    .and_then(|context| context.channel_id.clone()),
+                channel_slug: resolution_context
+                    .as_ref()
+                    .and_then(|context| context.channel_slug.clone()),
+                quantity: resolution_context.as_ref().map(|context| context.quantity),
+            },
+        )
+        .await?;
+        response.storefront_pricing_product
+    } else {
+        None
+    };
+
     Ok(StorefrontProductsData {
         products: products_response.storefront_products,
         selected_product,
+        selected_pricing,
         selected_handle: resolved_handle,
+        resolution_context,
     })
 }
 
-#[cfg(feature = "ssr")]
 fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
     channel_slug
         .map(str::trim)
@@ -220,6 +398,7 @@ fn map_product_list_item(value: rustok_product::StorefrontProductListItem) -> Pr
         status: value.status.to_string(),
         title: value.title,
         handle: value.handle,
+        seller_id: value.seller_id,
         vendor: value.vendor,
         product_type: value.product_type,
         tags: value.tags,
@@ -233,6 +412,7 @@ fn map_product_detail(value: rustok_commerce_foundation::dto::ProductResponse) -
     ProductDetail {
         id: value.id.to_string(),
         status: value.status.to_string(),
+        seller_id: value.seller_id,
         vendor: value.vendor,
         product_type: value.product_type,
         tags: value.tags,
@@ -273,17 +453,76 @@ fn map_product_detail(value: rustok_commerce_foundation::dto::ProductResponse) -
     }
 }
 
+#[cfg(feature = "ssr")]
+fn map_product_pricing_detail(
+    value: rustok_pricing::StorefrontPricingProductDetail,
+) -> ProductPricingDetail {
+    ProductPricingDetail {
+        variants: value
+            .variants
+            .into_iter()
+            .map(|variant| ProductPricingVariant {
+                id: variant.id.to_string(),
+                title: variant.title,
+                sku: variant.sku,
+                prices: variant
+                    .prices
+                    .into_iter()
+                    .map(|price| ProductScopedPrice {
+                        currency_code: price.currency_code,
+                        amount: price.amount.normalize().to_string(),
+                        compare_at_amount: price
+                            .compare_at_amount
+                            .map(|value| value.normalize().to_string()),
+                        discount_percent: price
+                            .discount_percent
+                            .map(|value| value.normalize().to_string()),
+                        on_sale: price.on_sale,
+                    })
+                    .collect(),
+                effective_price: None,
+            })
+            .collect(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_effective_price(value: rustok_pricing::ResolvedPrice) -> ProductEffectivePrice {
+    ProductEffectivePrice {
+        currency_code: value.currency_code,
+        amount: value.amount.normalize().to_string(),
+        compare_at_amount: value
+            .compare_at_amount
+            .map(|item| item.normalize().to_string()),
+        discount_percent: value
+            .discount_percent
+            .map(|item| item.normalize().to_string()),
+        on_sale: value.on_sale,
+        price_list_id: value.price_list_id.map(|item| item.to_string()),
+        channel_id: value.channel_id.map(|item| item.to_string()),
+        channel_slug: value.channel_slug,
+    }
+}
+
 #[server(prefix = "/api/fn", endpoint = "product/storefront-data")]
 async fn storefront_products_native(
     selected_handle: Option<String>,
     locale: Option<String>,
+    currency_code: Option<String>,
+    region_id: Option<String>,
+    price_list_id: Option<String>,
+    channel_id: Option<String>,
+    channel_slug: Option<String>,
+    quantity: Option<i32>,
 ) -> Result<StorefrontProductsData, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
         use rustok_api::loco::transactional_event_bus_from_context;
+        use rustok_pricing::{PriceResolutionContext, PricingService};
         use rustok_product::CatalogService;
+        use uuid::Uuid;
 
         let app_ctx = expect_context::<AppContext>();
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
@@ -302,8 +541,18 @@ async fn storefront_products_native(
         let public_channel_slug = request_context
             .as_ref()
             .and_then(|ctx| normalize_public_channel_slug(ctx.channel_slug.as_deref()));
+        let selected_channel_id = sanitize_uuid_string(channel_id)
+            .as_deref()
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .or_else(|| request_context.as_ref().and_then(|ctx| ctx.channel_id));
+        let selected_channel_slug =
+            sanitize_channel_slug(channel_slug).or_else(|| public_channel_slug.clone());
 
         let service = CatalogService::new(
+            app_ctx.db.clone(),
+            transactional_event_bus_from_context(&app_ctx),
+        );
+        let pricing_service = PricingService::new(
             app_ctx.db.clone(),
             transactional_event_bus_from_context(&app_ctx),
         );
@@ -345,16 +594,86 @@ async fn storefront_products_native(
         } else {
             None
         };
+        let resolution_context = build_pricing_context(
+            selected_product.as_ref(),
+            currency_code,
+            region_id,
+            price_list_id,
+            selected_channel_id.map(|item| item.to_string()),
+            selected_channel_slug.clone(),
+            quantity,
+        );
+        let native_resolution_context =
+            resolution_context
+                .as_ref()
+                .map(|context| PriceResolutionContext {
+                    currency_code: context.currency_code.clone(),
+                    region_id: context
+                        .region_id
+                        .as_deref()
+                        .and_then(|value| Uuid::parse_str(value).ok()),
+                    price_list_id: context
+                        .price_list_id
+                        .as_deref()
+                        .and_then(|value| Uuid::parse_str(value).ok()),
+                    channel_id: context
+                        .channel_id
+                        .as_deref()
+                        .and_then(|value| Uuid::parse_str(value).ok()),
+                    channel_slug: context.channel_slug.clone(),
+                    quantity: Some(context.quantity),
+                });
+        let selected_pricing = if let Some(handle) = resolved_handle.clone() {
+            let mut detail = pricing_service
+                .get_published_product_pricing_by_handle_with_locale_fallback(
+                    tenant.id,
+                    handle.as_str(),
+                    requested_locale.as_str(),
+                    Some(tenant.default_locale.as_str()),
+                    selected_channel_slug.as_deref(),
+                )
+                .await
+                .map_err(ServerFnError::new)?
+                .map(map_product_pricing_detail);
+
+            if let (Some(detail_ref), Some(context)) =
+                (detail.as_mut(), native_resolution_context.as_ref())
+            {
+                for variant in &mut detail_ref.variants {
+                    let variant_id = Uuid::parse_str(&variant.id).map_err(ServerFnError::new)?;
+                    let effective_price = pricing_service
+                        .resolve_variant_price(tenant.id, variant_id, context.clone())
+                        .await
+                        .map_err(ServerFnError::new)?;
+                    variant.effective_price = effective_price.map(map_effective_price);
+                }
+            }
+
+            detail
+        } else {
+            None
+        };
 
         Ok(StorefrontProductsData {
             products: map_product_list(products),
             selected_product,
+            selected_pricing,
             selected_handle: resolved_handle,
+            resolution_context,
         })
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (selected_handle, locale);
+        let _ = (
+            selected_handle,
+            locale,
+            currency_code,
+            region_id,
+            price_list_id,
+            channel_id,
+            channel_slug,
+            quantity,
+        );
         Err(ServerFnError::new(
             "product/storefront-data requires the `ssr` feature",
         ))

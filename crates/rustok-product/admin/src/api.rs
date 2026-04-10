@@ -2,7 +2,8 @@ use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlReques
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    ProductAdminBootstrap, ProductDetail, ProductDraft, ProductList, ShippingProfileList,
+    ProductAdminBootstrap, ProductDetail, ProductDraft, ProductList, ProductPricingDetail,
+    ShippingProfileList,
 };
 
 pub type ApiError = GraphqlHttpError;
@@ -11,6 +12,7 @@ const BOOTSTRAP_QUERY: &str =
     "query ProductAdminBootstrap { currentTenant { id slug name } me { id email name } }";
 const PRODUCTS_QUERY: &str = "query ProductAdminProducts($tenantId: UUID!, $locale: String, $filter: ProductsFilter) { products(tenantId: $tenantId, locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType shippingProfileSlug tags createdAt publishedAt } } }";
 const PRODUCT_QUERY: &str = "query ProductAdminProduct($tenantId: UUID!, $id: UUID!, $locale: String) { product(tenantId: $tenantId, id: $id, locale: $locale) { id status sellerId vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
+const PRODUCT_PRICING_QUERY: &str = "query ProductAdminPricingProduct($tenantId: UUID!, $id: UUID!, $locale: String, $currencyCode: String, $quantity: Int) { adminPricingProduct(tenantId: $tenantId, id: $id, locale: $locale, currencyCode: $currencyCode, quantity: $quantity) { variants { id prices { currencyCode amount compareAtAmount discountPercent onSale } effectivePrice { currencyCode amount compareAtAmount discountPercent onSale priceListId channelId channelSlug } } } }";
 const SHIPPING_PROFILES_QUERY: &str = "query ProductAdminShippingProfiles($tenantId: UUID!, $filter: ShippingProfilesFilter) { shippingProfiles(tenantId: $tenantId, filter: $filter) { total page perPage hasNext items { id tenantId slug name description active metadata createdAt updatedAt } } }";
 const CREATE_PRODUCT_MUTATION: &str = "mutation ProductAdminCreateProduct($tenantId: UUID!, $userId: UUID!, $input: CreateProductInput!) { createProduct(tenantId: $tenantId, userId: $userId, input: $input) { id status sellerId vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
 const UPDATE_PRODUCT_MUTATION: &str = "mutation ProductAdminUpdateProduct($tenantId: UUID!, $userId: UUID!, $id: UUID!, $input: UpdateProductInput!) { updateProduct(tenantId: $tenantId, userId: $userId, id: $id, input: $input) { id status sellerId vendor productType shippingProfileSlug tags createdAt updatedAt publishedAt translations { locale title handle description metaTitle metaDescription } variants { id sku barcode shippingProfileSlug title option1 option2 option3 inventoryQuantity inventoryPolicy inStock prices { currencyCode amount compareAtAmount onSale } } options { id name values position } } }";
@@ -31,6 +33,12 @@ struct ProductsResponse {
 #[derive(Debug, Deserialize)]
 struct ProductResponse {
     product: Option<ProductDetail>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProductPricingResponse {
+    #[serde(rename = "adminPricingProduct")]
+    product_pricing: Option<ProductPricingDetail>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,6 +93,15 @@ struct ProductsVariables {
 struct ProductVariables {
     id: String,
     locale: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ProductPricingVariables {
+    id: String,
+    locale: Option<String>,
+    #[serde(rename = "currencyCode")]
+    currency_code: Option<String>,
+    quantity: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -302,6 +319,32 @@ pub async fn fetch_product(
     )
     .await?;
     Ok(response.product)
+}
+
+pub async fn fetch_product_pricing(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    tenant_id: String,
+    id: String,
+    locale: String,
+    currency_code: Option<String>,
+) -> Result<Option<ProductPricingDetail>, ApiError> {
+    let response: ProductPricingResponse = request(
+        PRODUCT_PRICING_QUERY,
+        Some(TenantScopedVariables {
+            tenant_id,
+            extra: ProductPricingVariables {
+                id,
+                locale: Some(locale),
+                currency_code,
+                quantity: Some(1),
+            },
+        }),
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.product_pricing)
 }
 
 pub async fn fetch_shipping_profiles(

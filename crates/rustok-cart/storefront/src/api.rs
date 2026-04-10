@@ -5,7 +5,8 @@ use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
 use crate::model::{
-    StorefrontCart, StorefrontCartData, StorefrontCartDeliveryGroup, StorefrontCartLineItem,
+    StorefrontCart, StorefrontCartAdjustment, StorefrontCartData, StorefrontCartDeliveryGroup,
+    StorefrontCartLineItem,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,7 +40,7 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode shippingProfileSlug sellerId sellerScope } deliveryGroups { shippingProfileSlug sellerId sellerScope lineItemIds selectedShippingOptionId availableShippingOptions { id } } } }";
+const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode shippingProfileSlug sellerId sellerScope } adjustments { id lineItemId sourceType sourceId amount currencyCode } deliveryGroups { shippingProfileSlug sellerId sellerScope lineItemIds selectedShippingOptionId availableShippingOptions { id } } } }";
 const UPDATE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation UpdateStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!, $input: UpdateStorefrontCartLineItemInput!) { updateStorefrontCartLineItem(cartId: $cartId, lineId: $lineId, input: $input) { id } }";
 const REMOVE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation RemoveStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!) { removeStorefrontCartLineItem(cartId: $cartId, lineId: $lineId) { id } }";
 
@@ -99,6 +100,10 @@ struct GraphqlCart {
     status: String,
     #[serde(rename = "currencyCode")]
     currency_code: String,
+    #[serde(rename = "subtotalAmount")]
+    subtotal_amount: String,
+    #[serde(rename = "adjustmentTotal")]
+    adjustment_total: String,
     #[serde(rename = "totalAmount")]
     total_amount: String,
     #[serde(rename = "channelSlug")]
@@ -114,6 +119,7 @@ struct GraphqlCart {
     locale_code: Option<String>,
     #[serde(rename = "lineItems")]
     line_items: Vec<GraphqlCartLineItem>,
+    adjustments: Vec<GraphqlCartAdjustment>,
     #[serde(rename = "deliveryGroups")]
     delivery_groups: Vec<GraphqlCartDeliveryGroup>,
 }
@@ -136,6 +142,20 @@ struct GraphqlCartLineItem {
     seller_id: Option<String>,
     #[serde(rename = "sellerScope")]
     seller_scope: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphqlCartAdjustment {
+    id: String,
+    #[serde(rename = "lineItemId")]
+    line_item_id: Option<String>,
+    #[serde(rename = "sourceType")]
+    source_type: String,
+    #[serde(rename = "sourceId")]
+    source_id: Option<String>,
+    amount: String,
+    #[serde(rename = "currencyCode")]
+    currency_code: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -395,6 +415,8 @@ fn map_graphql_cart(value: GraphqlCart) -> StorefrontCart {
         id: value.id,
         status: value.status,
         currency_code: value.currency_code,
+        subtotal_amount: value.subtotal_amount,
+        adjustment_total: value.adjustment_total,
         total_amount: value.total_amount,
         channel_slug: value.channel_slug,
         email: value.email,
@@ -416,6 +438,18 @@ fn map_graphql_cart(value: GraphqlCart) -> StorefrontCart {
                 shipping_profile_slug: item.shipping_profile_slug,
                 seller_id: item.seller_id,
                 seller_scope: item.seller_scope,
+            })
+            .collect(),
+        adjustments: value
+            .adjustments
+            .into_iter()
+            .map(|adjustment| StorefrontCartAdjustment {
+                id: adjustment.id,
+                line_item_id: adjustment.line_item_id,
+                source_type: adjustment.source_type,
+                source_id: adjustment.source_id,
+                amount: adjustment.amount,
+                currency_code: adjustment.currency_code,
             })
             .collect(),
         delivery_groups: value
@@ -479,6 +513,8 @@ fn map_native_cart(value: rustok_cart::CartResponse) -> StorefrontCart {
         id: value.id.to_string(),
         status: value.status,
         currency_code: value.currency_code,
+        subtotal_amount: value.subtotal_amount.normalize().to_string(),
+        adjustment_total: value.adjustment_total.normalize().to_string(),
         total_amount: value.total_amount.normalize().to_string(),
         channel_slug: value.channel_slug,
         email: value.email,
@@ -500,6 +536,18 @@ fn map_native_cart(value: rustok_cart::CartResponse) -> StorefrontCart {
                 shipping_profile_slug: item.shipping_profile_slug,
                 seller_id: item.seller_id,
                 seller_scope: item.seller_scope,
+            })
+            .collect(),
+        adjustments: value
+            .adjustments
+            .into_iter()
+            .map(|adjustment| StorefrontCartAdjustment {
+                id: adjustment.id.to_string(),
+                line_item_id: adjustment.line_item_id.map(|value| value.to_string()),
+                source_type: adjustment.source_type,
+                source_id: adjustment.source_id,
+                amount: adjustment.amount.normalize().to_string(),
+                currency_code: adjustment.currency_code,
             })
             .collect(),
         delivery_groups: value
