@@ -34,7 +34,7 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_REGIONS_QUERY: &str = "query StorefrontRegions($locale: String) { storefrontRegions(locale: $locale) { id name currencyCode taxRate taxIncluded countries } }";
+const STOREFRONT_REGIONS_QUERY: &str = "query StorefrontRegions($locale: String) { storefrontRegions(locale: $locale) { id name currencyCode taxProviderId taxRate taxIncluded countryTaxPolicies { countryCode taxRate taxIncluded } countries } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontRegionsResponse {
@@ -188,8 +188,18 @@ fn map_region(value: rustok_region::RegionResponse) -> StorefrontRegion {
         id: value.id.to_string(),
         name: value.name,
         currency_code: value.currency_code,
+        tax_provider_id: value.tax_provider_id,
         tax_rate: value.tax_rate.normalize().to_string(),
         tax_included: value.tax_included,
+        country_tax_policies: value
+            .country_tax_policies
+            .into_iter()
+            .map(|policy| crate::model::StorefrontRegionCountryTaxPolicy {
+                country_code: policy.country_code,
+                tax_rate: policy.tax_rate.normalize().to_string(),
+                tax_included: policy.tax_included,
+            })
+            .collect(),
         countries: value.countries,
     }
 }
@@ -214,7 +224,9 @@ async fn storefront_regions_native(
             .ok();
         let requested_locale = resolve_requested_locale(
             locale,
-            request_context.as_ref().map(|context| context.locale.as_str()),
+            request_context
+                .as_ref()
+                .map(|context| context.locale.as_str()),
             tenant.default_locale.as_str(),
         );
         let regions = RegionService::new(app_ctx.db.clone())

@@ -154,8 +154,10 @@ pub struct GqlRegion {
     pub tenant_id: Uuid,
     pub name: String,
     pub currency_code: String,
+    pub tax_provider_id: Option<String>,
     pub tax_rate: String,
     pub tax_included: bool,
+    pub country_tax_policies: Vec<GqlRegionCountryTaxPolicy>,
     pub countries: Vec<String>,
     pub metadata: String,
     pub created_at: String,
@@ -170,6 +172,13 @@ pub struct GqlRegion {
 pub struct GqlRegionTranslation {
     pub locale: String,
     pub name: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlRegionCountryTaxPolicy {
+    pub country_code: String,
+    pub tax_rate: String,
+    pub tax_included: bool,
 }
 
 #[derive(SimpleObject)]
@@ -341,6 +350,41 @@ pub struct GqlPricingAdjustmentPreview {
     pub channel_slug: Option<String>,
 }
 
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+pub enum GqlAdminCartPromotionKind {
+    PercentageDiscount,
+    FixedDiscount,
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+pub enum GqlAdminCartPromotionScope {
+    Cart,
+    LineItem,
+    Shipping,
+}
+
+#[derive(InputObject)]
+pub struct AdminCartPromotionInput {
+    pub kind: GqlAdminCartPromotionKind,
+    pub scope: GqlAdminCartPromotionScope,
+    pub line_item_id: Option<Uuid>,
+    pub source_id: String,
+    pub discount_percent: Option<String>,
+    pub amount: Option<String>,
+    pub metadata: Option<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlCartPromotionPreview {
+    pub kind: String,
+    pub scope: String,
+    pub line_item_id: Option<Uuid>,
+    pub currency_code: String,
+    pub base_amount: String,
+    pub adjustment_amount: String,
+    pub adjusted_amount: String,
+}
+
 #[derive(SimpleObject)]
 pub struct GqlCart {
     pub id: Uuid,
@@ -357,6 +401,7 @@ pub struct GqlCart {
     pub currency_code: String,
     pub subtotal_amount: String,
     pub adjustment_total: String,
+    pub shipping_total: String,
     pub total_amount: String,
     pub tax_total: String,
     pub metadata: String,
@@ -410,6 +455,7 @@ pub struct GqlCartTaxLine {
     pub line_item_id: Option<Uuid>,
     pub shipping_option_id: Option<Uuid>,
     pub description: Option<String>,
+    pub provider_id: String,
     pub rate: String,
     pub amount: String,
     pub currency_code: String,
@@ -466,6 +512,7 @@ pub struct GqlOrder {
     pub currency_code: String,
     pub subtotal_amount: String,
     pub adjustment_total: String,
+    pub shipping_total: String,
     pub total_amount: String,
     pub tax_total: String,
     pub tax_included: bool,
@@ -526,6 +573,7 @@ pub struct GqlOrderTaxLine {
     pub line_item_id: Option<Uuid>,
     pub shipping_option_id: Option<Uuid>,
     pub description: Option<String>,
+    pub provider_id: String,
     pub rate: String,
     pub amount: String,
     pub currency_code: String,
@@ -1146,8 +1194,18 @@ impl From<dto::RegionResponse> for GqlRegion {
             tenant_id: value.tenant_id,
             name: value.name,
             currency_code: value.currency_code,
+            tax_provider_id: value.tax_provider_id,
             tax_rate: value.tax_rate.to_string(),
             tax_included: value.tax_included,
+            country_tax_policies: value
+                .country_tax_policies
+                .into_iter()
+                .map(|policy| GqlRegionCountryTaxPolicy {
+                    country_code: policy.country_code,
+                    tax_rate: policy.tax_rate.to_string(),
+                    tax_included: policy.tax_included,
+                })
+                .collect(),
             countries: value.countries,
             metadata: value.metadata.to_string(),
             created_at: value.created_at.to_rfc3339(),
@@ -1465,6 +1523,7 @@ impl From<dto::CartResponse> for GqlCart {
             currency_code: value.currency_code,
             subtotal_amount: value.subtotal_amount.to_string(),
             adjustment_total: value.adjustment_total.to_string(),
+            shipping_total: value.shipping_total.to_string(),
             total_amount: value.total_amount.to_string(),
             tax_total: value.tax_total.to_string(),
             metadata: value.metadata.to_string(),
@@ -1527,6 +1586,7 @@ impl From<dto::CartTaxLineResponse> for GqlCartTaxLine {
             line_item_id: value.line_item_id,
             shipping_option_id: value.shipping_option_id,
             description: value.description,
+            provider_id: value.provider_id,
             rate: value.rate.to_string(),
             amount: value.amount.to_string(),
             currency_code: value.currency_code,
@@ -1602,6 +1662,7 @@ impl From<dto::OrderResponse> for GqlOrder {
             currency_code: order.currency_code,
             subtotal_amount: order.subtotal_amount.to_string(),
             adjustment_total: order.adjustment_total.to_string(),
+            shipping_total: order.shipping_total.to_string(),
             total_amount: order.total_amount.to_string(),
             tax_total: order.tax_total.to_string(),
             tax_included: order.tax_included,
@@ -1671,6 +1732,7 @@ impl From<dto::OrderTaxLineResponse> for GqlOrderTaxLine {
             line_item_id: item.line_item_id,
             shipping_option_id: item.shipping_option_id,
             description: item.description,
+            provider_id: item.provider_id,
             rate: item.rate.to_string(),
             amount: item.amount.to_string(),
             currency_code: item.currency_code,

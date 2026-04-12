@@ -33,6 +33,179 @@ pub struct CommerceMutation;
 
 #[Object]
 impl CommerceMutation {
+    async fn preview_admin_cart_promotion(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        input: AdminCartPromotionInput,
+    ) -> Result<GqlCartPromotionPreview> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_READ],
+            "Permission denied: orders:read required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = CartService::new(db.clone());
+        let line_item_id = validate_admin_cart_promotion_target(input.scope, input.line_item_id)?;
+        let preview = match input.kind {
+            GqlAdminCartPromotionKind::PercentageDiscount => {
+                let discount_percent = parse_required_promotion_decimal(
+                    input.discount_percent.as_deref(),
+                    "discount_percent",
+                )?;
+                ensure_no_unused_promotion_amount(input.amount.as_deref(), "amount")?;
+                match input.scope {
+                    GqlAdminCartPromotionScope::Shipping => {
+                        service
+                            .preview_percentage_shipping_promotion(
+                                tenant_id,
+                                cart_id,
+                                input.source_id.as_str(),
+                                discount_percent,
+                            )
+                            .await
+                    }
+                    GqlAdminCartPromotionScope::Cart | GqlAdminCartPromotionScope::LineItem => {
+                        service
+                            .preview_percentage_promotion(
+                                tenant_id,
+                                cart_id,
+                                line_item_id,
+                                input.source_id.as_str(),
+                                discount_percent,
+                            )
+                            .await
+                    }
+                }
+            }
+            GqlAdminCartPromotionKind::FixedDiscount => {
+                let amount = parse_required_promotion_decimal(input.amount.as_deref(), "amount")?;
+                ensure_no_unused_promotion_amount(
+                    input.discount_percent.as_deref(),
+                    "discount_percent",
+                )?;
+                match input.scope {
+                    GqlAdminCartPromotionScope::Shipping => {
+                        service
+                            .preview_fixed_shipping_promotion(
+                                tenant_id,
+                                cart_id,
+                                input.source_id.as_str(),
+                                amount,
+                            )
+                            .await
+                    }
+                    GqlAdminCartPromotionScope::Cart | GqlAdminCartPromotionScope::LineItem => {
+                        service
+                            .preview_fixed_promotion(
+                                tenant_id,
+                                cart_id,
+                                line_item_id,
+                                input.source_id.as_str(),
+                                amount,
+                            )
+                            .await
+                    }
+                }
+            }
+        }
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(map_cart_promotion_preview(input.scope, preview))
+    }
+
+    async fn apply_admin_cart_promotion(
+        &self,
+        ctx: &Context<'_>,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        input: AdminCartPromotionInput,
+    ) -> Result<GqlCart> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::ORDERS_UPDATE],
+            "Permission denied: orders:update required",
+        )?;
+
+        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let service = CartService::new(db.clone());
+        let line_item_id = validate_admin_cart_promotion_target(input.scope, input.line_item_id)?;
+        let metadata = parse_optional_metadata(input.metadata.as_deref())?;
+        let cart = match input.kind {
+            GqlAdminCartPromotionKind::PercentageDiscount => {
+                let discount_percent = parse_required_promotion_decimal(
+                    input.discount_percent.as_deref(),
+                    "discount_percent",
+                )?;
+                ensure_no_unused_promotion_amount(input.amount.as_deref(), "amount")?;
+                match input.scope {
+                    GqlAdminCartPromotionScope::Shipping => {
+                        service
+                            .apply_percentage_shipping_promotion(
+                                tenant_id,
+                                cart_id,
+                                input.source_id.as_str(),
+                                discount_percent,
+                                metadata,
+                            )
+                            .await
+                    }
+                    GqlAdminCartPromotionScope::Cart | GqlAdminCartPromotionScope::LineItem => {
+                        service
+                            .apply_percentage_promotion(
+                                tenant_id,
+                                cart_id,
+                                line_item_id,
+                                input.source_id.as_str(),
+                                discount_percent,
+                                metadata,
+                            )
+                            .await
+                    }
+                }
+            }
+            GqlAdminCartPromotionKind::FixedDiscount => {
+                let amount = parse_required_promotion_decimal(input.amount.as_deref(), "amount")?;
+                ensure_no_unused_promotion_amount(
+                    input.discount_percent.as_deref(),
+                    "discount_percent",
+                )?;
+                match input.scope {
+                    GqlAdminCartPromotionScope::Shipping => {
+                        service
+                            .apply_fixed_shipping_promotion(
+                                tenant_id,
+                                cart_id,
+                                input.source_id.as_str(),
+                                amount,
+                                metadata,
+                            )
+                            .await
+                    }
+                    GqlAdminCartPromotionScope::Cart | GqlAdminCartPromotionScope::LineItem => {
+                        service
+                            .apply_fixed_promotion(
+                                tenant_id,
+                                cart_id,
+                                line_item_id,
+                                input.source_id.as_str(),
+                                amount,
+                                metadata,
+                            )
+                            .await
+                    }
+                }
+            }
+        }
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+
+        Ok(cart.into())
+    }
+
     async fn update_admin_pricing_variant_price(
         &self,
         ctx: &Context<'_>,
@@ -397,28 +570,22 @@ impl CommerceMutation {
         .await?;
 
         let updated = cart_service
-            .add_line_item(tenant_id, cart_id, resolved_input)
+            .add_line_item_with_pricing_adjustment(
+                tenant_id,
+                cart_id,
+                resolved_input.add_line_item,
+                resolved_input.pricing_adjustment,
+            )
             .await?;
-        let updated = reprice_storefront_cart_line_items(
+        Ok(enrich_storefront_cart(
             db,
             tenant_id,
             request_context,
-            event_bus,
-            &cart_service,
+            tenant.default_locale.as_str(),
             updated,
         )
-        .await?;
-        Ok(
-            enrich_storefront_cart(
-                db,
-                tenant_id,
-                request_context,
-                tenant.default_locale.as_str(),
-                updated,
-            )
-                .await?
-                .into(),
-        )
+        .await?
+        .into())
     }
 
     async fn update_storefront_cart_context(
@@ -615,17 +782,15 @@ impl CommerceMutation {
                 .update_line_item_quantity(tenant_id, cart_id, line_id, input.quantity)
                 .await?
         };
-        Ok(
-            enrich_storefront_cart(
-                db,
-                tenant_id,
-                request_context,
-                tenant.default_locale.as_str(),
-                updated,
-            )
-                .await?
-                .into(),
+        Ok(enrich_storefront_cart(
+            db,
+            tenant_id,
+            request_context,
+            tenant.default_locale.as_str(),
+            updated,
         )
+        .await?
+        .into())
     }
 
     async fn remove_storefront_cart_line_item(
@@ -650,17 +815,15 @@ impl CommerceMutation {
         let updated = cart_service
             .remove_line_item(tenant_id, cart_id, line_id)
             .await?;
-        Ok(
-            enrich_storefront_cart(
-                db,
-                tenant_id,
-                ctx.data::<RequestContext>()?,
-                tenant.default_locale.as_str(),
-                updated,
-            )
-                .await?
-                .into(),
+        Ok(enrich_storefront_cart(
+            db,
+            tenant_id,
+            ctx.data::<RequestContext>()?,
+            tenant.default_locale.as_str(),
+            updated,
         )
+        .await?
+        .into())
     }
 
     async fn create_storefront_payment_collection(
@@ -1178,24 +1341,24 @@ impl CommerceMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-            let profile = ShippingProfileService::new(db.clone())
-                .create_shipping_profile(
-                    tenant_id,
-                    crate::dto::CreateShippingProfileInput {
-                        slug: input.slug,
-                        translations: input
-                            .translations
-                            .into_iter()
-                            .map(|translation| crate::dto::ShippingProfileTranslationInput {
-                                locale: translation.locale,
-                                name: translation.name,
-                                description: translation.description,
-                            })
-                            .collect(),
-                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
-                    },
-                )
-                .await?;
+        let profile = ShippingProfileService::new(db.clone())
+            .create_shipping_profile(
+                tenant_id,
+                crate::dto::CreateShippingProfileInput {
+                    slug: input.slug,
+                    translations: input
+                        .translations
+                        .into_iter()
+                        .map(|translation| crate::dto::ShippingProfileTranslationInput {
+                            locale: translation.locale,
+                            name: translation.name,
+                            description: translation.description,
+                        })
+                        .collect(),
+                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                },
+            )
+            .await?;
 
         Ok(profile.into())
     }
@@ -1215,27 +1378,27 @@ impl CommerceMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-            let profile = ShippingProfileService::new(db.clone())
-                .update_shipping_profile(
-                    tenant_id,
-                    id,
-                    crate::dto::UpdateShippingProfileInput {
-                        slug: input.slug,
-                        translations: input.translations.map(|translations| {
-                            translations
-                                .into_iter()
-                                .map(|translation| crate::dto::ShippingProfileTranslationInput {
-                                    locale: translation.locale,
-                                    name: translation.name,
-                                    description: translation.description,
-                                })
-                                .collect()
-                        }),
-                        metadata: if input.metadata.is_some() {
-                            Some(parse_optional_metadata(input.metadata.as_deref())?)
-                        } else {
-                            None
-                        },
+        let profile = ShippingProfileService::new(db.clone())
+            .update_shipping_profile(
+                tenant_id,
+                id,
+                crate::dto::UpdateShippingProfileInput {
+                    slug: input.slug,
+                    translations: input.translations.map(|translations| {
+                        translations
+                            .into_iter()
+                            .map(|translation| crate::dto::ShippingProfileTranslationInput {
+                                locale: translation.locale,
+                                name: translation.name,
+                                description: translation.description,
+                            })
+                            .collect()
+                    }),
+                    metadata: if input.metadata.is_some() {
+                        Some(parse_optional_metadata(input.metadata.as_deref())?)
+                    } else {
+                        None
+                    },
                 },
             )
             .await?;
@@ -1791,6 +1954,69 @@ fn parse_pricing_currency_code(value: &str) -> Result<String> {
     Ok(normalized)
 }
 
+fn validate_admin_cart_promotion_target(
+    scope: GqlAdminCartPromotionScope,
+    line_item_id: Option<Uuid>,
+) -> Result<Option<Uuid>> {
+    match scope {
+        GqlAdminCartPromotionScope::Cart | GqlAdminCartPromotionScope::Shipping => {
+            if line_item_id.is_some() {
+                return Err(async_graphql::Error::new(
+                    "line_item_id is allowed only for line_item scope",
+                ));
+            }
+            Ok(None)
+        }
+        GqlAdminCartPromotionScope::LineItem => line_item_id.map(Some).ok_or_else(|| {
+            async_graphql::Error::new("line_item_id is required for line_item scope")
+        }),
+    }
+}
+
+fn parse_required_promotion_decimal(value: Option<&str>, field: &str) -> Result<Decimal> {
+    let Some(value) = value else {
+        return Err(async_graphql::Error::new(format!(
+            "{field} is required for the selected promotion kind"
+        )));
+    };
+    parse_decimal(value)
+}
+
+fn ensure_no_unused_promotion_amount(value: Option<&str>, field: &str) -> Result<()> {
+    if value.is_some() {
+        return Err(async_graphql::Error::new(format!(
+            "{field} must be omitted for the selected promotion kind"
+        )));
+    }
+    Ok(())
+}
+
+fn map_cart_promotion_preview(
+    scope: GqlAdminCartPromotionScope,
+    preview: rustok_cart::services::cart::CartPromotionPreview,
+) -> GqlCartPromotionPreview {
+    GqlCartPromotionPreview {
+        kind: match preview.kind {
+            rustok_cart::services::cart::CartPromotionKind::PercentageDiscount => {
+                "percentage_discount".to_string()
+            }
+            rustok_cart::services::cart::CartPromotionKind::FixedDiscount => {
+                "fixed_discount".to_string()
+            }
+        },
+        scope: match scope {
+            GqlAdminCartPromotionScope::Cart => "cart".to_string(),
+            GqlAdminCartPromotionScope::LineItem => "line_item".to_string(),
+            GqlAdminCartPromotionScope::Shipping => "shipping".to_string(),
+        },
+        line_item_id: preview.line_item_id,
+        currency_code: preview.currency_code,
+        base_amount: preview.base_amount.to_string(),
+        adjustment_amount: preview.adjustment_amount.to_string(),
+        adjusted_amount: preview.adjusted_amount.to_string(),
+    }
+}
+
 fn normalize_pricing_channel_slug(channel_slug: Option<&str>) -> Option<String> {
     channel_slug
         .map(str::trim)
@@ -2020,8 +2246,8 @@ async fn enrich_storefront_cart(
         Some(request_context.locale.as_str()),
         Some(tenant_default_locale),
     )
-        .await
-        .map_err(|err| async_graphql::Error::new(err.to_string()))
+    .await
+    .map_err(|err| async_graphql::Error::new(err.to_string()))
 }
 
 fn request_public_channel_slug(ctx: &Context<'_>) -> Option<String> {
@@ -2182,7 +2408,7 @@ async fn resolve_storefront_line_item_input(
     default_locale: &str,
     public_channel_slug: Option<&str>,
     input: AddStorefrontCartLineItemInput,
-) -> Result<crate::dto::AddCartLineItemInput> {
+) -> Result<ResolvedStorefrontLineItemInput> {
     let variant = product_variant::Entity::find_by_id(input.variant_id)
         .filter(product_variant::Column::TenantId.eq(tenant_id))
         .one(db)
@@ -2220,6 +2446,8 @@ async fn resolve_storefront_line_item_input(
                 variant.id, currency_code
             ))
         })?;
+    let (base_unit_price, pricing_adjustment) =
+        storefront_cart_pricing_snapshot(input.quantity, &resolved_price);
     validate_storefront_variant_inventory(
         db,
         tenant_id,
@@ -2229,11 +2457,7 @@ async fn resolve_storefront_line_item_input(
     )
     .await?;
 
-    let base_title = pick_product_translation(
-        &product_translation_models,
-        locale,
-        default_locale,
-    )
+    let base_title = pick_product_translation(&product_translation_models, locale, default_locale)
         .map(|translation| translation.title.clone())
         .unwrap_or_else(|| {
             variant
@@ -2250,23 +2474,31 @@ async fn resolve_storefront_line_item_input(
         _ => base_title,
     };
 
-    Ok(crate::dto::AddCartLineItemInput {
-        product_id: Some(product_model.id),
-        variant_id: Some(variant.id),
-        shipping_profile_slug: Some(effective_shipping_profile_slug(
-            product_model.shipping_profile_slug.as_deref(),
-            &product_model.metadata,
-            variant.shipping_profile_slug.as_deref(),
-        )),
-        sku: variant.sku.clone(),
-        title,
-        quantity: input.quantity,
-        unit_price: resolved_price.amount,
-        metadata: merge_graphql_metadata(
-            parse_optional_metadata(input.metadata.as_deref())?,
-            seller_snapshot_metadata(product_model.seller_id.as_deref()),
-        ),
+    Ok(ResolvedStorefrontLineItemInput {
+        add_line_item: crate::dto::AddCartLineItemInput {
+            product_id: Some(product_model.id),
+            variant_id: Some(variant.id),
+            shipping_profile_slug: Some(effective_shipping_profile_slug(
+                product_model.shipping_profile_slug.as_deref(),
+                &product_model.metadata,
+                variant.shipping_profile_slug.as_deref(),
+            )),
+            sku: variant.sku.clone(),
+            title,
+            quantity: input.quantity,
+            unit_price: base_unit_price,
+            metadata: merge_graphql_metadata(
+                parse_optional_metadata(input.metadata.as_deref())?,
+                seller_snapshot_metadata(product_model.seller_id.as_deref()),
+            ),
+        },
+        pricing_adjustment,
     })
+}
+
+struct ResolvedStorefrontLineItemInput {
+    add_line_item: crate::dto::AddCartLineItemInput,
+    pricing_adjustment: Option<rustok_cart::services::cart::CartPricingAdjustmentUpdate>,
 }
 
 fn pick_product_translation<'a>(
@@ -2395,6 +2627,23 @@ fn storefront_cart_pricing_update(
     quantity: i32,
     resolved_price: &rustok_pricing::ResolvedPrice,
 ) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
+    let (base_unit_price, pricing_adjustment) =
+        storefront_cart_pricing_snapshot(quantity, resolved_price);
+
+    rustok_cart::services::cart::CartLineItemPricingUpdate {
+        line_item_id,
+        unit_price: base_unit_price,
+        pricing_adjustment,
+    }
+}
+
+fn storefront_cart_pricing_snapshot(
+    quantity: i32,
+    resolved_price: &rustok_pricing::ResolvedPrice,
+) -> (
+    Decimal,
+    Option<rustok_cart::services::cart::CartPricingAdjustmentUpdate>,
+) {
     let base_unit_price = resolved_price
         .compare_at_amount
         .filter(|compare_at| *compare_at > resolved_price.amount)
@@ -2454,11 +2703,7 @@ fn storefront_cart_pricing_update(
         None
     };
 
-    rustok_cart::services::cart::CartLineItemPricingUpdate {
-        line_item_id,
-        unit_price: base_unit_price,
-        pricing_adjustment,
-    }
+    (base_unit_price, pricing_adjustment)
 }
 
 fn normalize_graphql_seller_scope(value: Option<&str>) -> Option<String> {

@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
@@ -40,7 +41,7 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode shippingProfileSlug sellerId sellerScope } adjustments { id lineItemId sourceType sourceId amount currencyCode } deliveryGroups { shippingProfileSlug sellerId sellerScope lineItemIds selectedShippingOptionId availableShippingOptions { id } } } }";
+const STOREFRONT_CART_QUERY: &str = "query StorefrontCart($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode lineItems { id title sku quantity unitPrice totalPrice currencyCode shippingProfileSlug sellerId sellerScope } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId sellerScope lineItemIds selectedShippingOptionId availableShippingOptions { id } } } }";
 const UPDATE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation UpdateStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!, $input: UpdateStorefrontCartLineItemInput!) { updateStorefrontCartLineItem(cartId: $cartId, lineId: $lineId, input: $input) { id } }";
 const REMOVE_STOREFRONT_CART_LINE_ITEM_MUTATION: &str = "mutation RemoveStorefrontCartLineItem($cartId: UUID!, $lineId: UUID!) { removeStorefrontCartLineItem(cartId: $cartId, lineId: $lineId) { id } }";
 
@@ -104,6 +105,8 @@ struct GraphqlCart {
     subtotal_amount: String,
     #[serde(rename = "adjustmentTotal")]
     adjustment_total: String,
+    #[serde(rename = "shippingTotal")]
+    shipping_total: String,
     #[serde(rename = "totalAmount")]
     total_amount: String,
     #[serde(rename = "channelSlug")]
@@ -156,6 +159,7 @@ struct GraphqlCartAdjustment {
     amount: String,
     #[serde(rename = "currencyCode")]
     currency_code: String,
+    metadata: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -241,6 +245,17 @@ fn normalize_cart_id(value: Option<String>) -> Option<String> {
             Some(trimmed.to_string())
         }
     })
+}
+
+fn parse_adjustment_scope(metadata: &str) -> Option<String> {
+    serde_json::from_str::<Value>(metadata)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("scope")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
 }
 
 fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
@@ -424,6 +439,7 @@ fn map_graphql_cart(value: GraphqlCart) -> StorefrontCart {
         currency_code: value.currency_code,
         subtotal_amount: value.subtotal_amount,
         adjustment_total: value.adjustment_total,
+        shipping_total: value.shipping_total,
         total_amount: value.total_amount,
         channel_slug: value.channel_slug,
         email: value.email,
@@ -455,8 +471,10 @@ fn map_graphql_cart(value: GraphqlCart) -> StorefrontCart {
                 line_item_id: adjustment.line_item_id,
                 source_type: adjustment.source_type,
                 source_id: adjustment.source_id,
+                scope: parse_adjustment_scope(&adjustment.metadata),
                 amount: adjustment.amount,
                 currency_code: adjustment.currency_code,
+                metadata: adjustment.metadata,
             })
             .collect(),
         delivery_groups: value
@@ -522,6 +540,7 @@ fn map_native_cart(value: rustok_cart::CartResponse) -> StorefrontCart {
         currency_code: value.currency_code,
         subtotal_amount: value.subtotal_amount.normalize().to_string(),
         adjustment_total: value.adjustment_total.normalize().to_string(),
+        shipping_total: value.shipping_total.normalize().to_string(),
         total_amount: value.total_amount.normalize().to_string(),
         channel_slug: value.channel_slug,
         email: value.email,
@@ -553,8 +572,14 @@ fn map_native_cart(value: rustok_cart::CartResponse) -> StorefrontCart {
                 line_item_id: adjustment.line_item_id.map(|value| value.to_string()),
                 source_type: adjustment.source_type,
                 source_id: adjustment.source_id,
+                scope: adjustment
+                    .metadata
+                    .get("scope")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
                 amount: adjustment.amount.normalize().to_string(),
                 currency_code: adjustment.currency_code,
+                metadata: adjustment.metadata.to_string(),
             })
             .collect(),
         delivery_groups: value
@@ -801,7 +826,8 @@ fn storefront_cart_pricing_update(
 
         Some(rustok_cart::services::cart::CartPricingAdjustmentUpdate {
             source_id: resolved_price.price_list_id.map(|value| value.to_string()),
-            amount: (base_unit_price - resolved_price.amount) * rust_decimal::Decimal::from(quantity),
+            amount: (base_unit_price - resolved_price.amount)
+                * rust_decimal::Decimal::from(quantity),
             metadata: serde_json::Value::Object(metadata),
         })
     } else {

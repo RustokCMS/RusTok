@@ -54,6 +54,7 @@ graph TD
         PROFILES["rustok-profiles"]
         REGION["rustok-region"]
         PRICING["rustok-pricing"]
+        TAX["rustok-tax"]
         INVENTORY["rustok-inventory"]
         ORDER["rustok-order"]
         PAYMENT["rustok-payment"]
@@ -99,6 +100,7 @@ graph TD
     SERVER --> PROFILES
     SERVER --> REGION
     SERVER --> PRICING
+    SERVER --> TAX
     SERVER --> INVENTORY
     SERVER --> ORDER
     SERVER --> PAYMENT
@@ -121,6 +123,7 @@ graph TD
     COMMERCE --> ORDER
     COMMERCE --> PAYMENT
     COMMERCE --> FULFILLMENT
+    CART --> TAX
     BLOG --> CONTENT
     BLOG --> COMMENTS
     BLOG --> TAXONOMY
@@ -168,11 +171,12 @@ graph TD
 | `profiles` | `rustok-profiles` | `taxonomy` | Public profile layer поверх `users`, author/member summary |
 | `region` | `rustok-region` | — | Region, country, currency, tax baseline, region-owned admin CRUD UI и storefront discovery UI |
 | `pricing` | `rustok-pricing` | `product` | Pricing domain baseline, pricing-owned admin visibility UI и storefront pricing atlas UI |
+| `tax` | `rustok-tax` | — | Tax domain foundation, provider seam, default `region_default` tax runtime и typed `provider_id` tax-line contract |
 | `inventory` | `rustok-inventory` | `product` | Inventory, stock availability baseline и inventory-owned admin visibility UI |
 | `order` | `rustok-order` | — | Order lifecycle, order snapshots with canonical `seller_id`, typed order adjustments, и order-owned admin operations UI |
 | `payment` | `rustok-payment` | — | Payment collections и payments |
 | `fulfillment` | `rustok-fulfillment` | — | Shipping options, fulfillments и fulfillment-owned shipping-option admin UI |
-| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `inventory`, `order`, `payment`, `fulfillment` | Umbrella/root ecommerce orchestration, typed shipping-profile registry и marketplace foundation вокруг canonical `seller_id` |
+| `commerce` | `rustok-commerce` | `cart`, `customer`, `product`, `region`, `pricing`, `tax`, `inventory`, `order`, `payment`, `fulfillment` | Umbrella/root ecommerce orchestration, typed shipping-profile registry, aggregate cart-promotion operator surface и marketplace foundation вокруг canonical `seller_id` |
 | `blog` | `rustok-blog` | `content`, `comments`, `taxonomy` | Blog domain, posts, categories, tags, transport/UI |
 | `forum` | `rustok-forum` | `content`, `taxonomy` | Forum domain, topics, replies, moderation, transport/UI |
 | `comments` | `rustok-comments` | — | Generic comments domain |

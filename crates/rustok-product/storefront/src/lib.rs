@@ -141,11 +141,8 @@ fn SelectedProductCard(
         }.into_any();
     };
 
-    let translation = product_translation_for_locale(
-        product.translations.as_slice(),
-        locale.as_deref(),
-    )
-    .cloned();
+    let translation =
+        product_translation_for_locale(product.translations.as_slice(), locale.as_deref()).cloned();
     let variant = product.variants.first().cloned();
     let title = translation
         .as_ref()

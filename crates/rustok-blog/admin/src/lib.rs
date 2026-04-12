@@ -6,8 +6,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::{AdminQueryKey, UiRouteContext};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostListItem};
@@ -190,24 +190,22 @@ pub fn BlogAdmin() -> impl IntoView {
     });
     let initial_edit_post = edit_post.clone();
     let effect_default_locale = default_locale.clone();
-    Effect::new(move |_| {
-        match selected_post_query.get() {
-            Some(post_id) if !post_id.trim().is_empty() => {
-                initial_edit_post.run((post_id, effect_default_locale.clone()));
-            }
-            _ => reset_form(
-                set_editing_post_id,
-                set_title,
-                set_slug,
-                set_excerpt,
-                set_body,
-                set_locale,
-                set_body_format,
-                set_tags_input,
-                set_publish_now,
-                effect_default_locale.as_str(),
-            ),
+    Effect::new(move |_| match selected_post_query.get() {
+        Some(post_id) if !post_id.trim().is_empty() => {
+            initial_edit_post.run((post_id, effect_default_locale.clone()));
         }
+        _ => reset_form(
+            set_editing_post_id,
+            set_title,
+            set_slug,
+            set_excerpt,
+            set_body,
+            set_locale,
+            set_body_format,
+            set_tags_input,
+            set_publish_now,
+            effect_default_locale.as_str(),
+        ),
     });
 
     let submit_ui_locale = ui_locale.clone();

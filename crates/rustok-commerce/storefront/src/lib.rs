@@ -9,8 +9,9 @@ use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
 use crate::model::{
-    StorefrontCheckoutCart, StorefrontCheckoutCompletion, StorefrontCheckoutDeliveryGroup,
-    StorefrontCheckoutPaymentCollection, StorefrontCheckoutWorkspace, StorefrontCommerceData,
+    StorefrontCheckoutAdjustment, StorefrontCheckoutCart, StorefrontCheckoutCompletion,
+    StorefrontCheckoutDeliveryGroup, StorefrontCheckoutPaymentCollection,
+    StorefrontCheckoutWorkspace, StorefrontCommerceData,
 };
 
 #[component]
@@ -319,6 +320,7 @@ fn CheckoutWorkspace(
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.status", "Cart status") value=cart.status.clone() />
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.subtotal", "Cart subtotal") value=format!("{} {}", cart.currency_code, cart.subtotal_amount) />
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.adjustments", "Cart adjustments") value=format!("{} {}", cart.currency_code, cart.adjustment_total) />
+                            <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.shippingTotal", "Cart shipping") value=format!("{} {}", cart.currency_code, cart.shipping_total) />
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.total", "Cart total") value=format!("{} {}", cart.currency_code, cart.total_amount) />
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.lineItems", "Line items") value=cart.line_item_count.to_string() />
                             <MetricCard title=t(locale.as_deref(), "commerce.checkout.cart.adjustmentCount", "Adjustment rows") value=cart.adjustment_count.to_string() />
@@ -333,6 +335,9 @@ fn CheckoutWorkspace(
                                 pending_label=t(shipping_pending_locale.as_deref(), "commerce.checkout.pending", "Processing...")
                                 on_select_shipping_option
                             />
+                        </div>
+                        <div class="mt-6">
+                            <AdjustmentsCard adjustments=cart.adjustments.clone() />
                         </div>
                         <div class="mt-6 grid gap-3 md:grid-cols-2">
                             <a class="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm font-medium text-card-foreground transition hover:bg-muted" href=cart_href>
@@ -641,12 +646,69 @@ fn CheckoutCompletionCard(result: StorefrontCheckoutCompletion) -> impl IntoView
             <h4 class="mt-2 text-base font-semibold text-card-foreground">{result.order_id}</h4>
             <div class="mt-4 grid gap-3 md:grid-cols-2">
                 <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.orderStatus", "Order status") value=result.order_status />
+                <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.shipping", "Order shipping") value=format!("{} {}", result.currency_code, result.shipping_total) />
+                <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.adjustments", "Order adjustments") value=format!("{} {}", result.currency_code, result.adjustment_total) />
                 <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.total", "Order total") value=format!("{} {}", result.currency_code, result.total_amount) />
                 <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.collection", "Payment collection") value=result.payment_collection_id />
                 <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.collectionStatus", "Collection status") value=result.payment_collection_status />
                 <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.fulfillments", "Fulfillments") value=result.fulfillment_count.to_string() />
                 <MetricCard title=t(locale.as_deref(), "commerce.checkout.result.locale", "Resolved locale") value=result.context_locale />
             </div>
+            <div class="mt-4">
+                <AdjustmentsCard adjustments=result.adjustments />
+            </div>
+        </article>
+    }
+}
+
+#[component]
+fn AdjustmentsCard(adjustments: Vec<StorefrontCheckoutAdjustment>) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+
+    view! {
+        <article class="rounded-2xl border border-border bg-card p-5">
+            <div class="flex items-center justify-between gap-3">
+                <h4 class="text-base font-semibold text-card-foreground">
+                    {t(locale.as_deref(), "commerce.checkout.adjustments.title", "Typed adjustments")}
+                </h4>
+                <span class="text-sm text-muted-foreground">{adjustments.len().to_string()}</span>
+            </div>
+            {if adjustments.is_empty() {
+                view! {
+                    <p class="mt-3 text-sm text-muted-foreground">
+                        {t(locale.as_deref(), "commerce.checkout.adjustments.empty", "No typed adjustments are attached to this checkout snapshot.")}
+                    </p>
+                }.into_any()
+            } else {
+                view! {
+                    <div class="mt-4 space-y-3">
+                        {adjustments.into_iter().map(|adjustment| {
+                            let locale = locale.clone();
+                            let source = adjustment.source_id.unwrap_or_else(|| t(locale.as_deref(), "commerce.context.empty", "not resolved"));
+                            let scope = adjustment.scope.unwrap_or_else(|| t(locale.as_deref(), "commerce.context.empty", "not resolved"));
+                            let line_item = adjustment.line_item_id.unwrap_or_else(|| t(locale.as_deref(), "commerce.context.empty", "not resolved"));
+                            let metadata = adjustment.metadata;
+                            view! {
+                                <article class="rounded-2xl border border-border/70 bg-background/60 p-4">
+                                    <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{adjustment.source_type}</div>
+                                    <div class="mt-2 grid gap-2 md:grid-cols-4">
+                                        <MetricCard title=t(locale.as_deref(), "commerce.checkout.adjustments.source", "Source") value=source />
+                                        <MetricCard title=t(locale.as_deref(), "commerce.checkout.adjustments.scope", "Scope") value=scope />
+                                        <MetricCard title=t(locale.as_deref(), "commerce.checkout.adjustments.lineItem", "Line item") value=line_item />
+                                        <MetricCard title=t(locale.as_deref(), "commerce.checkout.adjustments.amount", "Amount") value=format!("{} {}", adjustment.currency_code, adjustment.amount) />
+                                    </div>
+                                    <div class="mt-3 rounded-2xl border border-border/60 bg-card p-3">
+                                        <div class="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                            {t(locale.as_deref(), "commerce.checkout.adjustments.metadata", "Metadata")}
+                                        </div>
+                                        <pre class="mt-2 whitespace-pre-wrap break-all text-xs text-muted-foreground">{metadata}</pre>
+                                    </div>
+                                </article>
+                            }
+                        }).collect_view()}
+                    </div>
+                }.into_any()
+            }}
         </article>
     }
 }

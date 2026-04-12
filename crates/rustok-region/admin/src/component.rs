@@ -1,8 +1,8 @@
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_api::{AdminQueryKey, UiRouteContext};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{RegionAdminBootstrap, RegionDetail, RegionDraft, RegionListItem};
@@ -19,8 +19,10 @@ pub fn RegionAdmin() -> impl IntoView {
     let (selected, set_selected) = signal(Option::<RegionDetail>::None);
     let (name, set_name) = signal(String::new());
     let (currency_code, set_currency_code) = signal(String::new());
+    let (tax_provider_id, set_tax_provider_id) = signal(String::new());
     let (tax_rate, set_tax_rate) = signal("0".to_string());
     let (tax_included, set_tax_included) = signal(false);
+    let (country_tax_policies, set_country_tax_policies) = signal("[]".to_string());
     let (countries, set_countries) = signal(String::new());
     let (metadata, set_metadata) = signal("{}".to_string());
     let (busy, set_busy) = signal(false);
@@ -77,8 +79,10 @@ pub fn RegionAdmin() -> impl IntoView {
         set_selected.set(None);
         set_name.set(String::new());
         set_currency_code.set(String::new());
+        set_tax_provider_id.set(String::new());
         set_tax_rate.set("0".to_string());
         set_tax_included.set(false);
+        set_country_tax_policies.set("[]".to_string());
         set_countries.set(String::new());
         set_metadata.set("{}".to_string());
         set_error.set(None);
@@ -97,8 +101,10 @@ pub fn RegionAdmin() -> impl IntoView {
                     set_selected,
                     set_name,
                     set_currency_code,
+                    set_tax_provider_id,
                     set_tax_rate,
                     set_tax_included,
+                    set_country_tax_policies,
                     set_countries,
                     set_metadata,
                 ),
@@ -108,8 +114,10 @@ pub fn RegionAdmin() -> impl IntoView {
                         set_selected,
                         set_name,
                         set_currency_code,
+                        set_tax_provider_id,
                         set_tax_rate,
                         set_tax_included,
+                        set_country_tax_policies,
                         set_countries,
                         set_metadata,
                     );
@@ -120,23 +128,23 @@ pub fn RegionAdmin() -> impl IntoView {
         });
     });
     let initial_open_region = open_region.clone();
-    Effect::new(move |_| {
-        match selected_region_query.get() {
-            Some(region_id) if !region_id.trim().is_empty() => {
-                initial_open_region.run(region_id);
-            }
-            _ => {
-                clear_region_form(
-                    set_editing_id,
-                    set_selected,
-                    set_name,
-                    set_currency_code,
-                    set_tax_rate,
-                    set_tax_included,
-                    set_countries,
-                    set_metadata,
-                );
-            }
+    Effect::new(move |_| match selected_region_query.get() {
+        Some(region_id) if !region_id.trim().is_empty() => {
+            initial_open_region.run(region_id);
+        }
+        _ => {
+            clear_region_form(
+                set_editing_id,
+                set_selected,
+                set_name,
+                set_currency_code,
+                set_tax_provider_id,
+                set_tax_rate,
+                set_tax_included,
+                set_country_tax_policies,
+                set_countries,
+                set_metadata,
+            );
         }
     });
 
@@ -167,8 +175,10 @@ pub fn RegionAdmin() -> impl IntoView {
             name: name.get_untracked(),
             locale: submit_locale,
             currency_code: currency_code.get_untracked(),
+            tax_provider_id: tax_provider_id.get_untracked(),
             tax_rate: tax_rate.get_untracked(),
             tax_included: tax_included.get_untracked(),
+            country_tax_policies: country_tax_policies.get_untracked(),
             countries: countries.get_untracked(),
             metadata: metadata.get_untracked(),
         };
@@ -191,8 +201,10 @@ pub fn RegionAdmin() -> impl IntoView {
                         set_selected,
                         set_name,
                         set_currency_code,
+                        set_tax_provider_id,
                         set_tax_rate,
                         set_tax_included,
+                        set_country_tax_policies,
                         set_countries,
                         set_metadata,
                     );
@@ -330,12 +342,16 @@ pub fn RegionAdmin() -> impl IntoView {
                             <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.name", "Region name") prop:value=move || name.get() on:input=move |ev| set_name.set(event_target_value(&ev)) />
                             <div class="grid gap-4 md:grid-cols-2">
                                 <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.currencyCode", "Currency code") prop:value=move || currency_code.get() on:input=move |ev| set_currency_code.set(event_target_value(&ev)) />
+                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.taxProviderId", "Tax provider ID (optional)") prop:value=move || tax_provider_id.get() on:input=move |ev| set_tax_provider_id.set(event_target_value(&ev)) />
+                            </div>
+                            <div class="grid gap-4 md:grid-cols-2">
                                 <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.taxRate", "Tax rate") prop:value=move || tax_rate.get() on:input=move |ev| set_tax_rate.set(event_target_value(&ev)) />
                             </div>
                             <label class="flex items-center gap-3 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground">
                                 <input type="checkbox" prop:checked=move || tax_included.get() on:change=move |ev| set_tax_included.set(event_target_checked(&ev)) />
                                 <span>{t(ui_locale.as_deref(), "region.field.taxIncluded", "Prices already include tax")}</span>
                             </label>
+                            <textarea class="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.countryTaxPolicies", "Country tax policies JSON") prop:value=move || country_tax_policies.get() on:input=move |ev| set_country_tax_policies.set(event_target_value(&ev))>{move || country_tax_policies.get()}</textarea>
                             <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "region.field.countries", "Countries (BY, RU, KZ)") prop:value=move || countries.get() on:input=move |ev| set_countries.set(event_target_value(&ev)) />
                             <textarea class="min-h-44 w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm text-foreground outline-none transition focus:border-primary" prop:value=move || metadata.get() on:input=move |ev| set_metadata.set(event_target_value(&ev))>{move || metadata.get()}</textarea>
                             <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
@@ -371,6 +387,7 @@ pub fn RegionAdmin() -> impl IntoView {
                                         <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale_for_detail.as_deref(), "region.section.policy", "Policy Baseline")}</h4>
                                         <div class="mt-4 space-y-2 text-sm text-muted-foreground">
                                             <p>{format!("currency: {}", detail.region.currency_code)}</p>
+                                            <p>{format!("tax provider: {}", detail.region.tax_provider_id.clone().unwrap_or_else(|| "region_default".to_string()))}</p>
                                             <p>{format!("tax rate: {}", detail.region.tax_rate)}</p>
                                             <p>{if detail.region.tax_included { t(ui_locale_for_detail.as_deref(), "region.common.taxIncluded", "tax included") } else { t(ui_locale_for_detail.as_deref(), "region.common.taxExcluded", "tax excluded") }}</p>
                                         </div>
@@ -379,6 +396,11 @@ pub fn RegionAdmin() -> impl IntoView {
                                         <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale_for_detail.as_deref(), "region.section.countries", "Country Coverage")}</h4>
                                         <p class="mt-4 text-sm text-muted-foreground">{detail.region.countries.join(", ")}</p>
                                     </div>
+                                </div>
+
+                                <div class="rounded-2xl border border-border bg-background p-5">
+                                    <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(ui_locale_for_detail.as_deref(), "region.section.countryTaxPolicies", "Country Tax Policies")}</h4>
+                                    <pre class="mt-4 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">{detail.region.country_tax_policies_pretty.clone()}</pre>
                                 </div>
 
                                 <div class="rounded-2xl border border-border bg-background p-5">
@@ -400,8 +422,10 @@ fn apply_region_detail(
     set_selected: WriteSignal<Option<RegionDetail>>,
     set_name: WriteSignal<String>,
     set_currency_code: WriteSignal<String>,
+    set_tax_provider_id: WriteSignal<String>,
     set_tax_rate: WriteSignal<String>,
     set_tax_included: WriteSignal<bool>,
+    set_country_tax_policies: WriteSignal<String>,
     set_countries: WriteSignal<String>,
     set_metadata: WriteSignal<String>,
 ) {
@@ -409,8 +433,10 @@ fn apply_region_detail(
     set_selected.set(Some(detail.clone()));
     set_name.set(detail.region.name.clone());
     set_currency_code.set(detail.region.currency_code.clone());
+    set_tax_provider_id.set(detail.region.tax_provider_id.clone().unwrap_or_default());
     set_tax_rate.set(detail.region.tax_rate.clone());
     set_tax_included.set(detail.region.tax_included);
+    set_country_tax_policies.set(detail.region.country_tax_policies_pretty.clone());
     set_countries.set(detail.region.countries.join(", "));
     set_metadata.set(detail.region.metadata_pretty.clone());
 }
@@ -420,8 +446,10 @@ fn clear_region_form(
     set_selected: WriteSignal<Option<RegionDetail>>,
     set_name: WriteSignal<String>,
     set_currency_code: WriteSignal<String>,
+    set_tax_provider_id: WriteSignal<String>,
     set_tax_rate: WriteSignal<String>,
     set_tax_included: WriteSignal<bool>,
+    set_country_tax_policies: WriteSignal<String>,
     set_countries: WriteSignal<String>,
     set_metadata: WriteSignal<String>,
 ) {
@@ -429,8 +457,10 @@ fn clear_region_form(
     set_selected.set(None);
     set_name.set(String::new());
     set_currency_code.set(String::new());
+    set_tax_provider_id.set(String::new());
     set_tax_rate.set("0".to_string());
     set_tax_included.set(false);
+    set_country_tax_policies.set("[]".to_string());
     set_countries.set(String::new());
     set_metadata.set("{}".to_string());
 }

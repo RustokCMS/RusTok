@@ -7,8 +7,8 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::{AdminQueryKey, UiRouteContext};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::api::ApiError;
 use crate::i18n::t;
@@ -214,7 +214,8 @@ pub fn MediaAdmin() -> impl IntoView {
                             let media_id = item.id;
                             set_selected_media_id.set(Some(media_id.clone()));
                             set_refresh_nonce.update(|value| *value += 1);
-                            upload_query_writer.replace_value(AdminQueryKey::MediaId.as_str(), media_id);
+                            upload_query_writer
+                                .replace_value(AdminQueryKey::MediaId.as_str(), media_id);
                         }
                         Err(err) => set_upload_error.set(Some(format!(
                             "{}: {err}",

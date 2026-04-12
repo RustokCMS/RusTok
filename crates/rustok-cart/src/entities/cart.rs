@@ -18,6 +18,7 @@ pub struct Model {
     pub selected_shipping_option_id: Option<Uuid>,
     pub status: String,
     pub currency_code: String,
+    pub shipping_total: Decimal,
     pub total_amount: Decimal,
     pub tax_total: Decimal,
     pub metadata: Json,

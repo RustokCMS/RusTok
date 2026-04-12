@@ -48,3 +48,62 @@ pub struct ShippingProfileDraft {
     pub metadata_json: String,
     pub locale: String,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CommerceCartPromotionKind {
+    PercentageDiscount,
+    FixedDiscount,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CommerceCartPromotionScope {
+    Cart,
+    LineItem,
+    Shipping,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CommerceCartPromotionDraft {
+    pub kind: CommerceCartPromotionKind,
+    pub scope: CommerceCartPromotionScope,
+    pub line_item_id: String,
+    pub source_id: String,
+    pub discount_percent: String,
+    pub amount: String,
+    pub metadata_json: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CommerceCartPromotionPreview {
+    pub kind: CommerceCartPromotionKind,
+    pub scope: CommerceCartPromotionScope,
+    pub line_item_id: Option<String>,
+    pub currency_code: String,
+    pub base_amount: String,
+    pub adjustment_amount: String,
+    pub adjusted_amount: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CommerceAdminCartAdjustment {
+    pub id: String,
+    pub line_item_id: Option<String>,
+    pub source_type: String,
+    pub source_id: Option<String>,
+    pub scope: Option<String>,
+    pub amount: String,
+    pub currency_code: String,
+    pub metadata: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CommerceAdminCartSnapshot {
+    pub id: String,
+    pub currency_code: String,
+    pub shipping_total: String,
+    pub adjustment_total: String,
+    pub total_amount: String,
+    pub adjustments: Vec<CommerceAdminCartAdjustment>,
+}

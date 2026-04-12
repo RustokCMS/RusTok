@@ -16,4 +16,6 @@ pub enum CartError {
     InvalidTransition { from: String, to: String },
     #[error(transparent)]
     Database(#[from] DbErr),
+    #[error(transparent)]
+    Tax(#[from] rustok_tax::TaxError),
 }

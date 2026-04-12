@@ -8,7 +8,7 @@ use rustok_commerce::dto::{
 use rustok_commerce::services::{
     CartService, CatalogService, CheckoutError, CheckoutService, FulfillmentService, PaymentService,
 };
-use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
+use rustok_region::dto::{CreateRegionInput, RegionCountryTaxPolicyInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -162,8 +162,10 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
                     name: "Europe".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-test" }),
             },
@@ -249,6 +251,18 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
     assert_eq!(completed.cart.delivery_groups.len(), 1);
     assert_eq!(completed.context.locale, "de");
     assert_eq!(completed.context.currency_code.as_deref(), Some("USD"));
+    assert_eq!(
+        completed.cart.shipping_total,
+        Decimal::from_str("9.99").unwrap()
+    );
+    assert_eq!(
+        completed.order.shipping_total,
+        Decimal::from_str("9.99").unwrap()
+    );
+    assert_eq!(
+        completed.payment_collection.amount,
+        Decimal::from_str("59.99").unwrap()
+    );
     assert_eq!(completed.cart.region_id, Some(region.id));
     assert_eq!(completed.cart.country_code.as_deref(), Some("DE"));
     assert_eq!(completed.cart.locale_code.as_deref(), Some("de"));
@@ -267,9 +281,175 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
             .and_then(|value| value.shipping_option_id),
         Some(shipping_option.id)
     );
+    assert!(!completed.cart.tax_lines.is_empty());
+    assert!(!completed.order.tax_lines.is_empty());
+    assert!(completed
+        .cart
+        .tax_lines
+        .iter()
+        .all(|line| line.provider_id == "region_default"));
+    assert!(completed
+        .order
+        .tax_lines
+        .iter()
+        .all(|line| line.provider_id == "region_default"));
+    assert!(completed.order.tax_lines.iter().all(|line| line
+        .metadata
+        .get("tax_included")
+        .and_then(|value| value.as_bool())
+        == Some(true)));
     assert_eq!(
         completed.fulfillments[0].metadata["delivery_group"]["shipping_profile_slug"],
         serde_json::json!("default")
+    );
+}
+
+#[tokio::test]
+async fn cart_add_line_item_rejects_unknown_tax_provider_id_on_region() {
+    let (db, cart_service, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Tax Provider Region".to_string(),
+                }],
+                currency_code: "usd".to_string(),
+                tax_provider_id: Some("external_tax".to_string()),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: false,
+                country_tax_policies: None,
+                countries: vec!["us".to_string()],
+                metadata: serde_json::json!({ "source": "unknown-tax-provider-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("buyer@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("us".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "unknown-tax-provider-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let error = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
+                sku: Some("CHK-TAX-1".to_string()),
+                title: "Tax Provider Product".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect_err("unknown tax provider should be rejected");
+
+    match error {
+        rustok_cart::CartError::Tax(inner) => {
+            assert!(inner
+                .to_string()
+                .contains("unknown tax provider_id: external_tax"));
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+}
+
+#[tokio::test]
+async fn cart_add_line_item_prefers_country_tax_policy_over_region_baseline() {
+    let (db, cart_service, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Country Tax Region".to_string(),
+                }],
+                currency_code: "usd".to_string(),
+                tax_provider_id: None,
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: false,
+                country_tax_policies: Some(vec![RegionCountryTaxPolicyInput {
+                    country_code: "de".to_string(),
+                    tax_rate: Decimal::from_str("7.00").expect("valid decimal"),
+                    tax_included: true,
+                }]),
+                countries: vec!["de".to_string(), "fr".to_string()],
+                metadata: serde_json::json!({ "source": "country-tax-policy-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("buyer@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: None,
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "country-tax-policy-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
+                sku: Some("CHK-TAX-DE".to_string()),
+                title: "Country Tax Product".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("107.00").expect("valid decimal"),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+        .expect("country-specific tax policy should be applied");
+
+    assert_eq!(cart.tax_total, Decimal::from_str("7.00").unwrap());
+    assert_eq!(cart.tax_lines.len(), 1);
+    assert_eq!(cart.tax_lines[0].rate, Decimal::from_str("7.00").unwrap());
+    assert_eq!(
+        cart.tax_lines[0].metadata["country_code"],
+        serde_json::json!("DE")
+    );
+    assert_eq!(
+        cart.tax_lines[0].metadata["policy_scope"],
+        serde_json::json!("country")
     );
 }
 
@@ -288,8 +468,10 @@ async fn complete_checkout_snapshots_cart_adjustments_into_order_and_payment_tot
                     name: "United States".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::ZERO,
                 tax_included: false,
+                country_tax_policies: None,
                 countries: vec!["us".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-adjustment-test" }),
             },
@@ -369,7 +551,8 @@ async fn complete_checkout_snapshots_cart_adjustments_into_order_and_payment_tot
 
     assert_eq!(cart.subtotal_amount, Decimal::from_str("60.00").unwrap());
     assert_eq!(cart.adjustment_total, Decimal::from_str("10.00").unwrap());
-    assert_eq!(cart.total_amount, Decimal::from_str("50.00").unwrap());
+    assert_eq!(cart.shipping_total, Decimal::from_str("9.99").unwrap());
+    assert_eq!(cart.total_amount, Decimal::from_str("59.99").unwrap());
 
     let completed = checkout
         .complete_checkout(
@@ -398,8 +581,12 @@ async fn complete_checkout_snapshots_cart_adjustments_into_order_and_payment_tot
         Decimal::from_str("10.00").unwrap()
     );
     assert_eq!(
+        completed.cart.shipping_total,
+        Decimal::from_str("9.99").unwrap()
+    );
+    assert_eq!(
         completed.cart.total_amount,
-        Decimal::from_str("50.00").unwrap()
+        Decimal::from_str("59.99").unwrap()
     );
     assert_eq!(
         completed.order.subtotal_amount,
@@ -410,8 +597,12 @@ async fn complete_checkout_snapshots_cart_adjustments_into_order_and_payment_tot
         Decimal::from_str("10.00").unwrap()
     );
     assert_eq!(
+        completed.order.shipping_total,
+        Decimal::from_str("9.99").unwrap()
+    );
+    assert_eq!(
         completed.order.total_amount,
-        Decimal::from_str("50.00").unwrap()
+        Decimal::from_str("59.99").unwrap()
     );
     assert_eq!(completed.order.adjustments.len(), 1);
     assert_eq!(completed.order.adjustments[0].source_type, "promotion");
@@ -429,11 +620,450 @@ async fn complete_checkout_snapshots_cart_adjustments_into_order_and_payment_tot
         .is_none());
     assert_eq!(
         completed.payment_collection.amount,
-        Decimal::from_str("50.00").unwrap()
+        Decimal::from_str("59.99").unwrap()
     );
     assert_eq!(
         completed.payment_collection.captured_amount,
-        Decimal::from_str("50.00").unwrap()
+        Decimal::from_str("59.99").unwrap()
+    );
+}
+
+#[tokio::test]
+async fn complete_checkout_snapshots_typed_percentage_promotion_into_order() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "United States".to_string(),
+                }],
+                currency_code: "usd".to_string(),
+                tax_provider_id: None,
+                tax_rate: Decimal::ZERO,
+                tax_included: false,
+                country_tax_policies: None,
+                countries: vec!["us".to_string()],
+                metadata: serde_json::json!({ "source": "checkout-typed-promotion-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: None,
+                metadata: serde_json::json!({ "source": "checkout-typed-promotion-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("typed-promo@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("us".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-typed-promotion-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
+                sku: Some("PROMO-1".to_string()),
+                title: "Promotion Checkout Product".to_string(),
+                quantity: 2,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .apply_percentage_promotion(
+            tenant_id,
+            cart.id,
+            None,
+            "promo-typed-cart-10",
+            Decimal::from_str("10").unwrap(),
+            serde_json::json!({
+                "display_label": "Ten percent off"
+            }),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.subtotal_amount, Decimal::from_str("50.00").unwrap());
+    assert_eq!(cart.adjustment_total, Decimal::from_str("5.00").unwrap());
+    assert_eq!(cart.shipping_total, Decimal::from_str("9.99").unwrap());
+    assert_eq!(cart.total_amount, Decimal::from_str("54.99").unwrap());
+
+    let completed = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                shipping_selections: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-typed-promotion-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(completed.order.adjustments.len(), 1);
+    assert_eq!(completed.order.adjustments[0].source_type, "promotion");
+    assert_eq!(
+        completed.order.adjustments[0].source_id.as_deref(),
+        Some("promo-typed-cart-10")
+    );
+    assert_eq!(completed.order.adjustments[0].line_item_id, None);
+    assert_eq!(
+        completed.order.adjustments[0].metadata["kind"],
+        serde_json::json!("percentage_discount")
+    );
+    assert_eq!(
+        completed.order.adjustments[0].metadata["scope"],
+        serde_json::json!("cart")
+    );
+    assert!(completed.order.adjustments[0]
+        .metadata
+        .get("display_label")
+        .is_none());
+    assert_eq!(
+        completed.payment_collection.amount,
+        Decimal::from_str("54.99").unwrap()
+    );
+}
+
+#[tokio::test]
+async fn complete_checkout_snapshots_pricing_reprice_adjustments_into_order() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "United States".to_string(),
+                }],
+                currency_code: "usd".to_string(),
+                tax_provider_id: None,
+                tax_rate: Decimal::ZERO,
+                tax_included: false,
+                country_tax_policies: None,
+                countries: vec!["us".to_string()],
+                metadata: serde_json::json!({ "source": "checkout-pricing-adjustment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: None,
+                metadata: serde_json::json!({ "source": "checkout-pricing-adjustment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("pricing@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("us".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-pricing-adjustment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
+                sku: Some("PRICE-1".to_string()),
+                title: "Priced Checkout Product".to_string(),
+                quantity: 2,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+    let line_item_id = cart.line_items[0].id;
+    let cart = cart_service
+        .reprice_line_items(
+            tenant_id,
+            cart.id,
+            vec![rustok_cart::services::cart::CartLineItemPricingUpdate {
+                line_item_id,
+                unit_price: Decimal::from_str("30.00").expect("valid decimal"),
+                pricing_adjustment: Some(
+                    rustok_cart::services::cart::CartPricingAdjustmentUpdate {
+                        source_id: Some("price-list-checkout".to_string()),
+                        amount: Decimal::from_str("10.00").expect("valid decimal"),
+                        metadata: serde_json::json!({
+                            "kind": "price_list",
+                            "discount_percent": "16.67",
+                            "display_label": "Pricing sale"
+                        }),
+                    },
+                ),
+            }],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.subtotal_amount, Decimal::from_str("60.00").unwrap());
+    assert_eq!(cart.adjustment_total, Decimal::from_str("10.00").unwrap());
+    assert_eq!(cart.shipping_total, Decimal::from_str("9.99").unwrap());
+    assert_eq!(cart.total_amount, Decimal::from_str("59.99").unwrap());
+    assert_eq!(cart.adjustments[0].source_type, "pricing");
+
+    let completed = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                shipping_selections: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-pricing-adjustment-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        completed.order.subtotal_amount,
+        Decimal::from_str("60.00").unwrap()
+    );
+    assert_eq!(
+        completed.order.adjustment_total,
+        Decimal::from_str("10.00").unwrap()
+    );
+    assert_eq!(
+        completed.order.shipping_total,
+        Decimal::from_str("9.99").unwrap()
+    );
+    assert_eq!(
+        completed.order.total_amount,
+        Decimal::from_str("59.99").unwrap()
+    );
+    assert_eq!(completed.order.adjustments.len(), 1);
+    assert_eq!(completed.order.adjustments[0].source_type, "pricing");
+    assert_eq!(
+        completed.order.adjustments[0].source_id.as_deref(),
+        Some("price-list-checkout")
+    );
+    assert!(completed.order.adjustments[0]
+        .metadata
+        .get("display_label")
+        .is_none());
+    assert_eq!(
+        completed.payment_collection.amount,
+        Decimal::from_str("59.99").unwrap()
+    );
+}
+
+#[tokio::test]
+async fn complete_checkout_snapshots_shipping_promotion_into_order_and_payment_total() {
+    let (db, cart_service, checkout, fulfillment) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "United States".to_string(),
+                }],
+                currency_code: "usd".to_string(),
+                tax_provider_id: None,
+                tax_rate: Decimal::ZERO,
+                tax_included: false,
+                country_tax_policies: None,
+                countries: vec!["us".to_string()],
+                metadata: serde_json::json!({ "source": "checkout-shipping-promotion-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
+                currency_code: "usd".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: None,
+                metadata: serde_json::json!({ "source": "checkout-shipping-promotion-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("shipping-promo@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("us".to_string()),
+                locale_code: Some("en".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "usd".to_string(),
+                metadata: serde_json::json!({ "source": "checkout-shipping-promotion-test" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: None,
+                variant_id: None,
+                shipping_profile_slug: None,
+                sku: Some("SHIP-PROMO-1".to_string()),
+                title: "Shipping Promo Product".to_string(),
+                quantity: 2,
+                unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                metadata: serde_json::json!({ "slot": 1 }),
+            },
+        )
+        .await
+        .unwrap();
+
+    let cart = cart_service
+        .apply_fixed_shipping_promotion(
+            tenant_id,
+            cart.id,
+            "promo-shipping-fixed",
+            Decimal::from_str("4.99").unwrap(),
+            serde_json::json!({
+                "display_label": "Half off shipping"
+            }),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(cart.subtotal_amount, Decimal::from_str("50.00").unwrap());
+    assert_eq!(cart.shipping_total, Decimal::from_str("9.99").unwrap());
+    assert_eq!(cart.adjustment_total, Decimal::from_str("4.99").unwrap());
+    assert_eq!(cart.total_amount, Decimal::from_str("55.00").unwrap());
+
+    let completed = checkout
+        .complete_checkout(
+            tenant_id,
+            actor_id,
+            CompleteCheckoutInput {
+                cart_id: cart.id,
+                shipping_option_id: None,
+                shipping_selections: None,
+                region_id: None,
+                country_code: None,
+                locale: None,
+                create_fulfillment: true,
+                metadata: serde_json::json!({ "flow": "checkout-shipping-promotion-test" }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        completed.order.shipping_total,
+        Decimal::from_str("9.99").unwrap()
+    );
+    assert_eq!(completed.order.adjustments.len(), 1);
+    assert_eq!(completed.order.adjustments[0].source_type, "promotion");
+    assert_eq!(
+        completed.order.adjustments[0].source_id.as_deref(),
+        Some("promo-shipping-fixed")
+    );
+    assert_eq!(
+        completed.order.adjustments[0].metadata["scope"],
+        serde_json::json!("shipping")
+    );
+    assert!(completed.order.adjustments[0]
+        .metadata
+        .get("display_label")
+        .is_none());
+    assert_eq!(
+        completed.order.total_amount,
+        Decimal::from_str("55.00").unwrap()
+    );
+    assert_eq!(
+        completed.payment_collection.amount,
+        Decimal::from_str("55.00").unwrap()
     );
 }
 
@@ -927,8 +1557,10 @@ async fn repeated_complete_checkout_recovers_existing_result() {
                     name: "Europe".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-retry-test" }),
             },
@@ -1047,8 +1679,10 @@ async fn complete_checkout_reuses_existing_cart_payment_collection() {
                     name: "Europe".to_string(),
                 }],
                 currency_code: "eur".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-existing-collection-test" }),
             },
@@ -1164,8 +1798,10 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
                     name: "Germany".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-context-priority-test" }),
             },
@@ -1181,8 +1817,10 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
                     name: "France".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["fr".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-context-priority-test" }),
             },
@@ -1313,8 +1951,10 @@ async fn complete_checkout_recovers_stuck_checking_out_cart_when_paid_artifacts_
                     name: "Europe".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-recovery-test" }),
             },
@@ -1443,8 +2083,10 @@ async fn checkout_failure_releases_cart_back_to_active() {
                     name: "Europe".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-lock-release-test" }),
             },
@@ -1531,8 +2173,10 @@ async fn checkout_preflight_failure_does_not_create_payment_or_order_artifacts()
                     name: "Europe".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-compensation-test" }),
             },
@@ -1622,8 +2266,10 @@ async fn retry_after_preflight_failure_creates_checkout_artifacts() {
                     name: "Europe".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-retry-after-failure-test" }),
             },
@@ -1752,8 +2398,10 @@ async fn checkout_without_fulfillment_flag_skips_fulfillment_creation() {
                     name: "Europe".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string()],
                 metadata: serde_json::json!({ "source": "checkout-without-fulfillment-test" }),
             },
@@ -1850,8 +2498,10 @@ async fn mixed_cart_creates_delivery_groups_and_uses_typed_shipping_selections()
                     name: "United States".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
                 tax_included: false,
+                country_tax_policies: None,
                 countries: vec!["us".to_string()],
                 metadata: serde_json::json!({ "source": "delivery-groups-test" }),
             },
@@ -2013,8 +2663,10 @@ async fn complete_checkout_rejects_missing_shipping_selection_for_delivery_group
                     name: "United States".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
                 tax_included: false,
+                country_tax_policies: None,
                 countries: vec!["us".to_string()],
                 metadata: serde_json::json!({ "source": "missing-selection-test" }),
             },
@@ -2139,8 +2791,10 @@ async fn complete_checkout_creates_multiple_fulfillments_for_delivery_groups() {
                     name: "United States".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
                 tax_included: false,
+                country_tax_policies: None,
                 countries: vec!["us".to_string()],
                 metadata: serde_json::json!({ "source": "multi-fulfillment-test" }),
             },
@@ -2319,8 +2973,10 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
                     name: "United States".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
                 tax_included: false,
+                country_tax_policies: None,
                 countries: vec!["us".to_string()],
                 metadata: serde_json::json!({ "source": "seller-aware-fulfillment-test" }),
             },
@@ -2558,8 +3214,10 @@ async fn complete_checkout_rejects_stale_shipping_profile_snapshot_after_variant
                     name: "Europe".to_string(),
                 }],
                 currency_code: "usd".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string()],
                 metadata: serde_json::json!({ "source": "stale-shipping-profile-test" }),
             },

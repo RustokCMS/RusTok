@@ -6,10 +6,9 @@ use leptos_router::hooks::{use_location, use_navigate, use_query_map};
 use leptos_router::NavigateOptions;
 use rustok_api::UiRouteContext;
 
-type RouteQuerySanitizeFn =
-    dyn Fn(Option<&str>, Option<&str>, &BTreeMap<String, String>) -> BTreeMap<String, String>
-        + Send
-        + Sync;
+type RouteQuerySanitizeFn = dyn Fn(Option<&str>, Option<&str>, &BTreeMap<String, String>) -> BTreeMap<String, String>
+    + Send
+    + Sync;
 
 #[derive(Clone)]
 pub struct RouteQueryPolicy {
@@ -79,9 +78,14 @@ pub fn use_route_query_value(key: &'static str) -> Signal<Option<String>> {
             .latest_values()
             .map(|(query_key, query_value)| (query_key.to_string(), query_value.to_string()))
             .collect::<BTreeMap<_, _>>();
-        sanitize_route_query(policy.as_ref(), route_segment.as_deref(), subpath.as_deref(), &query)
-            .get(key)
-            .cloned()
+        sanitize_route_query(
+            policy.as_ref(),
+            route_segment.as_deref(),
+            subpath.as_deref(),
+            &query,
+        )
+        .get(key)
+        .cloned()
     })
 }
 
@@ -126,8 +130,7 @@ pub fn use_route_query_writer() -> RouteQueryWriter {
             let href = if next_query.is_empty() {
                 pathname
             } else {
-                let query = serde_urlencoded::to_string(next_query)
-                    .unwrap_or_default();
+                let query = serde_urlencoded::to_string(next_query).unwrap_or_default();
                 format!("{pathname}?{query}")
             };
 

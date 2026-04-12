@@ -24,6 +24,7 @@ pub struct StorefrontCheckoutCart {
     pub currency_code: String,
     pub subtotal_amount: String,
     pub adjustment_total: String,
+    pub shipping_total: String,
     pub total_amount: String,
     pub channel_slug: Option<String>,
     pub email: Option<String>,
@@ -35,7 +36,20 @@ pub struct StorefrontCheckoutCart {
     pub line_item_count: u64,
     pub adjustment_count: u64,
     pub delivery_group_count: u64,
+    pub adjustments: Vec<StorefrontCheckoutAdjustment>,
     pub delivery_groups: Vec<StorefrontCheckoutDeliveryGroup>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StorefrontCheckoutAdjustment {
+    pub id: String,
+    pub line_item_id: Option<String>,
+    pub source_type: String,
+    pub source_id: Option<String>,
+    pub scope: Option<String>,
+    pub amount: String,
+    pub currency_code: String,
+    pub metadata: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -78,7 +92,10 @@ pub struct StorefrontCheckoutCompletion {
     pub order_id: String,
     pub order_status: String,
     pub currency_code: String,
+    pub shipping_total: String,
+    pub adjustment_total: String,
     pub total_amount: String,
+    pub adjustments: Vec<StorefrontCheckoutAdjustment>,
     pub payment_collection_id: String,
     pub payment_collection_status: String,
     pub fulfillment_count: u64,

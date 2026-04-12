@@ -245,11 +245,8 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
-        let requested_locale = resolve_commerce_graphql_locale(
-            ctx,
-            locale.as_deref(),
-            tenant.default_locale.as_str(),
-        );
+        let requested_locale =
+            resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
         let regions = RegionService::new(db.clone())
             .list_regions(
                 tenant_id,
@@ -452,7 +449,7 @@ impl CommerceQuery {
             Some(request_context.locale.as_str()),
             Some(tenant.default_locale.as_str()),
         )
-            .await?;
+        .await?;
         Ok(Some(cart.into()))
     }
 

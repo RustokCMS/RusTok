@@ -3,9 +3,9 @@ use std::collections::BTreeSet;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_core::locale_tags_match;
-use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use uuid::Uuid;
 
 use crate::i18n::t;
@@ -226,19 +226,17 @@ pub fn PricingAdmin() -> impl IntoView {
             refresh_open_product.run(product_id);
         }
     });
-    Effect::new(move |_| {
-        match selected_product_query.get() {
-            Some(product_id) if !product_id.trim().is_empty() => {
-                if bootstrap.get().and_then(Result::ok).is_none() {
-                    return;
-                }
-                initial_open_product.run(product_id);
+    Effect::new(move |_| match selected_product_query.get() {
+        Some(product_id) if !product_id.trim().is_empty() => {
+            if bootstrap.get().and_then(Result::ok).is_none() {
+                return;
             }
-            _ => {
-                set_selected_id.set(None);
-                set_selected.set(None);
-                set_applied_resolution_context.set(None);
-            }
+            initial_open_product.run(product_id);
+        }
+        _ => {
+            set_selected_id.set(None);
+            set_selected.set(None);
+            set_applied_resolution_context.set(None);
         }
     });
     Effect::new(move |_| {

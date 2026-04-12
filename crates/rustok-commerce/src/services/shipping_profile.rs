@@ -1,10 +1,10 @@
 use chrono::Utc;
+use sea_orm::sea_query::Expr;
+use sea_orm::Condition;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Value,
 };
-use sea_orm::sea_query::Expr;
-use sea_orm::Condition;
 use std::collections::{HashMap, HashSet};
 use tracing::instrument;
 use uuid::Uuid;
@@ -89,8 +89,7 @@ impl ShippingProfileService {
             .filter(|s| !s.is_empty())
         {
             let backend = self.db.get_database_backend();
-            let condition =
-                shipping_profile_translation_search_condition(backend, search.trim());
+            let condition = shipping_profile_translation_search_condition(backend, search.trim());
             query = query.filter(
                 Condition::any()
                     .add(shipping_profile::Column::Slug.contains(search))
@@ -320,15 +319,8 @@ async fn load_profiles_with_translations(
     Ok(rows
         .into_iter()
         .map(|row| {
-            let translations = translations_by_profile
-                .remove(&row.id)
-                .unwrap_or_default();
-            map_shipping_profile(
-                row,
-                translations,
-                requested_locale,
-                tenant_default_locale,
-            )
+            let translations = translations_by_profile.remove(&row.id).unwrap_or_default();
+            map_shipping_profile(row, translations, requested_locale, tenant_default_locale)
         })
         .collect())
 }
@@ -346,8 +338,11 @@ fn map_shipping_profile(
     let requested_locale = requested_locale
         .and_then(normalize_locale_tag)
         .filter(|value| !value.is_empty());
-    let (resolved, effective_locale) =
-        resolve_translation(&translations, requested_locale.as_deref(), tenant_default_locale);
+    let (resolved, effective_locale) = resolve_translation(
+        &translations,
+        requested_locale.as_deref(),
+        tenant_default_locale,
+    );
 
     let (name, description) = resolved
         .map(|translation| (translation.name.clone(), translation.description.clone()))
@@ -440,9 +435,7 @@ async fn replace_translations(
     translations: &[ShippingProfileTranslationInput],
 ) -> CommerceResult<()> {
     shipping_profile_translation::Entity::delete_many()
-        .filter(
-            shipping_profile_translation::Column::ShippingProfileId.eq(shipping_profile_id),
-        )
+        .filter(shipping_profile_translation::Column::ShippingProfileId.eq(shipping_profile_id))
         .exec(db)
         .await?;
     insert_translations(db, shipping_profile_id, translations).await
@@ -452,7 +445,10 @@ fn resolve_translation<'a>(
     translations: &'a [shipping_profile_translation::Model],
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
-) -> (Option<&'a shipping_profile_translation::Model>, Option<String>) {
+) -> (
+    Option<&'a shipping_profile_translation::Model>,
+    Option<String>,
+) {
     let mut lookup = HashMap::new();
     for translation in translations {
         if let Some(normalized) = normalize_locale_tag(&translation.locale) {
@@ -500,5 +496,8 @@ fn shipping_profile_translation_search_condition(
         }
     };
 
-    Condition::all().add(Expr::cust_with_values(exists_sql, vec![Value::from(pattern)]))
+    Condition::all().add(Expr::cust_with_values(
+        exists_sql,
+        vec![Value::from(pattern)],
+    ))
 }

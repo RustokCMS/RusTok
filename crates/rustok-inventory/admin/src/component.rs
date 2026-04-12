@@ -1,9 +1,9 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_core::locale_tags_match;
-use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{
@@ -141,18 +141,16 @@ pub fn InventoryAdmin() -> impl IntoView {
     let effective_locale_for_detail = effective_locale.clone();
     let initial_open_product = open_product.clone();
     let list_query_writer = query_writer.clone();
-    Effect::new(move |_| {
-        match selected_product_query.get() {
-            Some(product_id) if !product_id.trim().is_empty() => {
-                if bootstrap.get().and_then(Result::ok).is_none() {
-                    return;
-                }
-                initial_open_product.run(product_id);
+    Effect::new(move |_| match selected_product_query.get() {
+        Some(product_id) if !product_id.trim().is_empty() => {
+            if bootstrap.get().and_then(Result::ok).is_none() {
+                return;
             }
-            _ => {
-                set_selected_id.set(None);
-                set_selected.set(None);
-            }
+            initial_open_product.run(product_id);
+        }
+        _ => {
+            set_selected_id.set(None);
+            set_selected.set(None);
         }
     });
 

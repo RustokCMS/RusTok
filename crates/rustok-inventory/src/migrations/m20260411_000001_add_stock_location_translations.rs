@@ -129,7 +129,7 @@ impl MigrationTrait for Migration {
                         ORDER BY locale
                         LIMIT 1
                     ), '')"
-                .to_string(),
+                    .to_string(),
             ))
             .await?;
 

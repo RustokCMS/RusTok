@@ -10,9 +10,12 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_commerce_foundation::entities::region;
+use rustok_commerce_foundation::entities::{region, region_country_tax_policy};
 use rustok_core::{generate_id, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_fulfillment::entities::shipping_option;
+use rustok_tax::{
+    TaxCalculationInput, TaxPolicyCountryRule, TaxPolicySnapshot, TaxService, TaxableAmount,
+};
 
 use crate::dto::{
     AddCartLineItemInput, CartAdjustmentResponse, CartDeliveryGroupResponse, CartLineItemResponse,
@@ -42,6 +45,7 @@ struct DeliveryGroupSnapshot {
 
 pub struct CartService {
     db: DatabaseConnection,
+    tax_service: TaxService,
 }
 
 #[derive(Clone, Debug)]
@@ -58,11 +62,34 @@ pub struct CartPricingAdjustmentUpdate {
     pub metadata: Value,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CartPromotionKind {
+    PercentageDiscount,
+    FixedDiscount,
+}
+
+#[derive(Clone, Debug)]
+pub struct CartPromotionPreview {
+    pub kind: CartPromotionKind,
+    pub line_item_id: Option<Uuid>,
+    pub currency_code: String,
+    pub base_amount: Decimal,
+    pub adjustment_amount: Decimal,
+    pub adjusted_amount: Decimal,
+}
+
 const PRICING_ADJUSTMENT_SOURCE_TYPE: &str = "pricing";
+const PROMOTION_ADJUSTMENT_SOURCE_TYPE: &str = "promotion";
+const CART_PROMOTION_SCOPE: &str = "cart";
+const LINE_ITEM_PROMOTION_SCOPE: &str = "line_item";
+const SHIPPING_PROMOTION_SCOPE: &str = "shipping";
 
 impl CartService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            tax_service: TaxService::new(),
+        }
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id))]
@@ -123,6 +150,7 @@ impl CartService {
             selected_shipping_option_id: Set(input.selected_shipping_option_id),
             status: Set(STATUS_ACTIVE.to_string()),
             currency_code: Set(currency_code),
+            shipping_total: Set(Decimal::ZERO),
             total_amount: Set(Decimal::ZERO),
             tax_total: Set(Decimal::ZERO),
             metadata: Set(input.metadata),
@@ -147,6 +175,17 @@ impl CartService {
         tenant_id: Uuid,
         cart_id: Uuid,
         input: AddCartLineItemInput,
+    ) -> CartResult<CartResponse> {
+        self.add_line_item_with_pricing_adjustment(tenant_id, cart_id, input, None)
+            .await
+    }
+
+    pub async fn add_line_item_with_pricing_adjustment(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        input: AddCartLineItemInput,
+        pricing_adjustment: Option<CartPricingAdjustmentUpdate>,
     ) -> CartResult<CartResponse> {
         input
             .validate()
@@ -196,6 +235,13 @@ impl CartService {
             updated_at: Set(now.into()),
         }
         .insert(&txn)
+        .await?;
+        self.replace_pricing_adjustments(
+            &txn,
+            cart_id,
+            cart.currency_code.as_str(),
+            vec![(line_item_id, pricing_adjustment)],
+        )
         .await?;
 
         self.recalculate_totals(&txn, cart).await?;
@@ -323,6 +369,298 @@ impl CartService {
         self.recalculate_totals(&txn, cart).await?;
         txn.commit().await?;
         self.get_cart(tenant_id, cart_id).await
+    }
+
+    pub async fn preview_percentage_promotion(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        line_item_id: Option<Uuid>,
+        source_id: &str,
+        discount_percent: Decimal,
+    ) -> CartResult<CartPromotionPreview> {
+        validate_promotion_percent(discount_percent)?;
+
+        let cart = self.load_cart(tenant_id, cart_id).await?;
+        ensure_active(&cart.status, "preview_percentage_promotion")?;
+        let line_items = entities::cart_line_item::Entity::find()
+            .filter(entities::cart_line_item::Column::CartId.eq(cart_id))
+            .all(&self.db)
+            .await?;
+        let adjustments = entities::cart_adjustment::Entity::find()
+            .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))
+            .all(&self.db)
+            .await?;
+        let source_id = normalize_required_adjustment_source_id(source_id)?;
+        let base_amount =
+            resolve_promotion_base_amount(&line_items, &adjustments, line_item_id, &source_id)?;
+        let adjusted_amount = (base_amount
+            * ((Decimal::from(100) - discount_percent) / Decimal::from(100)))
+        .round_dp(2);
+        let adjustment_amount = (base_amount - adjusted_amount).round_dp(2);
+
+        Ok(CartPromotionPreview {
+            kind: CartPromotionKind::PercentageDiscount,
+            line_item_id,
+            currency_code: cart.currency_code,
+            base_amount,
+            adjustment_amount,
+            adjusted_amount,
+        })
+    }
+
+    pub async fn apply_percentage_promotion(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        line_item_id: Option<Uuid>,
+        source_id: &str,
+        discount_percent: Decimal,
+        metadata: Value,
+    ) -> CartResult<CartResponse> {
+        let preview = self
+            .preview_percentage_promotion(
+                tenant_id,
+                cart_id,
+                line_item_id,
+                source_id,
+                discount_percent,
+            )
+            .await?;
+        let metadata = promotion_metadata(
+            metadata,
+            CartPromotionKind::PercentageDiscount,
+            if line_item_id.is_some() {
+                LINE_ITEM_PROMOTION_SCOPE
+            } else {
+                CART_PROMOTION_SCOPE
+            },
+            Some(discount_percent),
+            None,
+        );
+
+        self.apply_promotion_adjustment(
+            tenant_id,
+            cart_id,
+            line_item_id,
+            source_id,
+            preview.adjustment_amount,
+            if line_item_id.is_some() {
+                LINE_ITEM_PROMOTION_SCOPE
+            } else {
+                CART_PROMOTION_SCOPE
+            },
+            metadata,
+        )
+        .await
+    }
+
+    pub async fn preview_fixed_promotion(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        line_item_id: Option<Uuid>,
+        source_id: &str,
+        amount: Decimal,
+    ) -> CartResult<CartPromotionPreview> {
+        validate_fixed_promotion_amount(amount)?;
+
+        let cart = self.load_cart(tenant_id, cart_id).await?;
+        ensure_active(&cart.status, "preview_fixed_promotion")?;
+        let line_items = entities::cart_line_item::Entity::find()
+            .filter(entities::cart_line_item::Column::CartId.eq(cart_id))
+            .all(&self.db)
+            .await?;
+        let adjustments = entities::cart_adjustment::Entity::find()
+            .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))
+            .all(&self.db)
+            .await?;
+        let source_id = normalize_required_adjustment_source_id(source_id)?;
+        let base_amount =
+            resolve_promotion_base_amount(&line_items, &adjustments, line_item_id, &source_id)?;
+        if amount > base_amount {
+            return Err(CartError::Validation(
+                "promotion amount cannot exceed the remaining base amount".to_string(),
+            ));
+        }
+
+        Ok(CartPromotionPreview {
+            kind: CartPromotionKind::FixedDiscount,
+            line_item_id,
+            currency_code: cart.currency_code,
+            base_amount,
+            adjustment_amount: amount.round_dp(2),
+            adjusted_amount: (base_amount - amount).round_dp(2),
+        })
+    }
+
+    pub async fn apply_fixed_promotion(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        line_item_id: Option<Uuid>,
+        source_id: &str,
+        amount: Decimal,
+        metadata: Value,
+    ) -> CartResult<CartResponse> {
+        let preview = self
+            .preview_fixed_promotion(tenant_id, cart_id, line_item_id, source_id, amount)
+            .await?;
+        let metadata = promotion_metadata(
+            metadata,
+            CartPromotionKind::FixedDiscount,
+            if line_item_id.is_some() {
+                LINE_ITEM_PROMOTION_SCOPE
+            } else {
+                CART_PROMOTION_SCOPE
+            },
+            None,
+            Some(preview.adjustment_amount),
+        );
+
+        self.apply_promotion_adjustment(
+            tenant_id,
+            cart_id,
+            line_item_id,
+            source_id,
+            preview.adjustment_amount,
+            if line_item_id.is_some() {
+                LINE_ITEM_PROMOTION_SCOPE
+            } else {
+                CART_PROMOTION_SCOPE
+            },
+            metadata,
+        )
+        .await
+    }
+
+    pub async fn preview_percentage_shipping_promotion(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        source_id: &str,
+        discount_percent: Decimal,
+    ) -> CartResult<CartPromotionPreview> {
+        validate_promotion_percent(discount_percent)?;
+
+        let cart = self.load_cart(tenant_id, cart_id).await?;
+        ensure_active(&cart.status, "preview_percentage_shipping_promotion")?;
+        let adjustments = entities::cart_adjustment::Entity::find()
+            .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))
+            .all(&self.db)
+            .await?;
+        let source_id = normalize_required_adjustment_source_id(source_id)?;
+        let base_amount =
+            resolve_shipping_promotion_base_amount(cart.shipping_total, &adjustments, &source_id);
+        let adjusted_amount = (base_amount
+            * ((Decimal::from(100) - discount_percent) / Decimal::from(100)))
+        .round_dp(2);
+        let adjustment_amount = (base_amount - adjusted_amount).round_dp(2);
+
+        Ok(CartPromotionPreview {
+            kind: CartPromotionKind::PercentageDiscount,
+            line_item_id: None,
+            currency_code: cart.currency_code,
+            base_amount,
+            adjustment_amount,
+            adjusted_amount,
+        })
+    }
+
+    pub async fn apply_percentage_shipping_promotion(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        source_id: &str,
+        discount_percent: Decimal,
+        metadata: Value,
+    ) -> CartResult<CartResponse> {
+        let preview = self
+            .preview_percentage_shipping_promotion(tenant_id, cart_id, source_id, discount_percent)
+            .await?;
+        let metadata = promotion_metadata(
+            metadata,
+            CartPromotionKind::PercentageDiscount,
+            SHIPPING_PROMOTION_SCOPE,
+            Some(discount_percent),
+            None,
+        );
+
+        self.apply_promotion_adjustment(
+            tenant_id,
+            cart_id,
+            None,
+            source_id,
+            preview.adjustment_amount,
+            SHIPPING_PROMOTION_SCOPE,
+            metadata,
+        )
+        .await
+    }
+
+    pub async fn preview_fixed_shipping_promotion(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        source_id: &str,
+        amount: Decimal,
+    ) -> CartResult<CartPromotionPreview> {
+        validate_fixed_promotion_amount(amount)?;
+
+        let cart = self.load_cart(tenant_id, cart_id).await?;
+        ensure_active(&cart.status, "preview_fixed_shipping_promotion")?;
+        let adjustments = entities::cart_adjustment::Entity::find()
+            .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))
+            .all(&self.db)
+            .await?;
+        let source_id = normalize_required_adjustment_source_id(source_id)?;
+        let base_amount =
+            resolve_shipping_promotion_base_amount(cart.shipping_total, &adjustments, &source_id);
+        if amount > base_amount {
+            return Err(CartError::Validation(
+                "shipping promotion amount cannot exceed the remaining shipping amount".to_string(),
+            ));
+        }
+
+        Ok(CartPromotionPreview {
+            kind: CartPromotionKind::FixedDiscount,
+            line_item_id: None,
+            currency_code: cart.currency_code,
+            base_amount,
+            adjustment_amount: amount.round_dp(2),
+            adjusted_amount: (base_amount - amount).round_dp(2),
+        })
+    }
+
+    pub async fn apply_fixed_shipping_promotion(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        source_id: &str,
+        amount: Decimal,
+        metadata: Value,
+    ) -> CartResult<CartResponse> {
+        let preview = self
+            .preview_fixed_shipping_promotion(tenant_id, cart_id, source_id, amount)
+            .await?;
+        let metadata = promotion_metadata(
+            metadata,
+            CartPromotionKind::FixedDiscount,
+            SHIPPING_PROMOTION_SCOPE,
+            None,
+            Some(preview.adjustment_amount),
+        );
+
+        self.apply_promotion_adjustment(
+            tenant_id,
+            cart_id,
+            None,
+            source_id,
+            preview.adjustment_amount,
+            SHIPPING_PROMOTION_SCOPE,
+            metadata,
+        )
+        .await
     }
 
     pub async fn update_line_item_quantity(
@@ -607,18 +945,22 @@ impl CartService {
             .filter(entities::cart_shipping_selection::Column::CartId.eq(cart.id))
             .all(conn)
             .await?;
+        let shipping_total = self
+            .load_shipping_total(conn, &cart, &shipping_selections)
+            .await?;
         let (tax_total, tax_included) = self
             .recalculate_tax_lines(conn, &cart, &line_items, &shipping_selections)
             .await?;
         let subtotal = subtotal_amount(&line_items);
         let adjusted_total = net_total(subtotal, adjustment_total(&adjustments));
         let total_amount = if tax_included {
-            adjusted_total
+            adjusted_total + shipping_total
         } else {
-            adjusted_total + tax_total
+            adjusted_total + shipping_total + tax_total
         };
 
         let mut active: entities::cart::ActiveModel = cart.into();
+        active.shipping_total = Set(shipping_total);
         active.total_amount = Set(total_amount);
         active.tax_total = Set(tax_total);
         active.updated_at = Set(Utc::now().into());
@@ -640,10 +982,15 @@ impl CartService {
             return Ok(());
         }
 
-        let line_item_ids = updates.iter().map(|(line_item_id, _)| *line_item_id).collect::<Vec<_>>();
+        let line_item_ids = updates
+            .iter()
+            .map(|(line_item_id, _)| *line_item_id)
+            .collect::<Vec<_>>();
         entities::cart_adjustment::Entity::delete_many()
             .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))
-            .filter(entities::cart_adjustment::Column::SourceType.eq(PRICING_ADJUSTMENT_SOURCE_TYPE))
+            .filter(
+                entities::cart_adjustment::Column::SourceType.eq(PRICING_ADJUSTMENT_SOURCE_TYPE),
+            )
             .filter(entities::cart_adjustment::Column::CartLineItemId.is_in(line_item_ids))
             .exec(conn)
             .await?;
@@ -662,7 +1009,9 @@ impl CartService {
                 cart_id: Set(cart_id),
                 cart_line_item_id: Set(Some(line_item_id)),
                 source_type: Set(PRICING_ADJUSTMENT_SOURCE_TYPE.to_string()),
-                source_id: Set(normalize_adjustment_source_id(adjustment.source_id.as_deref())),
+                source_id: Set(normalize_adjustment_source_id(
+                    adjustment.source_id.as_deref(),
+                )),
                 amount: Set(adjustment.amount),
                 currency_code: Set(currency_code.to_ascii_uppercase()),
                 metadata: Set(sanitize_adjustment_metadata(adjustment.metadata)),
@@ -674,6 +1023,94 @@ impl CartService {
         }
 
         Ok(())
+    }
+
+    async fn apply_promotion_adjustment(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        line_item_id: Option<Uuid>,
+        source_id: &str,
+        amount: Decimal,
+        scope: &str,
+        metadata: Value,
+    ) -> CartResult<CartResponse> {
+        let source_id = normalize_required_adjustment_source_id(source_id)?;
+        let txn = self.db.begin().await?;
+        let cart = self.load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        ensure_active(&cart.status, "apply_promotion_adjustment")?;
+
+        let line_items = entities::cart_line_item::Entity::find()
+            .filter(entities::cart_line_item::Column::CartId.eq(cart_id))
+            .all(&txn)
+            .await?;
+        let adjustments = entities::cart_adjustment::Entity::find()
+            .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))
+            .all(&txn)
+            .await?;
+
+        if let Some(line_item_id) = line_item_id {
+            if !line_items.iter().any(|item| item.id == line_item_id) {
+                return Err(CartError::Validation(format!(
+                    "cart line item {line_item_id} does not belong to cart {cart_id}"
+                )));
+            }
+        }
+
+        let base_amount = match scope {
+            SHIPPING_PROMOTION_SCOPE => resolve_shipping_promotion_base_amount(
+                cart.shipping_total,
+                &adjustments,
+                &source_id,
+            ),
+            _ => {
+                resolve_promotion_base_amount(&line_items, &adjustments, line_item_id, &source_id)?
+            }
+        };
+        if amount > base_amount {
+            return Err(CartError::Validation(match scope {
+                SHIPPING_PROMOTION_SCOPE => {
+                    "shipping promotion amount cannot exceed the remaining shipping amount"
+                        .to_string()
+                }
+                _ => "promotion amount cannot exceed the remaining base amount".to_string(),
+            }));
+        }
+
+        let mut delete_query = entities::cart_adjustment::Entity::delete_many()
+            .filter(entities::cart_adjustment::Column::CartId.eq(cart_id))
+            .filter(
+                entities::cart_adjustment::Column::SourceType.eq(PROMOTION_ADJUSTMENT_SOURCE_TYPE),
+            )
+            .filter(entities::cart_adjustment::Column::SourceId.eq(source_id.as_str()));
+        delete_query = match line_item_id {
+            Some(line_item_id) => delete_query
+                .filter(entities::cart_adjustment::Column::CartLineItemId.eq(line_item_id)),
+            None => {
+                delete_query.filter(entities::cart_adjustment::Column::CartLineItemId.is_null())
+            }
+        };
+        delete_query.exec(&txn).await?;
+
+        entities::cart_adjustment::ActiveModel {
+            id: Set(generate_id()),
+            cart_id: Set(cart_id),
+            cart_line_item_id: Set(line_item_id),
+            source_type: Set(PROMOTION_ADJUSTMENT_SOURCE_TYPE.to_string()),
+            source_id: Set(Some(source_id)),
+            amount: Set(amount.round_dp(2)),
+            currency_code: Set(cart.currency_code.to_ascii_uppercase()),
+            metadata: Set(sanitize_adjustment_metadata(metadata)),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&txn)
+        .await?;
+
+        self.recalculate_totals(&txn, cart).await?;
+        self.reconcile_cart_shipping_state(&txn, cart_id).await?;
+        txn.commit().await?;
+        self.get_cart(tenant_id, cart_id).await
     }
 
     async fn load_cart(&self, tenant_id: Uuid, cart_id: Uuid) -> CartResult<entities::cart::Model> {
@@ -726,6 +1163,7 @@ impl CartService {
             .await?;
         let subtotal_amount = subtotal_amount(&line_items);
         let adjustment_total = adjustment_total(&adjustments);
+        let shipping_total = cart.shipping_total;
         let total_amount = cart.total_amount;
         let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
         let selection_map =
@@ -752,6 +1190,7 @@ impl CartService {
             currency_code: cart.currency_code,
             subtotal_amount,
             adjustment_total,
+            shipping_total,
             total_amount,
             tax_total: cart.tax_total,
             metadata: cart.metadata,
@@ -806,6 +1245,7 @@ impl CartService {
                     line_item_id: line.cart_line_item_id,
                     shipping_option_id: line.shipping_option_id,
                     description: line.description,
+                    provider_id: line.provider_id,
                     rate: line.rate,
                     amount: line.amount,
                     currency_code: line.currency_code,
@@ -816,6 +1256,40 @@ impl CartService {
                 .collect(),
             delivery_groups,
         })
+    }
+
+    async fn load_shipping_total<C>(
+        &self,
+        conn: &C,
+        cart: &entities::cart::Model,
+        shipping_selections: &[entities::cart_shipping_selection::Model],
+    ) -> CartResult<Decimal>
+    where
+        C: ConnectionTrait,
+    {
+        let shipping_option_ids = if shipping_selections.is_empty() {
+            cart.selected_shipping_option_id
+                .into_iter()
+                .collect::<Vec<_>>()
+        } else {
+            shipping_selections
+                .iter()
+                .filter_map(|selection| selection.selected_shipping_option_id)
+                .collect::<Vec<_>>()
+        };
+
+        if shipping_option_ids.is_empty() {
+            return Ok(Decimal::ZERO);
+        }
+
+        let options = shipping_option::Entity::find()
+            .filter(shipping_option::Column::Id.is_in(shipping_option_ids))
+            .all(conn)
+            .await?;
+
+        Ok(options
+            .into_iter()
+            .fold(Decimal::ZERO, |acc, option| acc + option.amount))
     }
 
     async fn recalculate_tax_lines<C>(
@@ -844,35 +1318,22 @@ impl CartService {
             .ok_or(CartError::Validation(
                 "Region not found for cart".to_string(),
             ))?;
+        let country_tax_policies = region_country_tax_policy::Entity::find()
+            .filter(region_country_tax_policy::Column::RegionId.eq(region_id))
+            .all(conn)
+            .await?;
         let tax_rate = region.tax_rate;
-        if tax_rate <= Decimal::ZERO {
-            return Ok((Decimal::ZERO, region.tax_included));
-        }
-
-        let mut tax_lines = Vec::new();
-        let mut tax_total = Decimal::ZERO;
         let now = Utc::now();
+        let mut taxable_amounts = Vec::new();
         for item in line_items {
             if item.total_price <= Decimal::ZERO {
                 continue;
             }
-            let tax_amount = calculate_tax_amount(item.total_price, tax_rate, region.tax_included);
-            if tax_amount <= Decimal::ZERO {
-                continue;
-            }
-            tax_total += tax_amount;
-            tax_lines.push(entities::cart_tax_line::ActiveModel {
-                id: Set(generate_id()),
-                cart_id: Set(cart.id),
-                cart_line_item_id: Set(Some(item.id)),
-                shipping_option_id: Set(None),
-                description: Set(Some("line_item".to_string())),
-                rate: Set(tax_rate),
-                amount: Set(tax_amount),
-                currency_code: Set(cart.currency_code.clone()),
-                metadata: Set(serde_json::json!({ "tax_included": region.tax_included })),
-                created_at: Set(now.into()),
-                updated_at: Set(now.into()),
+            taxable_amounts.push(TaxableAmount {
+                line_item_id: Some(item.id),
+                shipping_option_id: None,
+                description: Some("line_item".to_string()),
+                amount: item.total_price,
             });
         }
 
@@ -893,27 +1354,54 @@ impl CartService {
             if option.amount <= Decimal::ZERO {
                 continue;
             }
-            let tax_amount = calculate_tax_amount(option.amount, tax_rate, region.tax_included);
-            if tax_amount <= Decimal::ZERO {
-                continue;
-            }
-            tax_total += tax_amount;
-            tax_lines.push(entities::cart_tax_line::ActiveModel {
-                id: Set(generate_id()),
-                cart_id: Set(cart.id),
-                cart_line_item_id: Set(None),
-                shipping_option_id: Set(Some(option.id)),
-                description: Set(Some("shipping".to_string())),
-                rate: Set(tax_rate),
-                amount: Set(tax_amount),
-                currency_code: Set(cart.currency_code.clone()),
-                metadata: Set(serde_json::json!({
-                    "tax_included": region.tax_included,
-                })),
-                created_at: Set(now.into()),
-                updated_at: Set(now.into()),
+            taxable_amounts.push(TaxableAmount {
+                line_item_id: None,
+                shipping_option_id: Some(option.id),
+                description: Some("shipping".to_string()),
+                amount: option.amount,
             });
         }
+
+        let result = self
+            .tax_service
+            .calculate(TaxCalculationInput {
+                currency_code: cart.currency_code.clone(),
+                policy: TaxPolicySnapshot {
+                    provider_id: region.tax_provider_id.clone(),
+                    country_code: cart.country_code.clone(),
+                    tax_rate,
+                    tax_included: region.tax_included,
+                    country_rules: country_tax_policies
+                        .into_iter()
+                        .map(|policy| TaxPolicyCountryRule {
+                            country_code: policy.country_code,
+                            tax_rate: policy.tax_rate,
+                            tax_included: policy.tax_included,
+                        })
+                        .collect(),
+                },
+                taxable_amounts,
+            })
+            .await?;
+
+        let tax_lines = result
+            .lines
+            .into_iter()
+            .map(|line| entities::cart_tax_line::ActiveModel {
+                id: Set(generate_id()),
+                cart_id: Set(cart.id),
+                cart_line_item_id: Set(line.line_item_id),
+                shipping_option_id: Set(line.shipping_option_id),
+                description: Set(line.description),
+                provider_id: Set(line.provider_id),
+                rate: Set(line.rate),
+                amount: Set(line.amount),
+                currency_code: Set(line.currency_code),
+                metadata: Set(line.metadata),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            })
+            .collect::<Vec<_>>();
 
         if !tax_lines.is_empty() {
             entities::cart_tax_line::Entity::insert_many(tax_lines)
@@ -921,7 +1409,7 @@ impl CartService {
                 .await?;
         }
 
-        Ok((tax_total, region.tax_included))
+        Ok((result.tax_total, result.tax_included))
     }
 
     async fn apply_shipping_selection_patch<C>(
@@ -1179,23 +1667,6 @@ fn adjustment_total(adjustments: &[entities::cart_adjustment::Model]) -> Decimal
         .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount)
 }
 
-fn calculate_tax_amount(amount: Decimal, rate: Decimal, tax_included: bool) -> Decimal {
-    if rate <= Decimal::ZERO {
-        return Decimal::ZERO;
-    }
-
-    if tax_included {
-        let divisor = rate + Decimal::from(100);
-        if divisor <= Decimal::ZERO {
-            Decimal::ZERO
-        } else {
-            amount * rate / divisor
-        }
-    } else {
-        amount * rate / Decimal::from(100)
-    }
-}
-
 fn net_total(subtotal_amount: Decimal, adjustment_total: Decimal) -> Decimal {
     if adjustment_total > subtotal_amount {
         Decimal::ZERO
@@ -1402,6 +1873,127 @@ fn sanitize_adjustment_metadata(metadata: Value) -> Value {
     Value::Object(metadata)
 }
 
+fn validate_promotion_percent(discount_percent: Decimal) -> CartResult<()> {
+    if discount_percent <= Decimal::ZERO || discount_percent > Decimal::from(100) {
+        return Err(CartError::Validation(
+            "discount_percent must be greater than 0 and less than or equal to 100".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_fixed_promotion_amount(amount: Decimal) -> CartResult<()> {
+    if amount <= Decimal::ZERO {
+        return Err(CartError::Validation(
+            "promotion amount must be greater than zero".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_required_adjustment_source_id(value: &str) -> CartResult<String> {
+    normalize_adjustment_source_id(Some(value)).ok_or_else(|| {
+        CartError::Validation("promotion source_id must be 1-191 characters".to_string())
+    })
+}
+
+fn matches_promotion_adjustment(
+    adjustment: &entities::cart_adjustment::Model,
+    line_item_id: Option<Uuid>,
+    source_id: &str,
+) -> bool {
+    adjustment.source_type == PROMOTION_ADJUSTMENT_SOURCE_TYPE
+        && adjustment.cart_line_item_id == line_item_id
+        && normalize_adjustment_source_id(adjustment.source_id.as_deref()).as_deref()
+            == Some(source_id)
+}
+
+fn resolve_promotion_base_amount(
+    line_items: &[entities::cart_line_item::Model],
+    adjustments: &[entities::cart_adjustment::Model],
+    line_item_id: Option<Uuid>,
+    source_id: &str,
+) -> CartResult<Decimal> {
+    match line_item_id {
+        Some(line_item_id) => {
+            let line_item = line_items
+                .iter()
+                .find(|item| item.id == line_item_id)
+                .ok_or(CartError::CartLineItemNotFound(line_item_id))?;
+            let existing_adjustments = adjustments
+                .iter()
+                .filter(|adjustment| adjustment.cart_line_item_id == Some(line_item_id))
+                .filter(|adjustment| {
+                    !matches_promotion_adjustment(adjustment, Some(line_item_id), source_id)
+                })
+                .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount);
+            Ok((line_item.total_price - existing_adjustments).max(Decimal::ZERO))
+        }
+        None => {
+            let subtotal_amount = subtotal_amount(line_items);
+            let existing_adjustments = adjustments
+                .iter()
+                .filter(|adjustment| !matches_promotion_adjustment(adjustment, None, source_id))
+                .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount);
+            Ok((subtotal_amount - existing_adjustments).max(Decimal::ZERO))
+        }
+    }
+}
+
+fn resolve_shipping_promotion_base_amount(
+    shipping_total: Decimal,
+    adjustments: &[entities::cart_adjustment::Model],
+    source_id: &str,
+) -> Decimal {
+    let existing_adjustments = adjustments
+        .iter()
+        .filter(|adjustment| adjustment.cart_line_item_id.is_none())
+        .filter(|adjustment| adjustment_scope(adjustment) == Some(SHIPPING_PROMOTION_SCOPE))
+        .filter(|adjustment| !matches_promotion_adjustment(adjustment, None, source_id))
+        .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount);
+    (shipping_total - existing_adjustments).max(Decimal::ZERO)
+}
+
+fn promotion_metadata(
+    metadata: Value,
+    kind: CartPromotionKind,
+    scope: &str,
+    discount_percent: Option<Decimal>,
+    fixed_amount: Option<Decimal>,
+) -> Value {
+    let mut metadata = match metadata {
+        Value::Object(object) => object,
+        _ => serde_json::Map::new(),
+    };
+
+    metadata.insert(
+        "kind".to_string(),
+        Value::from(match kind {
+            CartPromotionKind::PercentageDiscount => "percentage_discount",
+            CartPromotionKind::FixedDiscount => "fixed_discount",
+        }),
+    );
+    metadata.insert("scope".to_string(), Value::from(scope));
+    if let Some(discount_percent) = discount_percent {
+        metadata.insert(
+            "discount_percent".to_string(),
+            Value::from(discount_percent.normalize().to_string()),
+        );
+    }
+    if let Some(fixed_amount) = fixed_amount {
+        metadata.insert(
+            "fixed_amount".to_string(),
+            Value::from(fixed_amount.normalize().to_string()),
+        );
+    }
+
+    Value::Object(metadata)
+}
+
+fn adjustment_scope<'a>(adjustment: &'a entities::cart_adjustment::Model) -> Option<&'a str> {
+    adjustment.metadata.get("scope").and_then(Value::as_str)
+}
+
 async fn load_line_item_titles<C>(
     conn: &C,
     line_items: &[entities::cart_line_item::Model],
@@ -1429,20 +2021,20 @@ where
 
     let mut rows_by_item = HashMap::<Uuid, Vec<entities::cart_line_item_translation::Model>>::new();
     for row in rows {
-        rows_by_item.entry(row.cart_line_item_id).or_default().push(row);
+        rows_by_item
+            .entry(row.cart_line_item_id)
+            .or_default()
+            .push(row);
     }
 
     for line_item in line_items {
-        if let Some(title) = rows_by_item
-            .remove(&line_item.id)
-            .and_then(|rows| {
-                select_cart_line_item_title(
-                    &rows,
-                    preferred_locale.as_deref(),
-                    fallback_locale.as_deref(),
-                )
-            })
-        {
+        if let Some(title) = rows_by_item.remove(&line_item.id).and_then(|rows| {
+            select_cart_line_item_title(
+                &rows,
+                preferred_locale.as_deref(),
+                fallback_locale.as_deref(),
+            )
+        }) {
             titles.insert(line_item.id, title);
         }
     }
@@ -1461,9 +2053,8 @@ fn select_cart_line_item_title(
     preferred_locale
         .as_deref()
         .and_then(|preferred_locale| {
-            rows.iter().find(|row| {
-                normalize_locale_tag(&row.locale).as_deref() == Some(preferred_locale)
-            })
+            rows.iter()
+                .find(|row| normalize_locale_tag(&row.locale).as_deref() == Some(preferred_locale))
         })
         .or_else(|| {
             fallback_locale.as_deref().and_then(|fallback_locale| {

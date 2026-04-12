@@ -143,9 +143,9 @@ pub async fn list_products(
     let items = products
         .into_iter()
         .map(|product| {
-            let translation = translation_map
-                .get(&product.id)
-                .and_then(|items| pick_product_translation(items, locale, tenant.default_locale.as_str()));
+            let translation = translation_map.get(&product.id).and_then(|items| {
+                pick_product_translation(items, locale, tenant.default_locale.as_str())
+            });
             ProductListItem {
                 id: product.id,
                 status: product.status.to_string(),

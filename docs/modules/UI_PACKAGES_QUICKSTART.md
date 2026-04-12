@@ -79,7 +79,7 @@ slot = "home_after_catalog"
 - UI package не тащит в себя ownership доменной логики, который должен жить в
   самом модуле.
 - Для admin-пакетов selection state считается URL-owned: используйте только typed
-  `snake_case` query keys, не читайте legacy `id`/camelCase aliases, не делайте
+  `snake_case` query keys вроде `product_id`, `cart_id`, `order_id`, не читайте legacy `id`/camelCase aliases, не делайте
   auto-select-first source of truth и очищайте stale detail/form state при failed open.
 - Для Leptos storefront-пакетов query/state plumbing тоже должно идти через общий reusable слой:
   читайте route query через `leptos-ui-routing`, не вводите package-local helper поверх

@@ -1775,6 +1775,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_id),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -1892,6 +1893,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_id),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -1972,6 +1974,120 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn admin_order_transport_returns_shipping_total_and_shipping_scoped_adjustments() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let customer_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Admin Test Tenant".to_string(),
+            slug: format!("admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(customer_id),
+                    currency_code: "eur".to_string(),
+                    shipping_total: Decimal::from_str("9.99").expect("valid decimal"),
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
+                        sku: Some("ADMIN-ORDER-SHIPPING-ADJUSTMENT-1".to_string()),
+                        title: "Admin Shipping Adjusted Order".to_string(),
+                        quantity: 1,
+                        unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-order-shipping-adjustment-transport" }),
+                    }],
+                    adjustments: vec![rustok_order::dto::CreateOrderAdjustmentInput {
+                        line_item_index: None,
+                        source_type: "Promotion".to_string(),
+                        source_id: Some("promo-shipping-admin".to_string()),
+                        amount: Decimal::from_str("4.99").expect("valid decimal"),
+                        metadata: json!({
+                            "rule_code": "admin-shipping-adjustment",
+                            "scope": "shipping",
+                            "display_label": "Admin shipping promotion"
+                        }),
+                    }],
+                    tax_lines: Vec::new(),
+                    metadata: json!({ "source": "admin-order-shipping-adjustment-transport" }),
+                },
+            )
+            .await
+            .expect("order should be created");
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/admin/orders/{}", order.id))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected admin shipping adjustment body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("response should be JSON");
+        assert_eq!(payload["order"]["shipping_total"], json!("9.99"));
+        assert_eq!(payload["order"]["adjustment_total"], json!("4.99"));
+        assert_eq!(payload["order"]["total_amount"], json!("30"));
+        assert_eq!(
+            payload["order"]["adjustments"][0]["line_item_id"],
+            json!(null)
+        );
+        assert_eq!(
+            payload["order"]["adjustments"][0]["source_type"],
+            json!("promotion")
+        );
+        assert_eq!(
+            payload["order"]["adjustments"][0]["source_id"],
+            json!("promo-shipping-admin")
+        );
+        assert_eq!(payload["order"]["adjustments"][0]["amount"], json!("4.99"));
+        assert_eq!(
+            payload["order"]["adjustments"][0]["currency_code"],
+            json!("EUR")
+        );
+        assert_eq!(
+            payload["order"]["adjustments"][0]["metadata"],
+            json!({ "rule_code": "admin-shipping-adjustment", "scope": "shipping" })
+        );
+    }
+
+    #[tokio::test]
     async fn admin_orders_transport_lists_orders_with_pagination_and_status_filter() {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
@@ -2006,6 +2122,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_a),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -2031,6 +2148,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_b),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -2133,6 +2251,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_a),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -2158,6 +2277,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_b),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -2360,8 +2480,11 @@ mod tests {
                     .body(Body::from(
                         serde_json::to_string(&crate::dto::UpdateShippingProfileInput {
                             slug: None,
-                            name: Some("Oversize Freight".to_string()),
-                            description: Some("Updated profile".to_string()),
+                            translations: Some(vec![crate::dto::ShippingProfileTranslationInput {
+                                locale: "en".to_string(),
+                                name: "Oversize Freight".to_string(),
+                                description: Some("Updated profile".to_string()),
+                            }]),
                             metadata: Some(json!({ "updated": true })),
                         })
                         .expect("update payload should serialize"),
@@ -2463,8 +2586,11 @@ mod tests {
                 tenant_id,
                 crate::dto::CreateShippingProfileInput {
                     slug: "bulky".to_string(),
-                    name: "Bulky".to_string(),
-                    description: None,
+                    translations: vec![crate::dto::ShippingProfileTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Bulky".to_string(),
+                        description: None,
+                    }],
                     metadata: json!({}),
                 },
             )
@@ -2475,8 +2601,11 @@ mod tests {
                 tenant_id,
                 crate::dto::CreateShippingProfileInput {
                     slug: "cold-chain".to_string(),
-                    name: "Cold Chain".to_string(),
-                    description: None,
+                    translations: vec![crate::dto::ShippingProfileTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Cold Chain".to_string(),
+                        description: None,
+                    }],
                     metadata: json!({}),
                 },
             )
@@ -2587,7 +2716,10 @@ mod tests {
                     .header("X-Tenant-ID", tenant_id.to_string())
                     .body(Body::from(
                         serde_json::to_string(&UpdateShippingOptionInput {
-                            name: Some("Cold Chain Freight".to_string()),
+                            translations: Some(vec![crate::dto::ShippingOptionTranslationInput {
+                                locale: "en".to_string(),
+                                name: "Cold Chain Freight".to_string(),
+                            }]),
                             currency_code: Some("usd".to_string()),
                             amount: Some(Decimal::from_str("39.99").expect("valid decimal")),
                             provider_id: Some("custom-provider".to_string()),
@@ -2747,6 +2879,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_a),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -2772,6 +2905,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_b),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -2944,6 +3078,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(Uuid::new_v4()),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -3100,6 +3235,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(Uuid::new_v4()),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -3230,6 +3366,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_id),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -3407,6 +3544,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_id),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -3526,6 +3664,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_id),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -3647,6 +3786,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_id),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -3817,6 +3957,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_id),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),
@@ -3968,6 +4109,7 @@ mod tests {
                 CreateOrderInput {
                     customer_id: Some(customer_id),
                     currency_code: "eur".to_string(),
+                    shipping_total: Decimal::ZERO,
                     line_items: vec![CreateOrderLineItemInput {
                         product_id: Some(Uuid::new_v4()),
                         variant_id: Some(Uuid::new_v4()),

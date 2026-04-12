@@ -7,6 +7,8 @@ mod m20260409_000107_add_cart_shipping_selection_seller_id;
 mod m20260410_000108_create_cart_adjustments;
 mod m20260411_000109_add_cart_tax_lines;
 mod m20260411_000110_add_cart_line_item_translations;
+mod m20260412_000111_add_cart_shipping_total;
+mod m20260412_000112_add_cart_tax_line_provider_id;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -21,5 +23,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260410_000108_create_cart_adjustments::Migration),
         Box::new(m20260411_000109_add_cart_tax_lines::Migration),
         Box::new(m20260411_000110_add_cart_line_item_translations::Migration),
+        Box::new(m20260412_000111_add_cart_shipping_total::Migration),
+        Box::new(m20260412_000112_add_cart_tax_line_provider_id::Migration),
     ]
 }

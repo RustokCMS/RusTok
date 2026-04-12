@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use loco_rs::{app::AppContext, controller::Routes, Error, Result};
+use rust_decimal::Decimal;
 use rustok_api::{
     loco::transactional_event_bus_from_context, OptionalAuthContext, RequestContext, TenantContext,
 };
@@ -189,9 +190,9 @@ pub async fn list_products(
     let items = products
         .into_iter()
         .map(|product| {
-            let translation = translation_map
-                .get(&product.id)
-                .and_then(|items| pick_product_translation(items, locale, tenant.default_locale.as_str()));
+            let translation = translation_map.get(&product.id).and_then(|items| {
+                pick_product_translation(items, locale, tenant.default_locale.as_str())
+            });
             ProductListItem {
                 id: product.id,
                 status: product.status.to_string(),
@@ -597,12 +598,14 @@ pub async fn add_cart_line_item(
     .await?;
 
     let cart = service
-        .add_line_item(tenant.id, id, resolved_input)
+        .add_line_item_with_pricing_adjustment(
+            tenant.id,
+            id,
+            resolved_input.add_line_item,
+            resolved_input.pricing_adjustment,
+        )
         .await
         .map_err(map_cart_error)?;
-    let cart =
-        reprice_storefront_cart_line_items(&ctx, tenant.id, &request_context, &service, cart)
-            .await?;
     Ok(Json(
         enrich_storefront_cart(
             &ctx,
@@ -1204,6 +1207,23 @@ fn storefront_cart_pricing_update(
     quantity: i32,
     resolved_price: &rustok_pricing::ResolvedPrice,
 ) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
+    let (base_unit_price, pricing_adjustment) =
+        storefront_cart_pricing_snapshot(quantity, resolved_price);
+
+    rustok_cart::services::cart::CartLineItemPricingUpdate {
+        line_item_id,
+        unit_price: base_unit_price,
+        pricing_adjustment,
+    }
+}
+
+fn storefront_cart_pricing_snapshot(
+    quantity: i32,
+    resolved_price: &rustok_pricing::ResolvedPrice,
+) -> (
+    Decimal,
+    Option<rustok_cart::services::cart::CartPricingAdjustmentUpdate>,
+) {
     let base_unit_price = resolved_price
         .compare_at_amount
         .filter(|compare_at| *compare_at > resolved_price.amount)
@@ -1263,11 +1283,13 @@ fn storefront_cart_pricing_update(
         None
     };
 
-    rustok_cart::services::cart::CartLineItemPricingUpdate {
-        line_item_id,
-        unit_price: base_unit_price,
-        pricing_adjustment,
-    }
+    (base_unit_price, pricing_adjustment)
+}
+
+#[derive(Debug)]
+struct ResolvedStoreLineItemInput {
+    add_line_item: AddCartLineItemInput,
+    pricing_adjustment: Option<rustok_cart::services::cart::CartPricingAdjustmentUpdate>,
 }
 
 async fn enrich_storefront_cart(
@@ -1430,7 +1452,7 @@ async fn resolve_store_line_item_input(
     default_locale: &str,
     public_channel_slug: Option<&str>,
     input: StoreAddCartLineItemInput,
-) -> Result<AddCartLineItemInput> {
+) -> Result<ResolvedStoreLineItemInput> {
     let variant = product_variant::Entity::find_by_id(input.variant_id)
         .filter(product_variant::Column::TenantId.eq(tenant_id))
         .one(db)
@@ -1472,14 +1494,12 @@ async fn resolve_store_line_item_input(
                 variant.id, pricing_context.currency_code
             ))
         })?;
+    let (base_unit_price, pricing_adjustment) =
+        storefront_cart_pricing_snapshot(input.quantity, &resolved_price);
     validate_store_variant_inventory(db, tenant_id, &variant, input.quantity, public_channel_slug)
         .await?;
 
-    let base_title = pick_product_translation(
-        &product_translation_models,
-        locale,
-        default_locale,
-    )
+    let base_title = pick_product_translation(&product_translation_models, locale, default_locale)
         .map(|translation| translation.title.clone())
         .unwrap_or_else(|| {
             variant
@@ -1496,22 +1516,25 @@ async fn resolve_store_line_item_input(
         _ => base_title,
     };
 
-    Ok(AddCartLineItemInput {
-        product_id: Some(product_model.id),
-        variant_id: Some(variant.id),
-        shipping_profile_slug: Some(effective_shipping_profile_slug(
-            product_model.shipping_profile_slug.as_deref(),
-            &product_model.metadata,
-            variant.shipping_profile_slug.as_deref(),
-        )),
-        sku: variant.sku.clone(),
-        title,
-        quantity: input.quantity,
-        unit_price: resolved_price.amount,
-        metadata: merge_metadata(
-            input.metadata,
-            seller_snapshot_metadata(product_model.seller_id.as_deref()),
-        ),
+    Ok(ResolvedStoreLineItemInput {
+        add_line_item: AddCartLineItemInput {
+            product_id: Some(product_model.id),
+            variant_id: Some(variant.id),
+            shipping_profile_slug: Some(effective_shipping_profile_slug(
+                product_model.shipping_profile_slug.as_deref(),
+                &product_model.metadata,
+                variant.shipping_profile_slug.as_deref(),
+            )),
+            sku: variant.sku.clone(),
+            title,
+            quantity: input.quantity,
+            unit_price: base_unit_price,
+            metadata: merge_metadata(
+                input.metadata,
+                seller_snapshot_metadata(product_model.seller_id.as_deref()),
+            ),
+        },
+        pricing_adjustment,
     })
 }
 
@@ -1878,13 +1901,16 @@ mod tests {
             currency_code: "USD".to_string(),
             subtotal_amount: Decimal::ZERO,
             adjustment_total: Decimal::ZERO,
+            shipping_total: Decimal::ZERO,
             total_amount: Decimal::ZERO,
+            tax_total: Decimal::ZERO,
             metadata: serde_json::json!({}),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             completed_at: None,
             line_items: Vec::new(),
             adjustments: Vec::new(),
+            tax_lines: Vec::new(),
             delivery_groups: Vec::new(),
         }
     }
@@ -2222,12 +2248,18 @@ mod tests {
                     tenant_id,
                     name: "Europe".to_string(),
                     currency_code: "EUR".to_string(),
+                    tax_provider_id: None,
                     tax_rate: Decimal::from(20),
                     tax_included: true,
+                    country_tax_policies: vec![],
                     countries: vec!["DE".to_string()],
                     metadata: json!({}),
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
+                    requested_locale: Some("de".to_string()),
+                    effective_locale: Some("de".to_string()),
+                    available_locales: vec!["en".to_string(), "de".to_string()],
+                    translations: Vec::new(),
                 }),
                 locale: "de".to_string(),
                 default_locale: "en".to_string(),
@@ -3201,17 +3233,20 @@ mod tests {
         .await
         .expect("store line item should resolve from backend catalog");
 
-        assert_eq!(resolved.product_id, Some(published.id));
-        assert_eq!(resolved.variant_id, Some(variant.id));
-        assert_eq!(resolved.sku.as_deref(), Some("STOREFRONT-SKU-1"));
-        assert_eq!(resolved.title, "Storefront Produkt / Default");
+        assert_eq!(resolved.add_line_item.product_id, Some(published.id));
+        assert_eq!(resolved.add_line_item.variant_id, Some(variant.id));
         assert_eq!(
-            resolved.unit_price,
+            resolved.add_line_item.sku.as_deref(),
+            Some("STOREFRONT-SKU-1")
+        );
+        assert_eq!(resolved.add_line_item.title, "Storefront Produkt / Default");
+        assert_eq!(
+            resolved.add_line_item.unit_price,
             Decimal::from_str("19.99").expect("valid decimal")
         );
-        assert_eq!(resolved.quantity, 2);
+        assert_eq!(resolved.add_line_item.quantity, 2);
         assert_eq!(
-            resolved.metadata,
+            resolved.add_line_item.metadata,
             json!({
                 "seller": { "id": null, "scope": null },
                 "source": "store-line-item-test"
@@ -3311,12 +3346,15 @@ mod tests {
         .await
         .expect("store line item should fall back to an existing product translation");
 
-        assert_eq!(resolved.product_id, Some(published.id));
-        assert_eq!(resolved.variant_id, Some(variant.id));
-        assert_eq!(resolved.sku.as_deref(), Some("STOREFRONT-SKU-1"));
-        assert_eq!(resolved.title, "Storefront Produkt");
+        assert_eq!(resolved.add_line_item.product_id, Some(published.id));
+        assert_eq!(resolved.add_line_item.variant_id, Some(variant.id));
         assert_eq!(
-            resolved.unit_price,
+            resolved.add_line_item.sku.as_deref(),
+            Some("STOREFRONT-SKU-1")
+        );
+        assert_eq!(resolved.add_line_item.title, "Storefront Produkt");
+        assert_eq!(
+            resolved.add_line_item.unit_price,
             Decimal::from_str("19.99").expect("valid decimal")
         );
     }
@@ -3577,8 +3615,10 @@ mod tests {
                         name: "Europe".to_string(),
                     }],
                     currency_code: "eur".to_string(),
+                    tax_provider_id: None,
                     tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                     tax_included: true,
+                    country_tax_policies: None,
                     countries: vec!["de".to_string()],
                     metadata: json!({ "source": "store-cart-region-mismatch" }),
                 },
@@ -4177,8 +4217,10 @@ mod tests {
                         name: "Europe".to_string(),
                     }],
                     currency_code: "eur".to_string(),
+                    tax_provider_id: None,
                     tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                     tax_included: true,
+                    country_tax_policies: None,
                     countries: vec!["de".to_string()],
                     metadata: json!({ "source": "store-checkout-flow-region" }),
                 },
@@ -5383,6 +5425,146 @@ mod tests {
         assert_eq!(
             cart["adjustments"][0]["metadata"],
             json!({ "rule_code": "store-adjustment" })
+        );
+    }
+
+    #[tokio::test]
+    async fn store_cart_transport_returns_shipping_total_and_shipping_scoped_promotion() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let created = catalog
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = catalog
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+        let shipping_option = FulfillmentService::new(db.clone())
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Standard".to_string(),
+                    }],
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("9.99").expect("valid decimal"),
+                    provider_id: None,
+                    allowed_shipping_profile_slugs: None,
+                    metadata: json!({ "source": "store-cart-shipping-promotion" }),
+                },
+            )
+            .await
+            .expect("shipping option should be created");
+        let cart_service = CartService::new(db.clone());
+        let app = commerce_transport_router(test_app_context(db.clone()), tenant);
+        let cart = cart_service
+            .create_cart(
+                tenant_id,
+                CreateCartInput {
+                    customer_id: None,
+                    email: Some("buyer@example.com".to_string()),
+                    region_id: None,
+                    country_code: None,
+                    currency_code: "eur".to_string(),
+                    metadata: json!({ "source": "store-cart-shipping-promotion" }),
+                    locale_code: Some("de".to_string()),
+                    selected_shipping_option_id: Some(shipping_option.id),
+                },
+            )
+            .await
+            .expect("cart should be created");
+        let cart = cart_service
+            .add_line_item(
+                tenant_id,
+                cart.id,
+                AddCartLineItemInput {
+                    product_id: Some(published.id),
+                    variant_id: Some(variant.id),
+                    shipping_profile_slug: None,
+                    sku: variant.sku.clone(),
+                    title: variant.title.clone(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                    metadata: json!({ "source": "store-cart-shipping-promotion-line-item" }),
+                },
+            )
+            .await
+            .expect("line item should be added");
+        let cart_id = cart.id;
+
+        cart_service
+            .apply_fixed_shipping_promotion(
+                tenant_id,
+                cart_id,
+                "promo-shipping-store",
+                Decimal::from_str("4.99").expect("valid decimal"),
+                json!({
+                    "campaign": "shipping-half-off",
+                    "display_label": "Shipping half off"
+                }),
+            )
+            .await
+            .expect("shipping promotion should be stored");
+
+        let get_cart_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/store/carts/{cart_id}"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("get cart request should succeed");
+        let get_cart_status = get_cart_response.status();
+        let get_cart_body = to_bytes(get_cart_response.into_body(), usize::MAX)
+            .await
+            .expect("get cart body should read");
+        assert_eq!(
+            get_cart_status,
+            StatusCode::OK,
+            "unexpected get cart shipping promotion body: {}",
+            String::from_utf8_lossy(&get_cart_body)
+        );
+
+        let cart: serde_json::Value =
+            serde_json::from_slice(&get_cart_body).expect("cart response should be JSON");
+        assert_eq!(cart["subtotal_amount"], json!("19.99"));
+        assert_eq!(cart["shipping_total"], json!("9.99"));
+        assert_eq!(cart["adjustment_total"], json!("4.99"));
+        assert_eq!(cart["total_amount"], json!("24.99"));
+        assert_eq!(cart["adjustments"][0]["line_item_id"], json!(null));
+        assert_eq!(cart["adjustments"][0]["source_type"], json!("promotion"));
+        assert_eq!(
+            cart["adjustments"][0]["source_id"],
+            json!("promo-shipping-store")
+        );
+        assert_eq!(cart["adjustments"][0]["amount"], json!("4.99"));
+        assert_eq!(cart["adjustments"][0]["currency_code"], json!("EUR"));
+        assert_eq!(
+            cart["adjustments"][0]["metadata"],
+            json!({ "campaign": "shipping-half-off", "kind": "fixed_discount", "scope": "shipping", "fixed_amount": "4.99" })
         );
     }
 

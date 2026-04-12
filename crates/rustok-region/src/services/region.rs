@@ -11,8 +11,8 @@ use rustok_commerce_foundation::entities;
 use rustok_core::{generate_id, normalize_locale_tag};
 
 use crate::dto::{
-    CreateRegionInput, RegionResponse, RegionTranslationInput, RegionTranslationResponse,
-    UpdateRegionInput,
+    CreateRegionInput, RegionCountryTaxPolicyInput, RegionCountryTaxPolicyResponse, RegionResponse,
+    RegionTranslationInput, RegionTranslationResponse, UpdateRegionInput,
 };
 use crate::error::{RegionError, RegionResult};
 
@@ -37,6 +37,9 @@ impl RegionService {
 
         let currency_code = normalize_currency_code(&input.currency_code)?;
         let countries = normalize_countries(input.countries)?;
+        let tax_provider_id = normalize_tax_provider_id(input.tax_provider_id.as_deref())?;
+        let country_tax_policies =
+            normalize_country_tax_policies(input.country_tax_policies.unwrap_or_default())?;
         let now = Utc::now();
         let region_id = generate_id();
         let translations = normalize_translation_inputs(input.translations)?;
@@ -45,6 +48,7 @@ impl RegionService {
             id: Set(region_id),
             tenant_id: Set(tenant_id),
             currency_code: Set(currency_code),
+            tax_provider_id: Set(tax_provider_id),
             tax_rate: Set(input.tax_rate),
             tax_included: Set(input.tax_included),
             countries: Set(serde_json::to_value(&countries)
@@ -57,6 +61,7 @@ impl RegionService {
         .await?;
 
         insert_translations(&self.db, region_id, &translations).await?;
+        replace_country_tax_policies(&self.db, region_id, &country_tax_policies).await?;
 
         self.get_region(tenant_id, region_id, None, None).await
     }
@@ -100,13 +105,8 @@ impl RegionService {
             .all(&self.db)
             .await?;
 
-        load_regions_with_translations(
-            &self.db,
-            rows,
-            requested_locale,
-            tenant_default_locale,
-        )
-        .await
+        load_regions_with_translations(&self.db, rows, requested_locale, tenant_default_locale)
+            .await
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, region_id = %region_id))]
@@ -130,11 +130,18 @@ impl RegionService {
         if let Some(currency_code) = input.currency_code {
             active.currency_code = Set(normalize_currency_code(&currency_code)?);
         }
+        if let Some(tax_provider_id) = input.tax_provider_id {
+            active.tax_provider_id = Set(normalize_tax_provider_id(tax_provider_id.as_deref())?);
+        }
         if let Some(tax_rate) = input.tax_rate {
             active.tax_rate = Set(tax_rate);
         }
         if let Some(tax_included) = input.tax_included {
             active.tax_included = Set(tax_included);
+        }
+        if let Some(country_tax_policies) = input.country_tax_policies {
+            let normalized = normalize_country_tax_policies(country_tax_policies)?;
+            replace_country_tax_policies(&self.db, region_id, &normalized).await?;
         }
         if let Some(countries) = input.countries {
             active.countries = Set(serde_json::to_value(normalize_countries(countries)?)
@@ -190,6 +197,10 @@ async fn load_regions_with_translations(
         .filter(entities::region_translation::Column::RegionId.is_in(ids.clone()))
         .all(db)
         .await?;
+    let country_tax_policies = entities::region_country_tax_policy::Entity::find()
+        .filter(entities::region_country_tax_policy::Column::RegionId.is_in(ids.clone()))
+        .all(db)
+        .await?;
 
     let mut translations_by_region: HashMap<Uuid, Vec<entities::region_translation::Model>> =
         HashMap::new();
@@ -199,13 +210,28 @@ async fn load_regions_with_translations(
             .or_default()
             .push(translation);
     }
+    let mut country_tax_policies_by_region: HashMap<
+        Uuid,
+        Vec<entities::region_country_tax_policy::Model>,
+    > = HashMap::new();
+    for policy in country_tax_policies {
+        country_tax_policies_by_region
+            .entry(policy.region_id)
+            .or_default()
+            .push(policy);
+    }
 
     rows.into_iter()
         .map(|row| {
-            let translations = translations_by_region
-                .remove(&row.id)
-                .unwrap_or_default();
-            map_region(row, translations, requested_locale, tenant_default_locale)
+            let translations = translations_by_region.remove(&row.id).unwrap_or_default();
+            let country_tax_policies = country_tax_policies_by_region.remove(&row.id).unwrap_or_default();
+            map_region(
+                row,
+                translations,
+                country_tax_policies,
+                requested_locale,
+                tenant_default_locale,
+            )
         })
         .collect()
 }
@@ -213,6 +239,7 @@ async fn load_regions_with_translations(
 fn map_region(
     model: entities::region::Model,
     translations: Vec<entities::region_translation::Model>,
+    country_tax_policies: Vec<entities::region_country_tax_policy::Model>,
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
 ) -> RegionResult<RegionResponse> {
@@ -225,8 +252,11 @@ fn map_region(
     let requested_locale = requested_locale
         .and_then(normalize_locale_tag)
         .filter(|value| !value.is_empty());
-    let (resolved, effective_locale) =
-        resolve_translation(&translations, requested_locale.as_deref(), tenant_default_locale);
+    let (resolved, effective_locale) = resolve_translation(
+        &translations,
+        requested_locale.as_deref(),
+        tenant_default_locale,
+    );
 
     let name = resolved
         .map(|translation| translation.name.clone())
@@ -237,8 +267,17 @@ fn map_region(
         tenant_id: model.tenant_id,
         name,
         currency_code: model.currency_code,
+        tax_provider_id: model.tax_provider_id,
         tax_rate: model.tax_rate,
         tax_included: model.tax_included,
+        country_tax_policies: country_tax_policies
+            .into_iter()
+            .map(|policy| RegionCountryTaxPolicyResponse {
+                country_code: policy.country_code,
+                tax_rate: policy.tax_rate,
+                tax_included: policy.tax_included,
+            })
+            .collect(),
         countries,
         metadata: model.metadata,
         created_at: model.created_at.with_timezone(&Utc),
@@ -254,6 +293,33 @@ fn map_region(
             })
             .collect(),
     })
+}
+
+fn normalize_country_tax_policies(
+    policies: Vec<RegionCountryTaxPolicyInput>,
+) -> RegionResult<Vec<RegionCountryTaxPolicyInput>> {
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::with_capacity(policies.len());
+    for policy in policies {
+        let country_code = normalize_country_code(&policy.country_code)?;
+        if !seen.insert(country_code.clone()) {
+            return Err(RegionError::Validation(
+                "Duplicate country_code in region country tax policies".to_string(),
+            ));
+        }
+        if policy.tax_rate < rust_decimal::Decimal::ZERO {
+            return Err(RegionError::Validation(
+                "country tax policy tax_rate must be zero or greater".to_string(),
+            ));
+        }
+        normalized.push(RegionCountryTaxPolicyInput {
+            country_code,
+            tax_rate: policy.tax_rate,
+            tax_included: policy.tax_included,
+        });
+    }
+    normalized.sort_by(|left, right| left.country_code.cmp(&right.country_code));
+    Ok(normalized)
 }
 
 fn normalize_translation_inputs(
@@ -318,6 +384,29 @@ async fn replace_translations(
     insert_translations(db, region_id, translations).await
 }
 
+async fn replace_country_tax_policies(
+    db: &DatabaseConnection,
+    region_id: Uuid,
+    policies: &[RegionCountryTaxPolicyInput],
+) -> RegionResult<()> {
+    entities::region_country_tax_policy::Entity::delete_many()
+        .filter(entities::region_country_tax_policy::Column::RegionId.eq(region_id))
+        .exec(db)
+        .await?;
+    for policy in policies {
+        entities::region_country_tax_policy::ActiveModel {
+            id: Set(generate_id()),
+            region_id: Set(region_id),
+            country_code: Set(policy.country_code.clone()),
+            tax_rate: Set(policy.tax_rate),
+            tax_included: Set(policy.tax_included),
+        }
+        .insert(db)
+        .await?;
+    }
+    Ok(())
+}
+
 fn resolve_translation<'a>(
     translations: &'a [entities::region_translation::Model],
     requested_locale: Option<&str>,
@@ -358,6 +447,27 @@ fn normalize_currency_code(value: &str) -> RegionResult<String> {
             "currency_code must be a 3-letter code".to_string(),
         ))
     }
+}
+
+fn normalize_tax_provider_id(value: Option<&str>) -> RegionResult<Option<String>> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let normalized = value.to_ascii_lowercase();
+    if normalized.len() > 64 {
+        return Err(RegionError::Validation(
+            "tax_provider_id must be at most 64 characters".to_string(),
+        ));
+    }
+    if !normalized
+        .chars()
+        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
+    {
+        return Err(RegionError::Validation(
+            "tax_provider_id must use lowercase ASCII, digits, underscore, or hyphen".to_string(),
+        ));
+    }
+    Ok(Some(normalized))
 }
 
 fn normalize_countries(values: Vec<String>) -> RegionResult<Vec<String>> {

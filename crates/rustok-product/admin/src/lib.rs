@@ -6,9 +6,9 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_core::locale_tags_match;
-use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{
@@ -173,41 +173,21 @@ pub fn ProductAdmin() -> impl IntoView {
     );
     let initial_product_not_found_label = product_not_found_label.clone();
     let initial_load_product_error_label = load_product_error_label.clone();
-    Effect::new(move |_| {
-        match selected_product_query.get() {
-            Some(product_id) if !product_id.trim().is_empty() => {
-                let Some(bootstrap) = bootstrap.get().and_then(Result::ok) else {
-                    return;
-                };
-                open_product_for_edit(
-                    bootstrap,
-                    token.get(),
-                    tenant.get(),
-                    effective_locale_for_initial_open.clone(),
-                    product_id,
-                    initial_product_not_found_label.clone(),
-                    initial_load_product_error_label.clone(),
-                    set_busy,
-                    set_error,
-                    set_editing_id,
-                    set_selected,
-                    set_title,
-                    set_handle,
-                    set_description,
-                    set_seller_id,
-                    set_vendor,
-                    set_product_type,
-                    set_shipping_profile_slug,
-                    set_sku,
-                    set_barcode,
-                    set_currency_code,
-                    set_amount,
-                    set_compare_at_amount,
-                    set_inventory_quantity,
-                    set_publish_now,
-                );
-            }
-            _ => clear_product_form(
+    Effect::new(move |_| match selected_product_query.get() {
+        Some(product_id) if !product_id.trim().is_empty() => {
+            let Some(bootstrap) = bootstrap.get().and_then(Result::ok) else {
+                return;
+            };
+            open_product_for_edit(
+                bootstrap,
+                token.get(),
+                tenant.get(),
+                effective_locale_for_initial_open.clone(),
+                product_id,
+                initial_product_not_found_label.clone(),
+                initial_load_product_error_label.clone(),
+                set_busy,
+                set_error,
                 set_editing_id,
                 set_selected,
                 set_title,
@@ -224,8 +204,26 @@ pub fn ProductAdmin() -> impl IntoView {
                 set_compare_at_amount,
                 set_inventory_quantity,
                 set_publish_now,
-            ),
+            );
         }
+        _ => clear_product_form(
+            set_editing_id,
+            set_selected,
+            set_title,
+            set_handle,
+            set_description,
+            set_seller_id,
+            set_vendor,
+            set_product_type,
+            set_shipping_profile_slug,
+            set_sku,
+            set_barcode,
+            set_currency_code,
+            set_amount,
+            set_compare_at_amount,
+            set_inventory_quantity,
+            set_publish_now,
+        ),
     });
 
     let reset_form = move || {
@@ -344,7 +342,8 @@ pub fn ProductAdmin() -> impl IntoView {
                         set_publish_now,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
-                    submit_query_writer.replace_value(AdminQueryKey::ProductId.as_str(), product_id);
+                    submit_query_writer
+                        .replace_value(AdminQueryKey::ProductId.as_str(), product_id);
                 }
                 Err(err) => set_error.set(Some(format!("{save_product_error_label}: {err}"))),
             }

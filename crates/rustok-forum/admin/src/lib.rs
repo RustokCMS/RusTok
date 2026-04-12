@@ -6,8 +6,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::{AdminQueryKey, UiRouteContext};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{
@@ -260,7 +260,9 @@ pub fn ForumAdmin() -> impl IntoView {
     let initial_edit_category = edit_category.clone();
     let initial_edit_topic = edit_topic.clone();
     Effect::new(move |_| match selected_category_query.get() {
-        Some(category_id) if !category_id.trim().is_empty() => initial_edit_category.run(category_id),
+        Some(category_id) if !category_id.trim().is_empty() => {
+            initial_edit_category.run(category_id)
+        }
         _ => clear_category_form(
             set_editing_category_id,
             set_category_name,
@@ -331,7 +333,8 @@ pub fn ForumAdmin() -> impl IntoView {
                         &category,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
-                    category_query_writer.replace_value(AdminQueryKey::CategoryId.as_str(), category_id);
+                    category_query_writer
+                        .replace_value(AdminQueryKey::CategoryId.as_str(), category_id);
                 }
                 Err(err) => set_error.set(Some(format!("{}: {err}", save_category_error))),
             }

@@ -181,6 +181,7 @@ rustok-profiles = { path = "crates/rustok-profiles" }
 rustok-comments = { path = "crates/rustok-comments" }
 rustok-region = { path = "crates/rustok-region" }
 rustok-pricing = { path = "crates/rustok-pricing" }
+rustok-tax = { path = "crates/rustok-tax" }
 rustok-inventory = { path = "crates/rustok-inventory" }
 rustok-order = { path = "crates/rustok-order" }
 rustok-payment = { path = "crates/rustok-payment" }

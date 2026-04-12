@@ -1,4 +1,4 @@
-# Документация `rustok-region`
+﻿# Документация `rustok-region`
 
 `rustok-region` — дефолтный region-подмодуль семейства `ecommerce`.
 
@@ -7,6 +7,7 @@
 - схема `regions`;
 - `RegionModule` и `RegionService`;
 - region boundary для country/currency/tax baseline;
+- typed `tax_provider_id` как region-owned hook для выбора tax provider без metadata-derived fallback;
 - module-owned admin UI для region CRUD;
 - module-owned storefront UI для public region discovery;
 - дефолтный lookup региона по `region_id` или стране.

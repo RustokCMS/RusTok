@@ -153,11 +153,8 @@ fn SelectedPricingCard(
     let module_route_base = route_context.module_route_base(route_segment.as_str());
     let product_module_route_base = route_context.module_route_base("products");
 
-    let translation = pricing_translation_for_locale(
-        product.translations.as_slice(),
-        locale.as_deref(),
-    )
-    .cloned();
+    let translation =
+        pricing_translation_for_locale(product.translations.as_slice(), locale.as_deref()).cloned();
     let title = translation
         .as_ref()
         .map(|item| item.title.clone())

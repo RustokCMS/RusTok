@@ -13,6 +13,7 @@ pub struct StorefrontCart {
     pub currency_code: String,
     pub subtotal_amount: String,
     pub adjustment_total: String,
+    pub shipping_total: String,
     pub total_amount: String,
     pub channel_slug: Option<String>,
     pub email: Option<String>,
@@ -45,8 +46,10 @@ pub struct StorefrontCartAdjustment {
     pub line_item_id: Option<String>,
     pub source_type: String,
     pub source_id: Option<String>,
+    pub scope: Option<String>,
     pub amount: String,
     pub currency_code: String,
+    pub metadata: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

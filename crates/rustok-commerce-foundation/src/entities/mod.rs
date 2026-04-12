@@ -13,6 +13,7 @@ pub mod product_option_value_translation;
 pub mod product_translation;
 pub mod product_variant;
 pub mod region;
+pub mod region_country_tax_policy;
 pub mod region_translation;
 pub mod reservation_item;
 pub mod shipping_profile;
@@ -36,6 +37,7 @@ pub use product_option_value_translation::Entity as ProductOptionValueTranslatio
 pub use product_translation::Entity as ProductTranslation;
 pub use product_variant::Entity as ProductVariant;
 pub use region::Entity as Region;
+pub use region_country_tax_policy::Entity as RegionCountryTaxPolicy;
 pub use region_translation::Entity as RegionTranslation;
 pub use reservation_item::Entity as ReservationItem;
 pub use shipping_profile::Entity as ShippingProfile;

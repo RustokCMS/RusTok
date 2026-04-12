@@ -1,6 +1,8 @@
-# План реализации `rustok-region`
+﻿# План реализации `rustok-region`
 
 Статус: region boundary выделен; модуль держит country/currency/tax baseline, storefront lookup contract и собственные module-owned admin/storefront UI.
+
+Текущий typed tax policy contract: `region.tax_provider_id` стал first-class полем региона, а metadata-derived hook для выбора tax provider больше не является source of truth.
 
 ## Область работ
 

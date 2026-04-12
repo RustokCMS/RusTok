@@ -22,7 +22,8 @@ Leptos storefront UI package for the `rustok-commerce` module.
 - Owns the remaining checkout workspace for delivery-group shipping selection, `payment collection` reuse, and `complete checkout` actions over `?cart_id=`.
 - Reprices cart line items after shipping-selection and checkout context updates so checkout pricing stays aligned with the pricing resolver.
 - Reprices cart line items before `payment collection` creation and `complete checkout` to avoid stale pricing when price lists or quantity tiers are active.
-- Carries cart adjustment summary through the checkout workspace without owning promotion display labels or localized adjustment metadata.
+- Carries typed checkout adjustment rows through the checkout workspace, including `scope` and
+  sanitized metadata for cart/order snapshots, without owning promotion display labels or localized labels.
 - Keeps checkout-context, delivery-selection, payment-collection, and other cross-domain orchestration concerns out of the host app.
 - Should remain compatible with the host storefront slot and generic module page contract, including locale-prefixed routes via `UiRouteContext::module_route_base()`.
 

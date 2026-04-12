@@ -1,17 +1,22 @@
-use rustok_cart::entities::{cart, cart_adjustment, cart_line_item, cart_shipping_selection};
+use rustok_cart::entities::{
+    cart, cart_adjustment, cart_line_item, cart_line_item_translation, cart_shipping_selection,
+    cart_tax_line,
+};
 use rustok_channel::entities::{channel, channel_module_binding};
 use rustok_commerce::entities::{
     inventory_item, inventory_level, price, price_list, price_list_translation, product,
     product_image, product_image_translation, product_option, product_option_translation,
-    product_option_value, product_option_value_translation, product_translation, product_variant,
-    region, region_translation, reservation_item, shipping_profile, shipping_profile_translation,
-    stock_location, stock_location_translation, variant_translation,
+    product_option_value, product_option_value_translation, product_translation, product_variant, region,
+    region_country_tax_policy, region_translation, reservation_item, shipping_profile,
+    shipping_profile_translation, stock_location, stock_location_translation, variant_translation,
 };
 use rustok_customer::entities::customer;
 use rustok_fulfillment::entities::{
     fulfillment, fulfillment_item, shipping_option, shipping_option_translation,
 };
-use rustok_order::entities::{order, order_adjustment, order_line_item};
+use rustok_order::entities::{
+    order, order_adjustment, order_line_item, order_line_item_translation, order_tax_line,
+};
 use rustok_payment::entities::{payment, payment_collection};
 use rustok_product::entities::product_tag;
 use rustok_taxonomy::entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation};
@@ -137,6 +142,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
+        schema.create_table_from_entity(region_country_tax_policy::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
         schema.create_table_from_entity(shipping_profile::Entity),
     )
     .await;
@@ -157,7 +168,19 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
+        schema.create_table_from_entity(cart_line_item_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
         schema.create_table_from_entity(cart_adjustment::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(cart_tax_line::Entity),
     )
     .await;
     create_entity_table(
@@ -194,7 +217,19 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
+        schema.create_table_from_entity(order_line_item_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
         schema.create_table_from_entity(order_adjustment::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(order_tax_line::Entity),
     )
     .await;
     create_entity_table(

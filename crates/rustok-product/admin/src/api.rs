@@ -315,10 +315,7 @@ pub async fn fetch_product(
         PRODUCT_QUERY,
         Some(TenantScopedVariables {
             tenant_id,
-            extra: ProductVariables {
-                id,
-                locale,
-            },
+            extra: ProductVariables { id, locale },
         }),
         token,
         tenant_slug,

@@ -226,6 +226,7 @@ fn CartSummaryCard(cart: StorefrontCart) -> impl IntoView {
                 <MetricCard title=t(locale.as_deref(), "cart.summary.status", "Status") value=cart.status />
                 <MetricCard title=t(locale.as_deref(), "cart.summary.subtotal", "Subtotal") value=format!("{} {}", cart.currency_code, cart.subtotal_amount) />
                 <MetricCard title=t(locale.as_deref(), "cart.summary.adjustments", "Adjustments") value=format!("{} {}", cart.currency_code, cart.adjustment_total) />
+                <MetricCard title=t(locale.as_deref(), "cart.summary.shipping", "Shipping") value=format!("{} {}", cart.currency_code, cart.shipping_total) />
                 <MetricCard title=t(locale.as_deref(), "cart.summary.total", "Total") value=format!("{} {}", cart.currency_code, cart.total_amount) />
                 <MetricCard title=t(locale.as_deref(), "cart.summary.email", "Email") value=email />
                 <MetricCard title=t(locale.as_deref(), "cart.summary.channel", "Channel") value=channel />
@@ -261,13 +262,22 @@ fn AdjustmentsCard(adjustments: Vec<StorefrontCartAdjustment>) -> impl IntoView 
                             let locale = locale.clone();
                             let source = adjustment.source_id.unwrap_or_else(|| t(locale.as_deref(), "cart.summary.empty", "not set"));
                             let line_item = adjustment.line_item_id.unwrap_or_else(|| t(locale.as_deref(), "cart.summary.empty", "not set"));
+                            let scope = adjustment.scope.clone().unwrap_or_else(|| t(locale.as_deref(), "cart.summary.empty", "not set"));
+                            let metadata = adjustment.metadata.clone();
                             view! {
                                 <article class="rounded-2xl border border-border bg-card p-4">
                                     <div class="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{adjustment.source_type}</div>
-                                    <div class="mt-2 grid gap-2 md:grid-cols-3">
+                                    <div class="mt-2 grid gap-2 md:grid-cols-4">
                                         <MetricCard title=t(locale.as_deref(), "cart.adjustments.source", "Source") value=source />
+                                        <MetricCard title=t(locale.as_deref(), "cart.adjustments.scope", "Scope") value=scope />
                                         <MetricCard title=t(locale.as_deref(), "cart.adjustments.lineItem", "Line item") value=line_item />
                                         <MetricCard title=t(locale.as_deref(), "cart.adjustments.amount", "Amount") value=format!("{} {}", adjustment.currency_code, adjustment.amount) />
+                                    </div>
+                                    <div class="mt-3 rounded-2xl border border-border/60 bg-background/60 p-3">
+                                        <div class="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                            {t(locale.as_deref(), "cart.adjustments.metadata", "Metadata")}
+                                        </div>
+                                        <pre class="mt-2 whitespace-pre-wrap break-all text-xs text-muted-foreground">{metadata}</pre>
                                     </div>
                                 </article>
                             }

@@ -66,7 +66,12 @@ impl StoreContextService {
             .unwrap_or_else(|| default_locale.clone());
 
         let region = self
-            .resolve_region(tenant_id, &input, requested_locale.as_deref(), Some(&default_locale))
+            .resolve_region(
+                tenant_id,
+                &input,
+                requested_locale.as_deref(),
+                Some(&default_locale),
+            )
             .await?;
         let currency_code = match (input.currency_code.as_deref(), region.as_ref()) {
             (Some(currency_code), Some(region)) => {

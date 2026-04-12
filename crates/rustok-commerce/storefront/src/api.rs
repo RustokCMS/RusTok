@@ -6,9 +6,9 @@ use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
 use crate::model::{
-    StorefrontCheckoutCart, StorefrontCheckoutCompletion, StorefrontCheckoutDeliveryGroup,
-    StorefrontCheckoutPaymentCollection, StorefrontCheckoutShippingOption,
-    StorefrontCheckoutWorkspace, StorefrontCommerceData,
+    StorefrontCheckoutAdjustment, StorefrontCheckoutCart, StorefrontCheckoutCompletion,
+    StorefrontCheckoutDeliveryGroup, StorefrontCheckoutPaymentCollection,
+    StorefrontCheckoutShippingOption, StorefrontCheckoutWorkspace, StorefrontCommerceData,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,9 +42,9 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_CHECKOUT_QUERY: &str = "query StorefrontCheckoutWorkspace($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal totalAmount channelSlug email customerId regionId countryCode localeCode selectedShippingOptionId lineItems { id } adjustments { id } deliveryGroups { shippingProfileSlug sellerId sellerScope lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
+const STOREFRONT_CHECKOUT_QUERY: &str = "query StorefrontCheckoutWorkspace($id: UUID!) { storefrontCart(id: $id) { id status currencyCode subtotalAmount adjustmentTotal shippingTotal totalAmount channelSlug email customerId regionId countryCode localeCode selectedShippingOptionId lineItems { id } adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } deliveryGroups { shippingProfileSlug sellerId sellerScope lineItemIds selectedShippingOptionId availableShippingOptions { id name currencyCode amount providerId active } } } }";
 const CREATE_STOREFRONT_PAYMENT_COLLECTION_MUTATION: &str = "mutation CreateStorefrontPaymentCollection($input: CreateStorefrontPaymentCollectionInput!) { createStorefrontPaymentCollection(input: $input) { id status currencyCode amount authorizedAmount capturedAmount orderId providerId createdAt updatedAt payments { id } } }";
-const COMPLETE_STOREFRONT_CHECKOUT_MUTATION: &str = "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!) { completeStorefrontCheckout(input: $input) { order { id status currencyCode totalAmount } paymentCollection { id status currencyCode } fulfillments { id } context { locale currencyCode } } }";
+const COMPLETE_STOREFRONT_CHECKOUT_MUTATION: &str = "mutation CompleteStorefrontCheckout($input: CompleteStorefrontCheckoutInput!) { completeStorefrontCheckout(input: $input) { order { id status currencyCode shippingTotal adjustmentTotal totalAmount adjustments { id lineItemId sourceType sourceId amount currencyCode metadata } } paymentCollection { id status currencyCode } fulfillments { id } context { locale currencyCode } } }";
 const SELECT_STOREFRONT_SHIPPING_OPTION_MUTATION: &str = "mutation SelectStorefrontShippingOption($cartId: UUID!, $input: UpdateStorefrontCartContextInput!) { updateStorefrontCartContext(cartId: $cartId, input: $input) { cart { id } } }";
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +68,8 @@ struct GraphqlCheckoutCart {
     subtotal_amount: String,
     #[serde(rename = "adjustmentTotal")]
     adjustment_total: String,
+    #[serde(rename = "shippingTotal")]
+    shipping_total: String,
     #[serde(rename = "totalAmount")]
     total_amount: String,
     #[serde(rename = "channelSlug")]
@@ -94,7 +96,19 @@ struct GraphqlCheckoutCart {
 struct GraphqlCheckoutLineItem {}
 
 #[derive(Debug, Deserialize)]
-struct GraphqlCheckoutAdjustment {}
+struct GraphqlCheckoutAdjustment {
+    id: String,
+    #[serde(rename = "lineItemId")]
+    line_item_id: Option<String>,
+    #[serde(rename = "sourceType")]
+    source_type: String,
+    #[serde(rename = "sourceId")]
+    source_id: Option<String>,
+    amount: String,
+    #[serde(rename = "currencyCode")]
+    currency_code: String,
+    metadata: String,
+}
 
 #[derive(Debug, Deserialize)]
 struct GraphqlCheckoutDeliveryGroup {
@@ -243,8 +257,13 @@ struct GraphqlOrderSummary {
     status: String,
     #[serde(rename = "currencyCode")]
     currency_code: String,
+    #[serde(rename = "shippingTotal")]
+    shipping_total: String,
+    #[serde(rename = "adjustmentTotal")]
+    adjustment_total: String,
     #[serde(rename = "totalAmount")]
     total_amount: String,
+    adjustments: Vec<GraphqlCheckoutAdjustment>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -317,6 +336,17 @@ fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
 
 fn normalize_cart_id(value: Option<String>) -> Option<String> {
     normalize_optional(value)
+}
+
+fn parse_adjustment_scope(metadata: &str) -> Option<String> {
+    serde_json::from_str::<Value>(metadata)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("scope")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
 }
 
 fn normalize_shipping_profile_slug(value: String) -> Result<String, ApiError> {
@@ -440,6 +470,20 @@ fn map_graphql_delivery_group(
 }
 
 fn map_graphql_checkout_cart(value: GraphqlCheckoutCart) -> StorefrontCheckoutCart {
+    let adjustments = value
+        .adjustments
+        .into_iter()
+        .map(|adjustment| StorefrontCheckoutAdjustment {
+            id: adjustment.id,
+            line_item_id: adjustment.line_item_id,
+            source_type: adjustment.source_type,
+            source_id: adjustment.source_id,
+            scope: parse_adjustment_scope(&adjustment.metadata),
+            amount: adjustment.amount,
+            currency_code: adjustment.currency_code,
+            metadata: adjustment.metadata,
+        })
+        .collect::<Vec<_>>();
     let delivery_groups = value
         .delivery_groups
         .into_iter()
@@ -453,6 +497,7 @@ fn map_graphql_checkout_cart(value: GraphqlCheckoutCart) -> StorefrontCheckoutCa
         currency_code: value.currency_code,
         subtotal_amount: value.subtotal_amount,
         adjustment_total: value.adjustment_total,
+        shipping_total: value.shipping_total,
         total_amount: value.total_amount,
         channel_slug: value.channel_slug,
         email: value.email,
@@ -462,8 +507,9 @@ fn map_graphql_checkout_cart(value: GraphqlCheckoutCart) -> StorefrontCheckoutCa
         locale_code: value.locale_code,
         selected_shipping_option_id: value.selected_shipping_option_id,
         line_item_count: value.line_items.len() as u64,
-        adjustment_count: value.adjustments.len() as u64,
+        adjustment_count: adjustments.len() as u64,
         delivery_group_count,
+        adjustments,
         delivery_groups,
     }
 }
@@ -489,11 +535,29 @@ fn map_graphql_payment_collection(
 fn map_graphql_checkout_completion(
     value: GraphqlCheckoutCompletion,
 ) -> StorefrontCheckoutCompletion {
+    let adjustments = value
+        .order
+        .adjustments
+        .into_iter()
+        .map(|adjustment| StorefrontCheckoutAdjustment {
+            id: adjustment.id,
+            line_item_id: adjustment.line_item_id,
+            source_type: adjustment.source_type,
+            source_id: adjustment.source_id,
+            scope: parse_adjustment_scope(&adjustment.metadata),
+            amount: adjustment.amount,
+            currency_code: adjustment.currency_code,
+            metadata: adjustment.metadata,
+        })
+        .collect::<Vec<_>>();
     StorefrontCheckoutCompletion {
         order_id: value.order.id,
         order_status: value.order.status,
         currency_code: value.order.currency_code,
+        shipping_total: value.order.shipping_total,
+        adjustment_total: value.order.adjustment_total,
         total_amount: value.order.total_amount,
+        adjustments,
         payment_collection_id: value.payment_collection.id,
         payment_collection_status: value.payment_collection.status,
         fulfillment_count: value.fulfillments.len() as u64,
@@ -611,6 +675,24 @@ fn map_native_delivery_group(
 
 #[cfg(feature = "ssr")]
 fn map_native_checkout_cart(value: rustok_commerce::CartResponse) -> StorefrontCheckoutCart {
+    let adjustments = value
+        .adjustments
+        .into_iter()
+        .map(|adjustment| StorefrontCheckoutAdjustment {
+            id: adjustment.id.to_string(),
+            line_item_id: adjustment.line_item_id.map(|value| value.to_string()),
+            source_type: adjustment.source_type,
+            source_id: adjustment.source_id,
+            scope: adjustment
+                .metadata
+                .get("scope")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            amount: adjustment.amount.normalize().to_string(),
+            currency_code: adjustment.currency_code,
+            metadata: adjustment.metadata.to_string(),
+        })
+        .collect::<Vec<_>>();
     let delivery_groups = value
         .delivery_groups
         .into_iter()
@@ -623,6 +705,7 @@ fn map_native_checkout_cart(value: rustok_commerce::CartResponse) -> StorefrontC
         currency_code: value.currency_code,
         subtotal_amount: value.subtotal_amount.normalize().to_string(),
         adjustment_total: value.adjustment_total.normalize().to_string(),
+        shipping_total: value.shipping_total.normalize().to_string(),
         total_amount: value.total_amount.normalize().to_string(),
         channel_slug: value.channel_slug,
         email: value.email,
@@ -634,8 +717,9 @@ fn map_native_checkout_cart(value: rustok_commerce::CartResponse) -> StorefrontC
             .selected_shipping_option_id
             .map(|value| value.to_string()),
         line_item_count: value.line_items.len() as u64,
-        adjustment_count: value.adjustments.len() as u64,
+        adjustment_count: adjustments.len() as u64,
         delivery_group_count: delivery_groups.len() as u64,
+        adjustments,
         delivery_groups,
     }
 }
@@ -663,11 +747,33 @@ fn map_native_payment_collection(
 fn map_native_checkout_completion(
     value: rustok_commerce::CompleteCheckoutResponse,
 ) -> StorefrontCheckoutCompletion {
+    let adjustments = value
+        .order
+        .adjustments
+        .into_iter()
+        .map(|adjustment| StorefrontCheckoutAdjustment {
+            id: adjustment.id.to_string(),
+            line_item_id: adjustment.line_item_id.map(|value| value.to_string()),
+            source_type: adjustment.source_type,
+            source_id: adjustment.source_id,
+            scope: adjustment
+                .metadata
+                .get("scope")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            amount: adjustment.amount.normalize().to_string(),
+            currency_code: adjustment.currency_code,
+            metadata: adjustment.metadata.to_string(),
+        })
+        .collect::<Vec<_>>();
     StorefrontCheckoutCompletion {
         order_id: value.order.id.to_string(),
         order_status: value.order.status,
         currency_code: value.order.currency_code,
+        shipping_total: value.order.shipping_total.normalize().to_string(),
+        adjustment_total: value.order.adjustment_total.normalize().to_string(),
         total_amount: value.order.total_amount.normalize().to_string(),
+        adjustments,
         payment_collection_id: value.payment_collection.id.to_string(),
         payment_collection_status: value.payment_collection.status,
         fulfillment_count: value.fulfillments.len() as u64,
@@ -1331,7 +1437,7 @@ async fn reprice_storefront_cart_line_items(
 fn storefront_cart_pricing_update(
     line_item_id: Uuid,
     quantity: i32,
-    resolved_price: &rustok_pricing::ResolvedPrice,
+    resolved_price: &rustok_commerce::services::ResolvedPrice,
 ) -> rustok_cart::services::cart::CartLineItemPricingUpdate {
     let base_unit_price = resolved_price
         .compare_at_amount
@@ -1388,7 +1494,8 @@ fn storefront_cart_pricing_update(
 
         Some(rustok_cart::services::cart::CartPricingAdjustmentUpdate {
             source_id: resolved_price.price_list_id.map(|value| value.to_string()),
-            amount: (base_unit_price - resolved_price.amount) * rust_decimal::Decimal::from(quantity),
+            amount: (base_unit_price - resolved_price.amount)
+                * rust_decimal::Decimal::from(quantity),
             metadata: serde_json::Value::Object(metadata),
         })
     } else {

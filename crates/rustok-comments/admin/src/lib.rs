@@ -4,8 +4,8 @@ mod i18n;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::{AdminQueryKey, UiRouteContext};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::{AdminQueryKey, UiRouteContext};
 use rustok_comments::{CommentStatus, CommentThreadStatus};
 
 use crate::i18n::t;
@@ -129,15 +129,18 @@ pub fn CommentsAdmin() -> impl IntoView {
         move |(_, _, thread_id, _, locale_value)| {
             let detail_error_locale = detail_error_locale.clone();
             async move {
-            match thread_id {
-                Some(thread_id) => api::fetch_thread_detail(thread_id, locale_value, 1, 100).await,
-                None => Err(api::ApiError::ServerFn(t(
-                    detail_error_locale.as_deref(),
-                    "comments.error.selectThread",
-                    "Select a thread first",
-                ))),
+                match thread_id {
+                    Some(thread_id) => {
+                        api::fetch_thread_detail(thread_id, locale_value, 1, 100).await
+                    }
+                    None => Err(api::ApiError::ServerFn(t(
+                        detail_error_locale.as_deref(),
+                        "comments.error.selectThread",
+                        "Select a thread first",
+                    ))),
+                }
             }
-        }},
+        },
     );
 
     Effect::new(move |_| {

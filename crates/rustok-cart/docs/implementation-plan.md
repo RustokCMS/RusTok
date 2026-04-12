@@ -13,6 +13,8 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 
 - `carts` и `cart_line_items` уже module-owned;
 - `cart_adjustments` уже module-owned и фиксируют language-neutral promotion/discount snapshot без display labels;
+- tax runtime уже больше не зашит напрямую в cart service: `rustok-cart` вызывает `rustok-tax`,
+  а `cart_tax_lines` теперь несут typed `provider_id`;
 - cart lifecycle и persisted storefront context snapshot уже встроены в базовый contract;
 - cart write-side теперь поддерживает batch repricing line items при смене контекста/количества,
   чтобы unit_price оставался согласован с pricing resolver;

@@ -9,10 +9,16 @@
 - Own the cart write-side schema and line item lifecycle.
 - Persist the storefront cart context snapshot across region, locale, customer, and selected shipping intent.
 - Persist typed cart adjustments as language-neutral promotion/discount snapshots.
+- Persist first-class `shipping_total` so selected shipping options contribute to
+  cart totals instead of remaining an implicit checkout-only side input.
+- Delegate tax calculation to `rustok-tax` and snapshot typed tax-line
+  `provider_id` instead of hardcoding region tax math directly inside the cart
+  module.
 - Keep cart snapshots independent from catalog ownership.
 - Support repricing line items via the pricing resolver when quantity or
-  storefront context changes, so unit prices do not drift across channel/region
-  boundaries.
+  storefront context changes, normalizing discounted items into
+  `base/compare-at unit_price + pricing-owned adjustments` so persisted unit
+  prices do not drift across channel/region boundaries.
 - Prepare a stable handoff point for later checkout and order placement flows.
 - Publish a module-owned storefront cart workspace for cart inspection.
 
@@ -24,6 +30,20 @@
   store-context resolution against tenant locale policy and regions.
 - Keeps adjustment source identity in `source_type/source_id` and never stores promotion display labels
   as cart-owned business data.
+- Treats `cart_adjustments` as the discount source of truth, while pricing-driven
+  repricing rewrites only pricing-owned adjustments and preserves non-pricing ones.
+- Computes totals as `subtotal - adjustments + shipping_total (+ tax when the
+  region is tax-exclusive)`, giving checkout and payment collection a stable
+  total contract before shipping promotions are introduced.
+- Keeps tax provider identity explicit in cart tax-line snapshots, so future
+  external tax engines can replace the default runtime without breaking the
+  downstream cart/order contract.
+- Persists discounted add-to-cart snapshots atomically, so a storefront line item is
+  not created in a temporary “sale-only unit price” state before pricing adjustments land.
+- Exposes a typed promotion runtime for cart-level and line-item percentage/fixed
+  discounts, so callers no longer need to rely on raw full-replace adjustment writes.
+- Extends that typed promotion runtime to shipping scope, keeping shipping
+  discounts as explicit adjustments instead of mutating `shipping_total`.
 - Keeps product and variant references as snapshots so the cart domain does not depend on
   the product module as a lower-level shared layer.
 - `apps/storefront` mounts `rustok-cart/storefront` via manifest-driven composition.

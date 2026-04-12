@@ -21,6 +21,7 @@ rustok-cart = { workspace = true, optional = true }
 rustok-commerce = { workspace = true, optional = true }
 rustok-customer = { workspace = true, optional = true }
 sea-orm.workspace = true
+rust_decimal.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 uuid.workspace = true

@@ -5,8 +5,8 @@ mod model;
 use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_ui_routing::read_route_query_value;
 use leptos::web_sys;
+use leptos_ui_routing::read_route_query_value;
 use rustok_api::UiRouteContext;
 
 use crate::i18n::t;
@@ -82,13 +82,19 @@ pub fn SearchView() -> impl IntoView {
         "Failed to load storefront search results",
     );
     let entity_types = parse_csv(
-        read_route_query_value(&route_context, "entity_types").as_deref().unwrap_or(""),
+        read_route_query_value(&route_context, "entity_types")
+            .as_deref()
+            .unwrap_or(""),
     );
     let source_modules = parse_csv(
-        read_route_query_value(&route_context, "source_modules").as_deref().unwrap_or(""),
+        read_route_query_value(&route_context, "source_modules")
+            .as_deref()
+            .unwrap_or(""),
     );
     let statuses = parse_csv(
-        read_route_query_value(&route_context, "statuses").as_deref().unwrap_or(""),
+        read_route_query_value(&route_context, "statuses")
+            .as_deref()
+            .unwrap_or(""),
     );
     let filters = SearchPreviewFilters {
         entity_types,

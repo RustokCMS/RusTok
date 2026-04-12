@@ -6,8 +6,8 @@ use leptos::ev::{MouseEvent, SubmitEvent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::web_sys;
-use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use leptos_router::components::A;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
@@ -211,10 +211,8 @@ pub fn SearchAdmin() -> impl IntoView {
                 if query_value.trim().is_empty() {
                     preview_query_writer.clear_key(AdminQueryKey::Query.as_str());
                 } else {
-                    preview_query_writer.replace_value(
-                        AdminQueryKey::Query.as_str(),
-                        query_value.clone(),
-                    );
+                    preview_query_writer
+                        .replace_value(AdminQueryKey::Query.as_str(), query_value.clone());
                 }
                 match api::fetch_search_preview(
                     token_value,

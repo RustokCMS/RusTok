@@ -2,14 +2,14 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::{AdminQueryKey, UiRouteContext};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::helpers::{
     action_hint, apply_order_detail, clear_order_detail, format_order_caption,
-    handle_action_result,
-    localized_order_status, order_status_badge, short_order_id, summarize_order_header,
-    summarize_order_lines, summarize_order_timeline, text_or_dash, text_or_none,
+    handle_action_result, localized_order_status, order_status_badge, short_order_id,
+    summarize_order_header, summarize_order_lines, summarize_order_timeline, text_or_dash,
+    text_or_none,
 };
 use crate::i18n::t;
 use crate::model::{OrderAdminBootstrap, OrderDetailEnvelope};
@@ -507,26 +507,24 @@ pub fn OrderAdmin() -> impl IntoView {
     let ui_locale_for_actions = ui_locale.clone();
     let initial_open_order = open_order.clone();
     let list_query_writer = query_writer.clone();
-    Effect::new(move |_| {
-        match selected_order_query.get() {
-            Some(order_id) if !order_id.trim().is_empty() => {
-                if bootstrap.get().and_then(Result::ok).is_none() {
-                    return;
-                }
-                initial_open_order.run(order_id);
+    Effect::new(move |_| match selected_order_query.get() {
+        Some(order_id) if !order_id.trim().is_empty() => {
+            if bootstrap.get().and_then(Result::ok).is_none() {
+                return;
             }
-            _ => {
-                clear_order_detail(
-                    set_selected_id,
-                    set_selected,
-                    set_payment_id,
-                    set_payment_method,
-                    set_tracking_number,
-                    set_carrier,
-                    set_delivered_signature,
-                    set_cancel_reason,
-                );
-            }
+            initial_open_order.run(order_id);
+        }
+        _ => {
+            clear_order_detail(
+                set_selected_id,
+                set_selected,
+                set_payment_id,
+                set_payment_method,
+                set_tracking_number,
+                set_carrier,
+                set_delivered_signature,
+                set_cancel_reason,
+            );
         }
     });
 

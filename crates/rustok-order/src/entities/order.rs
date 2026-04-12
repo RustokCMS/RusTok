@@ -13,6 +13,7 @@ pub struct Model {
     pub customer_id: Option<Uuid>,
     pub status: String,
     pub currency_code: String,
+    pub shipping_total: Decimal,
     pub total_amount: Decimal,
     pub tax_total: Decimal,
     pub tax_included: bool,

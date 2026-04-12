@@ -872,7 +872,9 @@ async fn list_active_price_lists_native_with_context(
         .ok();
     let requested_locale = resolve_requested_locale(
         None,
-        request_context.as_ref().map(|context| context.locale.as_str()),
+        request_context
+            .as_ref()
+            .map(|context| context.locale.as_str()),
         tenant.default_locale.as_str(),
     );
     let channel_id = parse_optional_uuid_string(channel_id, "channel_id")?.or_else(|| {
@@ -947,7 +949,9 @@ async fn update_price_list_rule_native_with_context(
         .ok();
     let requested_locale = resolve_requested_locale(
         None,
-        request_context.as_ref().map(|context| context.locale.as_str()),
+        request_context
+            .as_ref()
+            .map(|context| context.locale.as_str()),
         tenant.default_locale.as_str(),
     );
     let option = service

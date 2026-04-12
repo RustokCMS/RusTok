@@ -12,8 +12,8 @@ use crate::model::{BlogPostDetail, BlogPostListItem, StorefrontBlogData};
 #[component]
 pub fn BlogView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let selected_slug = read_route_query_value(&route_context, "slug")
-        .unwrap_or_else(|| "latest".to_string());
+    let selected_slug =
+        read_route_query_value(&route_context, "slug").unwrap_or_else(|| "latest".to_string());
     let selected_locale = route_context.locale.clone();
     let badge = t(selected_locale.as_deref(), "blog.badge", "blog");
     let title = t(

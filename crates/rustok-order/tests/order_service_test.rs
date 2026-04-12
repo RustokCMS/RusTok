@@ -26,6 +26,7 @@ fn create_order_input() -> CreateOrderInput {
     CreateOrderInput {
         customer_id: Some(Uuid::new_v4()),
         currency_code: "usd".to_string(),
+        shipping_total: Decimal::ZERO,
         line_items: vec![
             CreateOrderLineItemInput {
                 product_id: Some(Uuid::new_v4()),

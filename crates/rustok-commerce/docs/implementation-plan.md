@@ -1,4 +1,4 @@
-# План реализации `rustok-commerce`
+﻿# План реализации `rustok-commerce`
 
 ## Статус документа
 
@@ -10,7 +10,7 @@
 `fulfillment`, order operations вынесены в `order`, inventory visibility вынесена
 в `inventory`, pricing visibility вынесена в `pricing`, customer operations вынесены
 в `customer`, region CRUD вынесен в `region`, а aggregate `commerce` UI очищен до
-typed shipping-profile registry.
+typed shipping-profile registry плюс aggregate cart-promotion operator surface.
 
 Исходные предпосылки:
 
@@ -75,7 +75,7 @@ typed shipping-profile registry.
 - seller portal, merchant RBAC surfaces, commissions/payouts/settlement и disputes/returns marketplace-policy сознательно вынесены за рамки ближайшего scope и не входят в foundation slice;
 - channel-aware price resolution больше не является чистым backlog: `Phase 8` уже получил host-channel-aware resolver foundation (`channel_id/channel_slug`, channel-scoped base rows и channel-filtered active price lists), но promotion/rule layering и полноценный authoring UX всё ещё остаются внутри `Phase 8`;
 - полноценный promotion/discount domain поверх price rules, а не только `compare_at_amount` и service-level `apply_discount`;
-- отдельный tax domain: foundation уже начат (tax lines + totals), но расчёт пока опирается на `region.tax_rate` / `tax_included`, provider seam ещё не введён;
+- отдельный tax domain: foundation уже начат (tax lines + totals), `rustok-tax` уже вынес default `region_default` calculation в отдельный module boundary, а provider seam и typed `provider_id` tax-line contract уже введены; backlog теперь смещается в richer tax rules и внешние tax engines вместо продолжения hardcoded region-only runtime;
 - post-order слой уровня Medusa: returns, exchanges, claims, order changes, draft/edit flows, refund transport;
 - provider registry для payment/fulfillment, webhook ingestion и внешний gateway/carrier story.
 
@@ -177,7 +177,13 @@ typed shipping-profile registry.
 - transport coverage закрывает `currency_code` vs `region_id`, guest/customer ownership и сквозной storefront checkout flow;
 - service coverage подтверждает reuse уже существующего cart-bound payment collection во время `complete checkout`.
 - cart/order transport теперь сохраняет channel snapshot и использует его как часть storefront context во время checkout.
-- storefront payment-collection и complete-checkout paths перепрайсят cart line items перед созданием payment collection и перед `complete checkout`, чтобы price-list/quantity-tier изменения не оставляли stale `unit_price`.
+- storefront payment-collection и complete-checkout paths перепрайсят cart line items перед созданием payment collection и перед `complete checkout`, чтобы price-list/quantity-tier изменения не оставляли stale pricing snapshot: line items при скидке нормализуются в `base/compare_at unit_price` плюс pricing-owned `cart_adjustments`, а payment collection продолжает брать net `cart.total_amount`.
+- cart/order totals теперь дополнены first-class `shipping_total`: выбранные shipping options входят
+  в persisted `cart.total_amount`, checkout snapshot'ит `shipping_total` в order и payment collection
+  больше не живёт на subtotal-minus-adjustments без доставки.
+- поверх этого base contract `rustok-cart` уже начал typed shipping-promotion layer: percentage/fixed
+  shipping discounts живут в `cart_adjustments` как `scope=shipping`, checkout snapshot'ит их в order,
+  а payment collection остаётся привязанным к тому же net total без hidden fallback на старую семантику.
 
 ### Phase 4. Order/payment/fulfillment transport
 
@@ -406,7 +412,9 @@ Deliverables:
 - cart/order promotion representation теперь тоже имеет typed foundation: `rustok-cart` хранит `cart_adjustments`,
   пересчитывает `subtotal_amount`, `adjustment_total` и net `total_amount`, а `rustok-order` snapshot'ит
   `order_adjustments` при checkout/create-order и отдаёт тот же summary в REST/GraphQL/Leptos-facing DTO;
-  этот слой не хранит seller/product/promotion display labels и остаётся устойчивым к смене default locale.
+  этот слой не хранит seller/product/promotion display labels и остаётся устойчивым к смене default locale;
+  storefront repricing при наличии скидки теперь фиксирует в line item не effective sale price, а `base/compare_at`
+  `unit_price`, пока discount savings живут в typed adjustment snapshot.
 - storefront/admin GraphQL parity теперь тоже покрывает этот snapshot layer: storefront cart/query + checkout
   сохраняют typed `adjustments`, payment collection использует net `cart.total_amount`, а completed order
   переносит sanitized adjustment metadata без `display_label`.
@@ -416,12 +424,26 @@ Deliverables:
   а verification baseline для umbrella-модуля снова включает полный `cargo test -p rustok-commerce --lib`.
 - storefront GraphQL add-to-cart теперь резолвит `unit_price` через `PricingService` с тем же
   `PriceResolutionContext` (currency + region + channel + quantity), а не через raw `price` row;
-  это выравнивает pricing semantics между REST и GraphQL storefront cart path.
-- storefront cart quantity update теперь переоценяет `unit_price` через pricing resolver,
-  чтобы quantity tiers и channel-aware pricing применялись при изменении количества.
+  это выравнивает pricing semantics между REST и GraphQL storefront cart path и даёт общий
+  `base unit_price + pricing adjustment` snapshot contract; add-to-cart write path теперь
+  пишет этот snapshot атомарно в одной cart-транзакции, а не через отдельный follow-up repricing step.
+- storefront cart quantity update теперь переоценивает line items через pricing resolver,
+  чтобы quantity tiers и channel-aware pricing применялись при изменении количества без записи
+  effective sale price прямо в persisted `unit_price`.
 - storefront cart context update (region/country/locale/shipping selections) теперь
   перепрайсит все line items через pricing resolver, чтобы смена контекста не оставляла
-  stale `unit_price`.
+  stale pricing snapshot и пересобирала `base unit_price + adjustments` под новый storefront context.
+- typed promotion runtime поверх snapshot layer тоже уже начат в `rustok-cart`: cart service умеет
+  preview/apply percentage/fixed promotions на cart-level и line-item scope, не перетирая pricing-owned
+  adjustments и сохраняя order/payment snapshot parity через существующий checkout flow.
+- operator-side GraphQL transport над этим runtime тоже уже есть: admin mutations умеют preview/apply
+  typed cart promotions для `cart`, `line_item` и `shipping` scope, используя тот же `CartService`
+  вместо отдельного promotion-specific storage или ad hoc adjustment writer.
+- native-first operator transport поверх того же runtime теперь тоже есть в `rustok-commerce-admin`:
+  package-level `#[server]` functions умеют preview/apply typed cart promotions для `cart`,
+  `line_item` и `shipping` scope, используют тот же `CartService`, держат тот же permission contract
+  (`orders:read` для preview, `orders:update` для apply) и покрыты SSR tests на shipping scope,
+  target validation и permission gate.
 
 Обязательные проверки:
 
@@ -430,7 +452,8 @@ Deliverables:
 - cart/order adjustment snapshot tests: net total, source identity, line-item binding и отсутствие localized display labels в storage;
 - checkout regression tests: cart adjustments должны snapshot'иться в order adjustments, а payment collection должен использовать net `cart.total_amount`;
 - regression tests на rounding и decimal money contract;
-- transport tests на price + promotion representation в `/store/*`, `/admin/*` и GraphQL.
+- transport tests на price + promotion representation в `/store/*`, `/admin/*` и GraphQL,
+  включая storefront parity для `shipping_total` и shipping-scoped promotion snapshot.
 
 ### Phase 9. Tax domain
 
@@ -448,6 +471,15 @@ Deliverables:
 - tax lines для line items и shipping;
 - provider seam для внешних tax engines;
 - migration path от плоской region tax policy к более реалистичной модели.
+
+Что уже начато в текущем срезе:
+
+- `rustok-tax` введён как отдельный bounded context для tax calculation contract вместо продолжения hardcoded tax runtime внутри `rustok-cart`;
+- default provider `region_default` сохраняет текущую семантику `region.tax_rate` / `tax_included`, но теперь живёт за provider seam;
+- текущий provider selection hook проходит через `regions.tax_provider_id`; неизвестный provider режется как validation error ещё в cart runtime вместо скрытого fallback;
+- `rustok-cart` больше не считает tax lines напрямую из region helper-кода: cart runtime вызывает `TaxService` и snapshot'ит provider-aware tax lines;
+- `cart_tax_lines` и `order_tax_lines` теперь несут first-class `provider_id`, а checkout переносит этот snapshot в order без hidden metadata-only fallback;
+- targeted regression уже фиксирует, что complete checkout сохраняет `provider_id=region_default` в cart/order tax lines вместе с `tax_included` metadata.
 
 Обязательные проверки:
 

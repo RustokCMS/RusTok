@@ -11,6 +11,8 @@ pub struct CreateOrderInput {
     pub customer_id: Option<Uuid>,
     #[validate(length(equal = 3))]
     pub currency_code: String,
+    #[serde(default)]
+    pub shipping_total: Decimal,
     #[validate(length(min = 1))]
     pub line_items: Vec<CreateOrderLineItemInput>,
     #[serde(default)]
@@ -54,6 +56,8 @@ pub struct CreateOrderTaxLineInput {
     pub shipping_option_id: Option<Uuid>,
     #[validate(length(max = 255))]
     pub description: Option<String>,
+    #[validate(length(min = 1, max = 64))]
+    pub provider_id: String,
     pub rate: Decimal,
     pub amount: Decimal,
     #[validate(length(equal = 3))]
@@ -106,6 +110,7 @@ pub struct OrderResponse {
     pub currency_code: String,
     pub subtotal_amount: Decimal,
     pub adjustment_total: Decimal,
+    pub shipping_total: Decimal,
     pub total_amount: Decimal,
     pub tax_total: Decimal,
     pub tax_included: bool,
@@ -166,6 +171,7 @@ pub struct OrderTaxLineResponse {
     pub line_item_id: Option<Uuid>,
     pub shipping_option_id: Option<Uuid>,
     pub description: Option<String>,
+    pub provider_id: String,
     pub rate: Decimal,
     pub amount: Decimal,
     pub currency_code: String,

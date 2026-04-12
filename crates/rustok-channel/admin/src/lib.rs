@@ -5,9 +5,9 @@ mod model;
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::context::ChannelResolutionSource;
 use rustok_api::{AdminQueryKey, UiRouteContext};
-use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 
 use crate::i18n::t;
 use crate::model::{
@@ -87,7 +87,10 @@ pub fn ChannelAdmin() -> impl IntoView {
         let selected_channel_id = selected_channel_query.get();
         match (selected_channel_id.as_deref(), bootstrap.get()) {
             (Some(channel_id), Some(Ok(bootstrap)))
-                if !bootstrap.channels.iter().any(|channel| channel.channel.id == channel_id) =>
+                if !bootstrap
+                    .channels
+                    .iter()
+                    .any(|channel| channel.channel.id == channel_id) =>
             {
                 query_writer.clear_key(AdminQueryKey::ChannelId.as_str());
             }
@@ -133,10 +136,8 @@ pub fn ChannelAdmin() -> impl IntoView {
                         ));
                         create_slug.set(String::new());
                         create_name.set(String::new());
-                        create_channel_query_writer.replace_value(
-                            AdminQueryKey::ChannelId.as_str(),
-                            channel.id.clone(),
-                        );
+                        create_channel_query_writer
+                            .replace_value(AdminQueryKey::ChannelId.as_str(), channel.id.clone());
                         set_refresh_nonce.update(|value| *value += 1);
                     }
                     Err(err) => set_error.set(Some(err.to_string())),
@@ -545,7 +546,11 @@ fn ChannelCard(
             return;
         }
 
-        match selected_target_query.get().as_deref().filter(|value| !value.trim().is_empty()) {
+        match selected_target_query
+            .get()
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
             Some(target_id) => {
                 if let Some(target) = channel_targets.iter().find(|target| target.id == target_id) {
                     editing_target_id.set(Some(target.id.clone()));
@@ -568,7 +573,11 @@ fn ChannelCard(
             }
         }
 
-        match selected_module_query.get().as_deref().filter(|value| !value.trim().is_empty()) {
+        match selected_module_query
+            .get()
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
             Some(module_slug) => {
                 if let Some(binding) = channel_module_bindings
                     .iter()
@@ -591,7 +600,11 @@ fn ChannelCard(
             }
         }
 
-        match selected_oauth_query.get().as_deref().filter(|value| !value.trim().is_empty()) {
+        match selected_oauth_query
+            .get()
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
             Some(oauth_app_id) => {
                 if let Some(binding) = channel_oauth_bindings
                     .iter()

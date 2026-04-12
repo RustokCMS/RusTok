@@ -9870,6 +9870,8 @@ dependencies = [
  "rustok-commerce-foundation",
  "rustok-core",
  "rustok-fulfillment",
+ "rustok-tax",
+ "rustok-tenant",
  "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
@@ -9892,12 +9894,14 @@ dependencies = [
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
+ "rust_decimal",
  "rustok-api",
  "rustok-cart",
  "rustok-customer",
  "rustok-pricing",
  "sea-orm",
  "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -10023,13 +10027,32 @@ dependencies = [
 name = "rustok-commerce-admin"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "leptos 0.8.17",
  "leptos-auth",
  "leptos-graphql",
  "leptos-ui-routing",
+ "leptos_axum",
+ "loco-rs",
+ "rust_decimal",
  "rustok-api",
+ "rustok-cart",
+ "rustok-channel",
+ "rustok-commerce",
+ "rustok-core",
+ "rustok-customer",
+ "rustok-fulfillment",
+ "rustok-order",
+ "rustok-payment",
+ "rustok-product",
+ "rustok-taxonomy",
+ "rustok-tenant",
+ "rustok-test-utils",
+ "sea-orm",
  "serde",
  "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -10057,6 +10080,7 @@ dependencies = [
  "leptos-ui-routing",
  "leptos_axum",
  "loco-rs",
+ "rust_decimal",
  "rustok-api",
  "rustok-cart",
  "rustok-commerce",
@@ -11029,6 +11053,21 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toml 1.0.7+spec-1.1.0",
+]
+
+[[package]]
+name = "rustok-tax"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rust_decimal",
+ "rustok-core",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

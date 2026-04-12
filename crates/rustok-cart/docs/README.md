@@ -12,7 +12,9 @@
   optional line-item binding и language-neutral metadata без display label;
 - lifecycle корзины: `active -> checking_out -> completed` и `active -> abandoned`;
 - CRUD line items, расчёт totals, seller-aware delivery-group snapshot с canonical `seller_id` и нормализация locale/country snapshot для storefront-контекста;
-- перепрайс line items при изменении количества или storefront context (region/channel), чтобы unit_price не дрейфовал;
+- перепрайс line items при изменении количества или storefront context (region/channel), причём pricing discount
+  нормализуется в `base/compare_at unit_price` плюс pricing-owned `cart_adjustments`, чтобы persisted `unit_price`
+  не дрейфовал между effective sale price и base row;
 - module-owned storefront пакет `rustok-cart/storefront` для cart inspection и безопасных line-item decrement/remove действий.
 
 ## Зона ответственности
@@ -31,6 +33,27 @@
 - `seller_scope` в cart contract остаётся только transitional compatibility field для legacy snapshot'ов без `seller_id`; canonical grouping и shipping selection теперь опираются на `seller_id`.
 - `cart_adjustments` являются source of truth для скидочного snapshot в cart: `subtotal_amount`, `adjustment_total`
   и net `total_amount` не зависят от default locale или localized promotion label.
+- выбранные shipping options теперь materialize'ятся в first-class `shipping_total`: persisted cart total
+  считается как `subtotal - adjustments + shipping_total (+ tax при tax-exclusive region)` вместо
+  implicit legacy shortcut через `selected_shipping_option_id`.
+- typed promotion runtime теперь покрывает не только cart/line-item scope, но и shipping scope:
+  shipping discounts живут как `cart_adjustments` с `scope=shipping`, а не как скрытая мутация
+  `shipping_total` или отдельный не-snapshot'ящийся side effect.
+- tax calculation больше не зашит напрямую в `CartService`: cart runtime теперь вызывает
+  `rustok-tax::TaxService`, а `cart_tax_lines` несут typed `provider_id`, чтобы будущие
+  внешние tax engines не ломали cart/order transport contract вторым миграционным срезом.
+- storefront transport parity для этого слоя уже подтверждён: `/store/carts/{id}` и storefront
+  GraphQL checkout сохраняют `shipping_total`, `adjustment_total` и shipping-scoped promotion
+  metadata без скрытого fallback или схлопывания скидки в базовую цену.
+- pricing-driven repricing переписывает только pricing-owned adjustments для затронутых line items и не смешивает
+  скидочный snapshot с manual/non-pricing adjustments.
+- storefront add-to-cart при наличии скидки тоже пишет pricing snapshot атомарно: line item и pricing-owned
+  adjustment создаются в одной cart-транзакции без промежуточного persisted sale-only состояния.
+- typed promotion runtime поверх этого слоя уже поддерживает preview/apply для percentage/fixed discounts
+  на cart-level и line-item scope, причём application path не требует raw full-replace всех adjustments.
+- aggregate admin GraphQL transport уже поднимает этот runtime как operator-side preview/apply path
+  для `cart`, `line_item` и `shipping` scope, поэтому cart promotions больше не живут только на
+  service/test уровне.
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce` и соседними split-модулями;
 - storefront package использует native Leptos `#[server]` functions как default data layer и сохраняет GraphQL storefront contract как fallback.
 

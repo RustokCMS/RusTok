@@ -93,6 +93,10 @@ fn SelectedRegionCard(region: Option<StorefrontRegion>) -> impl IntoView {
         }.into_any();
     };
 
+    let country_tax_policies = region.country_tax_policies.clone();
+    let country_tax_policies_for_show = country_tax_policies.clone();
+    let country_tax_policies_for_list = country_tax_policies.clone();
+
     view! {
         <article class="rounded-3xl border border-border bg-background p-8">
             <div class="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -109,12 +113,24 @@ fn SelectedRegionCard(region: Option<StorefrontRegion>) -> impl IntoView {
             <div class="mt-6 grid gap-3 md:grid-cols-3">
                 <MetricCard title=t(locale.as_deref(), "region.selected.currency", "Currency") value=region.currency_code.clone() />
                 <MetricCard title=t(locale.as_deref(), "region.selected.taxRate", "Tax rate") value=region.tax_rate.clone() />
+                <MetricCard title=t(locale.as_deref(), "region.selected.taxProvider", "Tax provider") value=region.tax_provider_id.clone().unwrap_or_else(|| "region_default".to_string()) />
                 <MetricCard title=t(locale.as_deref(), "region.selected.coverage", "Coverage") value=region.countries.len().to_string() />
+                <MetricCard title=t(locale.as_deref(), "region.selected.countryPolicyCount", "Country policies") value=country_tax_policies.len().to_string() />
             </div>
             <div class="mt-6 rounded-2xl border border-border bg-card p-5">
                 <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(locale.as_deref(), "region.selected.countries", "Supported countries")}</h4>
                 <p class="mt-3 text-sm text-muted-foreground">{region.countries.join(", ")}</p>
             </div>
+            <Show when=move || !country_tax_policies_for_show.is_empty()>
+                <div class="mt-6 rounded-2xl border border-border bg-card p-5">
+                    <h4 class="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{t(locale.as_deref(), "region.selected.countryPolicies", "Country-specific tax policies")}</h4>
+                    <div class="mt-3 space-y-2 text-sm text-muted-foreground">
+                        {country_tax_policies_for_list.iter().map(|policy| view! {
+                            <p>{format!("{} | {} | {}", policy.country_code, policy.tax_rate, if policy.tax_included { t(locale.as_deref(), "region.common.taxIncluded", "tax included") } else { t(locale.as_deref(), "region.common.taxExcluded", "tax excluded") })}</p>
+                        }).collect_view()}
+                    </div>
+                </div>
+            </Show>
         </article>
     }.into_any()
 }
@@ -157,7 +173,7 @@ fn RegionRail(items: Vec<StorefrontRegion>, total: usize) -> impl IntoView {
                                         </span>
                                     </div>
                                     <p class="text-sm text-muted-foreground">{format!("{} | {}", region.currency_code, region.countries.join(", "))}</p>
-                                    <p class="text-xs text-muted-foreground">{format!("{} {}", region.tax_rate, t(locale.as_deref(), "region.common.taxRate", "tax rate"))}</p>
+                                    <p class="text-xs text-muted-foreground">{format!("{} {} | {} {}", region.tax_rate, t(locale.as_deref(), "region.common.taxRate", "tax rate"), t(locale.as_deref(), "region.common.taxProvider", "tax provider"), region.tax_provider_id.clone().unwrap_or_else(|| "region_default".to_string()))}</p>
                                 </div>
                                 <a class="inline-flex text-sm font-medium text-primary hover:underline" href=href>{t(locale.as_deref(), "region.list.open", "Open")}</a>
                             </div>

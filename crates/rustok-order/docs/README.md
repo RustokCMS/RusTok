@@ -18,6 +18,8 @@
 - order line items теперь тоже несут nullable `seller_id` как canonical multivendor snapshot key;
 - order adjustments хранят promotion/discount snapshot как typed business data: `source_type/source_id`,
   `amount/currency_code`, optional line-item binding и metadata без localized display label;
+- checkout snapshot переносит pricing repricing из cart в order так, что discounted line items сохраняют
+  `base/compare_at unit_price`, а savings остаются в `order_adjustments`;
 - GraphQL и REST transport пока остаются в фасаде `rustok-commerce`;
 - admin UI ownership вынесен в `rustok-order/admin`.
 
@@ -33,6 +35,17 @@
   order list/detail/lifecycle публикуется через `rustok-order/admin`;
 - checkout/create-order snapshot передаёт typed adjustments в `rustok-order`, а `subtotal_amount`,
   `adjustment_total` и net `total_amount` остаются устойчивыми к смене default locale;
+- checkout теперь так же передаёт first-class `shipping_total`, поэтому order snapshot и payment handoff
+  живут по одному contract'у `subtotal - adjustments + shipping_total (+ tax при tax-exclusive region)`;
+- shipping-scoped promotions тоже приходят в `rustok-order` через тот же typed adjustments contract,
+  без отдельного order-side special case для discounts на доставку;
+- tax snapshot теперь тоже provider-aware: checkout переносит в `order_tax_lines`
+  first-class `provider_id`, а не прячет tax provider только в metadata;
+- transport parity для этого snapshot уже подтверждён на storefront GraphQL checkout и admin
+  order read-side: `shipping_total` и shipping-scoped adjustments доходят до order contract без
+  схлопывания скидки в базовую сумму;
+- payment collection до handoff в order продолжает использовать net `cart.total_amount`, поэтому order snapshot
+  уже получает ту же net pricing semantics без повторного скрытого дисконта;
 - изменения cross-module контракта нужно синхронизировать с `rustok-commerce`
   и соседними split-модулями.
 

@@ -14,6 +14,8 @@ outbox publication и module-owned admin UI, а post-order и transport parity
 
 - `orders` и `order_line_items` уже module-owned;
 - `order_adjustments` уже module-owned и фиксируют language-neutral promotion/discount snapshot без display labels;
+- `order_tax_lines` теперь тоже несут typed `provider_id`, а checkout переносит provider-aware tax snapshot
+  из cart без metadata-only fallback;
 - write-side lifecycle и order events уже закреплены внутри модуля;
 - product/variant связи хранятся как snapshot references, без cross-module FK;
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`;

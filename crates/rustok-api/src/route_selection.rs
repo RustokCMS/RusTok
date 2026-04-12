@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AdminQueryKey {
     ProductId,
+    CartId,
     OrderId,
     CustomerId,
     RegionId,
@@ -36,6 +37,7 @@ impl AdminQueryKey {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ProductId => "product_id",
+            Self::CartId => "cart_id",
             Self::OrderId => "order_id",
             Self::CustomerId => "customer_id",
             Self::RegionId => "region_id",
@@ -69,6 +71,7 @@ impl AdminQueryKey {
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "product_id" => Some(Self::ProductId),
+            "cart_id" => Some(Self::CartId),
             "order_id" => Some(Self::OrderId),
             "customer_id" => Some(Self::CustomerId),
             "region_id" => Some(Self::RegionId),
@@ -144,7 +147,8 @@ const INVENTORY_ROUTE_KEYS: &[AdminQueryKey] = &[AdminQueryKey::ProductId];
 const ORDER_ROUTE_KEYS: &[AdminQueryKey] = &[AdminQueryKey::OrderId];
 const CUSTOMER_ROUTE_KEYS: &[AdminQueryKey] = &[AdminQueryKey::CustomerId];
 const REGION_ROUTE_KEYS: &[AdminQueryKey] = &[AdminQueryKey::RegionId];
-const COMMERCE_ROUTE_KEYS: &[AdminQueryKey] = &[AdminQueryKey::ShippingProfileId];
+const COMMERCE_ROUTE_KEYS: &[AdminQueryKey] =
+    &[AdminQueryKey::ShippingProfileId, AdminQueryKey::CartId];
 const FULFILLMENT_ROUTE_KEYS: &[AdminQueryKey] = &[AdminQueryKey::ShippingOptionId];
 const BLOG_ROUTE_KEYS: &[AdminQueryKey] = &[AdminQueryKey::PostId];
 const PAGES_ROUTE_KEYS: &[AdminQueryKey] = &[AdminQueryKey::PageId];
@@ -341,12 +345,14 @@ mod tests {
         );
 
         assert_eq!(
-            sanitized.get(AdminQueryKey::ProductId.as_str()).map(String::as_str),
+            sanitized
+                .get(AdminQueryKey::ProductId.as_str())
+                .map(String::as_str),
             Some("prod_01")
         );
         assert!(!sanitized.contains_key("id"));
         assert!(!sanitized.contains_key(AdminQueryKey::OrderId.as_str()));
-        assert_eq!(sanitized.get("locale").map(String::as_str), Some("ru"));
+        assert!(!sanitized.contains_key(AdminQueryKey::Locale.as_str()));
     }
 
     #[test]
@@ -379,6 +385,33 @@ mod tests {
     }
 
     #[test]
+    fn commerce_route_keeps_shipping_profile_and_cart_selection_keys() {
+        let sanitized = sanitize_admin_route_query(
+            Some("commerce"),
+            None,
+            &query(&[
+                ("shipping_profile_id", "sp_01"),
+                ("cart_id", "cart_01"),
+                ("order_id", "ord_01"),
+            ]),
+        );
+
+        assert_eq!(
+            sanitized
+                .get(AdminQueryKey::ShippingProfileId.as_str())
+                .map(String::as_str),
+            Some("sp_01")
+        );
+        assert_eq!(
+            sanitized
+                .get(AdminQueryKey::CartId.as_str())
+                .map(String::as_str),
+            Some("cart_01")
+        );
+        assert!(!sanitized.contains_key(AdminQueryKey::OrderId.as_str()));
+    }
+
+    #[test]
     fn channel_route_requires_parent_channel_for_nested_keys() {
         let sanitized = sanitize_admin_route_query(
             Some("channels"),
@@ -407,11 +440,15 @@ mod tests {
         );
 
         assert_eq!(
-            sanitized.get(AdminQueryKey::ChannelId.as_str()).map(String::as_str),
+            sanitized
+                .get(AdminQueryKey::ChannelId.as_str())
+                .map(String::as_str),
             Some("ch_01")
         );
         assert_eq!(
-            sanitized.get(AdminQueryKey::TargetId.as_str()).map(String::as_str),
+            sanitized
+                .get(AdminQueryKey::TargetId.as_str())
+                .map(String::as_str),
             Some("target_01")
         );
         assert_eq!(

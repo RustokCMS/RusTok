@@ -1248,9 +1248,7 @@ async fn load_shipping_options_with_translations(
     Ok(rows
         .into_iter()
         .map(|row| {
-            let translations = translations_by_option
-                .remove(&row.id)
-                .unwrap_or_default();
+            let translations = translations_by_option.remove(&row.id).unwrap_or_default();
             map_shipping_option(row, translations, requested_locale, tenant_default_locale)
         })
         .collect())
@@ -1269,8 +1267,11 @@ fn map_shipping_option(
     let requested_locale = requested_locale
         .and_then(normalize_locale_tag)
         .filter(|value| !value.is_empty());
-    let (resolved, effective_locale) =
-        resolve_translation(&translations, requested_locale.as_deref(), tenant_default_locale);
+    let (resolved, effective_locale) = resolve_translation(
+        &translations,
+        requested_locale.as_deref(),
+        tenant_default_locale,
+    );
     let name = resolved
         .map(|translation| translation.name.clone())
         .unwrap_or_default();
@@ -1357,8 +1358,7 @@ async fn replace_translations(
 ) -> FulfillmentResult<()> {
     entities::shipping_option_translation::Entity::delete_many()
         .filter(
-            entities::shipping_option_translation::Column::ShippingOptionId
-                .eq(shipping_option_id),
+            entities::shipping_option_translation::Column::ShippingOptionId.eq(shipping_option_id),
         )
         .exec(db)
         .await?;

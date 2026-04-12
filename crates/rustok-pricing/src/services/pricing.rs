@@ -1085,16 +1085,17 @@ impl PricingService {
         let translations = if price_lists.is_empty() {
             Vec::new()
         } else {
-            let ids = price_lists.iter().map(|price_list| price_list.id).collect::<Vec<_>>();
+            let ids = price_lists
+                .iter()
+                .map(|price_list| price_list.id)
+                .collect::<Vec<_>>();
             entities::price_list_translation::Entity::find()
                 .filter(entities::price_list_translation::Column::PriceListId.is_in(ids))
                 .all(&self.db)
                 .await?
         };
-        let mut translations_by_list: HashMap<
-            Uuid,
-            Vec<entities::price_list_translation::Model>,
-        > = HashMap::new();
+        let mut translations_by_list: HashMap<Uuid, Vec<entities::price_list_translation::Model>> =
+            HashMap::new();
         for translation in translations {
             translations_by_list
                 .entry(translation.price_list_id)

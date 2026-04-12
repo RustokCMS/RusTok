@@ -9,6 +9,7 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub currency_code: String,
+    pub tax_provider_id: Option<String>,
     pub tax_rate: Decimal,
     pub tax_included: bool,
     pub countries: Json,

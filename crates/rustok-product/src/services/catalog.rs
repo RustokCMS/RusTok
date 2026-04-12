@@ -713,11 +713,8 @@ impl CatalogService {
                         &option_value_translations_by_value,
                     );
 
-                    let (name, values) = Self::resolve_option_display(
-                        &translations,
-                        locale,
-                        fallback_locale,
-                    );
+                    let (name, values) =
+                        Self::resolve_option_display(&translations, locale, fallback_locale);
 
                     ProductOptionResponse {
                         id: option_id,
@@ -1917,7 +1914,11 @@ impl CatalogService {
             normalized.push(ProductOptionTranslationInput {
                 locale,
                 name: name.to_string(),
-                values: translation.values.iter().map(|value| value.trim().to_string()).collect(),
+                values: translation
+                    .values
+                    .iter()
+                    .map(|value| value.trim().to_string())
+                    .collect(),
             });
         }
         Ok(normalized)
@@ -1948,17 +1949,15 @@ impl CatalogService {
         let resolved = requested
             .as_deref()
             .and_then(|locale| {
-                translations
-                    .iter()
-                    .find(|translation| normalize_locale_tag(&translation.locale).as_deref()
-                        == Some(locale))
+                translations.iter().find(|translation| {
+                    normalize_locale_tag(&translation.locale).as_deref() == Some(locale)
+                })
             })
             .or_else(|| {
                 fallback.as_deref().and_then(|locale| {
-                    translations
-                        .iter()
-                        .find(|translation| normalize_locale_tag(&translation.locale).as_deref()
-                            == Some(locale))
+                    translations.iter().find(|translation| {
+                        normalize_locale_tag(&translation.locale).as_deref() == Some(locale)
+                    })
                 })
             })
             .or_else(|| translations.first());

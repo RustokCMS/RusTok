@@ -6,6 +6,8 @@ Leptos admin UI package for the `rustok-region` module.
 
 - Exposes the region operations admin root view used by `apps/admin`.
 - Keeps region list/detail/create/update UX inside the region-owned package.
+- Lets operators edit the typed `tax_provider_id` policy field directly instead
+  of routing tax provider selection through metadata blobs.
 - Participates in manifest-driven admin composition through `rustok-module.toml`.
 - Uses native Leptos server functions as the primary admin transport instead of routing region CRUD back through the commerce umbrella.
 - Ships package-owned `admin/locales/en.json` and `admin/locales/ru.json` bundles declared through `[provides.admin_ui.i18n]`.

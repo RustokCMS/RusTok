@@ -6,8 +6,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::{AdminQueryKey, UiRouteContext};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{
@@ -382,7 +382,8 @@ pub fn FulfillmentAdmin() -> impl IntoView {
                         set_metadata_json,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
-                    submit_query_writer.replace_value(AdminQueryKey::ShippingOptionId.as_str(), option_id);
+                    submit_query_writer
+                        .replace_value(AdminQueryKey::ShippingOptionId.as_str(), option_id);
                 }
                 Err(err) => set_error.set(Some(format!("{save_error_label}: {err}"))),
             }
@@ -454,26 +455,24 @@ pub fn FulfillmentAdmin() -> impl IntoView {
         query_writer.clear_key(AdminQueryKey::ShippingOptionId.as_str());
         reset_form();
     });
-    Effect::new(move |_| {
-        match selected_option_query.get() {
-            Some(option_id) if !option_id.trim().is_empty() => {
-                if bootstrap.get().and_then(Result::ok).is_none() {
-                    return;
-                }
-                initial_edit_option.run(option_id);
+    Effect::new(move |_| match selected_option_query.get() {
+        Some(option_id) if !option_id.trim().is_empty() => {
+            if bootstrap.get().and_then(Result::ok).is_none() {
+                return;
             }
-            _ => {
-                clear_shipping_option_form(
-                    set_editing_id,
-                    set_selected,
-                    set_name,
-                    set_currency_code,
-                    set_amount,
-                    set_provider_id,
-                    set_allowed_profiles,
-                    set_metadata_json,
-                );
-            }
+            initial_edit_option.run(option_id);
+        }
+        _ => {
+            clear_shipping_option_form(
+                set_editing_id,
+                set_selected,
+                set_name,
+                set_currency_code,
+                set_amount,
+                set_provider_id,
+                set_allowed_profiles,
+                set_metadata_json,
+            );
         }
     });
 

@@ -59,6 +59,7 @@
 | `rustok-profiles` | [docs](../../crates/rustok-profiles/docs/README.md) | [plan](../../crates/rustok-profiles/docs/implementation-plan.md) |
 | `rustok-region` | [docs](../../crates/rustok-region/docs/README.md) | [plan](../../crates/rustok-region/docs/implementation-plan.md) |
 | `rustok-pricing` | [docs](../../crates/rustok-pricing/docs/README.md) | [plan](../../crates/rustok-pricing/docs/implementation-plan.md) |
+| `rustok-tax` | [docs](../../crates/rustok-tax/docs/README.md) | [plan](../../crates/rustok-tax/docs/implementation-plan.md) |
 | `rustok-inventory` | [docs](../../crates/rustok-inventory/docs/README.md) | [plan](../../crates/rustok-inventory/docs/implementation-plan.md) |
 | `rustok-order` | [docs](../../crates/rustok-order/docs/README.md) | [plan](../../crates/rustok-order/docs/implementation-plan.md) |
 | `rustok-payment` | [docs](../../crates/rustok-payment/docs/README.md) | [plan](../../crates/rustok-payment/docs/implementation-plan.md) |
@@ -125,7 +126,7 @@
   уже забрал order UI, `rustok-inventory` уже забрал inventory visibility UI,
   `rustok-pricing` уже забрал pricing visibility UI, `rustok-customer` уже
   забрал customer operations UI, `rustok-region` уже забрал region CRUD UI, а
-  `rustok-commerce-admin` оставлен только под shipping-profile registry;
+  `rustok-commerce-admin` оставлен под shipping-profile registry и aggregate cart-promotion operator surface;
   storefront-side split тоже продвинут: `rustok-region`, `rustok-product`, `rustok-pricing` и `rustok-cart` уже публикуют собственные
   storefront packages, а `rustok-commerce-storefront` сжат до aggregate checkout workspace с seller-aware delivery-group shipping selection и без catalog/pricing ownership;
   остальные commerce storefront flows ещё предстоит вынести из umbrella route там, где ownership boundary уже устойчива.

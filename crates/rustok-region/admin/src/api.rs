@@ -79,6 +79,16 @@ fn parse_tax_rate(value: &str) -> Result<rust_decimal::Decimal, ServerFnError> {
 }
 
 #[cfg(feature = "ssr")]
+fn parse_optional_tax_provider_id(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn parse_countries(value: &str) -> Result<Vec<String>, ServerFnError> {
     let countries = value
         .split(',')
@@ -106,6 +116,18 @@ fn parse_metadata(value: &str) -> Result<serde_json::Value, ServerFnError> {
 }
 
 #[cfg(feature = "ssr")]
+fn parse_country_tax_policies(
+    value: &str,
+) -> Result<Vec<rustok_region::RegionCountryTaxPolicyInput>, ServerFnError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    serde_json::from_str(trimmed)
+        .map_err(|_| ServerFnError::new("Invalid country_tax_policies JSON"))
+}
+
+#[cfg(feature = "ssr")]
 fn map_current_tenant(tenant: &rustok_api::TenantContext) -> crate::model::CurrentTenant {
     crate::model::CurrentTenant {
         id: tenant.id.to_string(),
@@ -122,6 +144,7 @@ fn map_region_list_item(value: rustok_region::RegionResponse) -> crate::model::R
         id: value.id.to_string(),
         name: value.name,
         currency_code: value.currency_code,
+        tax_provider_id: value.tax_provider_id,
         country_count,
         tax_rate: value.tax_rate.normalize().to_string(),
         tax_included: value.tax_included,
@@ -137,8 +160,11 @@ fn map_region_record(value: rustok_region::RegionResponse) -> crate::model::Regi
         tenant_id: value.tenant_id.to_string(),
         name: value.name,
         currency_code: value.currency_code,
+        tax_provider_id: value.tax_provider_id,
         tax_rate: value.tax_rate.normalize().to_string(),
         tax_included: value.tax_included,
+        country_tax_policies_pretty: serde_json::to_string_pretty(&value.country_tax_policies)
+            .unwrap_or_else(|_| "[]".to_string()),
         countries: value.countries,
         metadata_pretty: serde_json::to_string_pretty(&value.metadata)
             .unwrap_or_else(|_| "{}".to_string()),
@@ -330,8 +356,12 @@ async fn region_create_native(payload: RegionDraft) -> Result<RegionDetail, Serv
                         name: payload.name.trim().to_string(),
                     }],
                     currency_code: payload.currency_code.trim().to_string(),
+                    tax_provider_id: parse_optional_tax_provider_id(&payload.tax_provider_id),
                     tax_rate: parse_tax_rate(&payload.tax_rate)?,
                     tax_included: payload.tax_included,
+                    country_tax_policies: Some(parse_country_tax_policies(
+                        &payload.country_tax_policies,
+                    )?),
                     countries: parse_countries(&payload.countries)?,
                     metadata: parse_metadata(&payload.metadata)?,
                 },
@@ -339,7 +369,13 @@ async fn region_create_native(payload: RegionDraft) -> Result<RegionDetail, Serv
             .await
             .map_err(ServerFnError::new)?;
 
-        load_region_detail(&service, &tenant, created.id, Some(requested_locale.as_str())).await
+        load_region_detail(
+            &service,
+            &tenant,
+            created.id,
+            Some(requested_locale.as_str()),
+        )
+        .await
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -390,8 +426,12 @@ async fn region_update_native(
                         name: payload.name.trim().to_string(),
                     }]),
                     currency_code: Some(payload.currency_code.trim().to_string()),
+                    tax_provider_id: Some(parse_optional_tax_provider_id(&payload.tax_provider_id)),
                     tax_rate: Some(parse_tax_rate(&payload.tax_rate)?),
                     tax_included: Some(payload.tax_included),
+                    country_tax_policies: Some(parse_country_tax_policies(
+                        &payload.country_tax_policies,
+                    )?),
                     countries: Some(parse_countries(&payload.countries)?),
                     metadata: Some(parse_metadata(&payload.metadata)?),
                 },
@@ -399,7 +439,13 @@ async fn region_update_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        load_region_detail(&service, &tenant, region_id, Some(requested_locale.as_str())).await
+        load_region_detail(
+            &service,
+            &tenant,
+            region_id,
+            Some(requested_locale.as_str()),
+        )
+        .await
     }
     #[cfg(not(feature = "ssr"))]
     {

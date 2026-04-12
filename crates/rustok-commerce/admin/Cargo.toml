@@ -8,11 +8,46 @@ description = "Leptos admin UI package for the rustok-commerce module"
 [lib]
 crate-type = ["rlib"]
 
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = [
+    "leptos/ssr",
+    "dep:leptos_axum",
+    "dep:loco-rs",
+    "dep:rustok-cart",
+    "dep:rustok-core",
+    "dep:rust_decimal",
+    "dep:uuid",
+]
+
 [dependencies]
 leptos = { workspace = true, features = ["csr"] }
+leptos_axum = { workspace = true, optional = true }
 leptos-auth.workspace = true
 leptos-graphql.workspace = true
+loco-rs = { workspace = true, optional = true, features = ["testing"] }
+rustok-cart = { workspace = true, optional = true }
 rustok-api.workspace = true
 leptos-ui-routing.workspace = true
+rustok-core = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+rust_decimal = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
+
+[dev-dependencies]
+chrono.workspace = true
+rustok-cart.workspace = true
+rustok-channel.workspace = true
+rustok-commerce.workspace = true
+rustok-customer.workspace = true
+rustok-fulfillment.workspace = true
+rustok-order.workspace = true
+rustok-payment.workspace = true
+rustok-product.workspace = true
+rustok-taxonomy.workspace = true
+rustok-test-utils.workspace = true
+rustok-tenant.workspace = true
+sea-orm.workspace = true
+tokio.workspace = true

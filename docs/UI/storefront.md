@@ -22,6 +22,9 @@ RusToK поддерживает два storefront host-приложения:
 - Внешний GraphQL contract `/api/graphql` остаётся обязательным и поддерживаемым параллельным путём.
 - Host сначала использует native `#[server]` surface там, где он уже есть, и только затем откатывается к GraphQL, если это предусмотрено runtime contract.
 - Новый module-owned storefront UI не должен проектироваться как GraphQL-only, если может жить через `#[server]`.
+- Module-owned storefront packages не должны схлопывать typed business snapshots до summary-only UI state:
+  если backend уже отдаёт typed adjustments, delivery ownership или другие language-agnostic business keys,
+  package API и UI обязаны сохранять эти поля, а не отбрасывать `scope`/metadata на последней миле.
 
 ## Canonical routing и locale
 

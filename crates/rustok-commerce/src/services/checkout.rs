@@ -186,6 +186,7 @@ impl CheckoutService {
                     CreateOrderInput {
                         customer_id: cart.customer_id,
                         currency_code: cart.currency_code.clone(),
+                        shipping_total: cart.shipping_total,
                         line_items: cart
                             .line_items
                             .iter()
@@ -575,12 +576,7 @@ impl CheckoutService {
         };
         let order = self
             .order_service
-            .get_order_with_locale_fallback(
-                tenant_id,
-                order_id,
-                order_locale.as_str(),
-                None,
-            )
+            .get_order_with_locale_fallback(tenant_id, order_id, order_locale.as_str(), None)
             .await
             .map_err(stage_error("load_order"))?;
         let is_completed_checkout =
@@ -874,6 +870,7 @@ fn checkout_order_tax_lines(cart: &rustok_cart::dto::CartResponse) -> Vec<Create
             }),
             shipping_option_id: line.shipping_option_id,
             description: line.description.clone(),
+            provider_id: line.provider_id.clone(),
             rate: line.rate,
             amount: line.amount,
             currency_code: line.currency_code.clone(),

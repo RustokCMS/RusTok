@@ -13,8 +13,11 @@ pub struct CreateRegionInput {
     pub translations: Vec<RegionTranslationInput>,
     #[validate(length(equal = 3))]
     pub currency_code: String,
+    pub tax_provider_id: Option<String>,
     pub tax_rate: Decimal,
     pub tax_included: bool,
+    #[validate(nested)]
+    pub country_tax_policies: Option<Vec<RegionCountryTaxPolicyInput>>,
     pub countries: Vec<String>,
     pub metadata: Value,
 }
@@ -25,8 +28,11 @@ pub struct UpdateRegionInput {
     pub translations: Option<Vec<RegionTranslationInput>>,
     #[validate(length(equal = 3))]
     pub currency_code: Option<String>,
+    pub tax_provider_id: Option<Option<String>>,
     pub tax_rate: Option<Decimal>,
     pub tax_included: Option<bool>,
+    #[validate(nested)]
+    pub country_tax_policies: Option<Vec<RegionCountryTaxPolicyInput>>,
     pub countries: Option<Vec<String>>,
     pub metadata: Option<Value>,
 }
@@ -39,14 +45,24 @@ pub struct RegionTranslationInput {
     pub name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct RegionCountryTaxPolicyInput {
+    #[validate(length(equal = 2))]
+    pub country_code: String,
+    pub tax_rate: Decimal,
+    pub tax_included: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RegionResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub name: String,
     pub currency_code: String,
+    pub tax_provider_id: Option<String>,
     pub tax_rate: Decimal,
     pub tax_included: bool,
+    pub country_tax_policies: Vec<RegionCountryTaxPolicyResponse>,
     pub countries: Vec<String>,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
@@ -61,4 +77,11 @@ pub struct RegionResponse {
 pub struct RegionTranslationResponse {
     pub locale: String,
     pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegionCountryTaxPolicyResponse {
+    pub country_code: String,
+    pub tax_rate: Decimal,
+    pub tax_included: bool,
 }

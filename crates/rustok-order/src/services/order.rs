@@ -98,6 +98,11 @@ impl OrderService {
             Self::validate_line_item(item)?;
             subtotal_amount += item.unit_price * Decimal::from(item.quantity);
         }
+        if input.shipping_total < Decimal::ZERO {
+            return Err(OrderError::Validation(
+                "shipping_total cannot be negative".to_string(),
+            ));
+        }
         let adjustment_total =
             Self::validate_adjustments(&input.adjustments, input.line_items.len())?;
         let tax_total = Self::validate_tax_lines(
@@ -116,7 +121,7 @@ impl OrderService {
                 "adjustment total cannot exceed order subtotal".to_string(),
             ));
         }
-        let base_total = subtotal_amount - adjustment_total;
+        let base_total = subtotal_amount - adjustment_total + input.shipping_total;
         let total_amount = if tax_included {
             base_total
         } else {
@@ -135,6 +140,7 @@ impl OrderService {
             customer_id: Set(input.customer_id),
             status: Set(STATUS_PENDING.to_string()),
             currency_code: Set(currency_code.clone()),
+            shipping_total: Set(input.shipping_total),
             total_amount: Set(total_amount),
             tax_total: Set(tax_total),
             tax_included: Set(tax_included),
@@ -231,6 +237,7 @@ impl OrderService {
                 description: Set(normalize_tax_line_description(
                     tax_line.description.as_deref(),
                 )),
+                provider_id: Set(normalize_tax_provider_id(&tax_line.provider_id)?),
                 rate: Set(tax_line.rate),
                 amount: Set(tax_line.amount),
                 currency_code: Set(currency_code.clone()),
@@ -661,6 +668,7 @@ impl OrderService {
             currency_code: order.currency_code,
             subtotal_amount,
             adjustment_total,
+            shipping_total: order.shipping_total,
             total_amount: order.total_amount,
             tax_total: order.tax_total,
             tax_included: order.tax_included,
@@ -719,6 +727,7 @@ impl OrderService {
                     line_item_id: line.order_line_item_id,
                     shipping_option_id: line.shipping_option_id,
                     description: line.description,
+                    provider_id: line.provider_id,
                     rate: line.rate,
                     amount: line.amount,
                     currency_code: line.currency_code,
@@ -1080,6 +1089,25 @@ fn normalize_tax_line_description(value: Option<&str>) -> Option<String> {
     Some(normalized)
 }
 
+fn normalize_tax_provider_id(value: &str) -> OrderResult<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() || normalized.len() > 64 {
+        return Err(OrderError::Validation(
+            "tax line provider_id must be 1-64 characters".to_string(),
+        ));
+    }
+    if !normalized
+        .chars()
+        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
+    {
+        return Err(OrderError::Validation(
+            "tax line provider_id must use lowercase ASCII, digits, underscore, or hyphen"
+                .to_string(),
+        ));
+    }
+    Ok(normalized)
+}
+
 async fn load_line_item_titles<C>(
     conn: &C,
     line_items: &[entities::order_line_item::Model],
@@ -1105,15 +1133,16 @@ where
     let mut rows_by_item =
         std::collections::HashMap::<Uuid, Vec<entities::order_line_item_translation::Model>>::new();
     for row in rows {
-        rows_by_item.entry(row.order_line_item_id).or_default().push(row);
+        rows_by_item
+            .entry(row.order_line_item_id)
+            .or_default()
+            .push(row);
     }
 
     for line_item in line_items {
         if let Some(title) = rows_by_item
             .remove(&line_item.id)
-            .and_then(|rows| {
-                select_order_line_item_title(&rows, preferred_locale, fallback_locale)
-            })
+            .and_then(|rows| select_order_line_item_title(&rows, preferred_locale, fallback_locale))
         {
             titles.insert(line_item.id, title);
         }

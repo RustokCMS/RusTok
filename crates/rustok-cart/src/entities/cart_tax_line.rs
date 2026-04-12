@@ -11,6 +11,7 @@ pub struct Model {
     pub cart_line_item_id: Option<Uuid>,
     pub shipping_option_id: Option<Uuid>,
     pub description: Option<String>,
+    pub provider_id: String,
     pub rate: Decimal,
     pub amount: Decimal,
     pub currency_code: String,

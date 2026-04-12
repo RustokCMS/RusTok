@@ -6,8 +6,8 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use rustok_api::{AdminQueryKey, UiRouteContext};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{CreatePageDraft, PageListItem};
@@ -213,20 +213,18 @@ pub fn PagesAdmin() -> impl IntoView {
     });
     let initial_edit_page = edit_page.clone();
     let effect_default_locale = default_locale.clone();
-    Effect::new(move |_| {
-        match selected_page_query.get() {
-            Some(page_id) if !page_id.trim().is_empty() => initial_edit_page.run(page_id),
-            _ => reset_page_form(
-                set_editing_page_id,
-                set_title,
-                set_slug,
-                set_body,
-                set_channel_slugs_text,
-                set_locale,
-                set_publish_now,
-                effect_default_locale.as_str(),
-            ),
-        }
+    Effect::new(move |_| match selected_page_query.get() {
+        Some(page_id) if !page_id.trim().is_empty() => initial_edit_page.run(page_id),
+        _ => reset_page_form(
+            set_editing_page_id,
+            set_title,
+            set_slug,
+            set_body,
+            set_channel_slugs_text,
+            set_locale,
+            set_publish_now,
+            effect_default_locale.as_str(),
+        ),
     });
 
     let submit_query_writer = query_writer.clone();

@@ -1,4 +1,4 @@
-# RusTok: карта документации
+﻿# RusTok: карта документации
 
 Этот файл является канонической точкой входа в документацию репозитория. С него нужно начинать работу по правилам [AGENTS.md](../AGENTS.md).
 
@@ -40,7 +40,7 @@
   `rustok-customer/admin` забрал customer operations, `rustok-region/admin`
   забрал region CRUD, storefront-side split уже идёт через `rustok-region/storefront`
   , `rustok-product/storefront`, `rustok-pricing/storefront` и `rustok-cart/storefront`,
-  `rustok-commerce-admin` очищен до shipping-profile registry, а
+  `rustok-commerce-admin` очищен до shipping-profile registry плюс native cart-promotion operator surface, а
   `rustok-commerce-storefront` уже сжат до aggregate checkout workspace с seller-aware delivery-group shipping selection, а admin `create fulfillment` уже валидирует typed items по order-line ownership и remaining quantity.
 - Текущий `Phase 7` уже дошёл до explicit post-order recovery semantics: `fulfillment_items`
   держат `shipped_quantity` / `delivered_quantity`, audit trail в metadata fulfillment/item'ов
@@ -73,7 +73,9 @@
   active `price_list` может держать typed percentage rule, а resolver fallback'ится к
   base row через него, если explicit override row не задан; cart/order promotion snapshot тоже
   получил typed foundation через `cart_adjustments` / `order_adjustments`, `subtotal_amount`,
-  `adjustment_total` и net `total_amount` без хранения localized display labels в ecommerce storage;
+  `adjustment_total` и net `total_amount` без хранения localized display labels в ecommerce storage:
+  storefront repricing при реальной скидке теперь нормализует line items в `base/compare_at unit_price`
+  плюс отдельный pricing-owned adjustment snapshot, а checkout переносит этот snapshot в order;
   pricing-authoritative GraphQL reads теперь живут в dedicated roots `adminPricingProduct` /
   `storefrontPricingProduct`, где explicit resolution modifiers требуют валидный
   трёхбуквенный `currencyCode`, malformed explicit `channel_id` отклоняется и такие inputs
@@ -91,19 +93,45 @@
   сохраняют rule/channel parity отдельно от остального storefront suite, а storefront
   cart/checkout GraphQL path теперь ещё и фиксирует typed adjustment snapshots и net
   payment amount поверх `cart_adjustments` / `order_adjustments`.
-- `Phase 9` тоже уже начат: cart/order получили tax lines + `tax_total`/`tax_included` snapshot, checkout переносит tax lines в order, расчёт пока опирается на `region.tax_rate` / `tax_included` без provider seam.
+- `Phase 9` тоже уже начат: cart/order получили tax lines + `tax_total`/`tax_included` snapshot, checkout переносит tax lines в order, а новый `rustok-tax` уже вынес default `region_default` calculation в отдельный tax bounded context с provider seam; cart/order tax lines теперь несут typed `provider_id`, а текущий provider selection hook идёт через `regions.tax_provider_id`, так что дальнейшие внешние tax engines можно подключать без второго слома snapshot contract.
 - REST-side parity для этого snapshot layer теперь тоже закреплена: storefront/admin controller tests
   фиксируют typed adjustment snapshots, sanitized metadata и live shipping-selection semantics, а
   текущий verification baseline для `rustok-commerce` снова включает полный `cargo test -p rustok-commerce --lib`.
-- storefront GraphQL add-to-cart теперь берёт `unit_price` через pricing resolver (currency + region + channel + quantity),
-  а не из raw `price` row, чтобы cart pricing semantics у store GraphQL и REST совпадали.
-- storefront cart quantity update теперь переоценивает `unit_price` через pricing resolver,
-  чтобы quantity tiers применялись и при изменении количества.
+- storefront GraphQL add-to-cart теперь берёт pricing context через resolver (currency + region + channel + quantity),
+  а не из raw `price` row, и сразу нормализует cart snapshot в `base/compare_at unit_price` плюс typed pricing adjustment,
+  чтобы cart pricing semantics у store GraphQL и REST совпадали; сам add-to-cart write path теперь тоже
+  делает это атомарно в одной cart-транзакции, без промежуточной записи “sale price без adjustment snapshot”.
+- storefront cart quantity update теперь переоценивает line items через pricing resolver,
+  чтобы quantity tiers и price-list скидки применялись при изменении количества без смешивания effective sale price
+  с persisted `unit_price`.
 - storefront cart context update теперь перепрайсит line items через pricing resolver,
-  чтобы смена региона/контекста не оставляла stale `unit_price`.
+  чтобы смена региона/контекста не оставляла stale pricing snapshot и повторно собирала
+  `base unit_price + adjustments` под новый storefront context.
 - storefront payment-collection и complete-checkout paths перепрайсят line items перед созданием
   payment collection и перед `complete checkout`, чтобы price-list/quantity-tier изменения не
-  оставляли stale `unit_price`.
+  оставляли stale pricing snapshot: payment collection продолжает использовать net `cart.total_amount`,
+  а не сырой base subtotal.
+- поверх этого snapshot layer `rustok-cart` уже получил typed promotion runtime для cart-level и
+  line-item scope: preview/apply поддерживают percentage/fixed discounts без raw full-replace
+  `set_adjustments`, сохраняют pricing-owned adjustments и продолжают snapshot'иться в order/payment net total.
+- cart/order snapshot теперь включает first-class `shipping_total`: выбранные shipping options
+  входят в `cart.total_amount`, checkout переносит этот snapshot в `order.shipping_total`, а
+  payment collection считает полный net total уже с доставкой.
+- этот follow-up тоже уже начат: `rustok-cart` теперь умеет typed shipping promotions поверх
+  `shipping_total`, не смешивая доставку с item/cart subtotal semantics; checkout snapshot'ит такие
+  adjustments в order и payment collection продолжает жить на том же net total contract, а
+  `/store/carts/{id}`, storefront GraphQL checkout и admin order read-side уже подтверждают
+  transport parity для `shipping_total` и `scope=shipping` promotion snapshot.
+- operator-side GraphQL transport для cart promotion runtime тоже уже начат: admin mutations теперь
+  умеют preview/apply typed cart promotions для `cart`, `line_item` и `shipping` scope поверх
+  существующего `CartService`, без отдельного storefront write contract и без raw `set_adjustments`.
+- parallel native-first operator transport теперь тоже есть в `rustok-commerce-admin`: package-level
+  `#[server]` functions умеют preview/apply typed cart promotions для `cart`, `line_item` и `shipping`
+  scope поверх того же `CartService`, держат тот же permission contract (`orders:read` / `orders:update`)
+  и уже покрыты SSR tests на shipping scope, target validation и permission gate.
+- module-owned storefront packages тоже больше не режут этот typed contract: `rustok-cart/storefront`
+  и aggregate `rustok-commerce/storefront` теперь поднимают `scope` и sanitized adjustment metadata
+  до package API/UI вместо summary-only counters.
 - [Спец-план rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 
 ## UI и клиентские поверхности

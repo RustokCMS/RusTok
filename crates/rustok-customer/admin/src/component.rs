@@ -1,8 +1,8 @@
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_api::{AdminQueryKey, UiRouteContext};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_api::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
 use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerDraft, CustomerListItem};
@@ -107,22 +107,20 @@ pub fn CustomerAdmin() -> impl IntoView {
         });
     });
     let initial_open_customer = open_customer.clone();
-    Effect::new(move |_| {
-        match selected_customer_query.get() {
-            Some(customer_id) if !customer_id.trim().is_empty() => {
-                initial_open_customer.run(customer_id);
-            }
-            _ => {
-                clear_customer_form(
-                    set_editing_id,
-                    set_selected,
-                    set_user_id,
-                    set_email,
-                    set_first_name,
-                    set_last_name,
-                    set_phone,
-                );
-            }
+    Effect::new(move |_| match selected_customer_query.get() {
+        Some(customer_id) if !customer_id.trim().is_empty() => {
+            initial_open_customer.run(customer_id);
+        }
+        _ => {
+            clear_customer_form(
+                set_editing_id,
+                set_selected,
+                set_user_id,
+                set_email,
+                set_first_name,
+                set_last_name,
+                set_phone,
+            );
         }
     });
 
@@ -172,7 +170,8 @@ pub fn CustomerAdmin() -> impl IntoView {
                         set_phone,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
-                    submit_query_writer.replace_value(AdminQueryKey::CustomerId.as_str(), detail_id);
+                    submit_query_writer
+                        .replace_value(AdminQueryKey::CustomerId.as_str(), detail_id);
                 }
                 Err(err) => set_error.set(Some(format!("{save_customer_error_label}: {err}"))),
             }
