@@ -461,7 +461,7 @@ async fn upload_publish_artifact(
 async fn validate_publish_request_step(
     State(ctx): State<AppContext>,
     Path(request_id): Path<String>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishValidationRequest>,
 ) -> Result<impl IntoResponse, Error> {
@@ -584,7 +584,7 @@ async fn validate_publish_request_step(
 async fn report_validation_stage(
     State(ctx): State<AppContext>,
     Path(request_id): Path<String>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryValidationStageReportRequest>,
 ) -> Result<impl IntoResponse, Error> {
@@ -830,7 +830,7 @@ async fn approve_publish_request(
 async fn reject_publish_request(
     State(ctx): State<AppContext>,
     Path(request_id): Path<String>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishDecisionRequest>,
 ) -> Result<impl IntoResponse, Error> {
@@ -953,7 +953,7 @@ async fn reject_publish_request(
 async fn request_changes_publish_request(
     State(ctx): State<AppContext>,
     Path(request_id): Path<String>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishDecisionRequest>,
 ) -> Result<impl IntoResponse, Error> {
@@ -1077,7 +1077,7 @@ async fn request_changes_publish_request(
 async fn hold_publish_request(
     State(ctx): State<AppContext>,
     Path(request_id): Path<String>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishDecisionRequest>,
 ) -> Result<impl IntoResponse, Error> {
@@ -1197,7 +1197,7 @@ async fn hold_publish_request(
 async fn resume_publish_request(
     State(ctx): State<AppContext>,
     Path(request_id): Path<String>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryPublishDecisionRequest>,
 ) -> Result<impl IntoResponse, Error> {
@@ -1528,7 +1528,7 @@ async fn fail_remote_validation_stage(
 )]
 async fn yank(
     State(ctx): State<AppContext>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryYankRequest>,
 ) -> Result<impl IntoResponse, Error> {
@@ -1632,7 +1632,7 @@ async fn yank(
 )]
 async fn transfer_owner(
     State(ctx): State<AppContext>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     auth_ext: Option<axum::Extension<AuthContextExtension>>,
     Json(request): Json<RegistryOwnerTransferRequest>,
 ) -> Result<impl IntoResponse, Error> {
@@ -2304,10 +2304,6 @@ fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
         .flatten()
         .filter_map(|item| item.as_str().map(ToString::to_string))
         .collect()
-}
-
-fn request_actor_from_headers(headers: &HeaderMap) -> String {
-    request_optional_actor_from_headers(headers).unwrap_or_else(|| "anonymous".to_string())
 }
 
 fn request_optional_actor_from_headers(headers: &HeaderMap) -> Option<String> {
