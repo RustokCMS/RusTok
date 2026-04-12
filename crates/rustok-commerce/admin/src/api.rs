@@ -5,9 +5,10 @@ use std::fmt::{Display, Formatter};
 
 use crate::model::{
     CommerceAdminBootstrap, CommerceAdminCartSnapshot, CommerceCartPromotionDraft,
-    CommerceCartPromotionKind, CommerceCartPromotionPreview, CommerceCartPromotionScope,
-    ShippingProfile, ShippingProfileDraft, ShippingProfileList,
+    CommerceCartPromotionPreview, ShippingProfile, ShippingProfileDraft, ShippingProfileList,
 };
+#[cfg(feature = "ssr")]
+use crate::model::{CommerceCartPromotionKind, CommerceCartPromotionScope};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {

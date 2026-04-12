@@ -4,7 +4,7 @@ use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
 use rustok_cart::services::CartService;
 use rustok_commerce::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductOptionInput,
-    ProductTranslationInput, ResolveStoreContextInput,
+    ProductOptionTranslationInput, ProductTranslationInput, ResolveStoreContextInput,
 };
 use rustok_commerce::entities;
 use rustok_commerce::services::{
@@ -14,7 +14,7 @@ use rustok_customer::dto::{CreateCustomerInput, UpdateCustomerInput};
 use rustok_customer::services::CustomerService;
 use rustok_fulfillment::dto::{
     CreateFulfillmentInput, CreateShippingOptionInput, DeliverFulfillmentInput,
-    ShipFulfillmentInput,
+    ShipFulfillmentInput, ShippingOptionTranslationInput,
 };
 use rustok_fulfillment::services::FulfillmentService;
 use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
@@ -23,7 +23,7 @@ use rustok_payment::dto::{
     AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
 };
 use rustok_payment::services::PaymentService;
-use rustok_region::dto::CreateRegionInput;
+use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db_with_migrations, mock_transactional_event_bus};
 use sea_orm_migration::sea_orm::{
@@ -103,10 +103,15 @@ async fn region_and_store_context_services_resolve_currency_and_locales_on_migra
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
+                tax_provider_id: None,
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
+                country_tax_policies: None,
                 countries: vec!["de".to_string(), "fr".to_string()],
                 metadata: serde_json::json!({ "source": "migration-smoke" }),
             },
@@ -475,8 +480,11 @@ fn create_product_input() -> CreateProductInput {
             },
         ],
         options: vec![ProductOptionInput {
-            name: "Size".to_string(),
-            values: vec!["S".to_string(), "M".to_string()],
+            translations: vec![ProductOptionTranslationInput {
+                locale: "en".to_string(),
+                name: "Size".to_string(),
+                values: vec!["S".to_string(), "M".to_string()],
+            }],
         }],
         variants: vec![CreateVariantInput {
             sku: Some(format!("SKU-{}", Uuid::new_v4())),
@@ -497,11 +505,8 @@ fn create_product_input() -> CreateProductInput {
             weight: Some(Decimal::from_str("1.5").expect("valid decimal")),
             weight_unit: Some("kg".to_string()),
         }],
-        seller_id: None,
         vendor: Some("Migration Test Vendor".to_string()),
         product_type: Some("Physical".to_string()),
-        shipping_profile_slug: None,
-        tags: vec![],
         publish: false,
         metadata: serde_json::json!({ "source": "migration-smoke" }),
     }
@@ -556,6 +561,7 @@ fn create_order_input() -> CreateOrderInput {
     CreateOrderInput {
         customer_id: Some(Uuid::new_v4()),
         currency_code: "usd".to_string(),
+        shipping_total: Decimal::from_str("0.00").expect("valid decimal"),
         line_items: vec![
             CreateOrderLineItemInput {
                 product_id: Some(Uuid::new_v4()),
@@ -637,7 +643,10 @@ fn create_payment_collection_input() -> CreatePaymentCollectionInput {
 
 fn create_shipping_option_input() -> CreateShippingOptionInput {
     CreateShippingOptionInput {
-        name: "Migration Shipping".to_string(),
+        translations: vec![ShippingOptionTranslationInput {
+            locale: "en".to_string(),
+            name: "Migration Shipping".to_string(),
+        }],
         currency_code: "usd".to_string(),
         amount: Decimal::from_str("12.50").expect("valid decimal"),
         provider_id: None,

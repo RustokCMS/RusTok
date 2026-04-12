@@ -443,7 +443,7 @@ mod tests {
     };
     use rustok_core::Permission;
     use rustok_test_utils::db::setup_test_db;
-    use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, Schema, Set};
+    use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, DbBackend, Set};
     use sea_orm_migration::SchemaManager;
     use serde_json::json;
     use std::sync::Arc;
@@ -514,7 +514,7 @@ mod tests {
         let db = setup_test_db().await;
         let builder = db.get_database_backend();
         assert_eq!(builder, DbBackend::Sqlite, "expected sqlite test backend");
-        let schema = Schema::new(builder);
+        let schema = sea_orm::Schema::new(builder);
         let manager = SchemaManager::new(&db);
 
         ensure_entity_table(
