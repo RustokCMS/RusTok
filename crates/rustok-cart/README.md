@@ -10,6 +10,9 @@
 - Persist the storefront cart context snapshot across region, locale, customer, and selected shipping intent.
 - Persist typed cart adjustments as language-neutral promotion/discount snapshots.
 - Keep cart snapshots independent from catalog ownership.
+- Support repricing line items via the pricing resolver when quantity or
+  storefront context changes, so unit prices do not drift across channel/region
+  boundaries.
 - Prepare a stable handoff point for later checkout and order placement flows.
 - Publish a module-owned storefront cart workspace for cart inspection.
 

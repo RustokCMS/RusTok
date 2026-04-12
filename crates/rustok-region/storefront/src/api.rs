@@ -34,12 +34,17 @@ impl From<ServerFnError> for ApiError {
     }
 }
 
-const STOREFRONT_REGIONS_QUERY: &str = "query StorefrontRegions { storefrontRegions { id name currencyCode taxRate taxIncluded countries } }";
+const STOREFRONT_REGIONS_QUERY: &str = "query StorefrontRegions($locale: String) { storefrontRegions(locale: $locale) { id name currencyCode taxRate taxIncluded countries } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontRegionsResponse {
     #[serde(rename = "storefrontRegions")]
     storefront_regions: Vec<StorefrontRegion>,
+}
+
+#[derive(Debug, Serialize)]
+struct StorefrontRegionsVariables {
+    locale: Option<String>,
 }
 
 fn configured_tenant_slug() -> Option<String> {
@@ -59,6 +64,30 @@ fn configured_tenant_slug() -> Option<String> {
             }
         })
     })
+}
+
+fn normalize_optional(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn resolve_requested_locale(
+    requested: Option<String>,
+    request_context_locale: Option<&str>,
+    tenant_default_locale: &str,
+) -> String {
+    normalize_optional(requested)
+        .or_else(|| {
+            request_context_locale.and_then(|value| normalize_optional(Some(value.to_string())))
+        })
+        .or_else(|| normalize_optional(Some(tenant_default_locale.to_string())))
+        .unwrap_or_default()
 }
 
 fn graphql_url() -> String {
@@ -81,13 +110,14 @@ fn graphql_url() -> String {
     }
 }
 
-async fn request<T>(query: &str) -> Result<T, ApiError>
+async fn request<V, T>(query: &str, variables: Option<V>) -> Result<T, ApiError>
 where
+    V: Serialize,
     T: for<'de> Deserialize<'de>,
 {
     execute_graphql(
         &graphql_url(),
-        GraphqlRequest::new(query, None::<()>),
+        GraphqlRequest::new(query, variables),
         None,
         configured_tenant_slug(),
         None,
@@ -119,8 +149,11 @@ pub async fn fetch_storefront_regions_graphql(
     selected_region_id: Option<String>,
     locale: Option<String>,
 ) -> Result<StorefrontRegionsData, ApiError> {
-    let _ = locale;
-    let response: StorefrontRegionsResponse = request(STOREFRONT_REGIONS_QUERY).await?;
+    let response: StorefrontRegionsResponse = request(
+        STOREFRONT_REGIONS_QUERY,
+        Some(StorefrontRegionsVariables { locale }),
+    )
+    .await?;
     Ok(resolve_storefront_regions(
         response.storefront_regions,
         selected_region_id,
@@ -176,15 +209,26 @@ async fn storefront_regions_native(
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .ok();
+        let requested_locale = resolve_requested_locale(
+            locale,
+            request_context.as_ref().map(|context| context.locale.as_str()),
+            tenant.default_locale.as_str(),
+        );
         let regions = RegionService::new(app_ctx.db.clone())
-            .list_regions(tenant.id)
+            .list_regions(
+                tenant.id,
+                Some(requested_locale.as_str()),
+                Some(tenant.default_locale.as_str()),
+            )
             .await
             .map_err(ServerFnError::new)?
             .into_iter()
             .map(map_region)
             .collect();
 
-        let _ = locale;
         Ok(resolve_storefront_regions(regions, selected_region_id))
     }
     #[cfg(not(feature = "ssr"))]

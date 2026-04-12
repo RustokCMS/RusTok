@@ -53,6 +53,7 @@ pub struct ShippingOptionDraft {
     pub provider_id: String,
     pub allowed_shipping_profile_slugs: Vec<String>,
     pub metadata_json: String,
+    pub locale: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

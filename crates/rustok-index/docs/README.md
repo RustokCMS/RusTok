@@ -24,6 +24,7 @@ ingestion и cross-module query substrate.
 - может использоваться `apps/server` и другими platform consumers как internal query/read-model layer;
 - не должен схлопываться с `rustok-search`: `search` может читать projections, но `index` не становится search module;
 - event-driven consumers модуля публикуются через `IndexModule::register_event_listeners(...)` и собираются сервером из `ModuleRegistry`, а не через отдельный host-owned dispatcher path;
+- текущие module-owned consumers включают `content_indexer`, `product_indexer` и `flex_indexer` для standalone Flex read-model slice `index_flex_entries`;
 - остаётся `Core` module без самостоятельного storefront/admin UX как primary surface.
 
 ## Проверка

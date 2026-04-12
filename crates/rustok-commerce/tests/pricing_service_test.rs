@@ -174,8 +174,6 @@ async fn create_price_list_with_channel(
     entities::price_list::ActiveModel {
         id: Set(price_list_id),
         tenant_id: Set(tenant_id),
-        name: Set(format!("List-{price_list_id}")),
-        description: Set(Some("Test list".to_string())),
         r#type: Set("sale".to_string()),
         status: Set(status.to_string()),
         channel_id: Set(channel_id),
@@ -186,6 +184,17 @@ async fn create_price_list_with_channel(
         ends_at: Set(ends_at.map(Into::into)),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
+    }
+    .insert(db)
+    .await
+    .unwrap();
+
+    entities::price_list_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        price_list_id: Set(price_list_id),
+        locale: Set("en".to_string()),
+        name: Set(format!("List-{price_list_id}")),
+        description: Set(Some("Test list".to_string())),
     }
     .insert(db)
     .await
@@ -762,13 +771,25 @@ async fn test_set_price_list_scope_propagates_to_existing_override_rows() {
     assert_eq!(override_row.channel_slug.as_deref(), Some("web-store"));
 
     let visible_lists = service
-        .list_active_price_lists_for_channel(tenant_id, Some(channel_id), Some("web-store"))
+        .list_active_price_lists_for_channel(
+            tenant_id,
+            Some(channel_id),
+            Some("web-store"),
+            Some("en"),
+            Some("en"),
+        )
         .await
         .unwrap();
     assert!(visible_lists.iter().any(|list| list.id == price_list_id));
 
     let hidden_lists = service
-        .list_active_price_lists_for_channel(tenant_id, Some(Uuid::new_v4()), Some("mobile-app"))
+        .list_active_price_lists_for_channel(
+            tenant_id,
+            Some(Uuid::new_v4()),
+            Some("mobile-app"),
+            Some("en"),
+            Some("en"),
+        )
         .await
         .unwrap();
     assert!(!hidden_lists.iter().any(|list| list.id == price_list_id));
@@ -3206,7 +3227,7 @@ async fn test_set_price_list_percentage_rule_clears_rule_metadata() {
     assert!(cleared.is_none());
 
     let option = service
-        .list_active_price_lists(tenant_id)
+        .list_active_price_lists(tenant_id, Some("en"), Some("en"))
         .await
         .unwrap()
         .into_iter()
@@ -3628,7 +3649,10 @@ async fn test_list_active_price_lists_only_returns_currently_active_lists() {
     .await;
     let draft_id = create_price_list(&db, tenant_id, "draft", None, None).await;
 
-    let lists = service.list_active_price_lists(tenant_id).await.unwrap();
+    let lists = service
+        .list_active_price_lists(tenant_id, Some("en"), Some("en"))
+        .await
+        .unwrap();
 
     assert!(lists.iter().any(|list| list.id == active_id));
     assert!(!lists.iter().any(|list| list.id == future_id));
@@ -3648,7 +3672,10 @@ async fn test_list_active_price_lists_exposes_rule_metadata() {
         .await
         .unwrap();
 
-    let lists = service.list_active_price_lists(tenant_id).await.unwrap();
+    let lists = service
+        .list_active_price_lists(tenant_id, Some("en"), Some("en"))
+        .await
+        .unwrap();
     let option = lists
         .into_iter()
         .find(|list| list.id == price_list_id)
@@ -3676,11 +3703,23 @@ async fn test_list_active_price_lists_filters_by_channel_scope() {
     .await;
 
     let web_lists = service
-        .list_active_price_lists_for_channel(tenant_id, Some(channel_id), Some("web-store"))
+        .list_active_price_lists_for_channel(
+            tenant_id,
+            Some(channel_id),
+            Some("web-store"),
+            Some("en"),
+            Some("en"),
+        )
         .await
         .unwrap();
     let mobile_lists = service
-        .list_active_price_lists_for_channel(tenant_id, Some(Uuid::new_v4()), Some("mobile-app"))
+        .list_active_price_lists_for_channel(
+            tenant_id,
+            Some(Uuid::new_v4()),
+            Some("mobile-app"),
+            Some("en"),
+            Some("en"),
+        )
         .await
         .unwrap();
 

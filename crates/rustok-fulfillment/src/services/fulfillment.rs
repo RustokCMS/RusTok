@@ -5,18 +5,19 @@ use sea_orm::{
     QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde_json::{Map, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::generate_id;
+use rustok_core::{generate_id, normalize_locale_tag};
 
 use crate::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, CreateShippingOptionInput,
     DeliverFulfillmentInput, FulfillmentItemQuantityInput, FulfillmentItemResponse,
     FulfillmentResponse, ListFulfillmentsInput, ReopenFulfillmentInput, ReshipFulfillmentInput,
-    ShipFulfillmentInput, ShippingOptionResponse, UpdateShippingOptionInput,
+    ShipFulfillmentInput, ShippingOptionResponse, ShippingOptionTranslationInput,
+    ShippingOptionTranslationResponse, UpdateShippingOptionInput,
 };
 use crate::entities;
 use crate::error::{FulfillmentError, FulfillmentResult};
@@ -47,7 +48,7 @@ impl FulfillmentService {
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
 
         let CreateShippingOptionInput {
-            name,
+            translations,
             currency_code,
             amount,
             provider_id,
@@ -55,6 +56,7 @@ impl FulfillmentService {
             metadata,
         } = input;
 
+        let translations = normalize_translation_inputs(translations)?;
         let currency_code = normalize_currency_code(&currency_code)?;
         if amount < Decimal::ZERO {
             return Err(FulfillmentError::Validation(
@@ -76,7 +78,6 @@ impl FulfillmentService {
         entities::shipping_option::ActiveModel {
             id: Set(shipping_option_id),
             tenant_id: Set(tenant_id),
-            name: Set(name),
             currency_code: Set(currency_code),
             amount: Set(amount),
             provider_id: Set(provider_id),
@@ -88,13 +89,17 @@ impl FulfillmentService {
         .insert(&self.db)
         .await?;
 
-        self.get_shipping_option(tenant_id, shipping_option_id)
+        insert_translations(&self.db, shipping_option_id, &translations).await?;
+
+        self.get_shipping_option(tenant_id, shipping_option_id, None, None)
             .await
     }
 
     pub async fn list_shipping_options(
         &self,
         tenant_id: Uuid,
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
     ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
         let rows = entities::shipping_option::Entity::find()
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
@@ -103,12 +108,20 @@ impl FulfillmentService {
             .all(&self.db)
             .await?;
 
-        Ok(rows.into_iter().map(map_shipping_option).collect())
+        load_shipping_options_with_translations(
+            &self.db,
+            rows,
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await
     }
 
     pub async fn list_all_shipping_options(
         &self,
         tenant_id: Uuid,
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
     ) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
         let rows = entities::shipping_option::Entity::find()
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
@@ -116,7 +129,13 @@ impl FulfillmentService {
             .all(&self.db)
             .await?;
 
-        Ok(rows.into_iter().map(map_shipping_option).collect())
+        load_shipping_options_with_translations(
+            &self.db,
+            rows,
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, shipping_option_id = %shipping_option_id))]
@@ -131,7 +150,7 @@ impl FulfillmentService {
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
 
         let UpdateShippingOptionInput {
-            name,
+            translations,
             currency_code,
             amount,
             provider_id,
@@ -154,9 +173,6 @@ impl FulfillmentService {
             .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
         let mut active: entities::shipping_option::ActiveModel = shipping_option.into();
 
-        if let Some(name) = name {
-            active.name = Set(name);
-        }
         if let Some(currency_code) = currency_code {
             active.currency_code = Set(normalize_currency_code(&currency_code)?);
         }
@@ -185,7 +201,12 @@ impl FulfillmentService {
         active.updated_at = Set(Utc::now().into());
         active.update(&self.db).await?;
 
-        self.get_shipping_option(tenant_id, shipping_option_id)
+        if let Some(translations) = translations {
+            let normalized = normalize_translation_inputs(translations)?;
+            replace_translations(&self.db, shipping_option_id, &normalized).await?;
+        }
+
+        self.get_shipping_option(tenant_id, shipping_option_id, None, None)
             .await
     }
 
@@ -193,13 +214,25 @@ impl FulfillmentService {
         &self,
         tenant_id: Uuid,
         shipping_option_id: Uuid,
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
     ) -> FulfillmentResult<ShippingOptionResponse> {
         let option = entities::shipping_option::Entity::find_by_id(shipping_option_id)
             .filter(entities::shipping_option::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
             .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))?;
-        Ok(map_shipping_option(option))
+        let items = load_shipping_options_with_translations(
+            &self.db,
+            vec![option],
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await?;
+        items
+            .into_iter()
+            .next()
+            .ok_or(FulfillmentError::ShippingOptionNotFound(shipping_option_id))
     }
 
     pub async fn deactivate_shipping_option(
@@ -231,7 +264,7 @@ impl FulfillmentService {
             .map_err(|error| FulfillmentError::Validation(error.to_string()))?;
 
         if let Some(shipping_option_id) = input.shipping_option_id {
-            self.get_shipping_option(tenant_id, shipping_option_id)
+            self.get_shipping_option(tenant_id, shipping_option_id, None, None)
                 .await?;
         }
         validate_fulfillment_items(input.items.as_deref())?;
@@ -873,7 +906,7 @@ impl FulfillmentService {
         option.updated_at = Set(Utc::now().into());
         option.update(&self.db).await?;
 
-        self.get_shipping_option(tenant_id, shipping_option_id)
+        self.get_shipping_option(tenant_id, shipping_option_id, None, None)
             .await
     }
 }
@@ -1185,11 +1218,67 @@ fn reopened_status_for_cancelled(
     }
 }
 
-fn map_shipping_option(option: entities::shipping_option::Model) -> ShippingOptionResponse {
+async fn load_shipping_options_with_translations(
+    db: &DatabaseConnection,
+    rows: Vec<entities::shipping_option::Model>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> FulfillmentResult<Vec<ShippingOptionResponse>> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+    let translations = entities::shipping_option_translation::Entity::find()
+        .filter(entities::shipping_option_translation::Column::ShippingOptionId.is_in(ids.clone()))
+        .all(db)
+        .await?;
+
+    let mut translations_by_option: HashMap<
+        Uuid,
+        Vec<entities::shipping_option_translation::Model>,
+    > = HashMap::new();
+    for translation in translations {
+        translations_by_option
+            .entry(translation.shipping_option_id)
+            .or_default()
+            .push(translation);
+    }
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let translations = translations_by_option
+                .remove(&row.id)
+                .unwrap_or_default();
+            map_shipping_option(row, translations, requested_locale, tenant_default_locale)
+        })
+        .collect())
+}
+
+fn map_shipping_option(
+    option: entities::shipping_option::Model,
+    translations: Vec<entities::shipping_option_translation::Model>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> ShippingOptionResponse {
+    let available_locales = translations
+        .iter()
+        .map(|translation| translation.locale.clone())
+        .collect::<Vec<_>>();
+    let requested_locale = requested_locale
+        .and_then(normalize_locale_tag)
+        .filter(|value| !value.is_empty());
+    let (resolved, effective_locale) =
+        resolve_translation(&translations, requested_locale.as_deref(), tenant_default_locale);
+    let name = resolved
+        .map(|translation| translation.name.clone())
+        .unwrap_or_default();
+
     ShippingOptionResponse {
         id: option.id,
         tenant_id: option.tenant_id,
-        name: option.name,
+        name,
         currency_code: option.currency_code,
         amount: option.amount,
         provider_id: option.provider_id,
@@ -1198,7 +1287,113 @@ fn map_shipping_option(option: entities::shipping_option::Model) -> ShippingOpti
         metadata: option.metadata,
         created_at: option.created_at.with_timezone(&Utc),
         updated_at: option.updated_at.with_timezone(&Utc),
+        requested_locale,
+        effective_locale,
+        available_locales,
+        translations: translations
+            .into_iter()
+            .map(|translation| ShippingOptionTranslationResponse {
+                locale: translation.locale,
+                name: translation.name,
+            })
+            .collect(),
     }
+}
+
+fn normalize_translation_inputs(
+    translations: Vec<ShippingOptionTranslationInput>,
+) -> FulfillmentResult<Vec<ShippingOptionTranslationInput>> {
+    if translations.is_empty() {
+        return Err(FulfillmentError::Validation(
+            "At least one translation is required".to_string(),
+        ));
+    }
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::with_capacity(translations.len());
+    for translation in translations {
+        let locale = normalize_locale_tag(&translation.locale)
+            .ok_or_else(|| FulfillmentError::Validation("Invalid locale".to_string()))?;
+        if !seen.insert(locale.clone()) {
+            return Err(FulfillmentError::Validation(
+                "Duplicate locale in shipping option translations".to_string(),
+            ));
+        }
+        let name = translation.name.trim();
+        if name.is_empty() {
+            return Err(FulfillmentError::Validation(
+                "Shipping option name cannot be empty".to_string(),
+            ));
+        }
+        normalized.push(ShippingOptionTranslationInput {
+            locale,
+            name: name.to_string(),
+        });
+    }
+    Ok(normalized)
+}
+
+async fn insert_translations(
+    db: &DatabaseConnection,
+    shipping_option_id: Uuid,
+    translations: &[ShippingOptionTranslationInput],
+) -> FulfillmentResult<()> {
+    for translation in translations {
+        entities::shipping_option_translation::ActiveModel {
+            id: Set(generate_id()),
+            shipping_option_id: Set(shipping_option_id),
+            locale: Set(translation.locale.clone()),
+            name: Set(translation.name.clone()),
+        }
+        .insert(db)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn replace_translations(
+    db: &DatabaseConnection,
+    shipping_option_id: Uuid,
+    translations: &[ShippingOptionTranslationInput],
+) -> FulfillmentResult<()> {
+    entities::shipping_option_translation::Entity::delete_many()
+        .filter(
+            entities::shipping_option_translation::Column::ShippingOptionId
+                .eq(shipping_option_id),
+        )
+        .exec(db)
+        .await?;
+    insert_translations(db, shipping_option_id, translations).await
+}
+
+fn resolve_translation<'a>(
+    translations: &'a [entities::shipping_option_translation::Model],
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> (
+    Option<&'a entities::shipping_option_translation::Model>,
+    Option<String>,
+) {
+    let mut lookup = HashMap::new();
+    for translation in translations {
+        if let Some(normalized) = normalize_locale_tag(&translation.locale) {
+            lookup.insert(normalized, translation);
+        }
+    }
+
+    if let Some(locale) = requested_locale.and_then(normalize_locale_tag) {
+        if let Some(found) = lookup.get(&locale) {
+            return (Some(*found), Some((*found).locale.clone()));
+        }
+    }
+    if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag) {
+        if let Some(found) = lookup.get(&locale) {
+            return (Some(*found), Some((*found).locale.clone()));
+        }
+    }
+    translations
+        .first()
+        .map(|item| (Some(item), Some(item.locale.clone())))
+        .unwrap_or((None, None))
 }
 
 fn map_fulfillment(

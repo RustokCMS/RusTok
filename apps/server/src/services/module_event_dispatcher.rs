@@ -31,6 +31,12 @@ pub fn spawn_module_event_dispatcher(
         settings.search.reindex.entity_budget,
         settings.search.reindex.yield_every,
     );
+    metrics::record_index_reindex_runtime_config(
+        "flex_indexer",
+        settings.search.reindex.parallelism,
+        settings.search.reindex.entity_budget,
+        settings.search.reindex.yield_every,
+    );
 
     let dispatcher = build_module_event_dispatcher(registry, bus, db, indexer_runtime);
     let handler_count = dispatcher.handler_count();
@@ -104,7 +110,7 @@ mod tests {
             IndexerRuntimeConfig::new(2, 100, 10),
         );
 
-        let expected = if cfg!(feature = "mod-workflow") { 4 } else { 3 };
+        let expected = if cfg!(feature = "mod-workflow") { 5 } else { 4 };
         assert_eq!(dispatcher.handler_count(), expected);
     }
 }

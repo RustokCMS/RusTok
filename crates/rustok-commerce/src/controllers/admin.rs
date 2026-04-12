@@ -713,6 +713,7 @@ pub async fn list_shipping_profiles(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: rustok_api::RequestContext,
     Query(params): Query<ListShippingProfilesParams>,
 ) -> Result<Json<PaginatedResponse<ShippingProfileResponse>>> {
     ensure_permissions(
@@ -731,6 +732,8 @@ pub async fn list_shipping_profiles(
                 active: params.active,
                 search: params.search,
             },
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
         )
         .await
         .map_err(map_shipping_profile_error)?;
@@ -788,6 +791,7 @@ pub async fn show_shipping_profile(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: rustok_api::RequestContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ShippingProfileResponse>> {
     ensure_permissions(
@@ -797,7 +801,12 @@ pub async fn show_shipping_profile(
     )?;
 
     let profile = ShippingProfileService::new(ctx.db.clone())
-        .get_shipping_profile(tenant.id, id)
+        .get_shipping_profile(
+            tenant.id,
+            id,
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(map_shipping_profile_error)?;
 
@@ -917,6 +926,7 @@ pub async fn list_shipping_options(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: rustok_api::RequestContext,
     Query(params): Query<ListShippingOptionsParams>,
 ) -> Result<Json<PaginatedResponse<ShippingOptionResponse>>> {
     ensure_permissions(
@@ -927,7 +937,11 @@ pub async fn list_shipping_options(
 
     let pagination = params.pagination.unwrap_or_default();
     let mut items = FulfillmentService::new(ctx.db.clone())
-        .list_all_shipping_options(tenant.id)
+        .list_all_shipping_options(
+            tenant.id,
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     if let Some(active) = params.active {
@@ -1012,6 +1026,7 @@ pub async fn show_shipping_option(
     State(ctx): State<AppContext>,
     tenant: TenantContext,
     auth: AuthContext,
+    request_context: rustok_api::RequestContext,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ShippingOptionResponse>> {
     ensure_permissions(
@@ -1021,7 +1036,12 @@ pub async fn show_shipping_option(
     )?;
 
     let option = FulfillmentService::new(ctx.db.clone())
-        .get_shipping_option(tenant.id, id)
+        .get_shipping_option(
+            tenant.id,
+            id,
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| match err {
             rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
@@ -1766,6 +1786,7 @@ mod tests {
                         metadata: json!({ "source": "admin-order-transport" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-order-transport" }),
                 },
             )
@@ -1838,6 +1859,118 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn admin_order_transport_returns_typed_adjustments_and_totals() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let customer_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Admin Test Tenant".to_string(),
+            slug: format!("admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::ORDERS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+            .create_order(
+                tenant_id,
+                actor_id,
+                CreateOrderInput {
+                    customer_id: Some(customer_id),
+                    currency_code: "eur".to_string(),
+                    line_items: vec![CreateOrderLineItemInput {
+                        product_id: Some(Uuid::new_v4()),
+                        variant_id: Some(Uuid::new_v4()),
+                        shipping_profile_slug: "default".to_string(),
+                        seller_id: None,
+                        sku: Some("ADMIN-ORDER-ADJUSTMENT-1".to_string()),
+                        title: "Admin Adjusted Order".to_string(),
+                        quantity: 1,
+                        unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                        metadata: json!({ "source": "admin-order-adjustment-transport" }),
+                    }],
+                    adjustments: vec![rustok_order::dto::CreateOrderAdjustmentInput {
+                        line_item_index: Some(0),
+                        source_type: "Promotion".to_string(),
+                        source_id: Some("promo-admin".to_string()),
+                        amount: Decimal::from_str("5.00").expect("valid decimal"),
+                        metadata: json!({
+                            "rule_code": "admin-adjustment",
+                            "display_label": "Admin promotion"
+                        }),
+                    }],
+                    tax_lines: Vec::new(),
+                    metadata: json!({ "source": "admin-order-adjustment-transport" }),
+                },
+            )
+            .await
+            .expect("order should be created");
+
+        let app = admin_transport_router(test_app_context(db), tenant, auth);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/admin/orders/{}", order.id))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("request should succeed");
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("response body should read");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "unexpected admin order adjustment body: {}",
+            String::from_utf8_lossy(&body)
+        );
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body).expect("response should be JSON");
+        assert_eq!(payload["order"]["subtotal_amount"], json!("25"));
+        assert_eq!(payload["order"]["adjustment_total"], json!("5"));
+        assert_eq!(payload["order"]["total_amount"], json!("20"));
+        assert_eq!(
+            payload["order"]["adjustments"][0]["line_item_id"],
+            payload["order"]["line_items"][0]["id"]
+        );
+        assert_eq!(
+            payload["order"]["adjustments"][0]["source_type"],
+            json!("promotion")
+        );
+        assert_eq!(
+            payload["order"]["adjustments"][0]["source_id"],
+            json!("promo-admin")
+        );
+        assert_eq!(payload["order"]["adjustments"][0]["amount"], json!("5"));
+        assert_eq!(
+            payload["order"]["adjustments"][0]["currency_code"],
+            json!("EUR")
+        );
+        assert_eq!(
+            payload["order"]["adjustments"][0]["metadata"],
+            json!({ "rule_code": "admin-adjustment" })
+        );
+    }
+
+    #[tokio::test]
     async fn admin_orders_transport_lists_orders_with_pagination_and_status_filter() {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
@@ -1884,6 +2017,7 @@ mod tests {
                         metadata: json!({ "source": "admin-order-list" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-order-list" }),
                 },
             )
@@ -1908,6 +2042,7 @@ mod tests {
                         metadata: json!({ "source": "admin-order-list" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-order-list" }),
                 },
             )
@@ -2009,6 +2144,7 @@ mod tests {
                         metadata: json!({ "source": "admin-payment-list" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-payment-list" }),
                 },
             )
@@ -2033,6 +2169,7 @@ mod tests {
                         metadata: json!({ "source": "admin-payment-list" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-payment-list" }),
                 },
             )
@@ -2621,6 +2758,7 @@ mod tests {
                         metadata: json!({ "source": "admin-fulfillment-list" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-list" }),
                 },
             )
@@ -2645,6 +2783,7 @@ mod tests {
                         metadata: json!({ "source": "admin-fulfillment-list" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-list" }),
                 },
             )
@@ -2816,6 +2955,7 @@ mod tests {
                         metadata: json!({ "source": "admin-order-lifecycle" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-order-lifecycle" }),
                 },
             )
@@ -2971,6 +3111,7 @@ mod tests {
                         metadata: json!({ "source": "admin-order-cancel" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-order-cancel" }),
                 },
             )
@@ -3100,6 +3241,7 @@ mod tests {
                         metadata: json!({ "source": "admin-payment-transport" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-payment-transport" }),
                 },
             )
@@ -3282,6 +3424,7 @@ mod tests {
                         }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-create" }),
                 },
             )
@@ -3394,6 +3537,7 @@ mod tests {
                         metadata: json!({ "source": "admin-fulfillment-over" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-over" }),
                 },
             )
@@ -3514,6 +3658,7 @@ mod tests {
                         metadata: json!({ "source": "admin-fulfillment-transport" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-transport" }),
                 },
             )
@@ -3683,6 +3828,7 @@ mod tests {
                         metadata: json!({ "source": "admin-fulfillment-partial" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-partial" }),
                 },
             )
@@ -3833,6 +3979,7 @@ mod tests {
                         metadata: json!({ "source": "admin-fulfillment-reopen" }),
                     }],
                     adjustments: Vec::new(),
+                    tax_lines: Vec::new(),
                     metadata: json!({ "source": "admin-fulfillment-reopen" }),
                 },
             )

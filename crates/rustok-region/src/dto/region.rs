@@ -8,8 +8,9 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateRegionInput {
-    #[validate(length(min = 1, max = 100))]
-    pub name: String,
+    #[validate(length(min = 1, message = "At least one translation required"))]
+    #[validate(nested)]
+    pub translations: Vec<RegionTranslationInput>,
     #[validate(length(equal = 3))]
     pub currency_code: String,
     pub tax_rate: Decimal,
@@ -20,14 +21,22 @@ pub struct CreateRegionInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, Default, ToSchema)]
 pub struct UpdateRegionInput {
-    #[validate(length(min = 1, max = 100))]
-    pub name: Option<String>,
+    #[validate(nested)]
+    pub translations: Option<Vec<RegionTranslationInput>>,
     #[validate(length(equal = 3))]
     pub currency_code: Option<String>,
     pub tax_rate: Option<Decimal>,
     pub tax_included: Option<bool>,
     pub countries: Option<Vec<String>>,
     pub metadata: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct RegionTranslationInput {
+    #[validate(length(min = 2, max = 5))]
+    pub locale: String,
+    #[validate(length(min = 1, max = 100))]
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -42,4 +51,14 @@ pub struct RegionResponse {
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub requested_locale: Option<String>,
+    pub effective_locale: Option<String>,
+    pub available_locales: Vec<String>,
+    pub translations: Vec<RegionTranslationResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RegionTranslationResponse {
+    pub locale: String,
+    pub name: String,
 }

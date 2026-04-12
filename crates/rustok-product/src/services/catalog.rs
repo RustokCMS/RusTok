@@ -15,7 +15,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
-use rustok_core::{generate_id, PLATFORM_FALLBACK_LOCALE};
+use rustok_core::{generate_id, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
@@ -225,28 +225,32 @@ impl CatalogService {
 
         for (position, opt_input) in input.options.iter().enumerate() {
             let option_id = generate_id();
+            let option_translations = Self::normalize_option_translations(&opt_input.translations)?;
+            let base_values = option_translations
+                .first()
+                .map(|item| item.values.clone())
+                .unwrap_or_default();
+            Self::ensure_option_values_consistent(&option_translations, &base_values)?;
             let option = entities::product_option::ActiveModel {
                 id: Set(option_id),
                 product_id: Set(product_id),
                 position: Set(position as i32),
-                name: Set(opt_input.name.clone()),
-                values: Set(serde_json::to_value(&opt_input.values)
-                    .map_err(|error| CommerceError::Validation(error.to_string()))?),
             };
             option.insert(&txn).await?;
 
-            for locale in &translation_locales {
+            for translation in &option_translations {
                 entities::product_option_translation::ActiveModel {
                     id: Set(generate_id()),
                     option_id: Set(option_id),
-                    locale: Set(locale.clone()),
-                    title: Set(opt_input.name.clone()),
+                    locale: Set(translation.locale.clone()),
+                    title: Set(translation.name.clone()),
                 }
                 .insert(&txn)
                 .await?;
             }
 
-            for (value_position, value) in opt_input.values.iter().enumerate() {
+            let mut option_value_ids = Vec::with_capacity(base_values.len());
+            for (value_position, _) in base_values.iter().enumerate() {
                 let option_value_id = generate_id();
                 entities::product_option_value::ActiveModel {
                     id: Set(option_value_id),
@@ -256,13 +260,21 @@ impl CatalogService {
                 }
                 .insert(&txn)
                 .await?;
+                option_value_ids.push(option_value_id);
+            }
 
-                for locale in &translation_locales {
+            for translation in &option_translations {
+                for (value_position, value_id) in option_value_ids.iter().enumerate() {
+                    let value = translation
+                        .values
+                        .get(value_position)
+                        .cloned()
+                        .unwrap_or_default();
                     entities::product_option_value_translation::ActiveModel {
                         id: Set(generate_id()),
-                        value_id: Set(option_value_id),
-                        locale: Set(locale.clone()),
-                        value: Set(value.clone()),
+                        value_id: Set(*value_id),
+                        locale: Set(translation.locale.clone()),
+                        value: Set(value),
                     }
                     .insert(&txn)
                     .await?;
@@ -692,7 +704,6 @@ impl CatalogService {
                 .map(|option| {
                     let option_id = option.id;
                     let translations = Self::build_option_translations(
-                        &option,
                         option_translations_by_option
                             .remove(&option_id)
                             .unwrap_or_default(),
@@ -702,10 +713,16 @@ impl CatalogService {
                         &option_value_translations_by_value,
                     );
 
+                    let (name, values) = Self::resolve_option_display(
+                        &translations,
+                        locale,
+                        fallback_locale,
+                    );
+
                     ProductOptionResponse {
                         id: option_id,
-                        name: option.name,
-                        values: serde_json::from_value(option.values.clone()).unwrap_or_default(),
+                        name,
+                        values,
                         position: option.position,
                         translations,
                     }
@@ -926,6 +943,7 @@ impl CatalogService {
         let prepared_custom_fields = if let Some(metadata) = input.metadata.clone() {
             Some(
                 self.prepare_product_custom_fields_for_update(
+                    &txn,
                     tenant_id,
                     product_id,
                     preferred_locale.as_str(),
@@ -1391,20 +1409,24 @@ impl CatalogService {
             .map_err(|error| CommerceError::Validation(error.to_string()))
     }
 
-    async fn prepare_product_custom_fields_for_update(
+    async fn prepare_product_custom_fields_for_update<C>(
         &self,
+        conn: &C,
         tenant_id: Uuid,
         product_id: Uuid,
         locale: &str,
         existing_metadata: &Value,
         payload: Value,
-    ) -> CommerceResult<flex::PreparedAttachedValuesWrite> {
-        let schema = load_product_custom_fields_schema(&self.db, tenant_id).await?;
+    ) -> CommerceResult<flex::PreparedAttachedValuesWrite>
+    where
+        C: ConnectionTrait,
+    {
+        let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
         let (reserved_payload, flex_payload) = split_product_metadata_payload(&schema, &payload);
         let (_, existing_flex_metadata) =
             split_product_metadata_payload(&schema, existing_metadata);
         prepare_attached_values_update(
-            &self.db,
+            conn,
             tenant_id,
             "product",
             product_id,
@@ -1819,7 +1841,6 @@ impl CatalogService {
     }
 
     fn build_option_translations(
-        option: &entities::product_option::Model,
         translations: Vec<entities::product_option_translation::Model>,
         option_values: Vec<entities::product_option_value::Model>,
         option_value_translations_by_value: &HashMap<
@@ -1827,9 +1848,6 @@ impl CatalogService {
             Vec<entities::product_option_value_translation::Model>,
         >,
     ) -> Vec<ProductOptionTranslationResponse> {
-        let legacy_values: Vec<String> =
-            serde_json::from_value(option.values.clone()).unwrap_or_default();
-
         translations
             .into_iter()
             .map(|translation| {
@@ -1842,10 +1860,17 @@ impl CatalogService {
                             .and_then(|items| {
                                 items
                                     .iter()
-                                    .find(|item| item.locale == translation.locale)
+                                    .find(|item| {
+                                        locale_tags_match(&item.locale, &translation.locale)
+                                    })
                                     .map(|item| item.value.clone())
                             })
-                            .or_else(|| legacy_values.get(index).cloned())
+                            .or_else(|| {
+                                option_value_translations_by_value
+                                    .get(&value.id)
+                                    .and_then(|items| items.first())
+                                    .map(|item| item.value.clone())
+                            })
                             .unwrap_or_default()
                     })
                     .collect();
@@ -1857,6 +1882,91 @@ impl CatalogService {
                 }
             })
             .collect()
+    }
+
+    fn normalize_option_translations(
+        translations: &[ProductOptionTranslationInput],
+    ) -> CommerceResult<Vec<ProductOptionTranslationInput>> {
+        if translations.is_empty() {
+            return Err(CommerceError::Validation(
+                "At least one option translation is required".into(),
+            ));
+        }
+
+        let mut seen = HashSet::new();
+        let mut normalized = Vec::with_capacity(translations.len());
+        for translation in translations {
+            let locale = normalize_locale_tag(&translation.locale).ok_or_else(|| {
+                CommerceError::Validation("Invalid locale for option translation".into())
+            })?;
+            if !seen.insert(locale.clone()) {
+                return Err(CommerceError::Validation(
+                    "Duplicate locale in option translations".into(),
+                ));
+            }
+            let name = translation.name.trim();
+            if name.is_empty() {
+                return Err(CommerceError::Validation(
+                    "Option name cannot be empty".into(),
+                ));
+            }
+            if translation.values.is_empty() {
+                return Err(CommerceError::Validation(
+                    "Option values cannot be empty".into(),
+                ));
+            }
+            normalized.push(ProductOptionTranslationInput {
+                locale,
+                name: name.to_string(),
+                values: translation.values.iter().map(|value| value.trim().to_string()).collect(),
+            });
+        }
+        Ok(normalized)
+    }
+
+    fn ensure_option_values_consistent(
+        translations: &[ProductOptionTranslationInput],
+        base_values: &[String],
+    ) -> CommerceResult<()> {
+        for translation in translations {
+            if translation.values.len() != base_values.len() {
+                return Err(CommerceError::Validation(
+                    "Option value count must be consistent across translations".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn resolve_option_display(
+        translations: &[ProductOptionTranslationResponse],
+        requested_locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> (String, Vec<String>) {
+        let requested = normalize_locale_tag(requested_locale);
+        let fallback = fallback_locale.and_then(normalize_locale_tag);
+
+        let resolved = requested
+            .as_deref()
+            .and_then(|locale| {
+                translations
+                    .iter()
+                    .find(|translation| normalize_locale_tag(&translation.locale).as_deref()
+                        == Some(locale))
+            })
+            .or_else(|| {
+                fallback.as_deref().and_then(|locale| {
+                    translations
+                        .iter()
+                        .find(|translation| normalize_locale_tag(&translation.locale).as_deref()
+                            == Some(locale))
+                })
+            })
+            .or_else(|| translations.first());
+
+        resolved
+            .map(|translation| (translation.name.clone(), translation.values.clone()))
+            .unwrap_or_else(|| ("".to_string(), Vec::new()))
     }
 
     fn decimal_to_cents(amount: rust_decimal::Decimal) -> Option<i64> {
@@ -1989,12 +2099,13 @@ impl CatalogService {
     }
 }
 
-async fn load_product_custom_fields_schema(
-    db: &DatabaseConnection,
+async fn load_product_custom_fields_schema<C>(
+    db: &C,
     tenant_id: Uuid,
-) -> CommerceResult<CustomFieldsSchema> {
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-
+) -> CommerceResult<CustomFieldsSchema>
+where
+    C: ConnectionTrait,
+{
     let rows = product_field_definitions_storage::Entity::find()
         .filter(product_field_definitions_storage::Column::TenantId.eq(tenant_id))
         .filter(product_field_definitions_storage::Column::IsActive.eq(true))
@@ -2084,12 +2195,12 @@ fn pick_product_translation<'a>(
 ) -> Option<&'a entities::product_translation::Model> {
     translations
         .iter()
-        .find(|translation| translation.locale == locale)
+        .find(|translation| locale_tags_match(&translation.locale, locale))
         .or_else(|| {
-            (fallback_locale != locale).then(|| {
+            (!locale_tags_match(fallback_locale, locale)).then(|| {
                 translations
                     .iter()
-                    .find(|translation| translation.locale == fallback_locale)
+                    .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
             })?
         })
         .or_else(|| translations.first())
@@ -2102,12 +2213,12 @@ fn pick_response_translation<'a>(
 ) -> Option<&'a ProductTranslationResponse> {
     translations
         .iter()
-        .find(|translation| translation.locale == locale)
+        .find(|translation| locale_tags_match(&translation.locale, locale))
         .or_else(|| {
-            (fallback_locale != locale).then(|| {
+            (!locale_tags_match(fallback_locale, locale)).then(|| {
                 translations
                     .iter()
-                    .find(|translation| translation.locale == fallback_locale)
+                    .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
             })?
         })
         .or_else(|| translations.first())
@@ -2295,7 +2406,7 @@ async fn find_published_product_id_by_handle(
         return Ok(Some(product_id));
     }
 
-    if fallback_locale != locale {
+    if !locale_tags_match(fallback_locale, locale) {
         if let Some(product_id) = find_published_product_id_for_locale(
             db,
             tenant_id,
@@ -2321,9 +2432,11 @@ async fn find_published_product_id_for_locale(
 ) -> CommerceResult<Option<Uuid>> {
     let translations = entities::product_translation::Entity::find()
         .filter(entities::product_translation::Column::Handle.eq(handle))
-        .filter(entities::product_translation::Column::Locale.eq(locale))
         .all(db)
-        .await?;
+        .await?
+        .into_iter()
+        .filter(|translation| locale_tags_match(&translation.locale, locale))
+        .collect();
 
     find_first_published_product(db, tenant_id, translations, public_channel_slug).await
 }

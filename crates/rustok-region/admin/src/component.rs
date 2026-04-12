@@ -10,6 +10,7 @@ use crate::model::{RegionAdminBootstrap, RegionDetail, RegionDraft, RegionListIt
 pub fn RegionAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
+    let initial_selected_region_id = route_context.query_value("id").map(ToOwned::to_owned);
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_id, set_editing_id) = signal(Option::<String>::None);
@@ -22,6 +23,7 @@ pub fn RegionAdmin() -> impl IntoView {
     let (metadata, set_metadata) = signal("{}".to_string());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
+    let (query_selection_applied, set_query_selection_applied) = signal(false);
 
     let bootstrap = Resource::new(
         move || refresh_nonce.get(),
@@ -42,6 +44,11 @@ pub fn RegionAdmin() -> impl IntoView {
         ui_locale.as_deref(),
         "region.error.currencyRequired",
         "Currency code is required.",
+    );
+    let locale_unavailable_label = t(
+        ui_locale.as_deref(),
+        "region.error.localeUnavailable",
+        "Host locale is unavailable.",
     );
     let required_countries_label = t(
         ui_locale.as_deref(),
@@ -94,12 +101,40 @@ pub fn RegionAdmin() -> impl IntoView {
                     set_countries,
                     set_metadata,
                 ),
-                Err(err) => set_error.set(Some(format!("{load_region_error_label}: {err}"))),
+                Err(err) => {
+                    clear_region_form(
+                        set_editing_id,
+                        set_selected,
+                        set_name,
+                        set_currency_code,
+                        set_tax_rate,
+                        set_tax_included,
+                        set_countries,
+                        set_metadata,
+                    );
+                    set_error.set(Some(format!("{load_region_error_label}: {err}")));
+                }
             }
             set_busy.set(false);
         });
     });
+    let initial_open_region = open_region.clone();
+    Effect::new(move |_| {
+        if query_selection_applied.get() {
+            return;
+        }
+        let Some(region_id) = initial_selected_region_id.clone() else {
+            set_query_selection_applied.set(true);
+            return;
+        };
+        set_query_selection_applied.set(true);
+        if region_id.trim().is_empty() {
+            return;
+        }
+        initial_open_region.run(region_id);
+    });
 
+    let submit_ui_locale = ui_locale.clone();
     let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
 
@@ -115,9 +150,14 @@ pub fn RegionAdmin() -> impl IntoView {
             set_error.set(Some(required_countries_label.clone()));
             return;
         }
+        let Some(submit_locale) = submit_ui_locale.clone() else {
+            set_error.set(Some(locale_unavailable_label.clone()));
+            return;
+        };
 
         let payload = RegionDraft {
             name: name.get_untracked(),
+            locale: submit_locale,
             currency_code: currency_code.get_untracked(),
             tax_rate: tax_rate.get_untracked(),
             tax_included: tax_included.get_untracked(),
@@ -357,6 +397,26 @@ fn apply_region_detail(
     set_tax_included.set(detail.region.tax_included);
     set_countries.set(detail.region.countries.join(", "));
     set_metadata.set(detail.region.metadata_pretty.clone());
+}
+
+fn clear_region_form(
+    set_editing_id: WriteSignal<Option<String>>,
+    set_selected: WriteSignal<Option<RegionDetail>>,
+    set_name: WriteSignal<String>,
+    set_currency_code: WriteSignal<String>,
+    set_tax_rate: WriteSignal<String>,
+    set_tax_included: WriteSignal<bool>,
+    set_countries: WriteSignal<String>,
+    set_metadata: WriteSignal<String>,
+) {
+    set_editing_id.set(None);
+    set_selected.set(None);
+    set_name.set(String::new());
+    set_currency_code.set(String::new());
+    set_tax_rate.set("0".to_string());
+    set_tax_included.set(false);
+    set_countries.set(String::new());
+    set_metadata.set("{}".to_string());
 }
 
 fn tax_badge(locale: Option<&str>, region: &RegionListItem) -> String {

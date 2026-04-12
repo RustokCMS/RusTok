@@ -1,20 +1,23 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, Set, Statement, TransactionTrait,
 };
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::generate_id;
+use rustok_commerce_foundation::entities::region;
+use rustok_core::{generate_id, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
+use rustok_fulfillment::entities::shipping_option;
 
 use crate::dto::{
     AddCartLineItemInput, CartAdjustmentResponse, CartDeliveryGroupResponse, CartLineItemResponse,
-    CartResponse, CreateCartInput, SetCartAdjustmentInput, UpdateCartContextInput,
+    CartResponse, CartTaxLineResponse, CreateCartInput, SetCartAdjustmentInput,
+    UpdateCartContextInput,
 };
 use crate::entities;
 use crate::error::{CartError, CartResult};
@@ -39,6 +42,12 @@ struct DeliveryGroupSnapshot {
 
 pub struct CartService {
     db: DatabaseConnection,
+}
+
+#[derive(Clone, Debug)]
+pub struct CartLineItemPricingUpdate {
+    pub line_item_id: Uuid,
+    pub unit_price: Decimal,
 }
 
 impl CartService {
@@ -105,6 +114,7 @@ impl CartService {
             status: Set(STATUS_ACTIVE.to_string()),
             currency_code: Set(currency_code),
             total_amount: Set(Decimal::ZERO),
+            tax_total: Set(Decimal::ZERO),
             metadata: Set(input.metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
@@ -142,9 +152,14 @@ impl CartService {
         ensure_active(&cart.status, "add_line_item")?;
         let now = Utc::now();
         let metadata = sanitize_line_item_metadata(input.metadata);
+        let locale = match cart.locale_code.as_deref().and_then(normalize_locale_tag) {
+            Some(locale) => locale,
+            None => load_tenant_default_locale(&txn, tenant_id).await?,
+        };
+        let line_item_id = generate_id();
 
         entities::cart_line_item::ActiveModel {
-            id: Set(generate_id()),
+            id: Set(line_item_id),
             cart_id: Set(cart_id),
             product_id: Set(input.product_id),
             variant_id: Set(input.variant_id),
@@ -152,12 +167,21 @@ impl CartService {
                 input.shipping_profile_slug.as_deref(),
             )),
             sku: Set(input.sku),
-            title: Set(input.title),
             quantity: Set(input.quantity),
             unit_price: Set(input.unit_price),
             total_price: Set(input.unit_price * Decimal::from(input.quantity)),
             currency_code: Set(cart.currency_code.clone()),
             metadata: Set(metadata),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&txn)
+        .await?;
+        entities::cart_line_item_translation::ActiveModel {
+            id: Set(generate_id()),
+            cart_line_item_id: Set(line_item_id),
+            locale: Set(locale),
+            title: Set(input.title),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -328,6 +352,85 @@ impl CartService {
         self.get_cart(tenant_id, cart_id).await
     }
 
+    pub async fn update_line_item_pricing(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        line_item_id: Uuid,
+        quantity: i32,
+        unit_price: Decimal,
+    ) -> CartResult<CartResponse> {
+        if quantity < 1 {
+            return Err(CartError::Validation(
+                "quantity must be at least 1".to_string(),
+            ));
+        }
+
+        let txn = self.db.begin().await?;
+        let cart = self.load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        ensure_active(&cart.status, "update_line_item_pricing")?;
+
+        let line_item = entities::cart_line_item::Entity::find_by_id(line_item_id)
+            .filter(entities::cart_line_item::Column::CartId.eq(cart_id))
+            .one(&txn)
+            .await?
+            .ok_or(CartError::CartLineItemNotFound(line_item_id))?;
+
+        let mut active: entities::cart_line_item::ActiveModel = line_item.into();
+        let now = Utc::now();
+        active.unit_price = Set(unit_price);
+        active.quantity = Set(quantity);
+        active.total_price = Set(unit_price * Decimal::from(quantity));
+        active.updated_at = Set(now.into());
+        active.update(&txn).await?;
+
+        self.recalculate_totals(&txn, cart).await?;
+        self.reconcile_cart_shipping_state(&txn, cart_id).await?;
+        txn.commit().await?;
+        self.get_cart(tenant_id, cart_id).await
+    }
+
+    pub async fn reprice_line_items(
+        &self,
+        tenant_id: Uuid,
+        cart_id: Uuid,
+        updates: Vec<CartLineItemPricingUpdate>,
+    ) -> CartResult<CartResponse> {
+        if updates.is_empty() {
+            return self.get_cart(tenant_id, cart_id).await;
+        }
+
+        let updates_map: HashMap<Uuid, Decimal> = updates
+            .into_iter()
+            .map(|update| (update.line_item_id, update.unit_price))
+            .collect();
+        let txn = self.db.begin().await?;
+        let cart = self.load_cart_in_tx(&txn, tenant_id, cart_id).await?;
+        ensure_active(&cart.status, "reprice_line_items")?;
+
+        let line_items = entities::cart_line_item::Entity::find()
+            .filter(entities::cart_line_item::Column::CartId.eq(cart_id))
+            .all(&txn)
+            .await?;
+
+        let now = Utc::now();
+        for line_item in line_items {
+            if let Some(unit_price) = updates_map.get(&line_item.id) {
+                let quantity = line_item.quantity;
+                let mut active: entities::cart_line_item::ActiveModel = line_item.into();
+                active.unit_price = Set(*unit_price);
+                active.total_price = Set(*unit_price * Decimal::from(quantity));
+                active.updated_at = Set(now.into());
+                active.update(&txn).await?;
+            }
+        }
+
+        self.recalculate_totals(&txn, cart).await?;
+        self.reconcile_cart_shipping_state(&txn, cart_id).await?;
+        txn.commit().await?;
+        self.get_cart(tenant_id, cart_id).await
+    }
+
     pub async fn remove_line_item(
         &self,
         tenant_id: Uuid,
@@ -472,10 +575,24 @@ impl CartService {
             .filter(entities::cart_adjustment::Column::CartId.eq(cart.id))
             .all(conn)
             .await?;
-        let total_amount = net_total(subtotal_amount(&line_items), adjustment_total(&adjustments));
+        let shipping_selections = entities::cart_shipping_selection::Entity::find()
+            .filter(entities::cart_shipping_selection::Column::CartId.eq(cart.id))
+            .all(conn)
+            .await?;
+        let (tax_total, tax_included) = self
+            .recalculate_tax_lines(conn, &cart, &line_items, &shipping_selections)
+            .await?;
+        let subtotal = subtotal_amount(&line_items);
+        let adjusted_total = net_total(subtotal, adjustment_total(&adjustments));
+        let total_amount = if tax_included {
+            adjusted_total
+        } else {
+            adjusted_total + tax_total
+        };
 
         let mut active: entities::cart::ActiveModel = cart.into();
         active.total_amount = Set(total_amount);
+        active.tax_total = Set(tax_total);
         active.updated_at = Set(Utc::now().into());
         active.update(conn).await?;
         Ok(())
@@ -507,9 +624,22 @@ impl CartService {
             .order_by_asc(entities::cart_line_item::Column::CreatedAt)
             .all(&self.db)
             .await?;
+        let tenant_default_locale = load_tenant_default_locale(&self.db, cart.tenant_id).await?;
+        let title_map = load_line_item_titles(
+            &self.db,
+            &line_items,
+            cart.locale_code.as_deref(),
+            Some(tenant_default_locale.as_str()),
+        )
+        .await?;
         let adjustments = entities::cart_adjustment::Entity::find()
             .filter(entities::cart_adjustment::Column::CartId.eq(cart.id))
             .order_by_asc(entities::cart_adjustment::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+        let tax_lines = entities::cart_tax_line::Entity::find()
+            .filter(entities::cart_tax_line::Column::CartId.eq(cart.id))
+            .order_by_asc(entities::cart_tax_line::Column::CreatedAt)
             .all(&self.db)
             .await?;
         let shipping_selections = entities::cart_shipping_selection::Entity::find()
@@ -518,7 +648,7 @@ impl CartService {
             .await?;
         let subtotal_amount = subtotal_amount(&line_items);
         let adjustment_total = adjustment_total(&adjustments);
-        let total_amount = net_total(subtotal_amount, adjustment_total);
+        let total_amount = cart.total_amount;
         let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
         let selection_map =
             selection_map_from_records(&delivery_group_snapshots, shipping_selections.into_iter());
@@ -545,6 +675,7 @@ impl CartService {
             subtotal_amount,
             adjustment_total,
             total_amount,
+            tax_total: cart.tax_total,
             metadata: cart.metadata,
             created_at: cart.created_at.with_timezone(&Utc),
             updated_at: cart.updated_at.with_timezone(&Utc),
@@ -563,7 +694,7 @@ impl CartService {
                         seller_id,
                         seller_scope,
                         sku: item.sku,
-                        title: item.title,
+                        title: title_map.get(&item.id).cloned().unwrap_or_default(),
                         quantity: item.quantity,
                         unit_price: item.unit_price,
                         total_price: item.total_price,
@@ -589,8 +720,130 @@ impl CartService {
                     updated_at: adjustment.updated_at.with_timezone(&Utc),
                 })
                 .collect(),
+            tax_lines: tax_lines
+                .into_iter()
+                .map(|line| CartTaxLineResponse {
+                    id: line.id,
+                    cart_id: line.cart_id,
+                    line_item_id: line.cart_line_item_id,
+                    shipping_option_id: line.shipping_option_id,
+                    description: line.description,
+                    rate: line.rate,
+                    amount: line.amount,
+                    currency_code: line.currency_code,
+                    metadata: line.metadata,
+                    created_at: line.created_at.with_timezone(&Utc),
+                    updated_at: line.updated_at.with_timezone(&Utc),
+                })
+                .collect(),
             delivery_groups,
         })
+    }
+
+    async fn recalculate_tax_lines<C>(
+        &self,
+        conn: &C,
+        cart: &entities::cart::Model,
+        line_items: &[entities::cart_line_item::Model],
+        shipping_selections: &[entities::cart_shipping_selection::Model],
+    ) -> CartResult<(Decimal, bool)>
+    where
+        C: sea_orm::ConnectionTrait,
+    {
+        entities::cart_tax_line::Entity::delete_many()
+            .filter(entities::cart_tax_line::Column::CartId.eq(cart.id))
+            .exec(conn)
+            .await?;
+
+        let Some(region_id) = cart.region_id else {
+            return Ok((Decimal::ZERO, false));
+        };
+
+        let region = region::Entity::find_by_id(region_id)
+            .filter(region::Column::TenantId.eq(cart.tenant_id))
+            .one(conn)
+            .await?
+            .ok_or(CartError::Validation(
+                "Region not found for cart".to_string(),
+            ))?;
+        let tax_rate = region.tax_rate;
+        if tax_rate <= Decimal::ZERO {
+            return Ok((Decimal::ZERO, region.tax_included));
+        }
+
+        let mut tax_lines = Vec::new();
+        let mut tax_total = Decimal::ZERO;
+        let now = Utc::now();
+        for item in line_items {
+            if item.total_price <= Decimal::ZERO {
+                continue;
+            }
+            let tax_amount = calculate_tax_amount(item.total_price, tax_rate, region.tax_included);
+            if tax_amount <= Decimal::ZERO {
+                continue;
+            }
+            tax_total += tax_amount;
+            tax_lines.push(entities::cart_tax_line::ActiveModel {
+                id: Set(generate_id()),
+                cart_id: Set(cart.id),
+                cart_line_item_id: Set(Some(item.id)),
+                shipping_option_id: Set(None),
+                description: Set(Some("line_item".to_string())),
+                rate: Set(tax_rate),
+                amount: Set(tax_amount),
+                currency_code: Set(cart.currency_code.clone()),
+                metadata: Set(serde_json::json!({ "tax_included": region.tax_included })),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            });
+        }
+
+        for selection in shipping_selections {
+            let Some(shipping_option_id) = selection.selected_shipping_option_id else {
+                continue;
+            };
+            let option = shipping_option::Entity::find_by_id(shipping_option_id)
+                .filter(shipping_option::Column::TenantId.eq(cart.tenant_id))
+                .one(conn)
+                .await?;
+            let Some(option) = option else {
+                continue;
+            };
+            if option.currency_code != cart.currency_code {
+                continue;
+            }
+            if option.amount <= Decimal::ZERO {
+                continue;
+            }
+            let tax_amount = calculate_tax_amount(option.amount, tax_rate, region.tax_included);
+            if tax_amount <= Decimal::ZERO {
+                continue;
+            }
+            tax_total += tax_amount;
+            tax_lines.push(entities::cart_tax_line::ActiveModel {
+                id: Set(generate_id()),
+                cart_id: Set(cart.id),
+                cart_line_item_id: Set(None),
+                shipping_option_id: Set(Some(option.id)),
+                description: Set(Some("shipping".to_string())),
+                rate: Set(tax_rate),
+                amount: Set(tax_amount),
+                currency_code: Set(cart.currency_code.clone()),
+                metadata: Set(serde_json::json!({
+                    "tax_included": region.tax_included,
+                })),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            });
+        }
+
+        if !tax_lines.is_empty() {
+            entities::cart_tax_line::Entity::insert_many(tax_lines)
+                .exec(conn)
+                .await?;
+        }
+
+        Ok((tax_total, region.tax_included))
     }
 
     async fn apply_shipping_selection_patch<C>(
@@ -848,6 +1101,23 @@ fn adjustment_total(adjustments: &[entities::cart_adjustment::Model]) -> Decimal
         .fold(Decimal::ZERO, |acc, adjustment| acc + adjustment.amount)
 }
 
+fn calculate_tax_amount(amount: Decimal, rate: Decimal, tax_included: bool) -> Decimal {
+    if rate <= Decimal::ZERO {
+        return Decimal::ZERO;
+    }
+
+    if tax_included {
+        let divisor = rate + Decimal::from(100);
+        if divisor <= Decimal::ZERO {
+            Decimal::ZERO
+        } else {
+            amount * rate / divisor
+        }
+    } else {
+        amount * rate / Decimal::from(100)
+    }
+}
+
 fn net_total(subtotal_amount: Decimal, adjustment_total: Decimal) -> Decimal {
     if adjustment_total > subtotal_amount {
         Decimal::ZERO
@@ -1052,4 +1322,100 @@ fn sanitize_adjustment_metadata(metadata: Value) -> Value {
     metadata.remove("localized_label");
 
     Value::Object(metadata)
+}
+
+async fn load_line_item_titles<C>(
+    conn: &C,
+    line_items: &[entities::cart_line_item::Model],
+    preferred_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> CartResult<HashMap<Uuid, String>>
+where
+    C: sea_orm::ConnectionTrait,
+{
+    let mut titles = HashMap::new();
+    if line_items.is_empty() {
+        return Ok(titles);
+    }
+
+    let preferred_locale = preferred_locale.and_then(normalize_locale_tag);
+    let fallback_locale = tenant_default_locale.and_then(normalize_locale_tag);
+    let line_item_ids = line_items.iter().map(|item| item.id).collect::<Vec<_>>();
+    let rows = entities::cart_line_item_translation::Entity::find()
+        .filter(
+            entities::cart_line_item_translation::Column::CartLineItemId
+                .is_in(line_item_ids.clone()),
+        )
+        .all(conn)
+        .await?;
+
+    let mut rows_by_item = HashMap::<Uuid, Vec<entities::cart_line_item_translation::Model>>::new();
+    for row in rows {
+        rows_by_item.entry(row.cart_line_item_id).or_default().push(row);
+    }
+
+    for line_item in line_items {
+        if let Some(title) = rows_by_item
+            .remove(&line_item.id)
+            .and_then(|rows| {
+                select_cart_line_item_title(
+                    &rows,
+                    preferred_locale.as_deref(),
+                    fallback_locale.as_deref(),
+                )
+            })
+        {
+            titles.insert(line_item.id, title);
+        }
+    }
+
+    Ok(titles)
+}
+
+fn select_cart_line_item_title(
+    rows: &[entities::cart_line_item_translation::Model],
+    preferred_locale: Option<&str>,
+    fallback_locale: Option<&str>,
+) -> Option<String> {
+    let preferred_locale = preferred_locale.and_then(normalize_locale_tag);
+    let fallback_locale = fallback_locale.and_then(normalize_locale_tag);
+
+    preferred_locale
+        .as_deref()
+        .and_then(|preferred_locale| {
+            rows.iter().find(|row| {
+                normalize_locale_tag(&row.locale).as_deref() == Some(preferred_locale)
+            })
+        })
+        .or_else(|| {
+            fallback_locale.as_deref().and_then(|fallback_locale| {
+                rows.iter().find(|row| {
+                    normalize_locale_tag(&row.locale).as_deref() == Some(fallback_locale)
+                })
+            })
+        })
+        .or_else(|| rows.first())
+        .map(|row| row.title.clone())
+}
+
+async fn load_tenant_default_locale<C>(conn: &C, tenant_id: Uuid) -> CartResult<String>
+where
+    C: ConnectionTrait,
+{
+    let row = conn
+        .query_one(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "SELECT default_locale FROM tenants WHERE id = ?",
+            vec![tenant_id.into()],
+        ))
+        .await?;
+
+    let default_locale = row
+        .and_then(|row| row.try_get::<String>("", "default_locale").ok())
+        .as_deref()
+        .map(normalize_locale_code)
+        .transpose()?
+        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+
+    Ok(default_locale)
 }

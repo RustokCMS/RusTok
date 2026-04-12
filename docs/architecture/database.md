@@ -93,6 +93,8 @@ Commerce storage остаётся split-domain family, но верхнеуров
 - `prices`
 - `product_images`
 - `product_options`
+- `cart_line_item_translations`
+- `order_line_item_translations`
 
 И здесь действует тот же принцип: base rows language-agnostic, локализованные
 поля вынесены в parallel records.

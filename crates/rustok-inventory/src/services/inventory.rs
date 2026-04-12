@@ -295,10 +295,9 @@ impl InventoryService {
         }
 
         let now = Utc::now();
-        entities::stock_location::ActiveModel {
+        let location = entities::stock_location::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
-            name: Set("Default".to_string()),
             code: Set(Some("default".to_string())),
             address_line1: Set(None),
             address_line2: Set(None),
@@ -314,7 +313,19 @@ impl InventoryService {
         }
         .insert(conn)
         .await
-        .map_err(CommerceError::from)
+        .map_err(CommerceError::from)?;
+
+        entities::stock_location_translation::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            stock_location_id: Set(location.id),
+            locale: Set("en".to_string()),
+            name: Set("Default".to_string()),
+        }
+        .insert(conn)
+        .await
+        .map_err(CommerceError::from)?;
+
+        Ok(location)
     }
 
     async fn ensure_inventory_item<C>(

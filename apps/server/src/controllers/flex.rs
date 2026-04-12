@@ -468,12 +468,8 @@ fn map_entry(view: flex::FlexEntryView) -> FlexEntryResponse {
 fn parse_fields_config(
     value: serde_json::Value,
 ) -> Result<Vec<rustok_core::field_schema::FieldDefinition>> {
-    serde_json::from_value(value).map_err(|_| {
-        crate::error::Error::BadRequest(
-            "fields_config must be a valid JSON array of FieldDefinition-compatible objects"
-                .to_string(),
-        )
-    })
+    flex::parse_field_definitions_config(value)
+        .map_err(|error| crate::error::Error::BadRequest(error.message().to_string()))
 }
 
 fn map_flex_rest_error(error: rustok_core::field_schema::FlexError) -> crate::error::Error {

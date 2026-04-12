@@ -98,17 +98,22 @@ struct ShippingProfilesFilter {
 #[derive(Debug, Serialize)]
 struct CreateShippingProfileInput {
     slug: String,
-    name: String,
-    description: Option<String>,
+    translations: Vec<ShippingProfileTranslationInput>,
     metadata: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct UpdateShippingProfileInput {
     slug: Option<String>,
-    name: Option<String>,
-    description: Option<String>,
+    translations: Option<Vec<ShippingProfileTranslationInput>>,
     metadata: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ShippingProfileTranslationInput {
+    locale: String,
+    name: String,
+    description: Option<String>,
 }
 
 fn graphql_url() -> String {
@@ -293,8 +298,11 @@ pub async fn reactivate_shipping_profile(
 fn build_create_shipping_profile_input(draft: ShippingProfileDraft) -> CreateShippingProfileInput {
     CreateShippingProfileInput {
         slug: draft.slug.trim().to_string(),
-        name: draft.name.trim().to_string(),
-        description: optional_text(draft.description.as_str()),
+        translations: vec![ShippingProfileTranslationInput {
+            locale: draft.locale,
+            name: draft.name.trim().to_string(),
+            description: optional_text(draft.description.as_str()),
+        }],
         metadata: optional_json_text(draft.metadata_json.as_str()),
     }
 }
@@ -302,8 +310,11 @@ fn build_create_shipping_profile_input(draft: ShippingProfileDraft) -> CreateShi
 fn build_update_shipping_profile_input(draft: ShippingProfileDraft) -> UpdateShippingProfileInput {
     UpdateShippingProfileInput {
         slug: optional_text(draft.slug.as_str()),
-        name: optional_text(draft.name.as_str()),
-        description: optional_text(draft.description.as_str()),
+        translations: Some(vec![ShippingProfileTranslationInput {
+            locale: draft.locale,
+            name: draft.name.trim().to_string(),
+            description: optional_text(draft.description.as_str()),
+        }]),
         metadata: optional_json_text(draft.metadata_json.as_str()),
     }
 }

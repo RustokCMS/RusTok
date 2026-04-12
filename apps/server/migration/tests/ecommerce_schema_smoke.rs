@@ -529,6 +529,8 @@ async fn ecommerce_migrations_create_expected_tables() {
         "regions",
         "carts",
         "cart_line_items",
+        "cart_line_item_translations",
+        "cart_tax_lines",
         "customers",
         "payment_collections",
         "payments",
@@ -540,6 +542,8 @@ async fn ecommerce_migrations_create_expected_tables() {
         "reservation_items",
         "orders",
         "order_line_items",
+        "order_line_item_translations",
+        "order_tax_lines",
     ] {
         assert!(
             tables.contains(table),
@@ -577,6 +581,7 @@ fn create_order_input() -> CreateOrderInput {
             },
         ],
         adjustments: Vec::new(),
+        tax_lines: Vec::new(),
         metadata: serde_json::json!({ "source": "migration-smoke" }),
     }
 }

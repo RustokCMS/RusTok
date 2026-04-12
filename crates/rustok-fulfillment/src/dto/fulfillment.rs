@@ -8,8 +8,9 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreateShippingOptionInput {
-    #[validate(length(min = 1, max = 120))]
-    pub name: String,
+    #[validate(length(min = 1, message = "At least one translation required"))]
+    #[validate(nested)]
+    pub translations: Vec<ShippingOptionTranslationInput>,
     #[validate(length(equal = 3))]
     pub currency_code: String,
     pub amount: Decimal,
@@ -21,8 +22,8 @@ pub struct CreateShippingOptionInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct UpdateShippingOptionInput {
-    #[validate(length(min = 1, max = 120))]
-    pub name: Option<String>,
+    #[validate(nested)]
+    pub translations: Option<Vec<ShippingOptionTranslationInput>>,
     #[validate(length(equal = 3))]
     pub currency_code: Option<String>,
     pub amount: Option<Decimal>,
@@ -30,6 +31,14 @@ pub struct UpdateShippingOptionInput {
     pub provider_id: Option<String>,
     pub allowed_shipping_profile_slugs: Option<Vec<String>>,
     pub metadata: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct ShippingOptionTranslationInput {
+    #[validate(length(min = 2, max = 5))]
+    pub locale: String,
+    #[validate(length(min = 1, max = 120))]
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -121,6 +130,16 @@ pub struct ShippingOptionResponse {
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub requested_locale: Option<String>,
+    pub effective_locale: Option<String>,
+    pub available_locales: Vec<String>,
+    pub translations: Vec<ShippingOptionTranslationResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ShippingOptionTranslationResponse {
+    pub locale: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

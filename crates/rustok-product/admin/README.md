@@ -27,7 +27,7 @@ Leptos admin UI package for the `rustok-product` module.
 - Accepts product edit deep links through query `id=` so neighboring
   module-owned admin routes can return to the exact catalog item without using
   display fields as identity.
-- Reads the effective UI locale from `UiRouteContext.locale`; package-local translations must stay aligned with the host locale contract.
+- Reads the effective UI locale from `UiRouteContext.locale`; product translation edits and edit-form hydration both resolve against that host-owned locale without a package-local locale override.
 
 ## Documentation
 

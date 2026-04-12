@@ -7,7 +7,7 @@ use loco_rs::{app::AppContext, Error, Result};
 use rustok_api::{
     loco::transactional_event_bus_from_context, AuthContext, RequestContext, TenantContext,
 };
-use rustok_core::Permission;
+use rustok_core::{locale_tags_match, Permission};
 use rustok_telemetry::metrics;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
@@ -109,7 +109,6 @@ pub async fn list_products(
         let translations_started_at = Instant::now();
         let translations = product_translation::Entity::find()
             .filter(product_translation::Column::ProductId.is_in(product_ids))
-            .filter(product_translation::Column::Locale.eq(locale))
             .all(&ctx.db)
             .await
             .map_err(|err| Error::BadRequest(err.to_string()))?;
@@ -123,20 +122,30 @@ pub async fn list_products(
         translations
     };
 
-    let translation_map = translations
-        .into_iter()
-        .map(|translation| (translation.product_id, translation))
-        .collect::<HashMap<_, _>>();
+    let mut translation_map = HashMap::<Uuid, Vec<product_translation::Model>>::new();
+    for translation in translations {
+        translation_map
+            .entry(translation.product_id)
+            .or_default()
+            .push(translation);
+    }
     let catalog = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let product_tags = catalog
-        .load_product_tag_map(tenant.id, &products, locale, Some("en"))
+        .load_product_tag_map(
+            tenant.id,
+            &products,
+            locale,
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let items = products
         .into_iter()
         .map(|product| {
-            let translation = translation_map.get(&product.id);
+            let translation = translation_map
+                .get(&product.id)
+                .and_then(|items| pick_product_translation(items, locale, tenant.default_locale.as_str()));
             ProductListItem {
                 id: product.id,
                 status: product.status.to_string(),
@@ -172,6 +181,24 @@ pub async fn list_products(
         data: items,
         meta: PaginationMeta::new(pagination.page, pagination.limit(), total),
     }))
+}
+
+fn pick_product_translation<'a>(
+    translations: &'a [product_translation::Model],
+    locale: &str,
+    default_locale: &str,
+) -> Option<&'a product_translation::Model> {
+    translations
+        .iter()
+        .find(|translation| locale_tags_match(&translation.locale, locale))
+        .or_else(|| {
+            (!locale_tags_match(default_locale, locale)).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
+            })?
+        })
+        .or_else(|| translations.first())
 }
 
 /// Shared admin product details handler.

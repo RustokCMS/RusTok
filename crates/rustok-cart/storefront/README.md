@@ -7,7 +7,8 @@ Leptos storefront UI package for the `rustok-cart` module.
 - Exposes the module-owned storefront cart route used by `apps/storefront`.
 - Shows cart read-side state, line items, and delivery-group snapshots from the cart boundary.
 - Shows typed adjustment totals and language-neutral adjustment source identity from the cart boundary.
-- Supports safe cart-owned line-item decrement and remove actions without taking over checkout orchestration.
+- Supports safe cart-owned line-item decrement and remove actions without taking over checkout orchestration,
+  while repricing line items through the pricing resolver on quantity change.
 - Uses native Leptos `#[server]` calls as the default internal data layer and keeps GraphQL as fallback.
 - Leaves checkout completion and broader cross-domain orchestration inside `rustok-commerce`.
 

@@ -94,10 +94,17 @@ Flex в attached-mode уже умеет хранить field definitions и ма
 
 ### Тесты (integration pending)
 
-- [ ] Flex GraphQL CRUD: интеграционные сценарии list/find/create/update/delete/reorder
-- [ ] Cache invalidation: integration/e2e сценарии на `FieldDefinition*` events
-- [ ] RBAC integration: explicit typed permission gates для Flex surfaces
-- [ ] Attached validation flows: end-to-end проверка donor write-path там, где Flex уже заявлен live
+- [x] Flex GraphQL CRUD: интеграционные сценарии list/find/create/update/delete/reorder
+  - `apps/server` теперь держит `schema.execute(...)` roundtrip для `createFieldDefinition` / `fieldDefinitions` / `fieldDefinition` / `updateFieldDefinition` / `reorderFieldDefinitions` / `deleteFieldDefinition` через live `FieldDefRegistry` routing.
+- [x] Cache invalidation: integration/e2e сценарии на `FieldDefinition*` events
+  - `field_definition_cache_from_context()` теперь покрыт тестом, который прогоняет invalidation через live `EventBus` subscriber на `FieldDefinitionCreated`.
+- [x] RBAC integration: explicit typed permission gates для Flex surfaces
+  - Standalone GraphQL/REST surfaces используют отдельные `flex_schemas:*` / `flex_entries:*` gates через `require_permission(...)` и `RequireFlex*` extractors.
+  - Attached GraphQL read roots `fieldDefinitions` / `fieldDefinition` теперь тоже требуют явные `flex_schemas:list/read` права, а targeted tests фиксируют denial path.
+- [x] Attached validation flows: end-to-end проверка donor write-path там, где Flex уже заявлен live
+  - `rustok-order` теперь покрыт точечными create-path сценариями: shared default values, localized attached split/persist и required-field rejection.
+  - `rustok-forum` теперь тоже покрыт точечными topic create/read сценариями: shared defaults, localized attached split/persist, required-field rejection и read-side resolution из `flex_attached_localized_values`.
+  - `rustok-commerce` теперь покрыт точечными product create/read/update сценариями: shared defaults, localized attached split/persist, required-field rejection и locale-fallback resolution из `flex_attached_localized_values`.
 
 ---
 
@@ -136,8 +143,16 @@ Flex в attached-mode уже умеет хранить field definitions и ма
 ### Что осталось закрыть перед финализацией phase
 
 - [ ] Полный integration прогон GraphQL CRUD + cache invalidation
-- [ ] Синхронизировать docs с реальным registry routing и migrator ownership
-- [ ] Оставшееся server-side дублирование выделять в `crates/flex` только если это действительно transport-agnostic контракт, а не adapter concern
+  - Repo-side contract verification проходит: `node scripts/verify/verify-flex-multilingual-contract.mjs` = `OK`.
+  - Targeted `apps/server` Flex GraphQL tests больше не завязаны на полный global migrator: локальный SQLite harness поднимает только `tenants`, `user_field_definitions`, `flex_schemas`, `flex_schema_translations`, `flex_entries` и `flex_entry_localized_values`.
+  - Duplicate registration для `m20260316_000004_create_topic_field_definitions` убран из server migrator; canonical migration продолжает приезжать из `rustok_forum::migrations()`.
+  - Текущий blocker для полного `rustok-server` integration run теперь внешний по отношению к `flex`: isolated `cargo test -p rustok-server --lib ... -- --exact` доходит до compile graph и упирается в compile-drift в `crates/rustok-product/src/services/catalog.rs`, а не в `flex`-код и не в shared-target `LNK1318`.
+- [x] Синхронизировать docs с реальным registry routing и migrator ownership
+  - `crates/flex/docs/README.md` выровнен по live attached consumers (`user`, `product`, `order`, `topic`) без legacy `node`.
+  - GraphQL contract и RBAC section в README теперь отражают фактические `pagination`, `DeleteFieldDefinitionPayload` и typed `flex_schemas:*` / `flex_entries:*` gates.
+- [x] Оставшееся server-side дублирование выделять в `crates/flex` только если это действительно transport-agnostic контракт, а не adapter concern
+  - Дублировавшийся `fields_config` parser для standalone GraphQL/REST вынесен в `crates/flex::parse_field_definitions_config()`.
+  - Adapter-specific pieces (`publish_event`, REST/GraphQL error mapping, response DTO mapping, RBAC extractors) осознанно оставлены в `apps/server`.
 
 ---
 
@@ -158,7 +173,7 @@ Flex в attached-mode уже умеет хранить field definitions и ма
   - Standalone GraphQL/REST уже live в `apps/server`, но в module manifest `flex` не делает вид, что это module-owned transport crate.
   - Capability-only server feature `mod-flex` нужен для registry/codegen wiring; сам crate при этом может оставаться always-linked support dependency сервера.
 - [~] Прогнать manifest validation flow
-  - `cargo xtask validate-manifest` / `cargo xtask module validate flex` стали частью acceptance path для `flex`
+  - `cargo xtask validate-manifest` / `cargo xtask module validate flex` стали частью acceptance path для `flex` и проходят на текущем workspace state
   - `cargo xtask module test flex` остаётся зависимым от общего server test graph
 - [x] Обновить central module docs после появления manifest
   - `docs/modules/_index.md`
@@ -256,7 +271,9 @@ CREATE INDEX idx_flex_entry_localized_values_owner
 - [x] RBAC permissions: `flex.schemas.*`, `flex.entries.*`
   - Typed permissions есть в `rustok-core`
   - GraphQL standalone surface использует отдельные `flex_schemas:*` и `flex_entries:*` gates
-- [ ] Indexer handler: `index_flex_entries` + `FlexIndexer` event handler
+- [x] Indexer handler: `index_flex_entries` + `FlexIndexer` event handler
+  - `rustok-index` теперь владеет migration slice `index_flex_entries` и module-owned `flex_indexer`, который слушает `FlexEntry*`, `FlexSchemaUpdated/Deleted` и `ReindexRequested { target_type = "flex" }`.
+  - `IndexModule` публикует `flex_indexer` через `register_event_listeners(...)`, а server dispatcher включает его в runtime wiring наравне с `content_indexer` и `product_indexer`.
 - [x] Cascade delete: при удалении entity удалять attached flex entries
   - Shared helper `delete_attached_localized_values()` живёт в `crates/flex` и подключён в live hard-delete paths для `user`, `product` и `topic`.
   - Helper допускает capability-optional test graphs без смонтированной таблицы `flex_attached_localized_values`, чтобы isolated donor tests не падали на cleanup-пути.
@@ -268,6 +285,11 @@ CREATE INDEX idx_flex_entry_localized_values_owner
   - `flex` публикует capability/runtime metadata через `rustok-module.toml`, `modules.toml` и `FlexModule`, не забирая ownership transport surface.
   - Acceptance path: `cargo xtask validate-manifest`, `cargo xtask module validate flex`, `node scripts/verify/verify-flex-multilingual-contract.mjs`.
 - [ ] Тесты: unit + integration
+  - `apps/server` уже держит targeted REST roundtrip для standalone schema/entry CRUD и invalid payload rejection.
+  - `apps/server` теперь также держит standalone GraphQL roundtrip для schema/entry CRUD и explicit denial-path для `flex_entries:create`.
+  - Flex GraphQL tests в `apps/server` теперь используют isolated SQLite bootstrap вместо полного workspace migrator, чтобы не тянуть посторонние migration slices в flex verification path.
+  - Repo-side multilingual drift gate проходит: `node scripts/verify/verify-flex-multilingual-contract.mjs`.
+  - Полное закрытие пункта всё ещё упирается в стабильный `rustok-server` test run; после изоляции `CARGO_TARGET_DIR` Windows linker/PDB blocker снят, но compile graph всё ещё рвётся на внешнем `rustok-product` drift, не связанном с `flex`.
 - [x] Документация
   - Контракты, data model и live GraphQL/REST surfaces описаны
   - Rollout / governance contract для standalone surface задокументирован как completed

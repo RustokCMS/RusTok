@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
-use leptos_router::hooks::{use_params, use_query_map};
+use leptos_router::hooks::use_params;
 use leptos_router::params::Params;
 
 use crate::app::modules::page_for_route_segment;
@@ -18,7 +18,6 @@ struct ModuleAdminParams {
 pub fn ModuleAdminPage() -> impl IntoView {
     let i18n = use_i18n();
     let params = use_params::<ModuleAdminParams>();
-    let query = use_query_map();
     let enabled_modules = use_enabled_modules_context();
 
     let route_segment = Signal::derive(move || {
@@ -65,7 +64,6 @@ pub fn ModuleAdminPage() -> impl IntoView {
                     (_, Some(page)) => {
                         let route_segment_value = route_segment.get();
                         let subpath_value = module_subpath.get();
-                        let query_params = query.get();
                         view! {
                             <div class="space-y-6">
                                 <ModulePageSecondaryNav
@@ -75,7 +73,6 @@ pub fn ModuleAdminPage() -> impl IntoView {
                                 <ModuleRequestProvider
                                     route_segment=Some(route_segment_value)
                                     subpath=subpath_value
-                                    query_params=query_params
                                 >
                                     {(page.render)()}
                                 </ModuleRequestProvider>

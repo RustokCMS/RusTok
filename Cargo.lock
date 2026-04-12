@@ -9703,6 +9703,7 @@ dependencies = [
  "rustok-ai",
  "rustok-api",
  "rustok-core",
+ "rustok-ui-routing",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9813,6 +9814,7 @@ dependencies = [
  "rustok-api",
  "rustok-blog",
  "rustok-core",
+ "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -9853,7 +9855,9 @@ dependencies = [
  "async-trait",
  "chrono",
  "rust_decimal",
+ "rustok-commerce-foundation",
  "rustok-core",
+ "rustok-fulfillment",
  "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
@@ -9878,6 +9882,7 @@ dependencies = [
  "rustok-api",
  "rustok-cart",
  "rustok-customer",
+ "rustok-pricing",
  "sea-orm",
  "serde",
  "uuid",
@@ -9914,6 +9919,7 @@ dependencies = [
  "rustok-api",
  "rustok-channel",
  "rustok-core",
+ "rustok-ui-routing",
  "sea-orm",
  "serde",
  "serde_json",
@@ -9950,6 +9956,7 @@ dependencies = [
  "loco-rs",
  "rustok-api",
  "rustok-comments",
+ "rustok-ui-routing",
  "serde",
  "uuid",
 ]
@@ -10007,6 +10014,7 @@ dependencies = [
  "leptos-auth",
  "leptos-graphql",
  "rustok-api",
+ "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -10140,6 +10148,7 @@ dependencies = [
  "rustok-core",
  "rustok-customer",
  "rustok-profiles",
+ "rustok-ui-routing",
  "serde",
  "serde_json",
  "uuid",
@@ -10211,6 +10220,7 @@ dependencies = [
  "leptos-auth",
  "reqwest 0.13.2",
  "rustok-api",
+ "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -10254,6 +10264,7 @@ dependencies = [
  "leptos-auth",
  "leptos-graphql",
  "rustok-api",
+ "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -10349,6 +10360,7 @@ dependencies = [
  "leptos-auth",
  "leptos-graphql",
  "rustok-api",
+ "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -10412,6 +10424,7 @@ dependencies = [
  "rustok-core",
  "rustok-media",
  "rustok-storage",
+ "rustok-ui-routing",
  "sea-orm",
  "serde",
  "uuid",
@@ -10452,6 +10465,7 @@ dependencies = [
  "leptos-auth",
  "leptos-graphql",
  "rustok-api",
+ "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -10526,6 +10540,7 @@ dependencies = [
  "leptos-auth",
  "leptos-graphql",
  "rustok-api",
+ "rustok-ui-routing",
  "serde",
 ]
 
@@ -10612,6 +10627,7 @@ dependencies = [
  "rustok-taxonomy",
  "rustok-tenant",
  "rustok-test-utils",
+ "rustok-ui-routing",
  "sea-orm",
  "serde",
  "serde_json",
@@ -10665,6 +10681,7 @@ dependencies = [
  "leptos-auth",
  "leptos-graphql",
  "rustok-api",
+ "rustok-ui-routing",
  "serde",
  "serde_json",
 ]
@@ -10769,6 +10786,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-region",
+ "rustok-ui-routing",
  "serde",
  "serde_json",
  "uuid",
@@ -11077,6 +11095,16 @@ dependencies = [
  "tokio",
  "tokio-test",
  "uuid",
+]
+
+[[package]]
+name = "rustok-ui-routing"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.17",
+ "leptos_router",
+ "rustok-api",
+ "serde_urlencoded",
 ]
 
 [[package]]

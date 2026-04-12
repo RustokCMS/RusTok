@@ -5,7 +5,8 @@ use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_api::UiRouteContext;
 
 use crate::helpers::{
-    action_hint, apply_order_detail, format_order_caption, handle_action_result,
+    action_hint, apply_order_detail, clear_order_detail, format_order_caption,
+    handle_action_result,
     localized_order_status, order_status_badge, short_order_id, summarize_order_header,
     summarize_order_lines, summarize_order_timeline, text_or_dash, text_or_none,
 };
@@ -16,6 +17,7 @@ use crate::model::{OrderAdminBootstrap, OrderDetailEnvelope};
 pub fn OrderAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
+    let initial_selected_order_id = route_context.query_value("id").map(ToOwned::to_owned);
     let token = use_token();
     let tenant = use_tenant();
 
@@ -31,6 +33,7 @@ pub fn OrderAdmin() -> impl IntoView {
     let (cancel_reason, set_cancel_reason) = signal(String::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
+    let (query_selection_applied, set_query_selection_applied) = signal(false);
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get()),
@@ -202,8 +205,32 @@ pub fn OrderAdmin() -> impl IntoView {
                     set_delivered_signature,
                     set_cancel_reason,
                 ),
-                Ok(None) => set_error.set(Some(not_found_label)),
-                Err(err) => set_error.set(Some(format!("{load_error_label}: {err}"))),
+                Ok(None) => {
+                    clear_order_detail(
+                        set_selected_id,
+                        set_selected,
+                        set_payment_id,
+                        set_payment_method,
+                        set_tracking_number,
+                        set_carrier,
+                        set_delivered_signature,
+                        set_cancel_reason,
+                    );
+                    set_error.set(Some(not_found_label));
+                }
+                Err(err) => {
+                    clear_order_detail(
+                        set_selected_id,
+                        set_selected,
+                        set_payment_id,
+                        set_payment_method,
+                        set_tracking_number,
+                        set_carrier,
+                        set_delivered_signature,
+                        set_cancel_reason,
+                    );
+                    set_error.set(Some(format!("{load_error_label}: {err}")));
+                }
             }
             set_busy.set(false);
         });
@@ -477,6 +504,24 @@ pub fn OrderAdmin() -> impl IntoView {
     let ui_locale_for_payment = ui_locale.clone();
     let ui_locale_for_fulfillment = ui_locale.clone();
     let ui_locale_for_actions = ui_locale.clone();
+    let initial_open_order = open_order.clone();
+    Effect::new(move |_| {
+        if query_selection_applied.get() {
+            return;
+        }
+        let Some(order_id) = initial_selected_order_id.clone() else {
+            set_query_selection_applied.set(true);
+            return;
+        };
+        if bootstrap.get().and_then(Result::ok).is_none() {
+            return;
+        }
+        set_query_selection_applied.set(true);
+        if order_id.trim().is_empty() {
+            return;
+        }
+        initial_open_order.run(order_id);
+    });
 
     view! {
         <section class="space-y-6">

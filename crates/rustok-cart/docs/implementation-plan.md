@@ -14,6 +14,8 @@ context snapshot, а orchestration над checkout живёт в umbrella `rusto
 - `carts` и `cart_line_items` уже module-owned;
 - `cart_adjustments` уже module-owned и фиксируют language-neutral promotion/discount snapshot без display labels;
 - cart lifecycle и persisted storefront context snapshot уже встроены в базовый contract;
+- cart write-side теперь поддерживает batch repricing line items при смене контекста/количества,
+  чтобы unit_price оставался согласован с pricing resolver;
 - transport adapters по-прежнему публикуются фасадом `rustok-commerce`, без цикла зависимостей;
 - storefront cart inspection, safe decrement/remove write-side и seller-aware delivery-group snapshot уже вынесены в `rustok-cart/storefront`;
 - channel/context/deliverability orchestration поверх cart по-прежнему выполняется на уровне umbrella-модуля.

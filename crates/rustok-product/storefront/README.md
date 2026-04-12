@@ -20,7 +20,7 @@ published catalog discovery.
 - Links directly into `rustok-pricing/storefront` with the current handle and
   pricing context so catalog browsing can pivot into pricing inspection without
   rebuilding the query state by hand.
-- Consume the host-provided effective locale from `UiRouteContext`.
+- Consume the host-provided effective locale from `UiRouteContext` and resolve selected product copy against that locale before falling back to another translation.
 
 ## Entry points
 

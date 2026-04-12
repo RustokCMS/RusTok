@@ -1,10 +1,12 @@
 use chrono::Utc;
+use flex::attached;
 use rust_decimal::Decimal;
 use rustok_order::dto::{CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput};
+use rustok_order::entities::order;
 use rustok_order::error::OrderError;
 use rustok_order::services::OrderService;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -49,8 +51,40 @@ fn create_order_input() -> CreateOrderInput {
             },
         ],
         adjustments: Vec::new(),
+        tax_lines: Vec::new(),
         metadata: serde_json::json!({ "source": "order-test" }),
     }
+}
+
+async fn insert_order_field_definition(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    field_key: &str,
+    is_localized: bool,
+    is_required: bool,
+    default_value: Option<serde_json::Value>,
+    position: i32,
+) {
+    let now = Utc::now();
+    order_field_definitions::ActiveModel {
+        id: Set(rustok_core::generate_id()),
+        tenant_id: Set(tenant_id),
+        field_key: Set(field_key.to_string()),
+        field_type: Set("text".to_string()),
+        label: Set(serde_json::json!({ "en": field_key })),
+        description: Set(None),
+        is_localized: Set(is_localized),
+        is_required: Set(is_required),
+        default_value: Set(default_value),
+        validation: Set(None),
+        position: Set(position),
+        is_active: Set(true),
+        created_at: Set(now.into()),
+        updated_at: Set(now.into()),
+    }
+    .insert(db)
+    .await
+    .expect("field definition should insert");
 }
 
 #[tokio::test]
@@ -238,7 +272,7 @@ async fn localized_order_custom_fields_resolve_from_attached_values() {
         id: Set(rustok_core::generate_id()),
         tenant_id: Set(tenant_id),
         field_key: Set("gift_message".to_string()),
-        field_type: Set("Text".to_string()),
+        field_type: Set("text".to_string()),
         label: Set(serde_json::json!({ "en": "Gift message" })),
         description: Set(None),
         is_localized: Set(true),
@@ -285,4 +319,128 @@ async fn localized_order_custom_fields_resolve_from_attached_values() {
         storefront_view.metadata["source"],
         serde_json::json!("order-test")
     );
+
+    let localized_rows = attached::Entity::find()
+        .filter(attached::Column::TenantId.eq(tenant_id))
+        .filter(attached::Column::EntityType.eq("order"))
+        .filter(attached::Column::EntityId.eq(created.id))
+        .all(&db)
+        .await
+        .expect("localized rows query should succeed");
+    assert_eq!(localized_rows.len(), 1);
+    assert_eq!(localized_rows[0].field_key, "gift_message");
+    assert_eq!(localized_rows[0].locale, "de-DE");
+    assert_eq!(localized_rows[0].value, serde_json::json!("Danke"));
+}
+
+#[tokio::test]
+async fn create_order_applies_defaults_and_splits_localized_values() {
+    let db = setup_test_db().await;
+    support::ensure_order_schema(&db).await;
+    let service = OrderService::new(db.clone(), mock_transactional_event_bus());
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    insert_order_field_definition(
+        &db,
+        tenant_id,
+        "delivery_note",
+        false,
+        false,
+        Some(serde_json::json!("pack carefully")),
+        0,
+    )
+    .await;
+    insert_order_field_definition(&db, tenant_id, "gift_message", true, false, None, 1).await;
+
+    let created = service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                metadata: serde_json::json!({
+                    "locale": "de-DE",
+                    "gift_message": "Danke",
+                    "source": "order-test",
+                    "unknown_custom": "drop-me"
+                }),
+                ..create_order_input()
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    assert_eq!(created.metadata["gift_message"], serde_json::json!("Danke"));
+    assert_eq!(
+        created.metadata["delivery_note"],
+        serde_json::json!("pack carefully")
+    );
+    assert_eq!(created.metadata["source"], serde_json::json!("order-test"));
+    assert_eq!(
+        created.metadata["unknown_custom"],
+        serde_json::json!("drop-me")
+    );
+
+    let stored_order = order::Entity::find_by_id(created.id)
+        .one(&db)
+        .await
+        .expect("stored order query should succeed")
+        .expect("stored order should exist");
+    assert_eq!(
+        stored_order.metadata,
+        serde_json::json!({
+            "locale": "de-DE",
+            "source": "order-test",
+            "unknown_custom": "drop-me",
+            "delivery_note": "pack carefully"
+        })
+    );
+
+    let localized_rows = attached::Entity::find()
+        .filter(attached::Column::TenantId.eq(tenant_id))
+        .filter(attached::Column::EntityType.eq("order"))
+        .filter(attached::Column::EntityId.eq(created.id))
+        .all(&db)
+        .await
+        .expect("localized rows query should succeed");
+    assert_eq!(localized_rows.len(), 1);
+    assert_eq!(localized_rows[0].field_key, "gift_message");
+    assert_eq!(localized_rows[0].locale, "de-DE");
+    assert_eq!(localized_rows[0].value, serde_json::json!("Danke"));
+}
+
+#[tokio::test]
+async fn create_order_rejects_missing_required_custom_field() {
+    let db = setup_test_db().await;
+    support::ensure_order_schema(&db).await;
+    let service = OrderService::new(db.clone(), mock_transactional_event_bus());
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+
+    insert_order_field_definition(&db, tenant_id, "gift_message", true, true, None, 0).await;
+
+    let error = service
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                metadata: serde_json::json!({
+                    "locale": "de-DE",
+                    "source": "order-test"
+                }),
+                ..create_order_input()
+            },
+        )
+        .await
+        .expect_err("order creation should fail without required custom field");
+
+    match error {
+        OrderError::Validation(message) => {
+            assert!(
+                message.contains("Custom field validation failed"),
+                "unexpected error: {message}"
+            );
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
 }

@@ -149,7 +149,7 @@ impl FulfillmentOrchestrationService {
         let shipping_option = match input.shipping_option_id {
             Some(shipping_option_id) => Some(
                 FulfillmentService::new(self.db.clone())
-                    .get_shipping_option(tenant_id, shipping_option_id)
+                    .get_shipping_option(tenant_id, shipping_option_id, None, None)
                     .await?,
             ),
             None => None,

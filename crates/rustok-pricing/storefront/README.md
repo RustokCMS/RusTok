@@ -33,7 +33,7 @@ public pricing discovery.
   ASCII code, `quantity` must be at least `1`, and `region_id`,
   `price_list_id`, or `quantity` require explicit currency; malformed explicit
   `channel_id` is rejected instead of falling back to host channel context.
-- Consume the host-provided effective locale from `UiRouteContext`.
+- Consume the host-provided effective locale from `UiRouteContext` and resolve selected pricing-card copy against that locale before falling back to another translation.
 
 ## Entry points
 

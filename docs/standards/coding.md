@@ -548,19 +548,38 @@ proptest! {
 /// # Examples
 ///
 /// ```rust
-/// use rustok_commerce::{OrderService, CreateOrderInput};
+/// use rust_decimal::Decimal;
+/// use rustok_commerce::OrderService;
+/// use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
+/// use std::str::FromStr;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let service = OrderService::new(db, event_bus);
-/// let order = service.create_order(
-///     CreateOrderInput {
-///         product_id: product.id,
-///         quantity: 2,
-///     },
-///     &context,
-/// ).await?;
+/// let order = service
+///     .create_order(
+///         CreateOrderInput {
+///             customer_id: None,
+///             currency_code: "USD".to_string(),
+///             line_items: vec![CreateOrderLineItemInput {
+///                 product_id: Some(product.id),
+///                 variant_id: Some(variant.id),
+///                 shipping_profile_slug: "default".to_string(),
+///                 seller_id: None,
+///                 sku: Some("SKU-1".to_string()),
+///                 title: "Example item".to_string(),
+///                 quantity: 2,
+///                 unit_price: Decimal::from_str("19.99")?,
+///                 metadata: serde_json::json!({ "source": "docs" }),
+///             }],
+///             adjustments: Vec::new(),
+///             tax_lines: Vec::new(),
+///             metadata: serde_json::json!({ "source": "docs" }),
+///         },
+///         &context,
+///     )
+///     .await?;
 ///
-/// assert_eq!(order.quantity, 2);
+/// assert_eq!(order.line_items.len(), 1);
 /// # Ok(())
 /// # }
 /// ```

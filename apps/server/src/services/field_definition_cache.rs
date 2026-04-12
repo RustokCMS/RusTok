@@ -136,9 +136,21 @@ impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
 
 #[cfg(test)]
 mod tests {
-    use super::FieldDefinitionCache;
+    use super::{field_definition_cache_from_context, FieldDefinitionCache};
     use flex::FieldDefinitionView;
+    use loco_rs::{
+        app::{AppContext, SharedStore},
+        cache,
+        environment::Environment,
+        storage::{self, Storage},
+        tests_cfg::config::test_config,
+    };
+    use rustok_core::EventBus;
+    use rustok_events::{DomainEvent, EventEnvelope};
+    use sea_orm::{Database, DatabaseConnection};
     use serde_json::json;
+    use std::{sync::Arc, time::Duration};
+    use tokio::time::sleep;
     use uuid::Uuid;
 
     fn mock_view(field_key: &str) -> FieldDefinitionView {
@@ -159,6 +171,19 @@ mod tests {
         }
     }
 
+    fn test_app_context(db: DatabaseConnection) -> AppContext {
+        AppContext {
+            environment: Environment::Test,
+            db,
+            queue_provider: None,
+            config: test_config(),
+            mailer: None,
+            storage: Storage::single(storage::drivers::mem::new()).into(),
+            cache: Arc::new(cache::Cache::new(cache::drivers::null::new())),
+            shared_store: Arc::new(SharedStore::default()),
+        }
+    }
+
     #[tokio::test]
     async fn cache_set_get_and_invalidate() {
         let cache = FieldDefinitionCache::new();
@@ -175,5 +200,43 @@ mod tests {
 
         cache.invalidate(tenant_id, entity_type).await;
         assert!(cache.get(tenant_id, entity_type).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn event_bus_invalidation_drops_cached_field_definitions() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite db should connect");
+        let ctx = test_app_context(db);
+        let bus = EventBus::default();
+        let cache = field_definition_cache_from_context(&ctx, bus.clone());
+        let tenant_id = Uuid::new_v4();
+        let entity_type = "user";
+
+        cache
+            .set(tenant_id, entity_type, vec![mock_view("nickname")])
+            .await;
+        assert!(cache.get(tenant_id, entity_type).await.is_some());
+
+        bus.publish_envelope(EventEnvelope::new(
+            tenant_id,
+            None,
+            DomainEvent::FieldDefinitionCreated {
+                tenant_id,
+                entity_type: entity_type.to_string(),
+                field_key: "nickname".to_string(),
+                field_type: "text".to_string(),
+            },
+        ))
+        .expect("field definition event should publish");
+
+        for _ in 0..20 {
+            if cache.get(tenant_id, entity_type).await.is_none() {
+                return;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+
+        panic!("cache entry should be invalidated after field definition event");
     }
 }

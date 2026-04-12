@@ -14,6 +14,8 @@ pub struct Model {
     pub status: String,
     pub currency_code: String,
     pub total_amount: Decimal,
+    pub tax_total: Decimal,
+    pub tax_included: bool,
     pub metadata: Json,
     pub payment_id: Option<String>,
     pub payment_method: Option<String>,
@@ -36,6 +38,8 @@ pub enum Relation {
     LineItems,
     #[sea_orm(has_many = "super::order_adjustment::Entity")]
     Adjustments,
+    #[sea_orm(has_many = "super::order_tax_line::Entity")]
+    TaxLines,
 }
 
 impl Related<super::order_line_item::Entity> for Entity {
@@ -47,6 +51,12 @@ impl Related<super::order_line_item::Entity> for Entity {
 impl Related<super::order_adjustment::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Adjustments.def()
+    }
+}
+
+impl Related<super::order_tax_line::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TaxLines.def()
     }
 }
 

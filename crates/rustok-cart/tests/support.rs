@@ -1,4 +1,6 @@
-use rustok_cart::entities::{cart, cart_adjustment, cart_line_item, cart_shipping_selection};
+use rustok_cart::entities::{
+    cart, cart_adjustment, cart_line_item, cart_line_item_translation, cart_shipping_selection,
+};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Schema};
 
 pub async fn ensure_cart_schema(db: &DatabaseConnection) {
@@ -14,6 +16,12 @@ pub async fn ensure_cart_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(cart_line_item::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(cart_line_item_translation::Entity),
     )
     .await;
     create_entity_table(

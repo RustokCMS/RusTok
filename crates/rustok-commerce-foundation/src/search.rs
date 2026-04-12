@@ -2,7 +2,7 @@ use sea_orm::{sea_query::Expr, Condition, DbBackend, Value};
 
 pub fn product_translation_title_search_condition(
     backend: DbBackend,
-    locale: &str,
+    _locale: &str,
     search: &str,
 ) -> Condition {
     let pattern = format!("%{search}%");
@@ -13,8 +13,7 @@ pub fn product_translation_title_search_condition(
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
-                  AND pt.locale = ?1
-                  AND pt.title LIKE ?2
+                  AND pt.title LIKE ?1
             )"
         }
         _ => {
@@ -22,14 +21,13 @@ pub fn product_translation_title_search_condition(
                 SELECT 1
                 FROM product_translations pt
                 WHERE pt.product_id = products.id
-                  AND pt.locale = $1
-                  AND pt.title LIKE $2
+                  AND pt.title LIKE $1
             )"
         }
     };
 
     Condition::all().add(Expr::cust_with_values(
         exists_sql,
-        vec![Value::from(locale.to_string()), Value::from(pattern)],
+        vec![Value::from(pattern)],
     ))
 }

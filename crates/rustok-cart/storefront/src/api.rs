@@ -243,6 +243,13 @@ fn normalize_cart_id(value: Option<String>) -> Option<String> {
     })
 }
 
+fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
 fn parse_cart_id(value: Option<String>) -> Result<Option<(String, Uuid)>, ApiError> {
     match normalize_cart_id(value) {
         Some(cart_id) => {
@@ -635,6 +642,7 @@ async fn storefront_cart_decrement_line_item(
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
+        use rustok_pricing::{PriceResolutionContext, PricingService};
 
         let app_ctx = expect_context::<AppContext>();
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
@@ -643,6 +651,9 @@ async fn storefront_cart_decrement_line_item(
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .ok();
         let Some((_, parsed_cart_id)) =
             parse_cart_id(Some(cart_id)).map_err(|err| ServerFnError::new(err.to_string()))?
         else {
@@ -671,12 +682,45 @@ async fn storefront_cart_decrement_line_item(
                 .await
                 .map_err(|err| ServerFnError::new(err.to_string()))?;
         } else {
+            let next_quantity = line_item.quantity - 1;
+            let pricing_context = PriceResolutionContext {
+                currency_code: cart.currency_code.to_ascii_uppercase(),
+                region_id: cart.region_id,
+                price_list_id: None,
+                channel_id: cart
+                    .channel_id
+                    .or_else(|| request_context.as_ref().and_then(|ctx| ctx.channel_id)),
+                channel_slug: normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(
+                    || {
+                        request_context.as_ref().and_then(|ctx| {
+                            normalize_public_channel_slug(ctx.channel_slug.as_deref())
+                        })
+                    },
+                ),
+                quantity: Some(next_quantity),
+            };
+            let pricing_service = PricingService::new(
+                app_ctx.db.clone(),
+                rustok_api::loco::transactional_event_bus_from_context(&app_ctx),
+            );
+            let variant_id = line_item
+                .variant_id
+                .ok_or_else(|| ServerFnError::new("Cart line item is missing variant_id"))?;
+            let resolved_price = pricing_service
+                .resolve_variant_price(tenant.id, variant_id, pricing_context)
+                .await
+                .map_err(|err| ServerFnError::new(err.to_string()))?
+                .ok_or_else(|| {
+                    ServerFnError::new("Unable to resolve storefront price for cart line item")
+                })?;
+
             cart_service
-                .update_line_item_quantity(
+                .update_line_item_pricing(
                     tenant.id,
                     parsed_cart_id,
                     parsed_line_item_id,
-                    line_item.quantity - 1,
+                    next_quantity,
+                    resolved_price.amount,
                 )
                 .await
                 .map_err(|err| ServerFnError::new(err.to_string()))?;

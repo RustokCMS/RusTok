@@ -4,7 +4,7 @@
 
 ## Назначение
 
-- схема `carts` и `cart_line_items`;
+- схема `carts`, `cart_line_items` и `cart_line_item_translations` (localized line-item titles вынесены из base rows);
 - `CartModule` и `CartService`;
 - persisted cart context snapshot: `region_id`, `country_code`, `locale_code`, `selected_shipping_option_id`,
   `customer_id`, `email`, `currency_code`;
@@ -12,6 +12,7 @@
   optional line-item binding и language-neutral metadata без display label;
 - lifecycle корзины: `active -> checking_out -> completed` и `active -> abandoned`;
 - CRUD line items, расчёт totals, seller-aware delivery-group snapshot с canonical `seller_id` и нормализация locale/country snapshot для storefront-контекста;
+- перепрайс line items при изменении количества или storefront context (region/channel), чтобы unit_price не дрейфовал;
 - module-owned storefront пакет `rustok-cart/storefront` для cart inspection и безопасных line-item decrement/remove действий.
 
 ## Зона ответственности

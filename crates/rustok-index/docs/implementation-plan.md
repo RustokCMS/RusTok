@@ -15,6 +15,7 @@
 - canonical direction зафиксирован: `index` отвечает за ingestion и indexed reads, а не за ranking/UX поиска;
 - модуль уже рассматривается как substrate для cross-module filtering и link-aware queries;
 - event-driven consumers переведены на module-owned runtime path через `register_event_listeners(...)`, старый host/legacy listener path удалён;
+- standalone `flex` ingestion теперь тоже живёт в `IndexModule`: `flex_indexer` поддерживает `index_flex_entries` как module-owned read model для `FlexEntry*` / `FlexSchema*` событий;
 - boundary `index != search` теперь дополнительно удерживается contract-проверкой в `xtask`, чтобы read-model слой не начал снова экспортировать search-owned engine surfaces;
 - root `README.md`, local docs и manifest metadata входят в scoped audit path.
 
@@ -43,6 +44,7 @@
 - `cargo xtask module validate index`
 - `cargo xtask module test index`
 - targeted tests для ingestion, rebuild, filtering, consistency drift и tenant/locale scoping
+- контрактные тесты покрывают все публичные use-case module-owned index/read-model contract, включая registration path для `flex_indexer`
 
 ## Правила обновления
 

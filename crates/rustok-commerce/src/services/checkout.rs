@@ -4,18 +4,20 @@ use uuid::Uuid;
 use validator::Validate;
 
 use rustok_cart::error::CartError;
-use rustok_core::PLATFORM_FALLBACK_LOCALE;
+use rustok_core::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::error::PaymentError;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
+};
 use std::collections::BTreeSet;
 
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CompleteCheckoutInput, CompleteCheckoutResponse,
     CreateFulfillmentInput, CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput,
-    CreatePaymentCollectionInput, ResolveStoreContextInput,
+    CreateOrderTaxLineInput, CreatePaymentCollectionInput, ResolveStoreContextInput,
 };
 use crate::entities::{product, product_variant};
 use crate::storefront_channel::{
@@ -140,10 +142,6 @@ impl CheckoutService {
             let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
             return Err(error);
         }
-        if let Err(error) = self.validate_delivery_groups(tenant_id, &cart).await {
-            let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
-            return Err(error);
-        }
         let context = match self
             .context_service
             .resolve_context(
@@ -163,6 +161,18 @@ impl CheckoutService {
                 return Err(stage_error("resolve_context")(error));
             }
         };
+        if let Err(error) = self
+            .validate_delivery_groups(
+                tenant_id,
+                &cart,
+                context.locale.as_str(),
+                Some(context.default_locale.as_str()),
+            )
+            .await
+        {
+            let _ = self.cart_service.release_checkout(tenant_id, cart.id).await;
+            return Err(error);
+        }
         let order_metadata = merge_checkout_metadata(
             input.metadata.clone(),
             checkout_cart_context_metadata(&cart, &context),
@@ -195,6 +205,7 @@ impl CheckoutService {
                             })
                             .collect(),
                         adjustments: checkout_order_adjustments(&cart),
+                        tax_lines: checkout_order_tax_lines(&cart),
                         metadata: order_metadata.clone(),
                     },
                     cart.channel_id,
@@ -558,14 +569,16 @@ impl CheckoutService {
             return Ok(None);
         };
 
+        let order_locale = match cart.locale_code.as_deref() {
+            Some(locale) => locale.to_string(),
+            None => load_tenant_default_locale(&self.db, tenant_id).await?,
+        };
         let order = self
             .order_service
             .get_order_with_locale_fallback(
                 tenant_id,
                 order_id,
-                cart.locale_code
-                    .as_deref()
-                    .unwrap_or(PLATFORM_FALLBACK_LOCALE),
+                order_locale.as_str(),
                 None,
             )
             .await
@@ -617,6 +630,8 @@ impl CheckoutService {
         &self,
         tenant_id: Uuid,
         cart: &rustok_cart::dto::CartResponse,
+        requested_locale: &str,
+        tenant_default_locale: Option<&str>,
     ) -> CheckoutResult<()> {
         let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref());
 
@@ -630,7 +645,12 @@ impl CheckoutService {
             };
             let option = self
                 .fulfillment_service
-                .get_shipping_option(tenant_id, selected_shipping_option_id)
+                .get_shipping_option(
+                    tenant_id,
+                    selected_shipping_option_id,
+                    Some(requested_locale),
+                    tenant_default_locale,
+                )
                 .await
                 .map_err(stage_error("load_shipping_option"))?;
             if !option
@@ -749,6 +769,25 @@ impl CheckoutService {
     }
 }
 
+async fn load_tenant_default_locale<C>(conn: &C, tenant_id: Uuid) -> CheckoutResult<String>
+where
+    C: ConnectionTrait,
+{
+    let row = conn
+        .query_one(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "SELECT default_locale FROM tenants WHERE id = ?",
+            vec![tenant_id.into()],
+        ))
+        .await
+        .map_err(stage_error("load_tenant_default_locale"))?;
+
+    Ok(row
+        .and_then(|row| row.try_get::<String>("", "default_locale").ok())
+        .and_then(|locale| normalize_locale_tag(&locale))
+        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()))
+}
+
 fn stage_error<E>(stage: &'static str) -> impl FnOnce(E) -> CheckoutError
 where
     E: std::error::Error + Send + Sync + 'static,
@@ -820,6 +859,25 @@ fn checkout_order_adjustments(
             source_id: adjustment.source_id.clone(),
             amount: adjustment.amount,
             metadata: adjustment.metadata.clone(),
+        })
+        .collect()
+}
+
+fn checkout_order_tax_lines(cart: &rustok_cart::dto::CartResponse) -> Vec<CreateOrderTaxLineInput> {
+    cart.tax_lines
+        .iter()
+        .map(|line| CreateOrderTaxLineInput {
+            line_item_index: line.line_item_id.and_then(|line_item_id| {
+                cart.line_items
+                    .iter()
+                    .position(|item| item.id == line_item_id)
+            }),
+            shipping_option_id: line.shipping_option_id,
+            description: line.description.clone(),
+            rate: line.rate,
+            amount: line.amount,
+            currency_code: line.currency_code.clone(),
+            metadata: line.metadata.clone(),
         })
         .collect()
 }

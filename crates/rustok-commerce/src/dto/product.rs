@@ -47,10 +47,9 @@ pub struct ProductTranslationInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct ProductOptionInput {
-    #[validate(length(min = 1, max = 255, message = "Option name must be 1-255 characters"))]
-    pub name: String,
-    #[validate(length(min = 1, message = "At least one option value required"))]
-    pub values: Vec<String>,
+    #[validate(length(min = 1, message = "At least one option translation required"))]
+    #[validate(nested)]
+    pub translations: Vec<ProductOptionTranslationInput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, Validate)]
@@ -90,6 +89,20 @@ pub struct ProductTranslationResponse {
     pub description: Option<String>,
     pub meta_title: Option<String>,
     pub meta_description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
+pub struct ProductOptionTranslationInput {
+    #[validate(length(
+        min = 2,
+        max = 5,
+        message = "Locale must be 2-5 characters (e.g. 'en', 'en-US')"
+    ))]
+    pub locale: String,
+    #[validate(length(min = 1, max = 255, message = "Option name must be 1-255 characters"))]
+    pub name: String,
+    #[validate(length(min = 1, message = "At least one option value required"))]
+    pub values: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

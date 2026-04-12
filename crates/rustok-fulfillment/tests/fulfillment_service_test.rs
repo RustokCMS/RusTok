@@ -3,7 +3,7 @@ use rustok_fulfillment::dto::{
     CancelFulfillmentInput, CreateFulfillmentInput, CreateFulfillmentItemInput,
     CreateShippingOptionInput, DeliverFulfillmentInput, FulfillmentItemQuantityInput,
     ReopenFulfillmentInput, ReshipFulfillmentInput, ShipFulfillmentInput,
-    UpdateShippingOptionInput,
+    ShippingOptionTranslationInput, UpdateShippingOptionInput,
 };
 use rustok_fulfillment::error::FulfillmentError;
 use rustok_fulfillment::services::FulfillmentService;
@@ -21,7 +21,10 @@ async fn setup() -> FulfillmentService {
 
 fn create_shipping_option_input() -> CreateShippingOptionInput {
     CreateShippingOptionInput {
-        name: "Standard Shipping".to_string(),
+        translations: vec![ShippingOptionTranslationInput {
+            locale: "en".to_string(),
+            name: "Standard Shipping".to_string(),
+        }],
         currency_code: "usd".to_string(),
         amount: Decimal::from_str("9.99").expect("valid decimal"),
         provider_id: None,
@@ -41,7 +44,10 @@ async fn create_and_list_shipping_options() {
         .unwrap();
     assert_eq!(created.name, "Standard Shipping");
 
-    let listed = service.list_shipping_options(tenant_id).await.unwrap();
+    let listed = service
+        .list_shipping_options(tenant_id, Some("en"), Some("en"))
+        .await
+        .unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, created.id);
 }
@@ -55,7 +61,10 @@ async fn create_shipping_option_normalizes_allowed_shipping_profile_slugs() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Bulky Freight".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Bulky Freight".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("29.99").expect("valid decimal"),
                 provider_id: None,
@@ -94,7 +103,10 @@ async fn update_shipping_option_normalizes_allowed_shipping_profile_slugs() {
             tenant_id,
             created.id,
             UpdateShippingOptionInput {
-                name: Some("Freight".to_string()),
+                translations: Some(vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Freight".to_string(),
+                }]),
                 currency_code: Some("eur".to_string()),
                 amount: Some(Decimal::from_str("14.99").expect("valid decimal")),
                 provider_id: Some(" custom-provider ".to_string()),
@@ -142,12 +154,12 @@ async fn deactivate_and_reactivate_shipping_option_changes_admin_visibility() {
         .expect("shipping option should be deactivated");
     assert!(!deactivated.active);
     assert!(service
-        .list_shipping_options(tenant_id)
+        .list_shipping_options(tenant_id, Some("en"), Some("en"))
         .await
         .expect("active shipping options should load")
         .is_empty());
     let all_options = service
-        .list_all_shipping_options(tenant_id)
+        .list_all_shipping_options(tenant_id, Some("en"), Some("en"))
         .await
         .expect("all shipping options should load");
     assert_eq!(all_options.len(), 1);
@@ -160,7 +172,7 @@ async fn deactivate_and_reactivate_shipping_option_changes_admin_visibility() {
     assert!(reactivated.active);
     assert_eq!(
         service
-            .list_shipping_options(tenant_id)
+            .list_shipping_options(tenant_id, Some("en"), Some("en"))
             .await
             .expect("active shipping options should load")
             .len(),

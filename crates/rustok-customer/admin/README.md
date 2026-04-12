@@ -18,7 +18,7 @@ Leptos admin UI package for the `rustok-customer` module.
 
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
 - Reads and writes through `rustok-customer::CustomerService`, with optional profile enrichment through `rustok-profiles::ProfileService`.
-- Reads the effective UI locale from `UiRouteContext.locale`; package-local translations must stay aligned with the host locale contract.
+- Reads the effective UI locale from `UiRouteContext.locale`; customer writes use that host-owned locale instead of a package-local locale override.
 
 ## Documentation
 

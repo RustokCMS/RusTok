@@ -111,7 +111,7 @@ pub async fn fetch_products(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
-    locale: String,
+    locale: Option<String>,
     search: Option<String>,
     status: Option<String>,
 ) -> Result<InventoryProductList, ApiError> {
@@ -120,7 +120,7 @@ pub async fn fetch_products(
         Some(TenantScopedVariables {
             tenant_id,
             extra: ProductsVariables {
-                locale: Some(locale),
+                locale,
                 filter: ProductsFilter {
                     status,
                     vendor: None,
@@ -142,7 +142,7 @@ pub async fn fetch_product(
     tenant_slug: Option<String>,
     tenant_id: String,
     id: String,
-    locale: String,
+    locale: Option<String>,
 ) -> Result<Option<InventoryProductDetail>, ApiError> {
     let response: ProductResponse = request(
         PRODUCT_QUERY,
@@ -150,7 +150,7 @@ pub async fn fetch_product(
             tenant_id,
             extra: ProductVariables {
                 id,
-                locale: Some(locale),
+                locale,
             },
         }),
         token,

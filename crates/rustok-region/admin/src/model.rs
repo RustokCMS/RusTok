@@ -51,6 +51,7 @@ pub struct RegionRecord {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RegionDraft {
     pub name: String,
+    pub locale: String,
     pub currency_code: String,
     pub tax_rate: String,
     pub tax_included: bool,

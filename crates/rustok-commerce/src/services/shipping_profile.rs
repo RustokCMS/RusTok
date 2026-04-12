@@ -3,18 +3,22 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, Set,
 };
+use sea_orm::sea_query::Expr;
+use sea_orm::Condition;
+use std::collections::{HashMap, HashSet};
 use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::generate_id;
+use rustok_core::{generate_id, normalize_locale_tag};
 
 use crate::{
     dto::{
         CreateShippingProfileInput, ListShippingProfilesInput, ShippingProfileResponse,
+        ShippingProfileTranslationInput, ShippingProfileTranslationResponse,
         UpdateShippingProfileInput,
     },
-    entities::shipping_profile,
+    entities::{shipping_profile, shipping_profile_translation},
     storefront_shipping::normalize_shipping_profile_slug,
     CommerceError, CommerceResult,
 };
@@ -41,30 +45,32 @@ impl ShippingProfileService {
         let slug = normalize_shipping_profile_slug(&input.slug)
             .ok_or_else(|| CommerceError::Validation("shipping profile slug is required".into()))?;
         self.ensure_slug_available(tenant_id, &slug, None).await?;
+        let normalized_translations = normalize_translation_inputs(input.translations)?;
 
         let now = Utc::now();
         let id = generate_id();
-        shipping_profile::ActiveModel {
+        let active_profile = shipping_profile::ActiveModel {
             id: Set(id),
             tenant_id: Set(tenant_id),
             slug: Set(slug),
-            name: Set(input.name.trim().to_string()),
-            description: Set(normalize_optional_text(input.description)),
             active: Set(true),
             metadata: Set(input.metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
-        }
-        .insert(&self.db)
-        .await?;
+        };
+        active_profile.insert(&self.db).await?;
 
-        self.get_shipping_profile(tenant_id, id).await
+        insert_translations(&self.db, id, &normalized_translations).await?;
+
+        self.get_shipping_profile(tenant_id, id, None, None).await
     }
 
     pub async fn list_shipping_profiles(
         &self,
         tenant_id: Uuid,
         input: ListShippingProfilesInput,
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
     ) -> CommerceResult<(Vec<ShippingProfileResponse>, u64)> {
         let page = input.page.max(1);
         let per_page = input.per_page.clamp(1, 100);
@@ -82,10 +88,13 @@ impl ShippingProfileService {
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
+            let backend = self.db.get_database_backend();
+            let condition =
+                shipping_profile_translation_search_condition(backend, search.trim());
             query = query.filter(
                 shipping_profile::Column::Slug
                     .contains(search)
-                    .or(shipping_profile::Column::Name.contains(search)),
+                    .or(condition),
             );
         }
 
@@ -97,18 +106,38 @@ impl ShippingProfileService {
             .all(&self.db)
             .await?;
 
-        Ok((rows.into_iter().map(map_shipping_profile).collect(), total))
+        let items = load_profiles_with_translations(
+            &self.db,
+            rows,
+            requested_locale.or_else(|| input.locale.as_deref()),
+            tenant_default_locale,
+        )
+        .await?;
+
+        Ok((items, total))
     }
 
     pub async fn get_shipping_profile(
         &self,
         tenant_id: Uuid,
         shipping_profile_id: Uuid,
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
     ) -> CommerceResult<ShippingProfileResponse> {
         let row = self
             .load_shipping_profile(tenant_id, shipping_profile_id)
             .await?;
-        Ok(map_shipping_profile(row))
+        let items = load_profiles_with_translations(
+            &self.db,
+            vec![row],
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await?;
+        items
+            .into_iter()
+            .next()
+            .ok_or_else(|| CommerceError::ShippingProfileNotFound(shipping_profile_id))
     }
 
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, shipping_profile_id = %shipping_profile_id))]
@@ -135,18 +164,6 @@ impl ShippingProfileService {
                 .await?;
             active.slug = Set(slug);
         }
-        if let Some(name) = input.name {
-            let name = name.trim();
-            if name.is_empty() {
-                return Err(CommerceError::Validation(
-                    "shipping profile name cannot be empty".into(),
-                ));
-            }
-            active.name = Set(name.to_string());
-        }
-        if input.description.is_some() {
-            active.description = Set(normalize_optional_text(input.description));
-        }
         if let Some(metadata) = input.metadata {
             active.metadata = Set(metadata);
         }
@@ -154,7 +171,12 @@ impl ShippingProfileService {
         active.updated_at = Set(Utc::now().into());
         active.update(&self.db).await?;
 
-        self.get_shipping_profile(tenant_id, shipping_profile_id)
+        if let Some(translations) = input.translations {
+            let normalized = normalize_translation_inputs(translations)?;
+            replace_translations(&self.db, shipping_profile_id, &normalized).await?;
+        }
+
+        self.get_shipping_profile(tenant_id, shipping_profile_id, None, None)
             .await
     }
 
@@ -265,27 +287,221 @@ impl ShippingProfileService {
         model.updated_at = Set(Utc::now().into());
         model.update(&self.db).await?;
 
-        self.get_shipping_profile(tenant_id, shipping_profile_id)
+        self.get_shipping_profile(tenant_id, shipping_profile_id, None, None)
             .await
     }
 }
 
-fn map_shipping_profile(value: shipping_profile::Model) -> ShippingProfileResponse {
+async fn load_profiles_with_translations(
+    db: &DatabaseConnection,
+    rows: Vec<shipping_profile::Model>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> CommerceResult<Vec<ShippingProfileResponse>> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+    let translations = shipping_profile_translation::Entity::find()
+        .filter(shipping_profile_translation::Column::ShippingProfileId.is_in(ids.clone()))
+        .all(db)
+        .await?;
+
+    let mut translations_by_profile: HashMap<Uuid, Vec<shipping_profile_translation::Model>> =
+        HashMap::new();
+    for translation in translations {
+        translations_by_profile
+            .entry(translation.shipping_profile_id)
+            .or_default()
+            .push(translation);
+    }
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let translations = translations_by_profile
+                .remove(&row.id)
+                .unwrap_or_default();
+            map_shipping_profile(
+                row,
+                translations,
+                requested_locale,
+                tenant_default_locale,
+            )
+        })
+        .collect())
+}
+
+fn map_shipping_profile(
+    value: shipping_profile::Model,
+    translations: Vec<shipping_profile_translation::Model>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> ShippingProfileResponse {
+    let available_locales = translations
+        .iter()
+        .map(|translation| translation.locale.clone())
+        .collect::<Vec<_>>();
+    let requested_locale = requested_locale
+        .and_then(normalize_locale_tag)
+        .filter(|value| !value.is_empty());
+    let (resolved, effective_locale) =
+        resolve_translation(&translations, requested_locale.as_deref(), tenant_default_locale);
+
+    let (name, description) = resolved
+        .map(|translation| (translation.name.clone(), translation.description.clone()))
+        .unwrap_or_else(|| ("".to_string(), None));
+
     ShippingProfileResponse {
         id: value.id,
         tenant_id: value.tenant_id,
         slug: value.slug,
-        name: value.name,
-        description: value.description,
+        name,
+        description,
         active: value.active,
         metadata: value.metadata,
         created_at: value.created_at.into(),
         updated_at: value.updated_at.into(),
+        requested_locale,
+        effective_locale,
+        available_locales,
+        translations: translations
+            .into_iter()
+            .map(|translation| ShippingProfileTranslationResponse {
+                locale: translation.locale,
+                name: translation.name,
+                description: translation.description,
+            })
+            .collect(),
     }
 }
 
-fn normalize_optional_text(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
+fn normalize_translation_inputs(
+    translations: Vec<ShippingProfileTranslationInput>,
+) -> CommerceResult<Vec<ShippingProfileTranslationInput>> {
+    if translations.is_empty() {
+        return Err(CommerceError::Validation(
+            "At least one translation is required".into(),
+        ));
+    }
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::with_capacity(translations.len());
+    for translation in translations {
+        let locale = normalize_locale_tag(&translation.locale).ok_or_else(|| {
+            CommerceError::Validation("Invalid locale for shipping profile translation".into())
+        })?;
+        if !seen.insert(locale.clone()) {
+            return Err(CommerceError::Validation(
+                "Duplicate locale in shipping profile translations".into(),
+            ));
+        }
+        let name = translation.name.trim();
+        if name.is_empty() {
+            return Err(CommerceError::Validation(
+                "Shipping profile name cannot be empty".into(),
+            ));
+        }
+        let description = translation
+            .description
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        normalized.push(ShippingProfileTranslationInput {
+            locale,
+            name: name.to_string(),
+            description,
+        });
+    }
+    Ok(normalized)
+}
+
+async fn insert_translations(
+    db: &DatabaseConnection,
+    shipping_profile_id: Uuid,
+    translations: &[ShippingProfileTranslationInput],
+) -> CommerceResult<()> {
+    for translation in translations {
+        shipping_profile_translation::ActiveModel {
+            id: Set(generate_id()),
+            shipping_profile_id: Set(shipping_profile_id),
+            locale: Set(translation.locale.clone()),
+            name: Set(translation.name.clone()),
+            description: Set(translation.description.clone()),
+        }
+        .insert(db)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn replace_translations(
+    db: &DatabaseConnection,
+    shipping_profile_id: Uuid,
+    translations: &[ShippingProfileTranslationInput],
+) -> CommerceResult<()> {
+    shipping_profile_translation::Entity::delete_many()
+        .filter(
+            shipping_profile_translation::Column::ShippingProfileId.eq(shipping_profile_id),
+        )
+        .exec(db)
+        .await?;
+    insert_translations(db, shipping_profile_id, translations).await
+}
+
+fn resolve_translation<'a>(
+    translations: &'a [shipping_profile_translation::Model],
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
+) -> (Option<&'a shipping_profile_translation::Model>, Option<String>) {
+    let mut lookup = HashMap::new();
+    for translation in translations {
+        if let Some(normalized) = normalize_locale_tag(&translation.locale) {
+            lookup.insert(normalized, translation);
+        }
+    }
+
+    if let Some(locale) = requested_locale.and_then(normalize_locale_tag) {
+        if let Some(found) = lookup.get(&locale) {
+            return (Some(*found), Some((*found).locale.clone()));
+        }
+    }
+    if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag) {
+        if let Some(found) = lookup.get(&locale) {
+            return (Some(*found), Some((*found).locale.clone()));
+        }
+    }
+    translations
+        .first()
+        .map(|item| (Some(item), Some(item.locale.clone())))
+        .unwrap_or((None, None))
+}
+
+fn shipping_profile_translation_search_condition(
+    backend: sea_orm::DbBackend,
+    search: &str,
+) -> Condition {
+    let pattern = format!("%{search}%");
+    let exists_sql = match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "EXISTS (
+                SELECT 1
+                FROM shipping_profile_translations spt
+                WHERE spt.shipping_profile_id = shipping_profiles.id
+                  AND spt.name LIKE ?1
+            )"
+        }
+        _ => {
+            "EXISTS (
+                SELECT 1
+                FROM shipping_profile_translations spt
+                WHERE spt.shipping_profile_id = shipping_profiles.id
+                  AND spt.name LIKE $1
+            )"
+        }
+    };
+
+    Condition::all().add(Expr::cust_with_values(
+        exists_sql,
+        vec![pattern.into()],
+    ))
 }

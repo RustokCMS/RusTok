@@ -239,7 +239,7 @@ impl CustomFieldsSchema {
 
 ```rust
 pub trait HasCustomFields {
-    fn entity_type() -> &'static str;          // "user", "product", "node"
+    fn entity_type() -> &'static str;          // "user", "product", "topic"
     fn metadata(&self) -> &serde_json::Value;
     fn set_metadata(&mut self, value: serde_json::Value);
 }
@@ -395,7 +395,6 @@ if !errors.is_empty() {
 | apps/server | `user_field_definitions` | `"user"` | `users.metadata` + `flex_attached_localized_values` |
 | apps/server + `crates/flex` | `product_field_definitions` | `"product"` | `products.metadata` + `flex_attached_localized_values` |
 | apps/server + `crates/flex` | `order_field_definitions` | `"order"` | `orders.metadata` + `flex_attached_localized_values` |
-| apps/server | `node_field_definitions` | `"node"` | `nodes.metadata` |
 | apps/server + `crates/flex` | `topic_field_definitions` | `"topic"` | `forum_topics.metadata` + `flex_attached_localized_values` |
 
 Все таблицы определений структурно идентичны, физически изолированы в своём модуле. Для attached localized values canonical shared storage теперь живёт в `flex_attached_localized_values`, а shared entity/helpers вынесены в `crates/flex`; `user`, `product`, `order` и `topic` уже используют этот path в live read/write flow.
@@ -407,7 +406,7 @@ if !errors.is_empty() {
 ### Queries
 
 ```graphql
-fieldDefinitions(entityType: String): [FieldDefinition!]!
+fieldDefinitions(entityType: String, pagination: PaginationInput!): [FieldDefinition!]!
 fieldDefinition(entityType: String, id: UUID!): FieldDefinition
 ```
 
@@ -416,7 +415,7 @@ fieldDefinition(entityType: String, id: UUID!): FieldDefinition
 ```graphql
 createFieldDefinition(input: CreateFieldDefinitionInput!): FieldDefinition!
 updateFieldDefinition(id: UUID!, input: UpdateFieldDefinitionInput!): FieldDefinition!
-deleteFieldDefinition(entityType: String, id: UUID!): Boolean!
+deleteFieldDefinition(entityType: String, id: UUID!): DeleteFieldDefinitionPayload!
 reorderFieldDefinitions(entityType: String, ids: [UUID!]!): [FieldDefinition!]!
 ```
 
@@ -436,13 +435,15 @@ let repo = registry.get(entity_type)?; // → FlexError::UnknownEntityType ес�
 
 ### RBAC
 
-| Действие | Роли |
-|----------|------|
-| Просмотр определений | Admin, SuperAdmin |
-| Создание / обновление | Admin, SuperAdmin |
-| Удаление (soft: is_active=false) | SuperAdmin |
+| Surface | Typed permissions |
+|---------|-------------------|
+| Attached field definitions query roots | `flex_schemas:list`, `flex_schemas:read` |
+| Attached field definitions mutations | `flex_schemas:create`, `flex_schemas:update`, `flex_schemas:delete` |
+| Standalone schema queries/mutations | `flex_schemas:*` |
+| Standalone entry queries/mutations | `flex_entries:*` |
 
-Заполнение кастомных полей — по правам на саму сущность: `Resource::Users + Action::Update`.
+Typed permission checks идут через `require_permission(...)` в GraphQL и `RequireFlex*` extractors в REST adapter layer.
+Заполнение attached custom fields остаётся привязанным к donor write-path и его собственным правам на сущность.
 
 ---
 
@@ -536,7 +537,7 @@ pub enum FlexError {
 - доступ к schemas/entries идёт только через tenant-scoped `flex_schemas:*` и `flex_entries:*` permission gates;
 - server остаётся каноническим валидатором lifecycle и transport policy; thin clients не вводят свой rollout/governance contract локально.
 
-Незакрытым остаётся полный integration verification и follow-up backlog вроде indexer/cascade-delete.
+Незакрытым остаётся полный integration verification; follow-up backlog больше не включает `indexer/cascade-delete`, но всё ещё включает расширение тестового покрытия и дальнейшую эволюцию standalone surface.
 
 ### Data model
 

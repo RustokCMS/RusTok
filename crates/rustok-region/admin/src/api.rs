@@ -152,9 +152,15 @@ async fn load_region_detail(
     region_service: &rustok_region::RegionService,
     tenant: &rustok_api::TenantContext,
     region_id: uuid::Uuid,
+    requested_locale: Option<&str>,
 ) -> Result<RegionDetail, ServerFnError> {
     let region = region_service
-        .get_region(tenant.id, region_id)
+        .get_region(
+            tenant.id,
+            region_id,
+            requested_locale,
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(ServerFnError::new)?;
 
@@ -167,13 +173,16 @@ async fn load_region_detail(
 async fn region_bootstrap_native() -> Result<RegionAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{AuthContext, TenantContext};
+        use rustok_api::{AuthContext, RequestContext, TenantContext};
         use rustok_core::Permission;
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let request_context = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
 
@@ -221,7 +230,11 @@ async fn region_list_native() -> Result<RegionList, ServerFnError> {
 
         let service = RegionService::new(app_ctx.db.clone());
         let items = service
-            .list_regions(tenant.id)
+            .list_regions(
+                tenant.id,
+                Some(request_context.locale.as_str()),
+                Some(tenant.default_locale.as_str()),
+            )
             .await
             .map_err(ServerFnError::new)?
             .into_iter()
@@ -242,7 +255,7 @@ async fn region_detail_native(region_id: String) -> Result<RegionDetail, ServerF
     {
         use leptos::prelude::expect_context;
         use loco_rs::app::AppContext;
-        use rustok_api::{AuthContext, TenantContext};
+        use rustok_api::{AuthContext, RequestContext, TenantContext};
         use rustok_core::Permission;
         use rustok_region::RegionService;
 
@@ -251,6 +264,9 @@ async fn region_detail_native(region_id: String) -> Result<RegionDetail, ServerF
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let request_context = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
 
@@ -263,7 +279,13 @@ async fn region_detail_native(region_id: String) -> Result<RegionDetail, ServerF
         let region_id = parse_uuid(&region_id, "region_id")?;
         let service = RegionService::new(app_ctx.db.clone());
 
-        load_region_detail(&service, &tenant, region_id).await
+        load_region_detail(
+            &service,
+            &tenant,
+            region_id,
+            Some(request_context.locale.as_str()),
+        )
+        .await
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -282,7 +304,7 @@ async fn region_create_native(payload: RegionDraft) -> Result<RegionDetail, Serv
         use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_core::Permission;
-        use rustok_region::{CreateRegionInput, RegionService};
+        use rustok_region::{CreateRegionInput, RegionService, RegionTranslationInput};
 
         let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -303,7 +325,10 @@ async fn region_create_native(payload: RegionDraft) -> Result<RegionDetail, Serv
             .create_region(
                 tenant.id,
                 CreateRegionInput {
-                    name: payload.name.trim().to_string(),
+                    translations: vec![RegionTranslationInput {
+                        locale: payload.locale.trim().to_string(),
+                        name: payload.name.trim().to_string(),
+                    }],
                     currency_code: payload.currency_code.trim().to_string(),
                     tax_rate: parse_tax_rate(&payload.tax_rate)?,
                     tax_included: payload.tax_included,
@@ -336,7 +361,7 @@ async fn region_update_native(
         use loco_rs::app::AppContext;
         use rustok_api::{AuthContext, TenantContext};
         use rustok_core::Permission;
-        use rustok_region::{RegionService, UpdateRegionInput};
+        use rustok_region::{RegionService, RegionTranslationInput, UpdateRegionInput};
 
         let app_ctx = expect_context::<AppContext>();
         let auth = leptos_axum::extract::<AuthContext>()
@@ -359,7 +384,10 @@ async fn region_update_native(
                 tenant.id,
                 region_id,
                 UpdateRegionInput {
-                    name: Some(payload.name.trim().to_string()),
+                    translations: Some(vec![RegionTranslationInput {
+                        locale: payload.locale.trim().to_string(),
+                        name: payload.name.trim().to_string(),
+                    }]),
                     currency_code: Some(payload.currency_code.trim().to_string()),
                     tax_rate: Some(parse_tax_rate(&payload.tax_rate)?),
                     tax_included: Some(payload.tax_included),

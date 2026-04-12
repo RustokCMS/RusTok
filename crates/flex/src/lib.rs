@@ -10,6 +10,7 @@ pub mod attached;
 pub mod errors;
 pub mod events;
 pub mod orchestration;
+pub mod parsing;
 pub mod registry;
 pub mod standalone;
 
@@ -26,6 +27,7 @@ pub use orchestration::{
     invalidate_field_definition_cache, list_field_definitions, list_field_definitions_with_cache,
     reorder_field_definitions, update_field_definition, FieldDefinitionCachePort,
 };
+pub use parsing::{parse_field_definitions_config, FieldDefinitionsConfigParseError};
 pub use registry::{
     CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionView,
     UpdateFieldDefinitionCommand,

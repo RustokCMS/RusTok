@@ -4,16 +4,15 @@ use rustok_api::{
     graphql::{require_module_enabled, GraphQLError},
     AuthContext, RequestContext, TenantContext,
 };
-use rustok_core::Permission;
+use rustok_core::{locale_tags_match, Permission};
+use rustok_pricing::PriceResolutionContext;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde_json::Value;
 use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{
-    entities::{
-        price, price_list, product, product_translation, product_variant, variant_translation,
-    },
+    entities::{price_list, product, product_translation, product_variant, variant_translation},
     storefront_channel::{
         is_metadata_visible_for_public_channel,
         load_available_inventory_for_variant_in_public_channel, normalize_public_channel_slug,
@@ -222,6 +221,8 @@ impl CommerceMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
         validate_active_price_list_for_rule_update(db, tenant_id, price_list_id).await?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let service = PricingService::new(db.clone(), event_bus.clone());
@@ -237,7 +238,14 @@ impl CommerceMutation {
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
 
-        load_active_price_list_option(&service, tenant_id, price_list_id).await
+        load_active_price_list_option(
+            &service,
+            tenant_id,
+            price_list_id,
+            locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await
     }
 
     async fn update_admin_pricing_price_list_scope(
@@ -357,14 +365,26 @@ impl CommerceMutation {
         let cart_service = CartService::new(db.clone());
         let cart = cart_service.get_cart(tenant_id, cart_id).await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+        let pricing_service = PricingService::new(db.clone(), event_bus.clone());
+        let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx);
+        let pricing_context = build_storefront_pricing_context(
+            &cart,
+            request_context,
+            public_channel_slug.as_deref(),
+            input.quantity,
+        );
         let resolved_input = resolve_storefront_line_item_input(
             db,
             tenant_id,
+            &pricing_service,
+            &pricing_context,
             &cart.currency_code,
             cart.locale_code
                 .as_deref()
                 .unwrap_or(request_context.locale.as_str()),
-            storefront_public_channel_slug_for_cart(&cart, ctx).as_deref(),
+            tenant.default_locale.as_str(),
+            public_channel_slug.as_deref(),
             input,
         )
         .await?;
@@ -399,6 +419,7 @@ impl CommerceMutation {
         let cart_service = CartService::new(db.clone());
         let cart = cart_service.get_cart(tenant_id, cart_id).await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
 
         let region_was_explicit = !input.region_id.is_undefined();
         let email = maybe_undefined_or_existing(input.email, cart.email.clone());
@@ -450,6 +471,8 @@ impl CommerceMutation {
             requested_shipping_selections.as_deref(),
             &cart.currency_code,
             storefront_public_channel_slug_for_cart(&cart, ctx).as_deref(),
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
         )
         .await?;
 
@@ -470,6 +493,15 @@ impl CommerceMutation {
                 },
             )
             .await?;
+        let updated = reprice_storefront_cart_line_items(
+            db,
+            tenant_id,
+            request_context,
+            &event_bus,
+            &cart_service,
+            updated,
+        )
+        .await?;
         let updated = enrich_storefront_cart(db, tenant_id, request_context, updated).await?;
 
         Ok(GqlStoreCart {
@@ -491,6 +523,7 @@ impl CommerceMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let request_context = ctx.data::<RequestContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
@@ -498,6 +531,7 @@ impl CommerceMutation {
         let cart_service = CartService::new(db.clone());
         let cart = cart_service.get_cart(tenant_id, cart_id).await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
+        let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx);
         if let Some(existing_line_item) = cart.line_items.iter().find(|item| item.id == line_id) {
             if let Some(variant_id) = existing_line_item.variant_id {
                 validate_storefront_line_item_quantity(
@@ -505,16 +539,52 @@ impl CommerceMutation {
                     tenant_id,
                     variant_id,
                     input.quantity,
-                    storefront_public_channel_slug_for_cart(&cart, ctx).as_deref(),
+                    public_channel_slug.as_deref(),
                 )
                 .await?;
             }
         }
-        let updated = cart_service
-            .update_line_item_quantity(tenant_id, cart_id, line_id, input.quantity)
-            .await?;
+        let updated = if let Some(variant_id) = cart
+            .line_items
+            .iter()
+            .find(|item| item.id == line_id)
+            .and_then(|item| item.variant_id)
+        {
+            let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
+            let pricing_service = PricingService::new(db.clone(), event_bus.clone());
+            let pricing_context = build_storefront_pricing_context(
+                &cart,
+                request_context,
+                public_channel_slug.as_deref(),
+                input.quantity,
+            );
+            let resolved_price = pricing_service
+                .resolve_variant_price(tenant_id, variant_id, pricing_context)
+                .await
+                .map_err(|err| async_graphql::Error::new(err.to_string()))?
+                .ok_or_else(|| {
+                    async_graphql::Error::new(format!(
+                        "No storefront price for variant {} in currency {}",
+                        variant_id, cart.currency_code
+                    ))
+                })?;
+
+            cart_service
+                .update_line_item_pricing(
+                    tenant_id,
+                    cart_id,
+                    line_id,
+                    input.quantity,
+                    resolved_price.amount,
+                )
+                .await?
+        } else {
+            cart_service
+                .update_line_item_quantity(tenant_id, cart_id, line_id, input.quantity)
+                .await?
+        };
         Ok(
-            enrich_storefront_cart(db, tenant_id, ctx.data::<RequestContext>()?, updated)
+            enrich_storefront_cart(db, tenant_id, request_context, updated)
                 .await?
                 .into(),
         )
@@ -561,6 +631,7 @@ impl CommerceMutation {
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
+        let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let cart_service = CartService::new(db.clone());
         let cart = cart_service.get_cart(tenant_id, input.cart_id).await?;
@@ -568,6 +639,15 @@ impl CommerceMutation {
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
+        let cart = reprice_storefront_cart_line_items(
+            db,
+            tenant_id,
+            request_context,
+            event_bus,
+            &cart_service,
+            cart,
+        )
+        .await?;
         let context = crate::StoreContextService::new(db.clone())
             .resolve_context(
                 tenant_id,
@@ -622,14 +702,98 @@ impl CommerceMutation {
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let request_context = ctx.data::<RequestContext>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
         let cart_service = CartService::new(db.clone());
-        let cart = cart_service.get_cart(tenant_id, input.cart_id).await?;
+        let mut cart = cart_service.get_cart(tenant_id, input.cart_id).await?;
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;
         ensure_storefront_cart_access(&cart, customer_id)?;
+        if input.shipping_option_id.is_some()
+            || input.shipping_selections.is_some()
+            || input.region_id.is_some()
+            || input.country_code.is_some()
+            || input.locale.is_some()
+        {
+            let requested_region_id = input.region_id.or(cart.region_id);
+            let requested_country_code = input
+                .country_code
+                .clone()
+                .or_else(|| cart.country_code.clone());
+            let requested_locale = input
+                .locale
+                .clone()
+                .or_else(|| cart.locale_code.clone())
+                .or_else(|| Some(request_context.locale.clone()));
+            let requested_shipping_option_id = input
+                .shipping_option_id
+                .or(cart.selected_shipping_option_id);
+            let requested_shipping_selections = input
+                .shipping_selections
+                .as_ref()
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(|item| crate::dto::CartShippingSelectionInput {
+                            shipping_profile_slug: item.shipping_profile_slug.clone(),
+                            seller_id: item.seller_id.clone(),
+                            seller_scope: item.seller_scope.clone(),
+                            selected_shipping_option_id: item.selected_shipping_option_id,
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_else(|| current_shipping_selections(&cart));
+
+            let context = StoreContextService::new(db.clone())
+                .resolve_context(
+                    tenant_id,
+                    crate::dto::ResolveStoreContextInput {
+                        region_id: requested_region_id,
+                        country_code: requested_country_code.clone(),
+                        locale: requested_locale,
+                        currency_code: Some(cart.currency_code.clone()),
+                    },
+                )
+                .await?;
+            validate_selected_shipping_option(
+                db,
+                tenant_id,
+                &cart,
+                requested_shipping_option_id,
+                Some(requested_shipping_selections.as_slice()),
+                &cart.currency_code,
+                storefront_public_channel_slug_for_cart(&cart, ctx).as_deref(),
+                Some(request_context.locale.as_str()),
+                Some(tenant.default_locale.as_str()),
+            )
+            .await?;
+
+            cart = cart_service
+                .update_context(
+                    tenant_id,
+                    cart.id,
+                    crate::dto::UpdateCartContextInput {
+                        email: cart.email.clone(),
+                        region_id: context.region.as_ref().map(|region| region.id),
+                        country_code: requested_country_code,
+                        locale_code: Some(context.locale.clone()),
+                        selected_shipping_option_id: requested_shipping_option_id,
+                        shipping_selections: Some(requested_shipping_selections),
+                    },
+                )
+                .await?;
+        }
+        let _ = reprice_storefront_cart_line_items(
+            db,
+            tenant_id,
+            request_context,
+            event_bus,
+            &cart_service,
+            cart,
+        )
+        .await?;
         let actor_id = ctx
             .data_opt::<AuthContext>()
             .map(|auth| auth.user_id)
@@ -881,7 +1045,14 @@ impl CommerceMutation {
             .create_shipping_option(
                 tenant_id,
                 crate::dto::CreateShippingOptionInput {
-                    name: input.name,
+                    translations: input
+                        .translations
+                        .into_iter()
+                        .map(|translation| crate::dto::ShippingOptionTranslationInput {
+                            locale: translation.locale,
+                            name: translation.name,
+                        })
+                        .collect(),
                     currency_code: input.currency_code,
                     amount: parse_decimal(&input.amount)?,
                     provider_id: input.provider_id,
@@ -920,7 +1091,15 @@ impl CommerceMutation {
                 tenant_id,
                 id,
                 crate::dto::UpdateShippingOptionInput {
-                    name: input.name,
+                    translations: input.translations.map(|translations| {
+                        translations
+                            .into_iter()
+                            .map(|translation| crate::dto::ShippingOptionTranslationInput {
+                                locale: translation.locale,
+                                name: translation.name,
+                            })
+                            .collect()
+                    }),
                     currency_code: input.currency_code,
                     amount: parse_optional_decimal(input.amount.as_deref())?,
                     provider_id: input.provider_id,
@@ -955,17 +1134,24 @@ impl CommerceMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let profile = ShippingProfileService::new(db.clone())
-            .create_shipping_profile(
-                tenant_id,
-                crate::dto::CreateShippingProfileInput {
-                    slug: input.slug,
-                    name: input.name,
-                    description: input.description,
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
-                },
-            )
-            .await?;
+            let profile = ShippingProfileService::new(db.clone())
+                .create_shipping_profile(
+                    tenant_id,
+                    crate::dto::CreateShippingProfileInput {
+                        slug: input.slug,
+                        translations: input
+                            .translations
+                            .into_iter()
+                            .map(|translation| crate::dto::ShippingProfileTranslationInput {
+                                locale: translation.locale,
+                                name: translation.name,
+                                description: translation.description,
+                            })
+                            .collect(),
+                        metadata: parse_optional_metadata(input.metadata.as_deref())?,
+                    },
+                )
+                .await?;
 
         Ok(profile.into())
     }
@@ -985,19 +1171,27 @@ impl CommerceMutation {
         )?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let profile = ShippingProfileService::new(db.clone())
-            .update_shipping_profile(
-                tenant_id,
-                id,
-                crate::dto::UpdateShippingProfileInput {
-                    slug: input.slug,
-                    name: input.name,
-                    description: input.description,
-                    metadata: if input.metadata.is_some() {
-                        Some(parse_optional_metadata(input.metadata.as_deref())?)
-                    } else {
-                        None
-                    },
+            let profile = ShippingProfileService::new(db.clone())
+                .update_shipping_profile(
+                    tenant_id,
+                    id,
+                    crate::dto::UpdateShippingProfileInput {
+                        slug: input.slug,
+                        translations: input.translations.map(|translations| {
+                            translations
+                                .into_iter()
+                                .map(|translation| crate::dto::ShippingProfileTranslationInput {
+                                    locale: translation.locale,
+                                    name: translation.name,
+                                    description: translation.description,
+                                })
+                                .collect()
+                        }),
+                        metadata: if input.metadata.is_some() {
+                            Some(parse_optional_metadata(input.metadata.as_deref())?)
+                        } else {
+                            None
+                        },
                 },
             )
             .await?;
@@ -1467,8 +1661,15 @@ fn convert_create_product_input(
         .unwrap_or_default()
         .into_iter()
         .map(|option| crate::dto::ProductOptionInput {
-            name: option.name,
-            values: option.values,
+            translations: option
+                .translations
+                .into_iter()
+                .map(|translation| crate::dto::ProductOptionTranslationInput {
+                    locale: translation.locale,
+                    name: translation.name,
+                    values: translation.values,
+                })
+                .collect(),
         })
         .collect();
 
@@ -1681,9 +1882,15 @@ async fn load_active_price_list_option(
     service: &PricingService,
     tenant_id: Uuid,
     price_list_id: Uuid,
+    requested_locale: &str,
+    tenant_default_locale: &str,
 ) -> Result<GqlActivePriceListOption> {
     let option = service
-        .list_active_price_lists(tenant_id)
+        .list_active_price_lists(
+            tenant_id,
+            Some(requested_locale),
+            Some(tenant_default_locale),
+        )
         .await
         .map_err(|err| async_graphql::Error::new(err.to_string()))?
         .into_iter()
@@ -1760,7 +1967,14 @@ async fn enrich_storefront_cart(
 ) -> Result<crate::dto::CartResponse> {
     let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref())
         .or_else(|| normalize_public_channel_slug(request_context.channel_slug.as_deref()));
-    enrich_cart_delivery_groups(db, tenant_id, cart, public_channel_slug.as_deref())
+    enrich_cart_delivery_groups(
+        db,
+        tenant_id,
+        cart,
+        public_channel_slug.as_deref(),
+        Some(request_context.locale.as_str()),
+        Some(tenant.default_locale.as_str()),
+    )
         .await
         .map_err(|err| async_graphql::Error::new(err.to_string()))
 }
@@ -1788,6 +2002,8 @@ async fn validate_selected_shipping_option(
     shipping_selections: Option<&[crate::dto::CartShippingSelectionInput]>,
     currency_code: &str,
     public_channel_slug: Option<&str>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
 ) -> Result<()> {
     let selections = if let Some(shipping_selections) = shipping_selections {
         shipping_selections.to_vec()
@@ -1817,7 +2033,12 @@ async fn validate_selected_shipping_option(
             continue;
         };
         let option = FulfillmentService::new(db.clone())
-            .get_shipping_option(tenant_id, selected_shipping_option_id)
+            .get_shipping_option(
+                tenant_id,
+                selected_shipping_option_id,
+                requested_locale,
+                tenant_default_locale,
+            )
             .await?;
         if !option.currency_code.eq_ignore_ascii_case(currency_code) {
             return Err(async_graphql::Error::new(format!(
@@ -1909,8 +2130,11 @@ fn maybe_undefined_or_existing<T>(
 async fn resolve_storefront_line_item_input(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
+    pricing_service: &PricingService,
+    pricing_context: &PriceResolutionContext,
     currency_code: &str,
     locale: &str,
+    default_locale: &str,
     public_channel_slug: Option<&str>,
     input: AddStorefrontCartLineItemInput,
 ) -> Result<crate::dto::AddCartLineItemInput> {
@@ -1932,33 +2156,19 @@ async fn resolve_storefront_line_item_input(
         return Err(async_graphql::Error::new("Product not found"));
     }
 
-    let product_translation_model = product_translation::Entity::find()
+    let product_translation_models = product_translation::Entity::find()
         .filter(product_translation::Column::ProductId.eq(product_model.id))
-        .filter(product_translation::Column::Locale.eq(locale))
-        .one(db)
+        .all(db)
         .await?;
-    let fallback_translation_model = if product_translation_model.is_none() {
-        product_translation::Entity::find()
-            .filter(product_translation::Column::ProductId.eq(product_model.id))
-            .order_by_asc(product_translation::Column::Locale)
-            .one(db)
-            .await?
-    } else {
-        None
-    };
-
-    let variant_translation_model = variant_translation::Entity::find()
+    let variant_translation_models = variant_translation::Entity::find()
         .filter(variant_translation::Column::VariantId.eq(variant.id))
-        .filter(variant_translation::Column::Locale.eq(locale))
-        .one(db)
+        .all(db)
         .await?;
 
-    let selected_price = price::Entity::find()
-        .filter(price::Column::VariantId.eq(variant.id))
-        .filter(price::Column::CurrencyCode.eq(currency_code.to_ascii_uppercase()))
-        .order_by_asc(price::Column::RegionId)
-        .one(db)
-        .await?
+    let resolved_price = pricing_service
+        .resolve_variant_price(tenant_id, variant.id, pricing_context.clone())
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?
         .ok_or_else(|| {
             async_graphql::Error::new(format!(
                 "No storefront price for variant {} in currency {}",
@@ -1974,9 +2184,11 @@ async fn resolve_storefront_line_item_input(
     )
     .await?;
 
-    let base_title = product_translation_model
-        .as_ref()
-        .or(fallback_translation_model.as_ref())
+    let base_title = pick_product_translation(
+        &product_translation_models,
+        locale,
+        default_locale,
+    )
         .map(|translation| translation.title.clone())
         .unwrap_or_else(|| {
             variant
@@ -1984,7 +2196,9 @@ async fn resolve_storefront_line_item_input(
                 .clone()
                 .unwrap_or_else(|| format!("Variant {}", variant.id))
         });
-    let title = match variant_translation_model.and_then(|translation| translation.title) {
+    let title = match pick_variant_translation(&variant_translation_models, locale, default_locale)
+        .and_then(|translation| translation.title.clone())
+    {
         Some(variant_title) if !variant_title.trim().is_empty() => {
             format!("{base_title} / {}", variant_title.trim())
         }
@@ -2002,12 +2216,132 @@ async fn resolve_storefront_line_item_input(
         sku: variant.sku.clone(),
         title,
         quantity: input.quantity,
-        unit_price: selected_price.amount,
+        unit_price: resolved_price.amount,
         metadata: merge_graphql_metadata(
             parse_optional_metadata(input.metadata.as_deref())?,
             seller_snapshot_metadata(product_model.seller_id.as_deref()),
         ),
     })
+}
+
+fn pick_product_translation<'a>(
+    translations: &'a [product_translation::Model],
+    locale: &str,
+    default_locale: &str,
+) -> Option<&'a product_translation::Model> {
+    translations
+        .iter()
+        .find(|translation| locale_tags_match(&translation.locale, locale))
+        .or_else(|| {
+            (!locale_tags_match(default_locale, locale)).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
+            })?
+        })
+        .or_else(|| translations.first())
+}
+
+fn pick_variant_translation<'a>(
+    translations: &'a [variant_translation::Model],
+    locale: &str,
+    default_locale: &str,
+) -> Option<&'a variant_translation::Model> {
+    translations
+        .iter()
+        .find(|translation| locale_tags_match(&translation.locale, locale))
+        .or_else(|| {
+            (!locale_tags_match(default_locale, locale)).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
+            })?
+        })
+        .or_else(|| translations.first())
+}
+
+fn resolve_commerce_graphql_locale(
+    ctx: &Context<'_>,
+    requested: Option<&str>,
+    tenant_default_locale: &str,
+) -> String {
+    requested
+        .map(str::trim)
+        .filter(|locale| !locale.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            ctx.data_opt::<RequestContext>()
+                .map(|request| request.locale.clone())
+        })
+        .unwrap_or_else(|| tenant_default_locale.to_string())
+}
+
+fn build_storefront_pricing_context(
+    cart: &crate::dto::CartResponse,
+    request_context: &RequestContext,
+    public_channel_slug: Option<&str>,
+    quantity: i32,
+) -> PriceResolutionContext {
+    PriceResolutionContext {
+        currency_code: cart.currency_code.to_ascii_uppercase(),
+        region_id: cart.region_id,
+        price_list_id: None,
+        channel_id: cart.channel_id.or(request_context.channel_id),
+        channel_slug: public_channel_slug.map(|slug| slug.to_string()),
+        quantity: Some(quantity),
+    }
+}
+
+async fn reprice_storefront_cart_line_items(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    event_bus: &rustok_outbox::TransactionalEventBus,
+    cart_service: &CartService,
+    cart: crate::dto::CartResponse,
+) -> Result<crate::dto::CartResponse> {
+    if cart.line_items.is_empty() {
+        return Ok(cart);
+    }
+
+    let public_channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref())
+        .or_else(|| normalize_public_channel_slug(request_context.channel_slug.as_deref()));
+    let pricing_service = PricingService::new(db.clone(), event_bus.clone());
+    let mut updates = Vec::new();
+    for line_item in &cart.line_items {
+        let Some(variant_id) = line_item.variant_id else {
+            continue;
+        };
+        let pricing_context = build_storefront_pricing_context(
+            &cart,
+            request_context,
+            public_channel_slug.as_deref(),
+            line_item.quantity,
+        );
+        let resolved_price = pricing_service
+            .resolve_variant_price(tenant_id, variant_id, pricing_context)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))?
+            .ok_or_else(|| {
+                async_graphql::Error::new(format!(
+                    "No storefront price for variant {} in currency {}",
+                    variant_id, cart.currency_code
+                ))
+            })?;
+        updates.push(rustok_cart::services::cart::CartLineItemPricingUpdate {
+            line_item_id: line_item.id,
+            unit_price: resolved_price.amount,
+        });
+    }
+
+    if updates.is_empty() {
+        Ok(cart)
+    } else {
+        cart_service
+            .reprice_line_items(tenant_id, cart.id, updates)
+            .await
+            .map_err(|err| async_graphql::Error::new(err.to_string()))
+    }
 }
 
 fn normalize_graphql_seller_scope(value: Option<&str>) -> Option<String> {

@@ -37,5 +37,8 @@ async fn index_module_registers_registry_owned_event_listeners() {
     let mut names: Vec<&'static str> = handlers.iter().map(|handler| handler.name()).collect();
     names.sort_unstable();
 
-    assert_eq!(names, vec!["content_indexer", "product_indexer"]);
+    assert_eq!(
+        names,
+        vec!["content_indexer", "flex_indexer", "product_indexer"]
+    );
 }

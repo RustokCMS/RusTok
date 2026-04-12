@@ -1,7 +1,8 @@
 # Rust build artifacts
 /target
 **/target
-/target_xtask_validate/
+/target-*/
+/target_*/
 # Note: Cargo.lock IS intentionally tracked for binary applications (server, admin, storefront)
 # See: https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
 

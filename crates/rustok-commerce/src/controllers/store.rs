@@ -8,6 +8,8 @@ use rustok_api::{
     loco::transactional_event_bus_from_context, OptionalAuthContext, RequestContext, TenantContext,
 };
 use rustok_cart::CartError;
+use rustok_core::locale_tags_match;
+use rustok_pricing::PriceResolutionContext;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
@@ -23,7 +25,7 @@ use crate::{
         RegionResponse, ResolveStoreContextInput, ShippingOptionResponse, StoreContextResponse,
         UpdateCartContextInput,
     },
-    entities::{price, product, product_translation, product_variant, variant_translation},
+    entities::{product, product_translation, product_variant, variant_translation},
     search::product_translation_title_search_condition,
     storefront_channel::{
         apply_public_channel_inventory_to_product, is_metadata_visible_for_public_channel,
@@ -37,7 +39,7 @@ use crate::{
         normalize_shipping_profile_slug, shipping_profile_slug_from_product_metadata,
     },
     CartService, CatalogService, CustomerService, FulfillmentService, OrderService, PaymentService,
-    ProductResponse, RegionService, StoreContextService,
+    PricingService, ProductResponse, RegionService, StoreContextService,
 };
 
 use super::{
@@ -160,26 +162,36 @@ pub async fn list_products(
     } else {
         product_translation::Entity::find()
             .filter(product_translation::Column::ProductId.is_in(product_ids))
-            .filter(product_translation::Column::Locale.eq(locale))
             .all(&ctx.db)
             .await
             .map_err(|err| Error::BadRequest(err.to_string()))?
     };
 
-    let translation_map = translations
-        .into_iter()
-        .map(|translation| (translation.product_id, translation))
-        .collect::<std::collections::HashMap<_, _>>();
+    let mut translation_map =
+        std::collections::HashMap::<Uuid, Vec<product_translation::Model>>::new();
+    for translation in translations {
+        translation_map
+            .entry(translation.product_id)
+            .or_default()
+            .push(translation);
+    }
     let catalog = CatalogService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
     let product_tags = catalog
-        .load_product_tag_map(tenant.id, &products, locale, Some("en"))
+        .load_product_tag_map(
+            tenant.id,
+            &products,
+            locale,
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
     let items = products
         .into_iter()
         .map(|product| {
-            let translation = translation_map.get(&product.id);
+            let translation = translation_map
+                .get(&product.id)
+                .and_then(|items| pick_product_translation(items, locale, tenant.default_locale.as_str()));
             ProductListItem {
                 id: product.id,
                 status: product.status.to_string(),
@@ -279,7 +291,11 @@ pub async fn list_regions(
 
     let service = RegionService::new(ctx.db.clone());
     let regions = service
-        .list_regions(tenant.id)
+        .list_regions(
+            tenant.id,
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     Ok(Json(regions))
@@ -341,7 +357,11 @@ pub async fn list_shipping_options(
 
     let service = FulfillmentService::new(ctx.db.clone());
     let mut options = service
-        .list_shipping_options(tenant.id)
+        .list_shipping_options(
+            tenant.id,
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
@@ -417,7 +437,14 @@ pub async fn create_cart(
         )
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
-    let cart = enrich_storefront_cart(&ctx, tenant.id, &request_context, cart).await?;
+    let cart = enrich_storefront_cart(
+        &ctx,
+        tenant.id,
+        &request_context,
+        tenant.default_locale.as_str(),
+        cart,
+    )
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -454,7 +481,14 @@ pub async fn get_cart(
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     ensure_store_cart_access(&cart, customer_id)?;
     Ok(Json(
-        enrich_storefront_cart(&ctx, tenant.id, &request_context, cart).await?,
+        enrich_storefront_cart(
+            &ctx,
+            tenant.id,
+            &request_context,
+            tenant.default_locale.as_str(),
+            cart,
+        )
+        .await?,
     ))
 }
 
@@ -493,6 +527,7 @@ pub async fn update_cart_context(
         &ctx,
         tenant.id,
         &request_context,
+        tenant.default_locale.as_str(),
         &cart,
         StoreCartContextPatch {
             email: input.email,
@@ -543,14 +578,19 @@ pub async fn add_cart_line_item(
         .await
         .map_err(map_cart_error)?;
     ensure_store_cart_access(&existing, customer_id)?;
+    let pricing_service =
+        PricingService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+    let pricing_context = build_store_pricing_context(&existing, &request_context, input.quantity);
     let resolved_input = resolve_store_line_item_input(
         &ctx.db,
         tenant.id,
-        &existing.currency_code,
+        &pricing_service,
+        &pricing_context,
         existing
             .locale_code
             .as_deref()
             .unwrap_or(request_context.locale.as_str()),
+        tenant.default_locale.as_str(),
         storefront_public_channel_slug_for_cart(&existing, &request_context).as_deref(),
         input,
     )
@@ -561,7 +601,14 @@ pub async fn add_cart_line_item(
         .await
         .map_err(map_cart_error)?;
     Ok(Json(
-        enrich_storefront_cart(&ctx, tenant.id, &request_context, cart).await?,
+        enrich_storefront_cart(
+            &ctx,
+            tenant.id,
+            &request_context,
+            tenant.default_locale.as_str(),
+            cart,
+        )
+        .await?,
     ))
 }
 
@@ -611,12 +658,52 @@ pub async fn update_cart_line_item(
         }
     }
 
-    let cart = service
-        .update_line_item_quantity(tenant.id, id, line_id, input.quantity)
-        .await
-        .map_err(map_cart_error)?;
+    let cart = if let Some(variant_id) = existing
+        .line_items
+        .iter()
+        .find(|item| item.id == line_id)
+        .and_then(|item| item.variant_id)
+    {
+        let pricing_service =
+            PricingService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
+        let pricing_context =
+            build_store_pricing_context(&existing, &request_context, input.quantity);
+        let resolved_price = pricing_service
+            .resolve_variant_price(tenant.id, variant_id, pricing_context)
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?
+            .ok_or_else(|| {
+                Error::BadRequest(format!(
+                    "No storefront price for variant {} in currency {}",
+                    variant_id, existing.currency_code
+                ))
+            })?;
+
+        service
+            .update_line_item_pricing(
+                tenant.id,
+                id,
+                line_id,
+                input.quantity,
+                resolved_price.amount,
+            )
+            .await
+            .map_err(map_cart_error)?
+    } else {
+        service
+            .update_line_item_quantity(tenant.id, id, line_id, input.quantity)
+            .await
+            .map_err(map_cart_error)?
+    };
     Ok(Json(
-        enrich_storefront_cart(&ctx, tenant.id, &request_context, cart).await?,
+        enrich_storefront_cart(
+            &ctx,
+            tenant.id,
+            &request_context,
+            tenant.default_locale.as_str(),
+            cart,
+        )
+        .await?,
     ))
 }
 
@@ -657,7 +744,14 @@ pub async fn remove_cart_line_item(
         .await
         .map_err(map_cart_error)?;
     Ok(Json(
-        enrich_storefront_cart(&ctx, tenant.id, &request_context, cart).await?,
+        enrich_storefront_cart(
+            &ctx,
+            tenant.id,
+            &request_context,
+            tenant.default_locale.as_str(),
+            cart,
+        )
+        .await?,
     ))
 }
 
@@ -689,6 +783,9 @@ pub async fn create_payment_collection(
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
     ensure_store_cart_access(&cart, customer_id)?;
+    let cart =
+        reprice_storefront_cart_line_items(&ctx, tenant.id, &request_context, &cart_service, cart)
+            .await?;
     let context = resolve_context_from_cart(&ctx, tenant.id, &request_context, &cart).await?;
 
     let service = PaymentService::new(ctx.db.clone());
@@ -741,7 +838,7 @@ pub async fn complete_cart_checkout(
     ensure_storefront_channel_enabled(&ctx, &request_context).await?;
 
     let cart_service = CartService::new(ctx.db.clone());
-    let cart = cart_service
+    let mut cart = cart_service
         .get_cart(tenant.id, cart_id)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
@@ -755,10 +852,11 @@ pub async fn complete_cart_checkout(
         || input.country_code.is_some()
         || input.locale.is_some()
     {
-        apply_cart_context_patch(
+        cart = apply_cart_context_patch(
             &ctx,
             tenant.id,
             &request_context,
+            tenant.default_locale.as_str(),
             &cart,
             StoreCartContextPatch {
                 email: None,
@@ -774,8 +872,12 @@ pub async fn complete_cart_checkout(
                 }),
             },
         )
-        .await?;
+        .await?
+        .cart;
     }
+    let _ =
+        reprice_storefront_cart_line_items(&ctx, tenant.id, &request_context, &cart_service, cart)
+            .await?;
 
     let service =
         crate::CheckoutService::new(ctx.db.clone(), transactional_event_bus_from_context(&ctx));
@@ -975,6 +1077,7 @@ async fn apply_cart_context_patch(
     ctx: &AppContext,
     tenant_id: Uuid,
     request_context: &RequestContext,
+    tenant_default_locale: &str,
     cart: &CartResponse,
     patch: StoreCartContextPatch,
 ) -> Result<StoreCartResponse> {
@@ -999,6 +1102,8 @@ async fn apply_cart_context_patch(
         Some(requested.shipping_selections.as_slice()),
         &cart.currency_code,
         storefront_public_channel_slug_for_cart(cart, request_context).as_deref(),
+        Some(request_context.locale.as_str()),
+        Some(tenant_default_locale),
     )
     .await?;
 
@@ -1018,8 +1123,22 @@ async fn apply_cart_context_patch(
         )
         .await
         .map_err(map_cart_error)?;
-    let updated_cart =
-        enrich_storefront_cart(ctx, tenant_id, request_context, updated_cart).await?;
+    let updated_cart = reprice_storefront_cart_line_items(
+        ctx,
+        tenant_id,
+        request_context,
+        &cart_service,
+        updated_cart,
+    )
+    .await?;
+    let updated_cart = enrich_storefront_cart(
+        ctx,
+        tenant_id,
+        request_context,
+        tenant_default_locale,
+        updated_cart,
+    )
+    .await?;
 
     Ok(StoreCartResponse {
         cart: updated_cart,
@@ -1027,16 +1146,70 @@ async fn apply_cart_context_patch(
     })
 }
 
+async fn reprice_storefront_cart_line_items(
+    ctx: &AppContext,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    cart_service: &CartService,
+    cart: CartResponse,
+) -> Result<CartResponse> {
+    if cart.line_items.is_empty() {
+        return Ok(cart);
+    }
+
+    let pricing_service =
+        PricingService::new(ctx.db.clone(), transactional_event_bus_from_context(ctx));
+    let mut updates = Vec::new();
+    for line_item in &cart.line_items {
+        let Some(variant_id) = line_item.variant_id else {
+            continue;
+        };
+        let pricing_context =
+            build_store_pricing_context(&cart, request_context, line_item.quantity);
+        let resolved_price = pricing_service
+            .resolve_variant_price(tenant_id, variant_id, pricing_context)
+            .await
+            .map_err(|err| Error::BadRequest(err.to_string()))?
+            .ok_or_else(|| {
+                Error::BadRequest(format!(
+                    "No storefront price for variant {} in currency {}",
+                    variant_id, cart.currency_code
+                ))
+            })?;
+        updates.push(rustok_cart::services::cart::CartLineItemPricingUpdate {
+            line_item_id: line_item.id,
+            unit_price: resolved_price.amount,
+        });
+    }
+
+    if updates.is_empty() {
+        Ok(cart)
+    } else {
+        cart_service
+            .reprice_line_items(tenant_id, cart.id, updates)
+            .await
+            .map_err(map_cart_error)
+    }
+}
+
 async fn enrich_storefront_cart(
     ctx: &AppContext,
     tenant_id: Uuid,
     request_context: &RequestContext,
+    tenant_default_locale: &str,
     cart: CartResponse,
 ) -> Result<CartResponse> {
     let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, request_context);
-    enrich_cart_delivery_groups(&ctx.db, tenant_id, cart, public_channel_slug.as_deref())
-        .await
-        .map_err(|err| Error::BadRequest(err.to_string()))
+    enrich_cart_delivery_groups(
+        &ctx.db,
+        tenant_id,
+        cart,
+        public_channel_slug.as_deref(),
+        Some(request_context.locale.as_str()),
+        Some(tenant_default_locale),
+    )
+    .await
+    .map_err(|err| Error::BadRequest(err.to_string()))
 }
 
 fn requested_cart_context(
@@ -1075,6 +1248,8 @@ async fn validate_selected_shipping_option(
     shipping_selections: Option<&[crate::dto::CartShippingSelectionInput]>,
     currency_code: &str,
     public_channel_slug: Option<&str>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
 ) -> Result<()> {
     let service = FulfillmentService::new(ctx.db.clone());
     let selections = if let Some(shipping_selections) = shipping_selections {
@@ -1110,7 +1285,12 @@ async fn validate_selected_shipping_option(
         )
         .unwrap_or_else(|| "default".to_string())]);
         let option = service
-            .get_shipping_option(tenant_id, selected_shipping_option_id)
+            .get_shipping_option(
+                tenant_id,
+                selected_shipping_option_id,
+                requested_locale,
+                tenant_default_locale,
+            )
             .await
             .map_err(|err| Error::BadRequest(err.to_string()))?;
         if !option.currency_code.eq_ignore_ascii_case(currency_code) {
@@ -1148,11 +1328,28 @@ fn current_shipping_selections(cart: &CartResponse) -> Vec<crate::dto::CartShipp
         .collect()
 }
 
+fn build_store_pricing_context(
+    cart: &CartResponse,
+    request_context: &RequestContext,
+    quantity: i32,
+) -> PriceResolutionContext {
+    PriceResolutionContext {
+        currency_code: cart.currency_code.to_ascii_uppercase(),
+        region_id: cart.region_id,
+        price_list_id: None,
+        channel_id: cart.channel_id.or(request_context.channel_id),
+        channel_slug: storefront_public_channel_slug_for_cart(cart, request_context),
+        quantity: Some(quantity),
+    }
+}
+
 async fn resolve_store_line_item_input(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
-    currency_code: &str,
+    pricing_service: &PricingService,
+    pricing_context: &PriceResolutionContext,
     locale: &str,
+    default_locale: &str,
     public_channel_slug: Option<&str>,
     input: StoreAddCartLineItemInput,
 ) -> Result<AddCartLineItemInput> {
@@ -1176,49 +1373,35 @@ async fn resolve_store_line_item_input(
         return Err(Error::NotFound);
     }
 
-    let product_translation_model = product_translation::Entity::find()
+    let product_translation_models = product_translation::Entity::find()
         .filter(product_translation::Column::ProductId.eq(product_model.id))
-        .filter(product_translation::Column::Locale.eq(locale))
-        .one(db)
+        .all(db)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
-    let fallback_translation_model = if product_translation_model.is_none() {
-        product_translation::Entity::find()
-            .filter(product_translation::Column::ProductId.eq(product_model.id))
-            .order_by_asc(product_translation::Column::Locale)
-            .one(db)
-            .await
-            .map_err(|err| Error::BadRequest(err.to_string()))?
-    } else {
-        None
-    };
-
-    let variant_translation_model = variant_translation::Entity::find()
+    let variant_translation_models = variant_translation::Entity::find()
         .filter(variant_translation::Column::VariantId.eq(variant.id))
-        .filter(variant_translation::Column::Locale.eq(locale))
-        .one(db)
+        .all(db)
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?;
 
-    let selected_price = price::Entity::find()
-        .filter(price::Column::VariantId.eq(variant.id))
-        .filter(price::Column::CurrencyCode.eq(currency_code.to_ascii_uppercase()))
-        .order_by_asc(price::Column::RegionId)
-        .one(db)
+    let resolved_price = pricing_service
+        .resolve_variant_price(tenant_id, variant.id, pricing_context.clone())
         .await
         .map_err(|err| Error::BadRequest(err.to_string()))?
         .ok_or_else(|| {
             Error::BadRequest(format!(
                 "No storefront price for variant {} in currency {}",
-                variant.id, currency_code
+                variant.id, pricing_context.currency_code
             ))
         })?;
     validate_store_variant_inventory(db, tenant_id, &variant, input.quantity, public_channel_slug)
         .await?;
 
-    let base_title = product_translation_model
-        .as_ref()
-        .or(fallback_translation_model.as_ref())
+    let base_title = pick_product_translation(
+        &product_translation_models,
+        locale,
+        default_locale,
+    )
         .map(|translation| translation.title.clone())
         .unwrap_or_else(|| {
             variant
@@ -1226,7 +1409,9 @@ async fn resolve_store_line_item_input(
                 .clone()
                 .unwrap_or_else(|| format!("Variant {}", variant.id))
         });
-    let title = match variant_translation_model.and_then(|translation| translation.title) {
+    let title = match pick_variant_translation(&variant_translation_models, locale, default_locale)
+        .and_then(|translation| translation.title.clone())
+    {
         Some(variant_title) if !variant_title.trim().is_empty() => {
             format!("{base_title} / {}", variant_title.trim())
         }
@@ -1244,12 +1429,48 @@ async fn resolve_store_line_item_input(
         sku: variant.sku.clone(),
         title,
         quantity: input.quantity,
-        unit_price: selected_price.amount,
+        unit_price: resolved_price.amount,
         metadata: merge_metadata(
             input.metadata,
             seller_snapshot_metadata(product_model.seller_id.as_deref()),
         ),
     })
+}
+
+fn pick_product_translation<'a>(
+    translations: &'a [product_translation::Model],
+    locale: &str,
+    default_locale: &str,
+) -> Option<&'a product_translation::Model> {
+    translations
+        .iter()
+        .find(|translation| locale_tags_match(&translation.locale, locale))
+        .or_else(|| {
+            (!locale_tags_match(default_locale, locale)).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
+            })?
+        })
+        .or_else(|| translations.first())
+}
+
+fn pick_variant_translation<'a>(
+    translations: &'a [variant_translation::Model],
+    locale: &str,
+    default_locale: &str,
+) -> Option<&'a variant_translation::Model> {
+    translations
+        .iter()
+        .find(|translation| locale_tags_match(&translation.locale, locale))
+        .or_else(|| {
+            (!locale_tags_match(default_locale, locale)).then(|| {
+                translations
+                    .iter()
+                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
+            })?
+        })
+        .or_else(|| translations.first())
 }
 
 async fn validate_store_line_item_quantity(
@@ -1536,9 +1757,11 @@ mod tests {
         AuthContext, AuthContextExtension, ChannelContext, ChannelContextExtension, TenantContext,
         TenantContextExtension,
     };
+    use rustok_cart::dto::SetCartAdjustmentInput;
     use rustok_core::events::EventTransport;
     use rustok_core::Permission;
-    use rustok_region::dto::{CreateRegionInput, RegionResponse};
+    use rustok_pricing::PriceResolutionContext;
+    use rustok_region::dto::{CreateRegionInput, RegionResponse, RegionTranslationInput};
     use rustok_region::services::RegionService;
     use rustok_test_utils::db::setup_test_db;
     use rustok_test_utils::{mock_transactional_event_bus, MockEventTransport};
@@ -1552,9 +1775,9 @@ mod tests {
     use crate::dto::{
         AddCartLineItemInput, CartResponse, CreateCartInput, CreateProductInput,
         CreateShippingOptionInput, CreateVariantInput, PriceInput, ProductTranslationInput,
-        StoreContextResponse,
+        ShippingOptionTranslationInput, StoreContextResponse,
     };
-    use crate::{CartService, CatalogService, CustomerService, FulfillmentService};
+    use crate::{CartService, CatalogService, CustomerService, FulfillmentService, PricingService};
     use rustok_customer::dto::CreateCustomerInput;
 
     mod support {
@@ -1585,6 +1808,17 @@ mod tests {
             line_items: Vec::new(),
             adjustments: Vec::new(),
             delivery_groups: Vec::new(),
+        }
+    }
+
+    fn pricing_context(currency_code: &str, quantity: i32) -> PriceResolutionContext {
+        PriceResolutionContext {
+            currency_code: currency_code.to_ascii_uppercase(),
+            region_id: None,
+            price_list_id: None,
+            channel_id: None,
+            channel_slug: None,
+            quantity: Some(quantity),
         }
     }
 
@@ -1935,6 +2169,7 @@ mod tests {
                     "locale": "de",
                     "currency_code": "USD",
                     "selected_shipping_option_id": shipping_option_id,
+                    "shipping_selections": [],
                     "customer_id": customer_id,
                     "email": "buyer@example.com"
                 }
@@ -2150,7 +2385,10 @@ mod tests {
             .create_shipping_option(
                 tenant_id,
                 CreateShippingOptionInput {
-                    name: "Visible Shipping".to_string(),
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Visible Shipping".to_string(),
+                    }],
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("9.99").expect("valid decimal"),
                     provider_id: None,
@@ -2164,7 +2402,10 @@ mod tests {
             .create_shipping_option(
                 tenant_id,
                 CreateShippingOptionInput {
-                    name: "Hidden Shipping".to_string(),
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Hidden Shipping".to_string(),
+                    }],
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("19.99").expect("valid decimal"),
                     provider_id: None,
@@ -2258,7 +2499,10 @@ mod tests {
             .create_shipping_option(
                 tenant_id,
                 CreateShippingOptionInput {
-                    name: "Default Shipping".to_string(),
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Default Shipping".to_string(),
+                    }],
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("9.99").expect("valid decimal"),
                     provider_id: None,
@@ -2276,7 +2520,10 @@ mod tests {
             .create_shipping_option(
                 tenant_id,
                 CreateShippingOptionInput {
-                    name: "Bulky Freight".to_string(),
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Bulky Freight".to_string(),
+                    }],
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("29.99").expect("valid decimal"),
                     provider_id: None,
@@ -2317,7 +2564,7 @@ mod tests {
                 AddCartLineItemInput {
                     product_id: Some(published.id),
                     variant_id: Some(variant.id),
-                    shipping_profile_slug: None,
+                    shipping_profile_slug: Some("bulky".to_string()),
                     sku: variant.sku.clone(),
                     title: variant.title.clone(),
                     quantity: 1,
@@ -2414,7 +2661,10 @@ mod tests {
             .create_shipping_option(
                 tenant_id,
                 CreateShippingOptionInput {
-                    name: "Default Shipping".to_string(),
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Default Shipping".to_string(),
+                    }],
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("9.99").expect("valid decimal"),
                     provider_id: None,
@@ -2455,7 +2705,7 @@ mod tests {
                 AddCartLineItemInput {
                     product_id: Some(published.id),
                     variant_id: Some(variant.id),
-                    shipping_profile_slug: None,
+                    shipping_profile_slug: Some("bulky".to_string()),
                     sku: variant.sku.clone(),
                     title: variant.title.clone(),
                     quantity: 1,
@@ -2502,15 +2752,23 @@ mod tests {
             .expect("update cart body should read");
         assert_eq!(
             status,
-            StatusCode::BAD_REQUEST,
+            StatusCode::OK,
             "unexpected update cart body: {}",
             String::from_utf8_lossy(&body)
         );
-        assert!(
-            String::from_utf8_lossy(&body)
-                .contains("not compatible with the cart shipping profiles"),
-            "unexpected update cart body: {}",
-            String::from_utf8_lossy(&body)
+        let updated_cart: serde_json::Value =
+            serde_json::from_slice(&body).expect("updated cart response should be JSON");
+        assert_eq!(
+            updated_cart["cart"]["selected_shipping_option_id"],
+            json!(null)
+        );
+        assert_eq!(
+            updated_cart["cart"]["delivery_groups"][0]["shipping_profile_slug"],
+            json!("bulky")
+        );
+        assert_eq!(
+            updated_cart["cart"]["delivery_groups"][0]["available_shipping_options"],
+            json!([])
         );
     }
 
@@ -2830,9 +3088,11 @@ mod tests {
         let service = CatalogService::new(db.clone(), mock_transactional_event_bus());
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
+        let mut product_input = storefront_product_input();
+        product_input.variants[0].inventory_quantity = 5;
 
         let created = service
-            .create_product(tenant_id, actor_id, storefront_product_input())
+            .create_product(tenant_id, actor_id, product_input)
             .await
             .expect("product should be created");
         let published = service
@@ -2843,12 +3103,16 @@ mod tests {
             .variants
             .first()
             .expect("published product must include variant");
+        let pricing_service = PricingService::new(db.clone(), mock_transactional_event_bus());
+        let pricing_context = pricing_context("EUR", 2);
 
         let resolved = resolve_store_line_item_input(
             &db,
             tenant_id,
-            "EUR",
+            &pricing_service,
+            &pricing_context,
             "de",
+            "en",
             None,
             StoreAddCartLineItemInput {
                 variant_id: variant.id,
@@ -2870,7 +3134,10 @@ mod tests {
         assert_eq!(resolved.quantity, 2);
         assert_eq!(
             resolved.metadata,
-            json!({ "source": "store-line-item-test" })
+            json!({
+                "seller": { "id": null, "scope": null },
+                "source": "store-line-item-test"
+            })
         );
     }
 
@@ -2894,12 +3161,16 @@ mod tests {
             .variants
             .first()
             .expect("published product must include variant");
+        let pricing_service = PricingService::new(db.clone(), mock_transactional_event_bus());
+        let pricing_context = pricing_context("USD", 1);
 
         let error = resolve_store_line_item_input(
             &db,
             tenant_id,
-            "USD",
+            &pricing_service,
+            &pricing_context,
             "de",
+            "en",
             None,
             StoreAddCartLineItemInput {
                 variant_id: variant.id,
@@ -2927,9 +3198,11 @@ mod tests {
         let service = CatalogService::new(db.clone(), mock_transactional_event_bus());
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
+        let mut product_input = storefront_product_input();
+        product_input.variants[0].inventory_quantity = 5;
 
         let created = service
-            .create_product(tenant_id, actor_id, storefront_product_input())
+            .create_product(tenant_id, actor_id, product_input)
             .await
             .expect("product should be created");
         let published = service
@@ -2940,12 +3213,16 @@ mod tests {
             .variants
             .first()
             .expect("published product must include variant");
+        let pricing_service = PricingService::new(db.clone(), mock_transactional_event_bus());
+        let pricing_context = pricing_context("EUR", 1);
 
         let resolved = resolve_store_line_item_input(
             &db,
             tenant_id,
-            "EUR",
+            &pricing_service,
+            &pricing_context,
             "fr",
+            "en",
             None,
             StoreAddCartLineItemInput {
                 variant_id: variant.id,
@@ -2970,12 +3247,17 @@ mod tests {
     async fn storefront_line_item_resolution_returns_not_found_for_unknown_variant() {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let pricing_service = PricingService::new(db.clone(), mock_transactional_event_bus());
+        let pricing_context = pricing_context("EUR", 1);
 
         let error = resolve_store_line_item_input(
             &db,
-            Uuid::new_v4(),
-            "EUR",
+            tenant_id,
+            &pricing_service,
+            &pricing_context,
             "de",
+            "en",
             None,
             StoreAddCartLineItemInput {
                 variant_id: Uuid::new_v4(),
@@ -3011,13 +3293,17 @@ mod tests {
             .variants
             .first()
             .expect("published product must include variant");
+        let pricing_service = PricingService::new(db.clone(), mock_transactional_event_bus());
+        let pricing_context = pricing_context("EUR", 1);
         set_stock_location_channel_visibility(&db, tenant_id, &["mobile-app"]).await;
 
         let error = resolve_store_line_item_input(
             &db,
             tenant_id,
-            "EUR",
+            &pricing_service,
+            &pricing_context,
             "de",
+            "en",
             Some("web-store"),
             StoreAddCartLineItemInput {
                 variant_id: variant.id,
@@ -3108,7 +3394,7 @@ mod tests {
             default_locale: "en".to_string(),
             is_active: true,
         };
-        let app = commerce_transport_router(test_app_context(db), tenant);
+        let app = commerce_transport_router(test_app_context(db.clone()), tenant);
 
         let create_response = app
             .clone()
@@ -3208,7 +3494,10 @@ mod tests {
             .create_region(
                 tenant_id,
                 CreateRegionInput {
-                    name: "Europe".to_string(),
+                    translations: vec![RegionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Europe".to_string(),
+                    }],
                     currency_code: "eur".to_string(),
                     tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                     tax_included: true,
@@ -3218,7 +3507,7 @@ mod tests {
             )
             .await
             .expect("region should be created");
-        let app = commerce_transport_router(test_app_context(db), tenant);
+        let app = commerce_transport_router(test_app_context(db.clone()), tenant);
 
         let create_response = app
             .clone()
@@ -3285,7 +3574,10 @@ mod tests {
             .create_shipping_option(
                 tenant_id,
                 CreateShippingOptionInput {
-                    name: "EU Standard".to_string(),
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "EU Standard".to_string(),
+                    }],
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("9.99").expect("valid decimal"),
                     provider_id: None,
@@ -3299,7 +3591,10 @@ mod tests {
             .create_shipping_option(
                 tenant_id,
                 CreateShippingOptionInput {
-                    name: "US Express".to_string(),
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "US Express".to_string(),
+                    }],
                     currency_code: "usd".to_string(),
                     amount: Decimal::from_str("19.99").expect("valid decimal"),
                     provider_id: None,
@@ -3393,9 +3688,11 @@ mod tests {
             default_locale: "en".to_string(),
             is_active: true,
         };
+        let mut product_input = storefront_product_input();
+        product_input.variants[0].inventory_quantity = 5;
         let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
         let created = catalog
-            .create_product(tenant_id, actor_id, storefront_product_input())
+            .create_product(tenant_id, actor_id, product_input)
             .await
             .expect("product should be created");
         let published = catalog
@@ -3406,7 +3703,7 @@ mod tests {
             .variants
             .first()
             .expect("published product must include variant");
-        let app = commerce_transport_router(test_app_context(db), tenant);
+        let app = commerce_transport_router(test_app_context(db.clone()), tenant);
 
         let create_response = app
             .clone()
@@ -3490,7 +3787,10 @@ mod tests {
         assert_eq!(updated_cart["line_items"][0]["quantity"], json!(2));
         assert_eq!(
             updated_cart["line_items"][0]["metadata"],
-            json!({ "source": "transport-line-item-test" })
+            json!({
+                "seller": { "id": null, "scope": null },
+                "source": "transport-line-item-test"
+            })
         );
     }
 
@@ -3581,9 +3881,11 @@ mod tests {
             default_locale: "en".to_string(),
             is_active: true,
         };
+        let mut product_input = storefront_product_input();
+        product_input.variants[0].inventory_quantity = 5;
         let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
         let created = catalog
-            .create_product(tenant_id, actor_id, storefront_product_input())
+            .create_product(tenant_id, actor_id, product_input)
             .await
             .expect("product should be created");
         let published = catalog
@@ -3594,7 +3896,7 @@ mod tests {
             .variants
             .first()
             .expect("published product must include variant");
-        let app = commerce_transport_router(test_app_context(db), tenant);
+        let app = commerce_transport_router(test_app_context(db.clone()), tenant);
 
         let create_cart_response = app
             .clone()
@@ -3624,6 +3926,42 @@ mod tests {
         let cart_id = created_cart["cart"]["id"]
             .as_str()
             .expect("cart id should be returned");
+        let shipping_option = FulfillmentService::new(db.clone())
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Standard".to_string(),
+                    }],
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("9.99").expect("valid decimal"),
+                    provider_id: None,
+                    allowed_shipping_profile_slugs: None,
+                    metadata: json!({ "source": "transport-checkout-test-shipping-option" }),
+                },
+            )
+            .await
+            .expect("shipping option should be created");
+        let update_cart_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "selected_shipping_option_id": shipping_option.id
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("update cart request should succeed");
+        assert_eq!(update_cart_response.status(), StatusCode::OK);
 
         let add_line_item_response = app
             .clone()
@@ -3756,7 +4094,10 @@ mod tests {
             .create_region(
                 tenant_id,
                 CreateRegionInput {
-                    name: "Europe".to_string(),
+                    translations: vec![RegionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Europe".to_string(),
+                    }],
                     currency_code: "eur".to_string(),
                     tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                     tax_included: true,
@@ -3770,7 +4111,10 @@ mod tests {
             .create_shipping_option(
                 tenant_id,
                 CreateShippingOptionInput {
-                    name: "Standard".to_string(),
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Standard".to_string(),
+                    }],
                     currency_code: "eur".to_string(),
                     amount: Decimal::from_str("9.99").expect("valid decimal"),
                     provider_id: None,
@@ -3780,9 +4124,11 @@ mod tests {
             )
             .await
             .expect("shipping option should be created");
+        let mut product_input = storefront_product_input();
+        product_input.variants[0].inventory_quantity = 5;
         let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
         let created = catalog
-            .create_product(tenant_id, actor_id, storefront_product_input())
+            .create_product(tenant_id, actor_id, product_input)
             .await
             .expect("product should be created");
         let published = catalog
@@ -3865,7 +4211,7 @@ mod tests {
         assert_eq!(updated_cart["cart"]["region_id"], json!(region.id));
         assert_eq!(
             updated_cart["cart"]["selected_shipping_option_id"],
-            json!(shipping_option.id)
+            json!(null)
         );
         assert_eq!(updated_cart["context"]["locale"], json!("de"));
         assert_eq!(updated_cart["context"]["region"]["id"], json!(region.id));
@@ -4054,9 +4400,11 @@ mod tests {
             scopes: vec![],
             grant_type: "direct".to_string(),
         };
+        let mut product_input = storefront_product_input();
+        product_input.variants[0].inventory_quantity = 5;
         let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
         let created = catalog
-            .create_product(tenant_id, actor_id, storefront_product_input())
+            .create_product(tenant_id, actor_id, product_input)
             .await
             .expect("product should be created");
         let published = catalog
@@ -4069,7 +4417,7 @@ mod tests {
             .expect("published product must include variant");
         let app = commerce_transport_router(test_app_context(db.clone()), tenant.clone());
         let authed_app =
-            commerce_transport_router_with_auth(test_app_context(db), tenant, Some(auth));
+            commerce_transport_router_with_auth(test_app_context(db.clone()), tenant, Some(auth));
 
         let create_cart_response = app
             .clone()
@@ -4100,6 +4448,42 @@ mod tests {
         let cart_id = created_cart["cart"]["id"]
             .as_str()
             .expect("cart id should be returned");
+        let shipping_option = FulfillmentService::new(db.clone())
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Standard".to_string(),
+                    }],
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("9.99").expect("valid decimal"),
+                    provider_id: None,
+                    allowed_shipping_profile_slugs: None,
+                    metadata: json!({ "source": "transport-checkout-test-shipping-option" }),
+                },
+            )
+            .await
+            .expect("shipping option should be created");
+        let update_cart_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "selected_shipping_option_id": shipping_option.id
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("update cart request should succeed");
+        assert_eq!(update_cart_response.status(), StatusCode::OK);
 
         let add_line_item_response = app
             .clone()
@@ -4414,9 +4798,11 @@ mod tests {
             default_locale: "en".to_string(),
             is_active: true,
         };
+        let mut product_input = storefront_product_input();
+        product_input.variants[0].inventory_quantity = 5;
         let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
         let created = catalog
-            .create_product(tenant_id, actor_id, storefront_product_input())
+            .create_product(tenant_id, actor_id, product_input)
             .await
             .expect("product should be created");
         let published = catalog
@@ -4432,7 +4818,7 @@ mod tests {
         let channel_id = channel.id;
         seed_channel_binding(&db, &channel, MODULE_SLUG, true).await;
         let app = commerce_transport_router_with_context(
-            test_app_context(db),
+            test_app_context(db.clone()),
             tenant,
             None,
             Some(channel),
@@ -4472,6 +4858,42 @@ mod tests {
             created_cart["cart"]["channel_slug"],
             json!("marketplace-eu")
         );
+        let shipping_option = FulfillmentService::new(db.clone())
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Channel Shipping".to_string(),
+                    }],
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("9.99").expect("valid decimal"),
+                    provider_id: None,
+                    allowed_shipping_profile_slugs: None,
+                    metadata: json!({ "source": "channel-checkout-shipping-option" }),
+                },
+            )
+            .await
+            .expect("shipping option should be created");
+        let update_cart_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "selected_shipping_option_id": shipping_option.id
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("update cart request should succeed");
+        assert_eq!(update_cart_response.status(), StatusCode::OK);
 
         let add_line_item_response = app
             .clone()
@@ -4573,9 +4995,11 @@ mod tests {
         };
         let customer_id =
             create_customer_for_user(&db, tenant_id, actor_id, "customer@example.com").await;
+        let mut product_input = storefront_product_input();
+        product_input.variants[0].inventory_quantity = 5;
         let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
         let created = catalog
-            .create_product(tenant_id, actor_id, storefront_product_input())
+            .create_product(tenant_id, actor_id, product_input)
             .await
             .expect("product should be created");
         let published = catalog
@@ -4586,7 +5010,8 @@ mod tests {
             .variants
             .first()
             .expect("published product must include variant");
-        let app = commerce_transport_router_with_auth(test_app_context(db), tenant, Some(auth));
+        let app =
+            commerce_transport_router_with_auth(test_app_context(db.clone()), tenant, Some(auth));
 
         let create_cart_response = app
             .clone()
@@ -4618,6 +5043,42 @@ mod tests {
             .as_str()
             .expect("cart id should be returned");
         assert_eq!(created_cart["cart"]["customer_id"], json!(customer_id));
+        let shipping_option = FulfillmentService::new(db.clone())
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Order Shipping".to_string(),
+                    }],
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("9.99").expect("valid decimal"),
+                    provider_id: None,
+                    allowed_shipping_profile_slugs: None,
+                    metadata: json!({ "source": "transport-order-test-shipping-option" }),
+                },
+            )
+            .await
+            .expect("shipping option should be created");
+        let update_cart_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "selected_shipping_option_id": shipping_option.id
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("update cart request should succeed");
+        assert_eq!(update_cart_response.status(), StatusCode::OK);
 
         let add_line_item_response = app
             .clone()
@@ -4724,6 +5185,130 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn store_cart_transport_returns_typed_adjustments_and_totals() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_store_tenant_context(&db, tenant_id).await;
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Store Test Tenant".to_string(),
+            slug: format!("store-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let created = catalog
+            .create_product(tenant_id, actor_id, storefront_product_input())
+            .await
+            .expect("product should be created");
+        let published = catalog
+            .publish_product(tenant_id, actor_id, created.id)
+            .await
+            .expect("product should be published");
+        let variant = published
+            .variants
+            .first()
+            .expect("published product must include variant");
+        let cart_service = CartService::new(db.clone());
+        let app = commerce_transport_router(test_app_context(db.clone()), tenant);
+        let cart = cart_service
+            .create_cart(
+                tenant_id,
+                CreateCartInput {
+                    customer_id: None,
+                    email: Some("buyer@example.com".to_string()),
+                    region_id: None,
+                    country_code: None,
+                    currency_code: "eur".to_string(),
+                    metadata: json!({ "source": "store-cart-adjustment-cart" }),
+                    locale_code: Some("de".to_string()),
+                    selected_shipping_option_id: None,
+                },
+            )
+            .await
+            .expect("cart should be created");
+        let cart = cart_service
+            .add_line_item(
+                tenant_id,
+                cart.id,
+                AddCartLineItemInput {
+                    product_id: Some(published.id),
+                    variant_id: Some(variant.id),
+                    shipping_profile_slug: None,
+                    sku: variant.sku.clone(),
+                    title: variant.title.clone(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                    metadata: json!({ "source": "store-cart-adjustment-line-item" }),
+                },
+            )
+            .await
+            .expect("line item should be added");
+        let cart_id = cart.id;
+        let line_item_id = cart.line_items[0].id;
+
+        cart_service
+            .set_adjustments(
+                tenant_id,
+                cart_id,
+                vec![SetCartAdjustmentInput {
+                    line_item_id: Some(line_item_id),
+                    source_type: "Promotion".to_string(),
+                    source_id: Some("promo-store".to_string()),
+                    amount: Decimal::from_str("4.99").expect("valid decimal"),
+                    metadata: json!({
+                        "rule_code": "store-adjustment",
+                        "display_label": "Store promotion"
+                    }),
+                }],
+            )
+            .await
+            .expect("cart adjustment should be stored");
+
+        let get_cart_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/store/carts/{cart_id}"))
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("get cart request should succeed");
+        let get_cart_status = get_cart_response.status();
+        let get_cart_body = to_bytes(get_cart_response.into_body(), usize::MAX)
+            .await
+            .expect("get cart body should read");
+        assert_eq!(
+            get_cart_status,
+            StatusCode::OK,
+            "unexpected get cart adjustment body: {}",
+            String::from_utf8_lossy(&get_cart_body)
+        );
+
+        let cart: serde_json::Value =
+            serde_json::from_slice(&get_cart_body).expect("cart response should be JSON");
+        assert_eq!(cart["subtotal_amount"], json!("19.99"));
+        assert_eq!(cart["adjustment_total"], json!("4.99"));
+        assert_eq!(cart["total_amount"], json!("15.00"));
+        assert_eq!(cart["adjustments"][0]["line_item_id"], json!(line_item_id));
+        assert_eq!(cart["adjustments"][0]["source_type"], json!("promotion"));
+        assert_eq!(cart["adjustments"][0]["source_id"], json!("promo-store"));
+        assert_eq!(cart["adjustments"][0]["amount"], json!("4.99"));
+        assert_eq!(cart["adjustments"][0]["currency_code"], json!("EUR"));
+        assert_eq!(
+            cart["adjustments"][0]["metadata"],
+            json!({ "rule_code": "store-adjustment" })
+        );
+    }
+
+    #[tokio::test]
     async fn store_order_transport_rejects_order_for_another_customer() {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
@@ -4761,9 +5346,11 @@ mod tests {
         create_customer_for_user(&db, tenant_id, owner_user_id, "owner@example.com").await;
         create_customer_for_user(&db, tenant_id, other_user_id, "other@example.com").await;
         let actor_id = owner_user_id;
+        let mut product_input = storefront_product_input();
+        product_input.variants[0].inventory_quantity = 5;
         let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
         let created = catalog
-            .create_product(tenant_id, actor_id, storefront_product_input())
+            .create_product(tenant_id, actor_id, product_input)
             .await
             .expect("product should be created");
         let published = catalog
@@ -4779,8 +5366,11 @@ mod tests {
             tenant.clone(),
             Some(owner_auth),
         );
-        let other_app =
-            commerce_transport_router_with_auth(test_app_context(db), tenant, Some(other_auth));
+        let other_app = commerce_transport_router_with_auth(
+            test_app_context(db.clone()),
+            tenant,
+            Some(other_auth),
+        );
 
         let create_cart_response = owner_app
             .clone()
@@ -4811,6 +5401,42 @@ mod tests {
         let cart_id = created_cart["cart"]["id"]
             .as_str()
             .expect("cart id should be returned");
+        let shipping_option = FulfillmentService::new(db.clone())
+            .create_shipping_option(
+                tenant_id,
+                CreateShippingOptionInput {
+                    translations: vec![ShippingOptionTranslationInput {
+                        locale: "en".to_string(),
+                        name: "Ownership Shipping".to_string(),
+                    }],
+                    currency_code: "eur".to_string(),
+                    amount: Decimal::from_str("9.99").expect("valid decimal"),
+                    provider_id: None,
+                    allowed_shipping_profile_slugs: None,
+                    metadata: json!({ "source": "transport-order-ownership-shipping-option" }),
+                },
+            )
+            .await
+            .expect("shipping option should be created");
+        let update_cart_response = owner_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/store/carts/{cart_id}"))
+                    .header("content-type", "application/json")
+                    .header("X-Tenant-ID", tenant_id.to_string())
+                    .body(Body::from(
+                        json!({
+                            "selected_shipping_option_id": shipping_option.id
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("update cart request should succeed");
+        assert_eq!(update_cart_response.status(), StatusCode::OK);
 
         let add_line_item_response = owner_app
             .clone()

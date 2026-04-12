@@ -3,8 +3,8 @@ use flex::{persist_localized_values, prepare_attached_values_create, resolve_att
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
 };
 use serde_json::Value;
 use std::collections::HashSet;
@@ -18,8 +18,9 @@ use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
-    CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput, ListOrdersInput,
-    OrderAdjustmentResponse, OrderLineItemResponse, OrderResponse,
+    CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput,
+    CreateOrderTaxLineInput, ListOrdersInput, OrderAdjustmentResponse, OrderLineItemResponse,
+    OrderResponse, OrderTaxLineResponse,
 };
 use crate::entities;
 use crate::error::{OrderError, OrderResult};
@@ -78,7 +79,8 @@ impl OrderService {
         let channel_slug = channel_slug
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
-        let preferred_locale = Self::preferred_order_locale_from_metadata(&input.metadata);
+        let preferred_locale = Self::preferred_order_locale_from_metadata(&input.metadata)
+            .unwrap_or(load_tenant_default_locale(&self.db, tenant_id).await?);
         let prepared_custom_fields = self
             .prepare_order_custom_fields_for_create(
                 tenant_id,
@@ -98,12 +100,28 @@ impl OrderService {
         }
         let adjustment_total =
             Self::validate_adjustments(&input.adjustments, input.line_items.len())?;
+        let tax_total = Self::validate_tax_lines(
+            &input.tax_lines,
+            input.line_items.len(),
+            currency_code.as_str(),
+        )?;
+        let tax_included = input.tax_lines.iter().any(|line| {
+            line.metadata
+                .get("tax_included")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+        });
         if adjustment_total > subtotal_amount {
             return Err(OrderError::Validation(
                 "adjustment total cannot exceed order subtotal".to_string(),
             ));
         }
-        let total_amount = subtotal_amount - adjustment_total;
+        let base_total = subtotal_amount - adjustment_total;
+        let total_amount = if tax_included {
+            base_total
+        } else {
+            base_total + tax_total
+        };
 
         let order_id = generate_id();
         let now = Utc::now();
@@ -118,6 +136,8 @@ impl OrderService {
             status: Set(STATUS_PENDING.to_string()),
             currency_code: Set(currency_code.clone()),
             total_amount: Set(total_amount),
+            tax_total: Set(tax_total),
+            tax_included: Set(tax_included),
             metadata: Set(order_metadata),
             payment_id: Set(None),
             payment_method: Set(None),
@@ -148,6 +168,7 @@ impl OrderService {
         let mut order_line_item_ids = Vec::with_capacity(input.line_items.len());
         for item in &input.line_items {
             let order_line_item_id = generate_id();
+            let item_metadata = sanitize_line_item_metadata(item.metadata.clone());
             entities::order_line_item::ActiveModel {
                 id: Set(order_line_item_id),
                 order_id: Set(order_id),
@@ -156,17 +177,27 @@ impl OrderService {
                 shipping_profile_slug: Set(item.shipping_profile_slug.clone()),
                 seller_id: Set(normalize_seller_id(item.seller_id.as_deref())),
                 sku: Set(item.sku.clone()),
-                title: Set(item.title.clone()),
                 quantity: Set(item.quantity),
                 unit_price: Set(item.unit_price),
                 total_price: Set(item.unit_price * Decimal::from(item.quantity)),
                 currency_code: Set(currency_code.clone()),
-                metadata: Set(item.metadata.clone()),
+                metadata: Set(item_metadata),
                 created_at: Set(now.into()),
             }
             .insert(&txn)
             .await?;
             order_line_item_ids.push(order_line_item_id);
+
+            entities::order_line_item_translation::ActiveModel {
+                id: Set(generate_id()),
+                order_line_item_id: Set(order_line_item_id),
+                locale: Set(preferred_locale.clone()),
+                title: Set(item.title.clone()),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            }
+            .insert(&txn)
+            .await?;
         }
 
         for adjustment in &input.adjustments {
@@ -184,6 +215,28 @@ impl OrderService {
                 currency_code: Set(currency_code.clone()),
                 metadata: Set(sanitize_adjustment_metadata(adjustment.metadata.clone())),
                 created_at: Set(now.into()),
+            }
+            .insert(&txn)
+            .await?;
+        }
+
+        for tax_line in &input.tax_lines {
+            entities::order_tax_line::ActiveModel {
+                id: Set(generate_id()),
+                order_id: Set(order_id),
+                order_line_item_id: Set(tax_line
+                    .line_item_index
+                    .map(|index| order_line_item_ids[index])),
+                shipping_option_id: Set(tax_line.shipping_option_id),
+                description: Set(normalize_tax_line_description(
+                    tax_line.description.as_deref(),
+                )),
+                rate: Set(tax_line.rate),
+                amount: Set(tax_line.amount),
+                currency_code: Set(currency_code.clone()),
+                metadata: Set(sanitize_tax_line_metadata(tax_line.metadata.clone())),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
             }
             .insert(&txn)
             .await?;
@@ -210,7 +263,8 @@ impl OrderService {
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id, order_id = %order_id))]
     pub async fn get_order(&self, tenant_id: Uuid, order_id: Uuid) -> OrderResult<OrderResponse> {
-        self.get_order_with_locale_fallback(tenant_id, order_id, PLATFORM_FALLBACK_LOCALE, None)
+        let default_locale = load_tenant_default_locale(&self.db, tenant_id).await?;
+        self.get_order_with_locale_fallback(tenant_id, order_id, default_locale.as_str(), None)
             .await
     }
 
@@ -231,7 +285,8 @@ impl OrderService {
         tenant_id: Uuid,
         input: ListOrdersInput,
     ) -> OrderResult<(Vec<OrderResponse>, u64)> {
-        self.list_orders_with_locale_fallback(tenant_id, input, PLATFORM_FALLBACK_LOCALE, None)
+        let default_locale = load_tenant_default_locale(&self.db, tenant_id).await?;
+        self.list_orders_with_locale_fallback(tenant_id, input, default_locale.as_str(), None)
             .await
     }
 
@@ -363,7 +418,8 @@ impl OrderService {
         let existing = self
             .load_order_model_in_tx(&txn, tenant_id, order_id)
             .await?;
-        let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata);
+        let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
+            .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if existing.status != STATUS_SHIPPED {
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
@@ -414,7 +470,8 @@ impl OrderService {
         let existing = self
             .load_order_model_in_tx(&txn, tenant_id, order_id)
             .await?;
-        let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata);
+        let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
+            .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if !can_cancel(&existing.status) {
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
@@ -474,7 +531,8 @@ impl OrderService {
         let existing = self
             .load_order_model_in_tx(&txn, tenant_id, order_id)
             .await?;
-        let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata);
+        let preferred_locale = Self::preferred_order_locale_from_metadata(&existing.metadata)
+            .unwrap_or(load_tenant_default_locale(&txn, tenant_id).await?);
         if existing.status != expected_from {
             return Err(OrderError::InvalidTransition {
                 from: existing.status,
@@ -569,9 +627,16 @@ impl OrderService {
             .order_by_asc(entities::order_line_item::Column::CreatedAt)
             .all(&self.db)
             .await?;
+        let title_map =
+            load_line_item_titles(&self.db, &line_items, preferred_locale, fallback_locale).await?;
         let adjustments = entities::order_adjustment::Entity::find()
             .filter(entities::order_adjustment::Column::OrderId.eq(order.id))
             .order_by_asc(entities::order_adjustment::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+        let tax_lines = entities::order_tax_line::Entity::find()
+            .filter(entities::order_tax_line::Column::OrderId.eq(order.id))
+            .order_by_asc(entities::order_tax_line::Column::CreatedAt)
             .all(&self.db)
             .await?;
         let resolved_metadata = self
@@ -597,6 +662,8 @@ impl OrderService {
             subtotal_amount,
             adjustment_total,
             total_amount: order.total_amount,
+            tax_total: order.tax_total,
+            tax_included: order.tax_included,
             metadata: resolved_metadata,
             payment_id: order.payment_id,
             payment_method: order.payment_method,
@@ -621,7 +688,7 @@ impl OrderService {
                     shipping_profile_slug: item.shipping_profile_slug,
                     seller_id: item.seller_id,
                     sku: item.sku,
-                    title: item.title,
+                    title: title_map.get(&item.id).cloned().unwrap_or_default(),
                     quantity: item.quantity,
                     unit_price: item.unit_price,
                     total_price: item.total_price,
@@ -642,6 +709,22 @@ impl OrderService {
                     currency_code: adjustment.currency_code,
                     metadata: adjustment.metadata,
                     created_at: adjustment.created_at.with_timezone(&Utc),
+                })
+                .collect(),
+            tax_lines: tax_lines
+                .into_iter()
+                .map(|line| OrderTaxLineResponse {
+                    id: line.id,
+                    order_id: line.order_id,
+                    line_item_id: line.order_line_item_id,
+                    shipping_option_id: line.shipping_option_id,
+                    description: line.description,
+                    rate: line.rate,
+                    amount: line.amount,
+                    currency_code: line.currency_code,
+                    metadata: line.metadata,
+                    created_at: line.created_at.with_timezone(&Utc),
+                    updated_at: line.updated_at.with_timezone(&Utc),
                 })
                 .collect(),
         })
@@ -682,6 +765,43 @@ impl OrderService {
             adjustment_total += adjustment.amount;
         }
         Ok(adjustment_total)
+    }
+
+    fn validate_tax_lines(
+        tax_lines: &[CreateOrderTaxLineInput],
+        line_item_count: usize,
+        currency_code: &str,
+    ) -> OrderResult<Decimal> {
+        let mut tax_total = Decimal::ZERO;
+        for tax_line in tax_lines {
+            tax_line
+                .validate()
+                .map_err(|error| OrderError::Validation(error.to_string()))?;
+            if tax_line.amount <= Decimal::ZERO {
+                return Err(OrderError::Validation(
+                    "tax line amount must be greater than zero".to_string(),
+                ));
+            }
+            if tax_line.rate < Decimal::ZERO {
+                return Err(OrderError::Validation(
+                    "tax line rate must be zero or greater".to_string(),
+                ));
+            }
+            if let Some(index) = tax_line.line_item_index {
+                if index >= line_item_count {
+                    return Err(OrderError::Validation(format!(
+                        "tax line line_item_index {index} is out of range"
+                    )));
+                }
+            }
+            if tax_line.currency_code.trim().to_ascii_uppercase() != currency_code {
+                return Err(OrderError::Validation(
+                    "tax line currency_code must match order currency".to_string(),
+                ));
+            }
+            tax_total += tax_line.amount;
+        }
+        Ok(tax_total)
     }
 
     async fn prepare_order_custom_fields_for_create(
@@ -738,7 +858,7 @@ impl OrderService {
         Ok(resolved.unwrap_or_else(|| serde_json::json!({})))
     }
 
-    fn preferred_order_locale_from_metadata(metadata: &Value) -> String {
+    fn preferred_order_locale_from_metadata(metadata: &Value) -> Option<String> {
         metadata
             .get("locale")
             .and_then(Value::as_str)
@@ -765,7 +885,6 @@ impl OrderService {
                     .and_then(Value::as_str)
             })
             .and_then(normalize_locale_tag)
-            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string())
     }
 }
 
@@ -912,4 +1031,134 @@ fn sanitize_adjustment_metadata(metadata: Value) -> Value {
     metadata.remove("localized_label");
 
     Value::Object(metadata)
+}
+
+fn sanitize_line_item_metadata(metadata: Value) -> Value {
+    let mut metadata = match metadata {
+        Value::Object(object) => object,
+        value => return value,
+    };
+
+    metadata.remove("seller_label");
+
+    if let Some(Value::Object(mut seller)) = metadata.remove("seller") {
+        seller.remove("label");
+        metadata.insert("seller".to_string(), Value::Object(seller));
+    }
+
+    Value::Object(metadata)
+}
+
+fn sanitize_tax_line_metadata(metadata: Value) -> Value {
+    let mut metadata = match metadata {
+        Value::Object(object) => object,
+        value => return value,
+    };
+
+    metadata.remove("label");
+    metadata.remove("display_label");
+    metadata.remove("localized_label");
+    metadata.remove("title");
+    metadata.remove("name");
+    metadata.remove("description");
+    metadata.remove("seller_label");
+
+    Value::Object(metadata)
+}
+
+fn normalize_tax_line_description(value: Option<&str>) -> Option<String> {
+    let normalized = value.map(str::trim)?.to_ascii_lowercase();
+    if normalized.is_empty() || normalized.len() > 64 {
+        return None;
+    }
+    if !normalized
+        .chars()
+        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
+    {
+        return None;
+    }
+    Some(normalized)
+}
+
+async fn load_line_item_titles<C>(
+    conn: &C,
+    line_items: &[entities::order_line_item::Model],
+    preferred_locale: &str,
+    fallback_locale: Option<&str>,
+) -> OrderResult<std::collections::HashMap<Uuid, String>>
+where
+    C: sea_orm::ConnectionTrait,
+{
+    let mut titles = std::collections::HashMap::new();
+    if line_items.is_empty() {
+        return Ok(titles);
+    }
+    let line_item_ids = line_items.iter().map(|item| item.id).collect::<Vec<_>>();
+    let rows = entities::order_line_item_translation::Entity::find()
+        .filter(
+            entities::order_line_item_translation::Column::OrderLineItemId
+                .is_in(line_item_ids.clone()),
+        )
+        .all(conn)
+        .await?;
+
+    let mut rows_by_item =
+        std::collections::HashMap::<Uuid, Vec<entities::order_line_item_translation::Model>>::new();
+    for row in rows {
+        rows_by_item.entry(row.order_line_item_id).or_default().push(row);
+    }
+
+    for line_item in line_items {
+        if let Some(title) = rows_by_item
+            .remove(&line_item.id)
+            .and_then(|rows| {
+                select_order_line_item_title(&rows, preferred_locale, fallback_locale)
+            })
+        {
+            titles.insert(line_item.id, title);
+        }
+    }
+
+    Ok(titles)
+}
+
+fn select_order_line_item_title(
+    rows: &[entities::order_line_item_translation::Model],
+    preferred_locale: &str,
+    fallback_locale: Option<&str>,
+) -> Option<String> {
+    let preferred_locale = normalize_locale_tag(preferred_locale)?;
+    let fallback_locale = fallback_locale.and_then(normalize_locale_tag);
+
+    rows.iter()
+        .find(|row| normalize_locale_tag(&row.locale).as_deref() == Some(preferred_locale.as_str()))
+        .or_else(|| {
+            fallback_locale.as_deref().and_then(|fallback_locale| {
+                rows.iter().find(|row| {
+                    normalize_locale_tag(&row.locale).as_deref() == Some(fallback_locale)
+                })
+            })
+        })
+        .or_else(|| rows.first())
+        .map(|row| row.title.clone())
+}
+
+async fn load_tenant_default_locale<C>(conn: &C, tenant_id: Uuid) -> OrderResult<String>
+where
+    C: ConnectionTrait,
+{
+    let row = conn
+        .query_one(Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "SELECT default_locale FROM tenants WHERE id = ?",
+            vec![tenant_id.into()],
+        ))
+        .await?;
+
+    let default_locale = row
+        .and_then(|row| row.try_get::<String>("", "default_locale").ok())
+        .and_then(|locale| normalize_locale_tag(&locale))
+        .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+
+    Ok(default_locale)
 }

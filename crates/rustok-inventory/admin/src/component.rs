@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_api::UiRouteContext;
+use rustok_core::locale_tags_match;
 
 use crate::i18n::t;
 use crate::model::{
@@ -14,7 +15,8 @@ const LOW_STOCK_THRESHOLD: i32 = 5;
 pub fn InventoryAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let initial_locale = ui_locale.clone().unwrap_or_else(|| "en".to_string());
+    let effective_locale = ui_locale.clone();
+    let initial_selected_product_id = route_context.query_value("id").map(ToOwned::to_owned);
     let token = use_token();
     let tenant = use_tenant();
 
@@ -23,9 +25,11 @@ pub fn InventoryAdmin() -> impl IntoView {
     let (selected, set_selected) = signal(Option::<InventoryProductDetail>::None);
     let (search, set_search) = signal(String::new());
     let (status_filter, set_status_filter) = signal(String::new());
-    let (locale, _set_locale) = signal(initial_locale.clone());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
+    let (query_selection_applied, set_query_selection_applied) = signal(false);
+    let effective_locale_for_products = effective_locale.clone();
+    let effective_locale_for_open = effective_locale.clone();
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get()),
@@ -40,7 +44,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                 token.get(),
                 tenant.get(),
                 refresh_nonce.get(),
-                locale.get(),
+                effective_locale_for_products.clone(),
                 search.get(),
                 status_filter.get(),
             )
@@ -94,7 +98,7 @@ pub fn InventoryAdmin() -> impl IntoView {
 
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
-        let locale_value = locale.get_untracked();
+        let locale_value = effective_locale_for_open.clone();
         let not_found_label = open_product_not_found_label.clone();
         let load_error_label = open_load_product_error_label.clone();
         set_busy.set(true);
@@ -113,8 +117,16 @@ pub fn InventoryAdmin() -> impl IntoView {
                     set_selected_id.set(Some(product.id.clone()));
                     set_selected.set(Some(product));
                 }
-                Ok(None) => set_error.set(Some(not_found_label)),
-                Err(err) => set_error.set(Some(format!("{load_error_label}: {err}"))),
+                Ok(None) => {
+                    set_selected_id.set(None);
+                    set_selected.set(None);
+                    set_error.set(Some(not_found_label));
+                }
+                Err(err) => {
+                    set_selected_id.set(None);
+                    set_selected.set(None);
+                    set_error.set(Some(format!("{load_error_label}: {err}")));
+                }
             }
             set_busy.set(false);
         });
@@ -125,6 +137,25 @@ pub fn InventoryAdmin() -> impl IntoView {
     let ui_locale_for_detail = ui_locale.clone();
     let ui_locale_for_variants = ui_locale.clone();
     let ui_locale_for_empty = ui_locale.clone();
+    let effective_locale_for_detail = effective_locale.clone();
+    let initial_open_product = open_product.clone();
+    Effect::new(move |_| {
+        if query_selection_applied.get() {
+            return;
+        }
+        let Some(product_id) = initial_selected_product_id.clone() else {
+            set_query_selection_applied.set(true);
+            return;
+        };
+        if bootstrap.get().and_then(Result::ok).is_none() {
+            return;
+        }
+        set_query_selection_applied.set(true);
+        if product_id.trim().is_empty() {
+            return;
+        }
+        initial_open_product.run(product_id);
+    });
 
     view! {
         <section class="space-y-6">
@@ -265,14 +296,14 @@ pub fn InventoryAdmin() -> impl IntoView {
                     </Show>
 
                     {move || selected.get().map(|detail| {
-                        let product_title = detail
-                            .translations
-                            .first()
+                        let resolved_translation = inventory_translation_for_locale(
+                            detail.translations.as_slice(),
+                            effective_locale_for_detail.as_deref(),
+                        );
+                        let product_title = resolved_translation
                             .map(|item| item.title.clone())
                             .unwrap_or_else(|| t(ui_locale_for_detail.as_deref(), "inventory.detail.untitled", "Untitled"));
-                        let product_handle = detail
-                            .translations
-                            .first()
+                        let product_handle = resolved_translation
                             .map(|item| item.handle.clone())
                             .unwrap_or_else(|| "-".to_string());
                         let summary = summarize_inventory(detail.variants.as_slice());
@@ -427,6 +458,19 @@ fn summarize_inventory(variants: &[InventoryVariant]) -> InventorySummary {
             .filter(|variant| variant.inventory_policy.eq_ignore_ascii_case("continue"))
             .count(),
     }
+}
+
+fn inventory_translation_for_locale<'a>(
+    translations: &'a [crate::model::InventoryProductTranslation],
+    requested_locale: Option<&str>,
+) -> Option<&'a crate::model::InventoryProductTranslation> {
+    requested_locale
+        .and_then(|requested_locale| {
+            translations
+                .iter()
+                .find(|translation| locale_tags_match(&translation.locale, requested_locale))
+        })
+        .or_else(|| translations.first())
 }
 
 fn localized_product_status(locale: Option<&str>, status: &str) -> String {

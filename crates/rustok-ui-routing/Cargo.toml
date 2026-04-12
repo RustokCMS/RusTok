@@ -1,0 +1,20 @@
+[package]
+name = "rustok-ui-routing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared URL-owned route selection helpers for module-owned Leptos admin UI"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = ["leptos/ssr"]
+
+[dependencies]
+leptos = { workspace = true, features = ["csr"] }
+leptos_router.workspace = true
+rustok-api.workspace = true
+serde_urlencoded.workspace = true

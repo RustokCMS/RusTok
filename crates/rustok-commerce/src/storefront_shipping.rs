@@ -165,9 +165,11 @@ pub async fn enrich_cart_delivery_groups(
     tenant_id: Uuid,
     mut cart: CartResponse,
     public_channel_slug: Option<&str>,
+    requested_locale: Option<&str>,
+    tenant_default_locale: Option<&str>,
 ) -> CommerceResult<CartResponse> {
     let mut options = FulfillmentService::new(db.clone())
-        .list_shipping_options(tenant_id)
+        .list_shipping_options(tenant_id, requested_locale, tenant_default_locale)
         .await
         .map_err(|err| crate::CommerceError::Validation(err.to_string()))?;
     options.retain(|option| {
@@ -240,6 +242,13 @@ mod tests {
             metadata: serde_json::json!({}),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            requested_locale: Some("en".to_string()),
+            effective_locale: Some("en".to_string()),
+            available_locales: vec!["en".to_string()],
+            translations: vec![crate::dto::ShippingOptionTranslationResponse {
+                locale: "en".to_string(),
+                name: "Bulky Freight".to_string(),
+            }],
         };
         let required_profiles = BTreeSet::from([String::from("bulky")]);
 

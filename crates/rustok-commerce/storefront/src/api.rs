@@ -295,6 +295,26 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
     })
 }
 
+fn resolve_requested_locale(
+    requested: Option<String>,
+    request_context_locale: Option<&str>,
+    tenant_default_locale: &str,
+) -> String {
+    normalize_optional(requested)
+        .or_else(|| {
+            request_context_locale.and_then(|value| normalize_optional(Some(value.to_string())))
+        })
+        .or_else(|| normalize_optional(Some(tenant_default_locale.to_string())))
+        .unwrap_or_default()
+}
+
+fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+}
+
 fn normalize_cart_id(value: Option<String>) -> Option<String> {
     normalize_optional(value)
 }
@@ -372,7 +392,7 @@ fn fallback_storefront_commerce(
     selected_cart_id: Option<String>,
     locale: Option<String>,
 ) -> StorefrontCommerceData {
-    let effective_locale = normalize_optional(locale).unwrap_or_else(|| "en".to_string());
+    let effective_locale = normalize_optional(locale).unwrap_or_default();
     let normalized_cart_id = normalize_cart_id(selected_cart_id);
 
     StorefrontCommerceData {
@@ -997,8 +1017,11 @@ async fn storefront_commerce_native(
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let normalized_locale =
-            normalize_optional(locale).unwrap_or_else(|| request_context.locale.clone());
+        let normalized_locale = resolve_requested_locale(
+            locale,
+            Some(request_context.locale.as_str()),
+            tenant.default_locale.as_str(),
+        );
         let mut data = StorefrontCommerceData {
             effective_locale: normalized_locale,
             tenant_slug: Some(tenant.slug),
@@ -1006,6 +1029,7 @@ async fn storefront_commerce_native(
             channel_slug: request_context.channel_slug.clone(),
             channel_resolution_source: request_context
                 .channel_resolution_source
+                .as_ref()
                 .map(|source| source.as_str().to_string()),
             selected_cart_id: None,
             checkout: None,
@@ -1017,10 +1041,8 @@ async fn storefront_commerce_native(
             return Ok(data);
         };
 
-        let cart = match rustok_commerce::CartService::new(app_ctx.db.clone())
-            .get_cart(tenant.id, cart_id)
-            .await
-        {
+        let cart_service = rustok_commerce::CartService::new(app_ctx.db.clone());
+        let cart = match cart_service.get_cart(tenant.id, cart_id).await {
             Ok(cart) => cart,
             Err(rustok_cart::CartError::CartNotFound(_)) => {
                 data.selected_cart_id = Some(normalized_cart_id);
@@ -1036,6 +1058,14 @@ async fn storefront_commerce_native(
         let storefront_customer_id =
             resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0).await?;
         ensure_storefront_cart_access(&cart, storefront_customer_id)?;
+        let cart = reprice_storefront_cart_line_items(
+            &app_ctx,
+            tenant.id,
+            &cart_service,
+            cart,
+            Some(&request_context),
+        )
+        .await?;
         let payment_collection = rustok_commerce::PaymentService::new(app_ctx.db.clone())
             .find_reusable_collection_by_cart(tenant.id, cart.id)
             .await
@@ -1090,6 +1120,14 @@ async fn storefront_create_payment_collection(
         let storefront_customer_id =
             resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0).await?;
         ensure_storefront_cart_access(&cart, storefront_customer_id)?;
+        let cart = reprice_storefront_cart_line_items(
+            &app_ctx,
+            tenant.id,
+            &cart_service,
+            cart,
+            Some(&request_context),
+        )
+        .await?;
 
         let service = rustok_commerce::PaymentService::new(app_ctx.db.clone());
         if let Some(existing) = service
@@ -1106,10 +1144,11 @@ async fn storefront_create_payment_collection(
                 rustok_commerce::ResolveStoreContextInput {
                     region_id: cart.region_id,
                     country_code: cart.country_code.clone(),
-                    locale: cart
-                        .locale_code
-                        .clone()
-                        .or_else(|| Some(request_context.locale.clone())),
+                    locale: Some(resolve_requested_locale(
+                        cart.locale_code.clone(),
+                        Some(request_context.locale.as_str()),
+                        tenant.default_locale.as_str(),
+                    )),
                     currency_code: Some(cart.currency_code.clone()),
                 },
             )
@@ -1162,6 +1201,9 @@ async fn storefront_select_shipping_option(
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
             .map_err(ServerFnError::new)?;
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .ok();
         let Some((_, parsed_cart_id)) =
             parse_cart_id(Some(cart_id)).map_err(|err| ServerFnError::new(err.to_string()))?
         else {
@@ -1191,7 +1233,7 @@ async fn storefront_select_shipping_option(
             parsed_shipping_option_id,
         )?;
 
-        cart_service
+        let updated_cart = cart_service
             .update_context(
                 tenant.id,
                 parsed_cart_id,
@@ -1206,6 +1248,14 @@ async fn storefront_select_shipping_option(
             )
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))?;
+        let _ = reprice_storefront_cart_line_items(
+            &app_ctx,
+            tenant.id,
+            &cart_service,
+            updated_cart,
+            request_context.as_ref(),
+        )
+        .await?;
 
         Ok(())
     }
@@ -1215,6 +1265,64 @@ async fn storefront_select_shipping_option(
         Err(ServerFnError::new(
             "commerce/select-shipping-option requires the `ssr` feature",
         ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+async fn reprice_storefront_cart_line_items(
+    app_ctx: &loco_rs::app::AppContext,
+    tenant_id: Uuid,
+    cart_service: &rustok_commerce::CartService,
+    cart: rustok_cart::CartResponse,
+    request_context: Option<&rustok_api::RequestContext>,
+) -> Result<rustok_cart::CartResponse, ServerFnError> {
+    if cart.line_items.is_empty() {
+        return Ok(cart);
+    }
+
+    let pricing_service = rustok_commerce::PricingService::new(
+        app_ctx.db.clone(),
+        rustok_api::loco::transactional_event_bus_from_context(app_ctx),
+    );
+    let channel_id = cart
+        .channel_id
+        .or_else(|| request_context.and_then(|ctx| ctx.channel_id));
+    let channel_slug = normalize_public_channel_slug(cart.channel_slug.as_deref()).or_else(|| {
+        request_context.and_then(|ctx| normalize_public_channel_slug(ctx.channel_slug.as_deref()))
+    });
+    let mut updates = Vec::new();
+    for line_item in &cart.line_items {
+        let Some(variant_id) = line_item.variant_id else {
+            continue;
+        };
+        let pricing_context = rustok_commerce::services::PriceResolutionContext {
+            currency_code: cart.currency_code.to_ascii_uppercase(),
+            region_id: cart.region_id,
+            price_list_id: None,
+            channel_id,
+            channel_slug: channel_slug.clone(),
+            quantity: Some(line_item.quantity),
+        };
+        let resolved_price = pricing_service
+            .resolve_variant_price(tenant_id, variant_id, pricing_context)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))?
+            .ok_or_else(|| {
+                ServerFnError::new("Unable to resolve storefront price for cart line item")
+            })?;
+        updates.push(rustok_cart::services::cart::CartLineItemPricingUpdate {
+            line_item_id: line_item.id,
+            unit_price: resolved_price.amount,
+        });
+    }
+
+    if updates.is_empty() {
+        Ok(cart)
+    } else {
+        cart_service
+            .reprice_line_items(tenant_id, cart.id, updates)
+            .await
+            .map_err(|err| ServerFnError::new(err.to_string()))
     }
 }
 
@@ -1228,6 +1336,9 @@ async fn storefront_complete_checkout(
         use loco_rs::app::AppContext;
 
         let app_ctx = expect_context::<AppContext>();
+        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -1248,6 +1359,14 @@ async fn storefront_complete_checkout(
         let storefront_customer_id =
             resolve_storefront_customer_id(app_ctx.db.clone(), tenant.id, auth.0.clone()).await?;
         ensure_storefront_cart_access(&cart, storefront_customer_id)?;
+        let _ = reprice_storefront_cart_line_items(
+            &app_ctx,
+            tenant.id,
+            &cart_service,
+            cart,
+            Some(&request_context),
+        )
+        .await?;
         let actor_id = auth.0.map(|auth| auth.user_id).unwrap_or_else(Uuid::nil);
 
         let response = rustok_commerce::CheckoutService::new(

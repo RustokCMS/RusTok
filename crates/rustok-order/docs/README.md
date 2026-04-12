@@ -4,7 +4,7 @@
 
 ## Назначение
 
-- схема `orders`, `order_line_items` и `order_adjustments`;
+- схема `orders`, `order_line_items`, `order_line_item_translations` и `order_adjustments` (localized line-item titles вынесены из base rows);
 - `OrderModule` и `OrderService`;
 - write-side lifecycle заказа: `pending -> confirmed -> paid -> shipped -> delivered/cancelled`;
 - публикация order events через transactional outbox;

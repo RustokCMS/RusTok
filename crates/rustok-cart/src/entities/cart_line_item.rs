@@ -12,7 +12,6 @@ pub struct Model {
     pub variant_id: Option<Uuid>,
     pub shipping_profile_slug: String,
     pub sku: Option<String>,
-    pub title: String,
     pub quantity: i32,
     pub unit_price: Decimal,
     pub total_price: Decimal,
@@ -32,6 +31,10 @@ pub enum Relation {
     Cart,
     #[sea_orm(has_many = "super::cart_adjustment::Entity")]
     Adjustments,
+    #[sea_orm(has_many = "super::cart_tax_line::Entity")]
+    TaxLines,
+    #[sea_orm(has_many = "super::cart_line_item_translation::Entity")]
+    Translations,
 }
 
 impl Related<super::cart::Entity> for Entity {
@@ -43,6 +46,18 @@ impl Related<super::cart::Entity> for Entity {
 impl Related<super::cart_adjustment::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Adjustments.def()
+    }
+}
+
+impl Related<super::cart_tax_line::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TaxLines.def()
+    }
+}
+
+impl Related<super::cart_line_item_translation::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Translations.def()
     }
 }
 

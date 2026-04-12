@@ -32,6 +32,8 @@
 - transport parity для admin-side `price_list` rule/scope mutation paths:
   future/expired lists и channel-scope mismatch теперь должны отклоняться без
   hidden fallback и без побочной записи/мутации override rows;
+- selector активных price lists не дрейфует после scope save/clear: channel-bound
+  lists исчезают из чужого канала и возвращаются после снятия scope;
 - module-owned admin UI пакет `rustok-pricing/admin` для price visibility,
   sale markers, currency coverage inspection и operator-side effective price preview по
   `currency + optional region_id + optional quantity` через native-first `#[server]`

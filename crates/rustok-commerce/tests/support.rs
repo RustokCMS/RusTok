@@ -1,13 +1,16 @@
 use rustok_cart::entities::{cart, cart_adjustment, cart_line_item, cart_shipping_selection};
 use rustok_channel::entities::{channel, channel_module_binding};
 use rustok_commerce::entities::{
-    inventory_item, inventory_level, price, price_list, product, product_image,
-    product_image_translation, product_option, product_option_translation, product_option_value,
-    product_option_value_translation, product_translation, product_variant, region,
-    reservation_item, shipping_profile, stock_location, variant_translation,
+    inventory_item, inventory_level, price, price_list, price_list_translation, product,
+    product_image, product_image_translation, product_option, product_option_translation,
+    product_option_value, product_option_value_translation, product_translation, product_variant,
+    region, region_translation, reservation_item, shipping_profile, shipping_profile_translation,
+    stock_location, stock_location_translation, variant_translation,
 };
 use rustok_customer::entities::customer;
-use rustok_fulfillment::entities::{fulfillment, fulfillment_item, shipping_option};
+use rustok_fulfillment::entities::{
+    fulfillment, fulfillment_item, shipping_option, shipping_option_translation,
+};
 use rustok_order::entities::{order, order_adjustment, order_line_item};
 use rustok_payment::entities::{payment, payment_collection};
 use rustok_product::entities::product_tag;
@@ -92,6 +95,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
+        schema.create_table_from_entity(stock_location_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
         schema.create_table_from_entity(inventory_item::Entity),
     )
     .await;
@@ -122,7 +131,19 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
+        schema.create_table_from_entity(region_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
         schema.create_table_from_entity(shipping_profile::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(shipping_profile_translation::Entity),
     )
     .await;
     create_entity_table(db, &builder, schema.create_table_from_entity(price::Entity)).await;
@@ -185,6 +206,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     create_entity_table(
         db,
         &builder,
+        schema.create_table_from_entity(shipping_option_translation::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
         schema.create_table_from_entity(fulfillment::Entity),
     )
     .await;
@@ -229,6 +256,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(price_list::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(price_list_translation::Entity),
     )
     .await;
     ensure_field_definition_tables(db).await;
@@ -319,5 +352,27 @@ async fn ensure_field_definition_tables(db: &DatabaseConnection) {
                 .await
                 .expect("failed to create field definitions test table");
         }
+    }
+
+    for sql in [
+        "CREATE TABLE IF NOT EXISTS flex_attached_localized_values (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            field_key TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            value TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )"
+        .to_string(),
+        "CREATE INDEX IF NOT EXISTS idx_flex_attached_values_owner
+         ON flex_attached_localized_values (tenant_id, entity_type, entity_id)"
+            .to_string(),
+    ] {
+        db.execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
+            .await
+            .expect("failed to create attached localized values test table");
     }
 }

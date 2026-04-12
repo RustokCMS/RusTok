@@ -174,6 +174,30 @@ fn sanitize_channel_slug(channel_slug: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn normalize_optional(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn resolve_requested_locale(
+    requested: Option<String>,
+    request_context_locale: Option<&str>,
+    tenant_default_locale: &str,
+) -> String {
+    normalize_optional(requested)
+        .or_else(|| {
+            request_context_locale.and_then(|value| normalize_optional(Some(value.to_string())))
+        })
+        .or_else(|| normalize_optional(Some(tenant_default_locale.to_string())))
+        .unwrap_or_default()
+}
+
 fn sanitize_quantity(quantity: Option<i32>) -> Option<i32> {
     quantity.filter(|value| *value > 0)
 }
@@ -531,13 +555,11 @@ async fn storefront_products_native(
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let requested_locale = locale
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .or_else(|| request_context.as_ref().map(|ctx| ctx.locale.clone()))
-            .unwrap_or_else(|| tenant.default_locale.clone());
+        let requested_locale = resolve_requested_locale(
+            locale,
+            request_context.as_ref().map(|ctx| ctx.locale.as_str()),
+            tenant.default_locale.as_str(),
+        );
         let public_channel_slug = request_context
             .as_ref()
             .and_then(|ctx| normalize_public_channel_slug(ctx.channel_slug.as_deref()));

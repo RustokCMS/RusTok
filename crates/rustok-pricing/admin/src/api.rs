@@ -196,11 +196,17 @@ pub async fn fetch_products(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
-    locale: String,
+    locale: Option<String>,
     search: Option<String>,
     status: Option<String>,
 ) -> Result<PricingProductList, ApiError> {
-    match pricing_admin_products_native(locale.clone(), search.clone(), status.clone()).await {
+    match pricing_admin_products_native(
+        locale.clone().unwrap_or_default(),
+        search.clone(),
+        status.clone(),
+    )
+    .await
+    {
         Ok(data) => Ok(data),
         Err(_) => {
             fetch_products_graphql(token, tenant_slug, tenant_id, locale, search, status).await
@@ -213,7 +219,7 @@ pub async fn fetch_product(
     tenant_slug: Option<String>,
     tenant_id: String,
     id: String,
-    locale: String,
+    locale: Option<String>,
     currency_code: Option<String>,
     region_id: Option<String>,
     price_list_id: Option<String>,
@@ -239,7 +245,7 @@ pub async fn fetch_product(
     let quantity = resolution_context.as_ref().map(|context| context.quantity);
     match pricing_admin_product_native(
         id.clone(),
-        locale.clone(),
+        locale.clone().unwrap_or_default(),
         currency_code.clone(),
         region_id.clone(),
         price_list_id.clone(),
@@ -494,6 +500,18 @@ fn text_or_none(value: String) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+fn resolve_requested_locale(
+    requested: Option<String>,
+    request_context_locale: Option<&str>,
+    tenant_default_locale: &str,
+) -> String {
+    requested
+        .and_then(text_or_none)
+        .or_else(|| request_context_locale.and_then(|value| text_or_none(value.to_string())))
+        .or_else(|| text_or_none(tenant_default_locale.to_string()))
+        .unwrap_or_default()
 }
 
 fn parse_optional_uuid_string(
@@ -843,6 +861,11 @@ async fn list_active_price_lists_native_with_context(
     let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
         .await
         .ok();
+    let requested_locale = resolve_requested_locale(
+        None,
+        request_context.as_ref().map(|context| context.locale.as_str()),
+        tenant.default_locale.as_str(),
+    );
     let channel_id = parse_optional_uuid_string(channel_id, "channel_id")?.or_else(|| {
         request_context
             .as_ref()
@@ -862,7 +885,13 @@ async fn list_active_price_lists_native_with_context(
     );
 
     service
-        .list_active_price_lists_for_channel(tenant.id, parsed_channel_id, channel_slug.as_deref())
+        .list_active_price_lists_for_channel(
+            tenant.id,
+            parsed_channel_id,
+            channel_slug.as_deref(),
+            Some(requested_locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(ServerFnError::new)
         .map(|items| {
@@ -904,8 +933,20 @@ async fn update_price_list_rule_native_with_context(
         .await
         .map_err(ServerFnError::new)?;
 
+    let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
+        .await
+        .ok();
+    let requested_locale = resolve_requested_locale(
+        None,
+        request_context.as_ref().map(|context| context.locale.as_str()),
+        tenant.default_locale.as_str(),
+    );
     let option = service
-        .list_active_price_lists(tenant.id)
+        .list_active_price_lists(
+            tenant.id,
+            Some(requested_locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
         .await
         .map_err(ServerFnError::new)?
         .into_iter()
@@ -1153,6 +1194,10 @@ async fn pricing_admin_bootstrap_native() -> Result<PricingAdminBootstrap, Serve
                 tenant.id,
                 request_context.as_ref().and_then(|ctx| ctx.channel_id),
                 channel_slug.as_deref(),
+                request_context
+                    .as_ref()
+                    .map(|context| context.locale.as_str()),
+                Some(tenant.default_locale.as_str()),
             )
             .await
             .map_err(ServerFnError::new)?
@@ -1242,14 +1287,8 @@ async fn pricing_admin_products_native(
             "products:list required",
         )?;
 
-        let requested_locale = {
-            let trimmed = locale.trim();
-            if trimmed.is_empty() {
-                tenant.default_locale.clone()
-            } else {
-                trimmed.to_string()
-            }
-        };
+        let requested_locale =
+            resolve_requested_locale(Some(locale), None, tenant.default_locale.as_str());
         let service = PricingService::new(
             app_ctx.db.clone(),
             rustok_api::loco::transactional_event_bus_from_context(&app_ctx),
@@ -1325,14 +1364,8 @@ async fn pricing_admin_product_native(
             "products:read required",
         )?;
 
-        let requested_locale = {
-            let trimmed = locale.trim();
-            if trimmed.is_empty() {
-                tenant.default_locale.clone()
-            } else {
-                trimmed.to_string()
-            }
-        };
+        let requested_locale =
+            resolve_requested_locale(Some(locale), None, tenant.default_locale.as_str());
         let explicit_channel_id = parse_optional_uuid_string(channel_id, "channel_id")?;
         let mut resolution_context = sanitize_resolution_context(
             currency_code.clone(),
@@ -1723,20 +1756,16 @@ mod tests {
             "INSERT INTO price_lists (
                 id,
                 tenant_id,
-                name,
-                description,
                 type,
                 status,
                 starts_at,
                 ends_at,
                 created_at,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             vec![
                 price_list_id.into(),
                 tenant_id.into(),
-                format!("Admin List-{price_list_id}").into(),
-                Some("Admin pricing transport test list".to_string()).into(),
                 "sale".into(),
                 status.to_string().into(),
                 sea_orm::Value::String(None),
@@ -1745,6 +1774,26 @@ mod tests {
         ))
         .await
         .expect("price list should be inserted");
+
+        db.execute(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO price_list_translations (
+                id,
+                price_list_id,
+                locale,
+                name,
+                description
+            ) VALUES (?, ?, ?, ?, ?)",
+            vec![
+                Uuid::new_v4().into(),
+                price_list_id.into(),
+                "en".into(),
+                format!("Admin List-{price_list_id}").into(),
+                Some("Admin pricing transport test list".to_string()).into(),
+            ],
+        ))
+        .await
+        .expect("price list translation should be inserted");
 
         price_list_id
     }
@@ -1760,26 +1809,42 @@ mod tests {
             "INSERT INTO price_lists (
                 id,
                 tenant_id,
-                name,
-                description,
                 type,
                 status,
                 starts_at,
                 ends_at,
                 created_at,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, datetime('now', '+1 day'), NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            ) VALUES (?, ?, ?, ?, datetime('now', '+1 day'), NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             vec![
                 price_list_id.into(),
                 tenant_id.into(),
-                format!("Admin List-{price_list_id}").into(),
-                Some("Admin pricing transport test list".to_string()).into(),
                 "sale".into(),
                 status.to_string().into(),
             ],
         ))
         .await
         .expect("price list should be inserted");
+
+        db.execute(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO price_list_translations (
+                id,
+                price_list_id,
+                locale,
+                name,
+                description
+            ) VALUES (?, ?, ?, ?, ?)",
+            vec![
+                Uuid::new_v4().into(),
+                price_list_id.into(),
+                "en".into(),
+                format!("Admin List-{price_list_id}").into(),
+                Some("Admin pricing transport test list".to_string()).into(),
+            ],
+        ))
+        .await
+        .expect("price list translation should be inserted");
 
         price_list_id
     }
@@ -1795,26 +1860,42 @@ mod tests {
             "INSERT INTO price_lists (
                 id,
                 tenant_id,
-                name,
-                description,
                 type,
                 status,
                 starts_at,
                 ends_at,
                 created_at,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, NULL, datetime('now', '-1 day'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+            ) VALUES (?, ?, ?, ?, NULL, datetime('now', '-1 day'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             vec![
                 price_list_id.into(),
                 tenant_id.into(),
-                format!("Admin List-{price_list_id}").into(),
-                Some("Admin pricing transport test list".to_string()).into(),
                 "sale".into(),
                 status.to_string().into(),
             ],
         ))
         .await
         .expect("price list should be inserted");
+
+        db.execute(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
+            "INSERT INTO price_list_translations (
+                id,
+                price_list_id,
+                locale,
+                name,
+                description
+            ) VALUES (?, ?, ?, ?, ?)",
+            vec![
+                Uuid::new_v4().into(),
+                price_list_id.into(),
+                "en".into(),
+                format!("Admin List-{price_list_id}").into(),
+                Some("Admin pricing transport test list".to_string()).into(),
+            ],
+        ))
+        .await
+        .expect("price list translation should be inserted");
 
         price_list_id
     }
@@ -2978,6 +3059,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn admin_pricing_native_preview_variant_discount_rejects_expired_price_list_override() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Pricing Admin Test Tenant".to_string(),
+            slug: format!("pricing-admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::PRODUCTS_READ],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let app_ctx = test_app_context(db.clone());
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let (_product_id, variant_id) = create_test_product(&catalog, tenant_id, actor_id).await;
+        let price_list_id = create_expired_price_list(&db, tenant_id, "active").await;
+
+        let error = preview_variant_discount_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            variant_id.to_string(),
+            PricingDiscountDraft {
+                currency_code: "USD".to_string(),
+                discount_percent: "10".to_string(),
+                price_list_id: price_list_id.to_string(),
+                channel_id: "".to_string(),
+                channel_slug: "".to_string(),
+            },
+        )
+        .await
+        .expect_err("expired list should be rejected");
+
+        assert!(error.to_string().contains("already expired"));
+    }
+
+    #[tokio::test]
     async fn admin_pricing_native_preview_variant_discount_rejects_channel_mismatch_for_price_list_override(
     ) {
         let db = setup_test_db().await;
@@ -3156,6 +3287,73 @@ mod tests {
             price_list_price.amount,
             rust_decimal::Decimal::from_str("90.00").expect("valid decimal")
         );
+    }
+
+    #[tokio::test]
+    async fn admin_pricing_native_apply_variant_discount_rejects_future_price_list_override_without_writing(
+    ) {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Pricing Admin Test Tenant".to_string(),
+            slug: format!("pricing-admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::PRODUCTS_READ, Permission::PRODUCTS_UPDATE],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let app_ctx = test_app_context(db.clone());
+        let catalog = CatalogService::new(db.clone(), mock_transactional_event_bus());
+        let (_product_id, variant_id) = create_test_product(&catalog, tenant_id, actor_id).await;
+        let price_list_id = create_future_price_list(&db, tenant_id, "active").await;
+
+        let count_before = rustok_commerce::entities::price::Entity::find()
+            .filter(rustok_commerce::entities::price::Column::VariantId.eq(variant_id))
+            .filter(rustok_commerce::entities::price::Column::PriceListId.eq(price_list_id))
+            .count(&db)
+            .await
+            .expect("price count should load");
+
+        let error = apply_variant_discount_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            variant_id.to_string(),
+            PricingDiscountDraft {
+                currency_code: "USD".to_string(),
+                discount_percent: "10".to_string(),
+                price_list_id: price_list_id.to_string(),
+                channel_id: "".to_string(),
+                channel_slug: "".to_string(),
+            },
+        )
+        .await
+        .expect_err("future list should be rejected");
+
+        let count_after = rustok_commerce::entities::price::Entity::find()
+            .filter(rustok_commerce::entities::price::Column::VariantId.eq(variant_id))
+            .filter(rustok_commerce::entities::price::Column::PriceListId.eq(price_list_id))
+            .count(&db)
+            .await
+            .expect("price count should load");
+
+        assert!(error.to_string().contains("not active yet"));
+        assert_eq!(count_before, 0);
+        assert_eq!(count_after, 0);
     }
 
     #[tokio::test]
@@ -3460,6 +3658,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn admin_pricing_native_update_price_list_rule_rejects_draft_price_list() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let price_list_id = create_price_list(&db, tenant_id, "draft").await;
+
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Pricing Admin Test Tenant".to_string(),
+            slug: format!("pricing-admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::PRODUCTS_READ, Permission::PRODUCTS_UPDATE],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let app_ctx = test_app_context(db);
+
+        let error = update_price_list_rule_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            price_list_id.to_string(),
+            PricingPriceListRuleDraft {
+                adjustment_percent: "15".to_string(),
+            },
+        )
+        .await
+        .expect_err("draft list should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("price_list_id must reference an active price list"));
+    }
+
+    #[tokio::test]
     async fn admin_pricing_native_update_price_list_rule_rejects_future_price_list() {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
@@ -3741,6 +3985,103 @@ mod tests {
 
         assert_eq!(scoped_price.channel_id, None);
         assert_eq!(scoped_price.channel_slug, None);
+    }
+
+    #[tokio::test]
+    async fn admin_pricing_native_update_price_list_scope_refreshes_active_price_list_selector() {
+        let db = setup_test_db().await;
+        support::ensure_commerce_schema(&db).await;
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let channel_id = Uuid::new_v4();
+        let other_channel_id = Uuid::new_v4();
+        seed_tenant_context(&db, tenant_id).await;
+        let price_list_id = create_price_list(&db, tenant_id, "active").await;
+
+        let tenant = TenantContext {
+            id: tenant_id,
+            name: "Pricing Admin Test Tenant".to_string(),
+            slug: format!("pricing-admin-test-{tenant_id}"),
+            domain: None,
+            settings: json!({}),
+            default_locale: "en".to_string(),
+            is_active: true,
+        };
+        let auth = AuthContext {
+            user_id: actor_id,
+            session_id: Uuid::new_v4(),
+            tenant_id,
+            permissions: vec![Permission::PRODUCTS_READ, Permission::PRODUCTS_UPDATE],
+            client_id: None,
+            scopes: vec![],
+            grant_type: "direct".to_string(),
+        };
+        let app_ctx = test_app_context(db);
+
+        update_price_list_scope_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            price_list_id.to_string(),
+            PricingPriceListScopeDraft {
+                channel_id: channel_id.to_string(),
+                channel_slug: "web-store".to_string(),
+            },
+        )
+        .await
+        .expect("scope update should succeed");
+
+        let scoped_lists = list_active_price_lists_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            Some(channel_id.to_string()),
+            Some("web-store".to_string()),
+        )
+        .await
+        .expect("scoped list should load");
+        assert!(scoped_lists
+            .iter()
+            .any(|item| item.id == price_list_id.to_string()));
+
+        let mismatched_lists = list_active_price_lists_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            Some(other_channel_id.to_string()),
+            Some("mobile-app".to_string()),
+        )
+        .await
+        .expect("mismatched list should load");
+        assert!(!mismatched_lists
+            .iter()
+            .any(|item| item.id == price_list_id.to_string()));
+
+        update_price_list_scope_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            price_list_id.to_string(),
+            PricingPriceListScopeDraft {
+                channel_id: "".to_string(),
+                channel_slug: "".to_string(),
+            },
+        )
+        .await
+        .expect("scope clear should succeed");
+
+        let global_lists = list_active_price_lists_native_with_context(
+            &app_ctx,
+            &auth,
+            &tenant,
+            Some(other_channel_id.to_string()),
+            Some("mobile-app".to_string()),
+        )
+        .await
+        .expect("global list should load");
+        assert!(global_lists
+            .iter()
+            .any(|item| item.id == price_list_id.to_string()));
     }
 
     #[tokio::test]

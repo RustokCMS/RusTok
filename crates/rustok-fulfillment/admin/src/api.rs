@@ -123,7 +123,7 @@ struct ShippingProfilesFilter {
 
 #[derive(Debug, Serialize)]
 struct CreateShippingOptionInput {
-    name: String,
+    translations: Vec<ShippingOptionTranslationInput>,
     #[serde(rename = "currencyCode")]
     currency_code: String,
     amount: String,
@@ -136,7 +136,7 @@ struct CreateShippingOptionInput {
 
 #[derive(Debug, Serialize)]
 struct UpdateShippingOptionInput {
-    name: Option<String>,
+    translations: Option<Vec<ShippingOptionTranslationInput>>,
     #[serde(rename = "currencyCode")]
     currency_code: Option<String>,
     amount: Option<String>,
@@ -145,6 +145,12 @@ struct UpdateShippingOptionInput {
     #[serde(rename = "allowedShippingProfileSlugs")]
     allowed_shipping_profile_slugs: Option<Vec<String>>,
     metadata: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ShippingOptionTranslationInput {
+    locale: String,
+    name: String,
 }
 
 fn graphql_url() -> String {
@@ -357,7 +363,10 @@ pub async fn reactivate_shipping_option(
 
 fn build_create_shipping_option_input(draft: ShippingOptionDraft) -> CreateShippingOptionInput {
     CreateShippingOptionInput {
-        name: draft.name.trim().to_string(),
+        translations: vec![ShippingOptionTranslationInput {
+            locale: draft.locale.trim().to_string(),
+            name: draft.name.trim().to_string(),
+        }],
         currency_code: normalize_currency_code(draft.currency_code.as_str()),
         amount: normalize_amount(draft.amount.as_str()),
         provider_id: optional_text(draft.provider_id.as_str()),
@@ -368,7 +377,12 @@ fn build_create_shipping_option_input(draft: ShippingOptionDraft) -> CreateShipp
 
 fn build_update_shipping_option_input(draft: ShippingOptionDraft) -> UpdateShippingOptionInput {
     UpdateShippingOptionInput {
-        name: optional_text(draft.name.as_str()),
+        translations: optional_text(draft.name.as_str()).map(|name| {
+            vec![ShippingOptionTranslationInput {
+                locale: draft.locale.trim().to_string(),
+                name,
+            }]
+        }),
         currency_code: optional_text(draft.currency_code.as_str())
             .map(|value| normalize_currency_code(value.as_str())),
         amount: optional_text(draft.amount.as_str()).map(|value| normalize_amount(value.as_str())),

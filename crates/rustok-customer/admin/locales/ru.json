@@ -13,6 +13,7 @@
     },
     "error": {
       "emailRequired": "Email обязателен.",
+      "localeUnavailable": "Хостовая локаль недоступна.",
       "loadCustomer": "Не удалось загрузить клиента",
       "saveCustomer": "Не удалось сохранить клиента",
       "loadCustomers": "Не удалось загрузить список клиентов"
@@ -34,8 +35,7 @@
       "email": "Email",
       "firstName": "Имя",
       "lastName": "Фамилия",
-      "phone": "Телефон",
-      "locale": "Локаль"
+      "phone": "Телефон"
     },
     "detail": {
       "title": "Карточка клиента",

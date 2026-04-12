@@ -46,4 +46,5 @@ pub struct ShippingProfileDraft {
     pub name: String,
     pub description: String,
     pub metadata_json: String,
+    pub locale: String,
 }

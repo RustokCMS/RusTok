@@ -75,7 +75,7 @@ typed shipping-profile registry.
 - seller portal, merchant RBAC surfaces, commissions/payouts/settlement и disputes/returns marketplace-policy сознательно вынесены за рамки ближайшего scope и не входят в foundation slice;
 - channel-aware price resolution больше не является чистым backlog: `Phase 8` уже получил host-channel-aware resolver foundation (`channel_id/channel_slug`, channel-scoped base rows и channel-filtered active price lists), но promotion/rule layering и полноценный authoring UX всё ещё остаются внутри `Phase 8`;
 - полноценный promotion/discount domain поверх price rules, а не только `compare_at_amount` и service-level `apply_discount`;
-- отдельный tax domain: сейчас tax фактически живёт в `region` как `tax_rate` / `tax_included`;
+- отдельный tax domain: foundation уже начат (tax lines + totals), но расчёт пока опирается на `region.tax_rate` / `tax_included`, provider seam ещё не введён;
 - post-order слой уровня Medusa: returns, exchanges, claims, order changes, draft/edit flows, refund transport;
 - provider registry для payment/fulfillment, webhook ingestion и внешний gateway/carrier story.
 
@@ -177,6 +177,7 @@ typed shipping-profile registry.
 - transport coverage закрывает `currency_code` vs `region_id`, guest/customer ownership и сквозной storefront checkout flow;
 - service coverage подтверждает reuse уже существующего cart-bound payment collection во время `complete checkout`.
 - cart/order transport теперь сохраняет channel snapshot и использует его как часть storefront context во время checkout.
+- storefront payment-collection и complete-checkout paths перепрайсят cart line items перед созданием payment collection и перед `complete checkout`, чтобы price-list/quantity-tier изменения не оставляли stale `unit_price`.
 
 ### Phase 4. Order/payment/fulfillment transport
 
@@ -235,6 +236,13 @@ typed shipping-profile registry.
 - использовать существующий `rustok-channel` как platform-level delivery context;
 - сделать catalog, cart, order, inventory и fulfillment channel-aware без создания второго sales-channel домена;
 - связать publication/availability semantics commerce с channel bindings и `ChannelContext`.
+
+Что уже начато в текущем срезе:
+
+- cart получил `cart_tax_lines`, `tax_total` и пересчёт налога поверх line items + выбранных shipping options;
+- order получил `order_tax_lines`, `tax_total`, `tax_included` и snapshot tax lines при checkout/create-order;
+- tax-inclusive vs tax-exclusive семантика фиксируется в metadata tax line (`tax_included`);
+- REST/GraphQL/Leptos DTO для cart/order начали возвращать tax lines и totals.
 
 Deliverables:
 
@@ -399,6 +407,21 @@ Deliverables:
   пересчитывает `subtotal_amount`, `adjustment_total` и net `total_amount`, а `rustok-order` snapshot'ит
   `order_adjustments` при checkout/create-order и отдаёт тот же summary в REST/GraphQL/Leptos-facing DTO;
   этот слой не хранит seller/product/promotion display labels и остаётся устойчивым к смене default locale.
+- storefront/admin GraphQL parity теперь тоже покрывает этот snapshot layer: storefront cart/query + checkout
+  сохраняют typed `adjustments`, payment collection использует net `cart.total_amount`, а completed order
+  переносит sanitized adjustment metadata без `display_label`.
+- storefront/admin REST transport теперь тоже покрывает этот snapshot layer: controller tests для
+  `/store/carts/{id}` и `/admin/orders/{id}` фиксируют typed `adjustments`, sanitized metadata и
+  текущую shipping-selection semantics, где incompatible selection может soft-clear'иться до `null`,
+  а verification baseline для umbrella-модуля снова включает полный `cargo test -p rustok-commerce --lib`.
+- storefront GraphQL add-to-cart теперь резолвит `unit_price` через `PricingService` с тем же
+  `PriceResolutionContext` (currency + region + channel + quantity), а не через raw `price` row;
+  это выравнивает pricing semantics между REST и GraphQL storefront cart path.
+- storefront cart quantity update теперь переоценяет `unit_price` через pricing resolver,
+  чтобы quantity tiers и channel-aware pricing применялись при изменении количества.
+- storefront cart context update (region/country/locale/shipping selections) теперь
+  перепрайсит все line items через pricing resolver, чтобы смена контекста не оставляла
+  stale `unit_price`.
 
 Обязательные проверки:
 
@@ -411,7 +434,7 @@ Deliverables:
 
 ### Phase 9. Tax domain
 
-Статус: `planned`
+Статус: `in progress`
 
 Фокус:
 
@@ -521,3 +544,6 @@ Release gates:
 2. При изменении public surface синхронизировать `crates/rustok-commerce/README.md` и `crates/rustok-commerce/docs/README.md`.
 3. При изменении контракта между `channel` и `commerce` синхронизировать `rustok-channel` docs и central `docs/architecture/api.md`.
 4. При изменении module topology, transport contract или границы `channel` vs `commerce` обновлять `docs/index.md`, локальные docs вынесенных crates и ADR при необходимости.
+5. Любые изменения схемы проходят i18n-аудит: локализованные строки не храним в base-таблицах, display-поля живут только в `*_translations`.
+6. Module-owned UI пакеты не вводят package-local locale override: write-side использует host-provided effective locale, а edit/detail hydration резолвит переводы по нему же, с fallback только после попытки точного locale match.
+7. Read-side/runtime helpers не сравнивают locale raw-строкой: резолв локализованных данных идёт через shared locale normalization и одну цепочку fallback `requested -> tenant default -> first available`.

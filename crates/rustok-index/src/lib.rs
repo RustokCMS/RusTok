@@ -11,6 +11,7 @@ use sea_orm_migration::MigrationTrait;
 
 pub mod content;
 pub mod error;
+pub mod flex;
 pub mod migrations;
 pub mod product;
 pub mod search;
@@ -54,6 +55,10 @@ impl RusToKModule for IndexModule {
             .cloned()
             .expect("index module requires IndexerRuntimeConfig in ModuleRuntimeExtensions");
         registry.register(content::ContentIndexer::with_runtime(
+            ctx.db.clone(),
+            runtime.clone(),
+        ));
+        registry.register(flex::FlexIndexer::with_runtime(
             ctx.db.clone(),
             runtime.clone(),
         ));

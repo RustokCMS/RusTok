@@ -15,6 +15,8 @@ pub struct CreateOrderInput {
     pub line_items: Vec<CreateOrderLineItemInput>,
     #[serde(default)]
     pub adjustments: Vec<CreateOrderAdjustmentInput>,
+    #[serde(default)]
+    pub tax_lines: Vec<CreateOrderTaxLineInput>,
     pub metadata: Value,
 }
 
@@ -43,6 +45,19 @@ pub struct CreateOrderAdjustmentInput {
     #[validate(length(max = 191))]
     pub source_id: Option<String>,
     pub amount: Decimal,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
+pub struct CreateOrderTaxLineInput {
+    pub line_item_index: Option<usize>,
+    pub shipping_option_id: Option<Uuid>,
+    #[validate(length(max = 255))]
+    pub description: Option<String>,
+    pub rate: Decimal,
+    pub amount: Decimal,
+    #[validate(length(equal = 3))]
+    pub currency_code: String,
     pub metadata: Value,
 }
 
@@ -92,6 +107,8 @@ pub struct OrderResponse {
     pub subtotal_amount: Decimal,
     pub adjustment_total: Decimal,
     pub total_amount: Decimal,
+    pub tax_total: Decimal,
+    pub tax_included: bool,
     pub metadata: Value,
     pub payment_id: Option<String>,
     pub payment_method: Option<String>,
@@ -108,6 +125,7 @@ pub struct OrderResponse {
     pub cancelled_at: Option<DateTime<Utc>>,
     pub line_items: Vec<OrderLineItemResponse>,
     pub adjustments: Vec<OrderAdjustmentResponse>,
+    pub tax_lines: Vec<OrderTaxLineResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -139,4 +157,19 @@ pub struct OrderAdjustmentResponse {
     pub currency_code: String,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct OrderTaxLineResponse {
+    pub id: Uuid,
+    pub order_id: Uuid,
+    pub line_item_id: Option<Uuid>,
+    pub shipping_option_id: Option<Uuid>,
+    pub description: Option<String>,
+    pub rate: Decimal,
+    pub amount: Decimal,
+    pub currency_code: String,
+    pub metadata: Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }

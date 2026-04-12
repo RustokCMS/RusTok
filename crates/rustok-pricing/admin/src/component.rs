@@ -4,6 +4,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_api::UiRouteContext;
+use rustok_core::locale_tags_match;
 use uuid::Uuid;
 
 use crate::i18n::t;
@@ -17,7 +18,7 @@ use crate::model::{
 pub fn PricingAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let initial_locale = ui_locale.clone().unwrap_or_else(|| "en".to_string());
+    let effective_locale = ui_locale.clone();
     let initial_currency = route_context
         .query_value("currency")
         .map(ToOwned::to_owned)
@@ -51,7 +52,6 @@ pub fn PricingAdmin() -> impl IntoView {
     let (selected, set_selected) = signal(Option::<PricingProductDetail>::None);
     let (search, set_search) = signal(String::new());
     let (status_filter, set_status_filter) = signal(String::new());
-    let (locale, _set_locale) = signal(initial_locale.clone());
     let (resolution_currency, set_resolution_currency) = signal(initial_currency);
     let (resolution_region_id, set_resolution_region_id) = signal(initial_region_id);
     let (resolution_price_list_id, set_resolution_price_list_id) = signal(initial_price_list_id);
@@ -63,6 +63,8 @@ pub fn PricingAdmin() -> impl IntoView {
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
     let (query_selection_applied, set_query_selection_applied) = signal(false);
+    let effective_locale_for_products = effective_locale.clone();
+    let effective_locale_for_open = effective_locale.clone();
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
@@ -77,7 +79,7 @@ pub fn PricingAdmin() -> impl IntoView {
                 token.get(),
                 tenant.get(),
                 refresh_nonce.get(),
-                locale.get(),
+                effective_locale_for_products.clone(),
                 search.get(),
                 status_filter.get(),
             )
@@ -152,7 +154,7 @@ pub fn PricingAdmin() -> impl IntoView {
 
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
-        let locale_value = locale.get_untracked();
+        let locale_value = effective_locale_for_open.clone();
         let not_found_label = open_product_not_found_label.clone();
         let load_error_label = open_load_product_error_label.clone();
         let currency_value = resolution_currency.get_untracked();
@@ -193,10 +195,17 @@ pub fn PricingAdmin() -> impl IntoView {
                     set_applied_resolution_context.set(next_context);
                 }
                 Ok(None) => {
+                    set_selected_id.set(None);
+                    set_selected.set(None);
                     set_error.set(Some(not_found_label));
                     set_applied_resolution_context.set(None);
                 }
-                Err(err) => set_error.set(Some(format!("{load_error_label}: {err}"))),
+                Err(err) => {
+                    set_selected_id.set(None);
+                    set_selected.set(None);
+                    set_applied_resolution_context.set(None);
+                    set_error.set(Some(format!("{load_error_label}: {err}")));
+                }
             }
             set_busy.set(false);
         });
@@ -210,6 +219,7 @@ pub fn PricingAdmin() -> impl IntoView {
     let ui_locale_for_context = ui_locale.clone();
     let ui_locale_for_price_list_select = ui_locale.clone();
     let ui_locale_for_channel_select = ui_locale.clone();
+    let effective_locale_for_detail = effective_locale.clone();
     let product_module_route_base = route_context.module_route_base("product");
     let refresh_open_product = open_product.clone();
     let initial_open_product = open_product.clone();
@@ -596,14 +606,14 @@ pub fn PricingAdmin() -> impl IntoView {
                     </Show>
 
                     {move || selected.get().map(|detail| {
-                        let product_title = detail
-                            .translations
-                            .first()
+                        let resolved_translation = pricing_translation_for_locale(
+                            detail.translations.as_slice(),
+                            effective_locale_for_detail.as_deref(),
+                        );
+                        let product_title = resolved_translation
                             .map(|item| item.title.clone())
                             .unwrap_or_else(|| t(ui_locale_for_detail.as_deref(), "pricing.detail.untitled", "Untitled"));
-                        let product_handle = detail
-                            .translations
-                            .first()
+                        let product_handle = resolved_translation
                             .map(|item| item.handle.clone())
                             .unwrap_or_else(|| "-".to_string());
                         let summary = summarize_pricing(detail.variants.as_slice());
@@ -840,6 +850,19 @@ fn summarize_pricing(variants: &[PricingVariant]) -> PricingSummary {
         on_sale_variants,
         currency_count,
     }
+}
+
+fn pricing_translation_for_locale<'a>(
+    translations: &'a [crate::model::PricingProductTranslation],
+    requested_locale: Option<&str>,
+) -> Option<&'a crate::model::PricingProductTranslation> {
+    requested_locale
+        .and_then(|requested_locale| {
+            translations
+                .iter()
+                .find(|translation| locale_tags_match(&translation.locale, requested_locale))
+        })
+        .or_else(|| translations.first())
 }
 
 fn localized_product_status(locale: Option<&str>, status: &str) -> String {

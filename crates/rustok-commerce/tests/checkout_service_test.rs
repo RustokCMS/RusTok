@@ -2,12 +2,13 @@ use rust_decimal::Decimal;
 use rustok_commerce::dto::{
     AddCartLineItemInput, CartShippingSelectionInput, CompleteCheckoutInput, CreateCartInput,
     CreateProductInput, CreateShippingOptionInput, CreateVariantInput, PriceInput,
-    ProductTranslationInput, SetCartAdjustmentInput, UpdateCartContextInput,
+    ProductTranslationInput, SetCartAdjustmentInput, ShippingOptionTranslationInput,
+    UpdateCartContextInput,
 };
 use rustok_commerce::services::{
     CartService, CatalogService, CheckoutError, CheckoutService, FulfillmentService, PaymentService,
 };
-use rustok_region::dto::CreateRegionInput;
+use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -156,7 +157,10 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -171,7 +175,10 @@ async fn complete_checkout_builds_order_payment_and_fulfillment_flow() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -276,7 +283,10 @@ async fn complete_checkout_snapshots_cart_adjustments_into_order_and_payment_tot
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "United States".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "United States".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::ZERO,
                 tax_included: false,
@@ -291,7 +301,10 @@ async fn complete_checkout_snapshots_cart_adjustments_into_order_and_payment_tot
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -485,7 +498,10 @@ async fn complete_checkout_rejects_shipping_option_hidden_for_cart_channel() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Hidden Shipping".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Hidden Shipping".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -598,7 +614,10 @@ async fn complete_checkout_rejects_line_item_hidden_for_cart_channel() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Visible Shipping".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Visible Shipping".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -702,7 +721,10 @@ async fn complete_checkout_rejects_line_item_without_channel_visible_inventory()
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Visible Shipping".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Visible Shipping".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -809,7 +831,10 @@ async fn complete_checkout_rejects_shipping_option_incompatible_with_cart_shippi
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Default Only".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Default Only".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -897,7 +922,10 @@ async fn repeated_complete_checkout_recovers_existing_result() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -911,7 +939,10 @@ async fn repeated_complete_checkout_recovers_existing_result() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -1011,7 +1042,10 @@ async fn complete_checkout_reuses_existing_cart_payment_collection() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -1025,7 +1059,10 @@ async fn complete_checkout_reuses_existing_cart_payment_collection() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -1122,7 +1159,10 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Germany".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Germany".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -1136,7 +1176,10 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "France".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "France".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -1151,7 +1194,10 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "German Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "German Standard".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -1165,7 +1211,10 @@ async fn complete_checkout_prefers_persisted_cart_context_over_conflicting_overr
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "French Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "French Standard".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("12.99").expect("valid decimal"),
                 provider_id: None,
@@ -1259,7 +1308,10 @@ async fn complete_checkout_recovers_stuck_checking_out_cart_when_paid_artifacts_
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -1273,7 +1325,10 @@ async fn complete_checkout_recovers_stuck_checking_out_cart_when_paid_artifacts_
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -1383,7 +1438,10 @@ async fn checkout_failure_releases_cart_back_to_active() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -1468,7 +1526,10 @@ async fn checkout_preflight_failure_does_not_create_payment_or_order_artifacts()
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -1556,7 +1617,10 @@ async fn retry_after_preflight_failure_creates_checkout_artifacts() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -1570,7 +1634,10 @@ async fn retry_after_preflight_failure_creates_checkout_artifacts() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -1680,7 +1747,10 @@ async fn checkout_without_fulfillment_flag_skips_fulfillment_creation() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -1694,7 +1764,10 @@ async fn checkout_without_fulfillment_flag_skips_fulfillment_creation() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -1772,7 +1845,10 @@ async fn mixed_cart_creates_delivery_groups_and_uses_typed_shipping_selections()
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "United States".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "United States".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
                 tax_included: false,
@@ -1786,7 +1862,10 @@ async fn mixed_cart_creates_delivery_groups_and_uses_typed_shipping_selections()
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Cold Chain".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Cold Chain".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("12.50").expect("valid decimal"),
                 provider_id: None,
@@ -1800,7 +1879,10 @@ async fn mixed_cart_creates_delivery_groups_and_uses_typed_shipping_selections()
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Bulky Freight".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Bulky Freight".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("34.00").expect("valid decimal"),
                 provider_id: None,
@@ -1926,7 +2008,10 @@ async fn complete_checkout_rejects_missing_shipping_selection_for_delivery_group
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "United States".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "United States".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
                 tax_included: false,
@@ -1940,7 +2025,10 @@ async fn complete_checkout_rejects_missing_shipping_selection_for_delivery_group
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Cold Chain".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Cold Chain".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("12.50").expect("valid decimal"),
                 provider_id: None,
@@ -2046,7 +2134,10 @@ async fn complete_checkout_creates_multiple_fulfillments_for_delivery_groups() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "United States".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "United States".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
                 tax_included: false,
@@ -2060,7 +2151,10 @@ async fn complete_checkout_creates_multiple_fulfillments_for_delivery_groups() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Cold Chain".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Cold Chain".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("12.50").expect("valid decimal"),
                 provider_id: None,
@@ -2074,7 +2168,10 @@ async fn complete_checkout_creates_multiple_fulfillments_for_delivery_groups() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Bulky Freight".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Bulky Freight".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("34.00").expect("valid decimal"),
                 provider_id: None,
@@ -2217,7 +2314,10 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "United States".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "United States".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("0.00").expect("valid decimal"),
                 tax_included: false,
@@ -2231,7 +2331,10 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Seller A Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Seller A Standard".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("10.00").expect("valid decimal"),
                 provider_id: None,
@@ -2245,7 +2348,10 @@ async fn complete_checkout_keeps_seller_aware_delivery_groups_for_same_shipping_
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Seller B Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Seller B Standard".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("12.00").expect("valid decimal"),
                 provider_id: None,
@@ -2447,7 +2553,10 @@ async fn complete_checkout_rejects_stale_shipping_profile_snapshot_after_variant
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -2461,7 +2570,10 @@ async fn complete_checkout_rejects_stale_shipping_profile_snapshot_after_variant
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Cold Chain".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Cold Chain".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,

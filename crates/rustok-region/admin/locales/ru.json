@@ -17,6 +17,7 @@
   "region.editor.subtitle": "Native region CRUD живёт внутри пакета модуля region. Страны задаются через список ISO-кодов через запятую, metadata хранится как raw JSON.",
   "region.error.countriesRequired": "Нужен хотя бы один код страны.",
   "region.error.currencyRequired": "Нужен код валюты.",
+  "region.error.localeUnavailable": "Хостовая локаль недоступна.",
   "region.error.loadRegion": "Не удалось загрузить регион",
   "region.error.loadRegions": "Не удалось загрузить регионы",
   "region.error.nameRequired": "Нужно указать название.",

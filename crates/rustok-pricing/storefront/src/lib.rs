@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 
 use leptos::prelude::*;
 use rustok_api::UiRouteContext;
+use rustok_core::locale_tags_match;
 
 use crate::i18n::t;
 use crate::model::{
@@ -160,7 +161,11 @@ fn SelectedPricingCard(
     let module_route_base = route_context.module_route_base(route_segment.as_str());
     let product_module_route_base = route_context.module_route_base("products");
 
-    let translation = product.translations.first().cloned();
+    let translation = pricing_translation_for_locale(
+        product.translations.as_slice(),
+        locale.as_deref(),
+    )
+    .cloned();
     let title = translation
         .as_ref()
         .map(|item| item.title.clone())
@@ -499,6 +504,19 @@ fn summarize_pricing(variants: &[PricingVariant]) -> PricingSummary {
         sale_variant_count,
         variant_count: variants.len(),
     }
+}
+
+fn pricing_translation_for_locale<'a>(
+    translations: &'a [crate::model::PricingProductTranslation],
+    requested_locale: Option<&str>,
+) -> Option<&'a crate::model::PricingProductTranslation> {
+    requested_locale
+        .and_then(|locale| {
+            translations
+                .iter()
+                .find(|translation| locale_tags_match(&translation.locale, locale))
+        })
+        .or_else(|| translations.first())
 }
 
 fn format_seller_boundary(locale: Option<&str>, seller_id: Option<&str>) -> String {

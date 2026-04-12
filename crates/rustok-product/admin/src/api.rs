@@ -186,6 +186,12 @@ struct ProductTranslationInput {
 
 #[derive(Debug, Serialize)]
 struct ProductOptionInput {
+    translations: Vec<ProductOptionTranslationInput>,
+}
+
+#[derive(Debug, Serialize)]
+struct ProductOptionTranslationInput {
+    locale: String,
     name: String,
     values: Vec<String>,
 }
@@ -272,7 +278,7 @@ pub async fn fetch_products(
     token: Option<String>,
     tenant_slug: Option<String>,
     tenant_id: String,
-    locale: String,
+    locale: Option<String>,
     search: Option<String>,
     status: Option<String>,
 ) -> Result<ProductList, ApiError> {
@@ -281,7 +287,7 @@ pub async fn fetch_products(
         Some(TenantScopedVariables {
             tenant_id,
             extra: ProductsVariables {
-                locale: Some(locale),
+                locale,
                 filter: ProductsFilter {
                     status,
                     vendor: None,
@@ -303,7 +309,7 @@ pub async fn fetch_product(
     tenant_slug: Option<String>,
     tenant_id: String,
     id: String,
-    locale: String,
+    locale: Option<String>,
 ) -> Result<Option<ProductDetail>, ApiError> {
     let response: ProductResponse = request(
         PRODUCT_QUERY,
@@ -311,7 +317,7 @@ pub async fn fetch_product(
             tenant_id,
             extra: ProductVariables {
                 id,
-                locale: Some(locale),
+                locale,
             },
         }),
         token,
@@ -326,7 +332,7 @@ pub async fn fetch_product_pricing(
     tenant_slug: Option<String>,
     tenant_id: String,
     id: String,
-    locale: String,
+    locale: Option<String>,
     currency_code: Option<String>,
 ) -> Result<Option<ProductPricingDetail>, ApiError> {
     let response: ProductPricingResponse = request(
@@ -335,7 +341,7 @@ pub async fn fetch_product_pricing(
             tenant_id,
             extra: ProductPricingVariables {
                 id,
-                locale: Some(locale),
+                locale,
                 currency_code,
                 quantity: Some(1),
             },

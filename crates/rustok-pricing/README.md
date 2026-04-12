@@ -33,7 +33,8 @@
 - Expose first-class `price_list` percentage rules so an active list can derive
   effective sale prices from base rows even without explicit override rows.
 - Keep native admin `price_list` rule/scope mutation paths aligned with runtime
-  lifecycle validation, so future/expired lists and channel mismatches are
+  lifecycle validation, so inactive/draft, future, and expired lists plus
+  channel mismatches are
   rejected without hidden fallback or unintended override-row writes.
 - Provide a module-owned Leptos admin UI package in `admin/` for pricing visibility,
   sale markers, currency-coverage inspection, effective price inspection, and

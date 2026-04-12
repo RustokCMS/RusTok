@@ -19,6 +19,7 @@ pub struct Model {
     pub status: String,
     pub currency_code: String,
     pub total_amount: Decimal,
+    pub tax_total: Decimal,
     pub metadata: Json,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
@@ -33,6 +34,8 @@ pub enum Relation {
     Adjustments,
     #[sea_orm(has_many = "super::cart_shipping_selection::Entity")]
     ShippingSelections,
+    #[sea_orm(has_many = "super::cart_tax_line::Entity")]
+    TaxLines,
 }
 
 impl Related<super::cart_line_item::Entity> for Entity {
@@ -50,6 +53,12 @@ impl Related<super::cart_adjustment::Entity> for Entity {
 impl Related<super::cart_shipping_selection::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::ShippingSelections.def()
+    }
+}
+
+impl Related<super::cart_tax_line::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TaxLines.def()
     }
 }
 

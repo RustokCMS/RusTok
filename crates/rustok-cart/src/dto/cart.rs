@@ -79,12 +79,14 @@ pub struct CartResponse {
     pub subtotal_amount: Decimal,
     pub adjustment_total: Decimal,
     pub total_amount: Decimal,
+    pub tax_total: Decimal,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
     pub line_items: Vec<CartLineItemResponse>,
     pub adjustments: Vec<CartAdjustmentResponse>,
+    pub tax_lines: Vec<CartTaxLineResponse>,
     pub delivery_groups: Vec<CartDeliveryGroupResponse>,
 }
 
@@ -115,6 +117,21 @@ pub struct CartAdjustmentResponse {
     pub line_item_id: Option<Uuid>,
     pub source_type: String,
     pub source_id: Option<String>,
+    pub amount: Decimal,
+    pub currency_code: String,
+    pub metadata: Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CartTaxLineResponse {
+    pub id: Uuid,
+    pub cart_id: Uuid,
+    pub line_item_id: Option<Uuid>,
+    pub shipping_option_id: Option<Uuid>,
+    pub description: Option<String>,
+    pub rate: Decimal,
     pub amount: Decimal,
     pub currency_code: String,
     pub metadata: Value,

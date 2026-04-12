@@ -13,6 +13,7 @@
     },
     "error": {
       "emailRequired": "Email is required.",
+      "localeUnavailable": "Host locale is unavailable.",
       "loadCustomer": "Failed to load customer",
       "saveCustomer": "Failed to save customer",
       "loadCustomers": "Failed to load customers"
@@ -34,8 +35,7 @@
       "email": "Email",
       "firstName": "First name",
       "lastName": "Last name",
-      "phone": "Phone",
-      "locale": "Locale"
+      "phone": "Phone"
     },
     "detail": {
       "title": "Customer Detail",

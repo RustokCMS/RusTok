@@ -8,8 +8,6 @@ pub struct Model {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub slug: String,
-    pub name: String,
-    pub description: Option<String>,
     pub active: bool,
     pub metadata: Json,
     pub created_at: DateTimeWithTimeZone,

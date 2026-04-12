@@ -4,6 +4,7 @@ mod model;
 
 use leptos::prelude::*;
 use rustok_api::UiRouteContext;
+use rustok_core::locale_tags_match;
 
 use crate::i18n::t;
 use crate::model::{
@@ -148,7 +149,11 @@ fn SelectedProductCard(
         }.into_any();
     };
 
-    let translation = product.translations.first().cloned();
+    let translation = product_translation_for_locale(
+        product.translations.as_slice(),
+        locale.as_deref(),
+    )
+    .cloned();
     let variant = product.variants.first().cloned();
     let title = translation
         .as_ref()
@@ -348,6 +353,19 @@ fn format_pricing_preview(locale: Option<&str>, pricing: Option<&ProductPricingD
             )
         })
         .unwrap_or_else(|| t(locale, "product.selected.noPrice", "No pricing yet"))
+}
+
+fn product_translation_for_locale<'a>(
+    translations: &'a [crate::model::ProductTranslation],
+    requested_locale: Option<&str>,
+) -> Option<&'a crate::model::ProductTranslation> {
+    requested_locale
+        .and_then(|locale| {
+            translations
+                .iter()
+                .find(|translation| locale_tags_match(&translation.locale, locale))
+        })
+        .or_else(|| translations.first())
 }
 
 fn format_seller_boundary(locale: Option<&str>, seller_id: Option<&str>) -> String {

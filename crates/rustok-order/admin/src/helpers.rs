@@ -43,8 +43,32 @@ pub async fn handle_action_result(
                     );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
-                Ok(None) => set_error.set(Some(order_not_found_label)),
-                Err(err) => set_error.set(Some(format!("{load_order_error_label}: {err}"))),
+                Ok(None) => {
+                    clear_order_detail(
+                        set_selected_id,
+                        set_selected,
+                        set_payment_id,
+                        set_payment_method,
+                        set_tracking_number,
+                        set_carrier,
+                        set_delivered_signature,
+                        set_cancel_reason,
+                    );
+                    set_error.set(Some(order_not_found_label));
+                }
+                Err(err) => {
+                    clear_order_detail(
+                        set_selected_id,
+                        set_selected,
+                        set_payment_id,
+                        set_payment_method,
+                        set_tracking_number,
+                        set_carrier,
+                        set_delivered_signature,
+                        set_cancel_reason,
+                    );
+                    set_error.set(Some(format!("{load_order_error_label}: {err}")));
+                }
             }
         }
         Err(err) => set_error.set(Some(format!("{action_error_label}: {err}"))),
@@ -114,6 +138,26 @@ pub fn apply_order_detail(
             })
             .unwrap_or_default(),
     );
+}
+
+pub fn clear_order_detail(
+    set_selected_id: WriteSignal<Option<String>>,
+    set_selected: WriteSignal<Option<OrderDetailEnvelope>>,
+    set_payment_id: WriteSignal<String>,
+    set_payment_method: WriteSignal<String>,
+    set_tracking_number: WriteSignal<String>,
+    set_carrier: WriteSignal<String>,
+    set_delivered_signature: WriteSignal<String>,
+    set_cancel_reason: WriteSignal<String>,
+) {
+    set_selected_id.set(None);
+    set_selected.set(None);
+    set_payment_id.set(String::new());
+    set_payment_method.set("manual".to_string());
+    set_tracking_number.set(String::new());
+    set_carrier.set("manual".to_string());
+    set_delivered_signature.set(String::new());
+    set_cancel_reason.set(String::new());
 }
 
 pub fn localized_order_status(locale: Option<&str>, status: &str) -> String {

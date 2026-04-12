@@ -18,7 +18,7 @@ Leptos admin UI package for the `rustok-inventory` module.
 
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
 - Reads inventory-related product and variant fields from the current `rustok-commerce` GraphQL contract in parallel with the ongoing ecommerce UI split.
-- Reads the effective UI locale from `UiRouteContext.locale`; package-local translations must stay aligned with the host locale contract.
+- Reads the effective UI locale from `UiRouteContext.locale`; inventory detail cards resolve localized product copy against that host-owned locale and only fall back when that locale is missing.
 
 ## Documentation
 

@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
+use flex::attached;
 use rustok_core::field_schema::FieldType;
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, ListTopicsFilter,
-    TopicService, UpdateCategoryInput, UpdateTopicInput,
+    forum_topic, CategoryService, CreateCategoryInput, CreateTopicInput, ForumError, ForumModule,
+    ListTopicsFilter, TopicService, UpdateCategoryInput, UpdateTopicInput,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
-    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
-    Schema, Set,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    DbBackend, EntityTrait, QueryFilter, Schema, Set,
 };
 use sea_orm_migration::SchemaManager;
 use tokio::sync::broadcast;
@@ -427,10 +428,250 @@ async fn topic_resolves_localized_flex_metadata_from_attached_values() {
     assert_eq!(en_topic.metadata["summary"], "English summary");
     assert_eq!(en_topic.metadata["audience"], "everyone");
 
+    let stored_topic = forum_topic::Entity::find_by_id(topic.id)
+        .one(&db)
+        .await
+        .expect("topic query should succeed")
+        .expect("stored topic should exist");
+    assert_eq!(
+        stored_topic.metadata,
+        serde_json::json!({ "audience": "everyone" })
+    );
+
+    let localized_rows = attached::Entity::find()
+        .filter(attached::Column::TenantId.eq(tenant_id))
+        .filter(attached::Column::EntityType.eq("topic"))
+        .filter(attached::Column::EntityId.eq(topic.id))
+        .all(&db)
+        .await
+        .expect("localized rows query should succeed");
+    assert_eq!(localized_rows.len(), 2);
+    assert!(localized_rows.iter().any(|row| {
+        row.field_key == "summary"
+            && row.locale == "en"
+            && row.value == serde_json::json!("English summary")
+    }));
+    assert!(localized_rows.iter().any(|row| {
+        row.field_key == "summary"
+            && row.locale == "ru"
+            && row.value == serde_json::json!("Русская сводка")
+    }));
+
     let fallback_topic = topic_service
         .get_with_locale_fallback(tenant_id, admin, topic.id, "fr-FR", Some("ru"))
         .await
         .expect("fallback topic should load");
     assert_eq!(fallback_topic.metadata["summary"], "Русская сводка");
     assert_eq!(fallback_topic.metadata["audience"], "everyone");
+}
+
+#[tokio::test]
+async fn topic_create_applies_shared_defaults_and_persists_localized_attached_values() {
+    let (db, event_bus, _events, tenant_id) = setup().await;
+    let category_service = CategoryService::new(db.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus);
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let string_field_type = serde_json::to_value(FieldType::Text)
+        .expect("field type should serialize")
+        .as_str()
+        .expect("field type should be string")
+        .to_string();
+
+    topic_field_definitions_storage::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        field_key: Set("summary".to_string()),
+        field_type: Set(string_field_type.clone()),
+        label: Set(serde_json::json!({ "en": "Summary" })),
+        description: Set(None),
+        is_localized: Set(true),
+        is_required: Set(false),
+        default_value: Set(None),
+        validation: Set(None),
+        position: Set(0),
+        is_active: Set(true),
+        created_at: sea_orm::ActiveValue::NotSet,
+        updated_at: sea_orm::ActiveValue::NotSet,
+    }
+    .insert(&db)
+    .await
+    .expect("localized field definition should be created");
+
+    topic_field_definitions_storage::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        field_key: Set("audience".to_string()),
+        field_type: Set(string_field_type),
+        label: Set(serde_json::json!({ "en": "Audience" })),
+        description: Set(None),
+        is_localized: Set(false),
+        is_required: Set(false),
+        default_value: Set(Some(serde_json::json!("everyone"))),
+        validation: Set(None),
+        position: Set(1),
+        is_active: Set(true),
+        created_at: sea_orm::ActiveValue::NotSet,
+        updated_at: sea_orm::ActiveValue::NotSet,
+    }
+    .insert(&db)
+    .await
+    .expect("shared field definition should be created");
+
+    let category = category_service
+        .create(
+            tenant_id,
+            admin.clone(),
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: "General".to_string(),
+                slug: "general".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await
+        .expect("category should be created");
+
+    let topic = topic_service
+        .create(
+            tenant_id,
+            admin,
+            CreateTopicInput {
+                locale: "en".to_string(),
+                category_id: category.id,
+                title: "Defaults".to_string(),
+                slug: Some("defaults".to_string()),
+                body: "English body".to_string(),
+                body_format: "markdown".to_string(),
+                content_json: None,
+                metadata: serde_json::json!({
+                    "summary": "English summary",
+                    "unknown_custom": "keep-me"
+                }),
+                tags: vec![],
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect("topic should be created");
+
+    assert_eq!(topic.metadata["summary"], "English summary");
+    assert_eq!(topic.metadata["audience"], "everyone");
+    assert_eq!(topic.metadata["unknown_custom"], "keep-me");
+
+    let stored_topic = forum_topic::Entity::find_by_id(topic.id)
+        .one(&db)
+        .await
+        .expect("topic query should succeed")
+        .expect("stored topic should exist");
+    assert_eq!(
+        stored_topic.metadata,
+        serde_json::json!({
+            "unknown_custom": "keep-me",
+            "audience": "everyone"
+        })
+    );
+
+    let localized_rows = attached::Entity::find()
+        .filter(attached::Column::TenantId.eq(tenant_id))
+        .filter(attached::Column::EntityType.eq("topic"))
+        .filter(attached::Column::EntityId.eq(topic.id))
+        .all(&db)
+        .await
+        .expect("localized rows query should succeed");
+    assert_eq!(localized_rows.len(), 1);
+    assert_eq!(localized_rows[0].field_key, "summary");
+    assert_eq!(localized_rows[0].locale, "en");
+    assert_eq!(
+        localized_rows[0].value,
+        serde_json::json!("English summary")
+    );
+}
+
+#[tokio::test]
+async fn topic_create_rejects_missing_required_localized_custom_field() {
+    let (db, event_bus, _events, tenant_id) = setup().await;
+    let category_service = CategoryService::new(db.clone());
+    let topic_service = TopicService::new(db.clone(), event_bus);
+    let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+
+    let string_field_type = serde_json::to_value(FieldType::Text)
+        .expect("field type should serialize")
+        .as_str()
+        .expect("field type should be string")
+        .to_string();
+
+    topic_field_definitions_storage::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        field_key: Set("summary".to_string()),
+        field_type: Set(string_field_type),
+        label: Set(serde_json::json!({ "en": "Summary" })),
+        description: Set(None),
+        is_localized: Set(true),
+        is_required: Set(true),
+        default_value: Set(None),
+        validation: Set(None),
+        position: Set(0),
+        is_active: Set(true),
+        created_at: sea_orm::ActiveValue::NotSet,
+        updated_at: sea_orm::ActiveValue::NotSet,
+    }
+    .insert(&db)
+    .await
+    .expect("required localized field definition should be created");
+
+    let category = category_service
+        .create(
+            tenant_id,
+            admin.clone(),
+            CreateCategoryInput {
+                locale: "en".to_string(),
+                name: "General".to_string(),
+                slug: "general".to_string(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(0),
+                moderated: false,
+            },
+        )
+        .await
+        .expect("category should be created");
+
+    let error = topic_service
+        .create(
+            tenant_id,
+            admin,
+            CreateTopicInput {
+                locale: "en".to_string(),
+                category_id: category.id,
+                title: "Missing summary".to_string(),
+                slug: Some("missing-summary".to_string()),
+                body: "English body".to_string(),
+                body_format: "markdown".to_string(),
+                content_json: None,
+                metadata: serde_json::json!({}),
+                tags: vec![],
+                channel_slugs: None,
+            },
+        )
+        .await
+        .expect_err("topic creation should fail without required localized custom field");
+
+    match error {
+        ForumError::Validation(message) => {
+            assert!(
+                message.contains("Custom field validation failed"),
+                "unexpected error: {message}"
+            );
+        }
+        other => panic!("expected validation error, got {other:?}"),
+    }
 }

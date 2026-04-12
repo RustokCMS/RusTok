@@ -1,12 +1,13 @@
 use async_graphql::{EmptySubscription, Request, Schema};
 use rust_decimal::Decimal;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
+use rustok_cart::dto::SetCartAdjustmentInput;
 use rustok_commerce::dto::{
     AddCartLineItemInput, CompleteCheckoutInput, CreateCartInput, CreateCustomerInput,
     CreateFulfillmentInput, CreateOrderInput, CreateOrderLineItemInput,
     CreatePaymentCollectionInput, CreateProductInput, CreateShippingOptionInput,
     CreateVariantInput, DeliverFulfillmentInput, PriceInput, ProductTranslationInput,
-    ShipFulfillmentInput,
+    ShipFulfillmentInput, ShippingOptionTranslationInput, ShippingProfileTranslationInput,
 };
 use rustok_commerce::graphql::{CommerceMutation, CommerceQuery};
 use rustok_commerce::{
@@ -14,7 +15,7 @@ use rustok_commerce::{
     OrderService, PaymentService, PricingService, ShippingProfileService,
 };
 use rustok_core::Permission;
-use rustok_region::dto::CreateRegionInput;
+use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::{db::setup_test_db, helpers::unique_slug, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -232,13 +233,11 @@ async fn seed_active_price_list_with_window(
     let price_list_id = Uuid::new_v4();
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Sqlite,
-        "INSERT INTO price_lists (id, tenant_id, name, description, type, status, channel_id, channel_slug, rule_kind, adjustment_percent, starts_at, ends_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        "INSERT INTO price_lists (id, tenant_id, type, status, channel_id, channel_slug, rule_kind, adjustment_percent, starts_at, ends_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         vec![
             price_list_id.into(),
             tenant_id.into(),
-            name.into(),
-            Some(format!("GraphQL pricing helper {name}")).into(),
             "sale".into(),
             "active".into(),
             channel_id.into(),
@@ -255,6 +254,21 @@ async fn seed_active_price_list_with_window(
     ))
     .await
     .expect("active price list should be inserted");
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        "INSERT INTO price_list_translations (id, price_list_id, locale, name, description)
+         VALUES (?, ?, ?, ?, ?)",
+        vec![
+            Uuid::new_v4().into(),
+            price_list_id.into(),
+            "en".into(),
+            name.into(),
+            Some(format!("GraphQL pricing helper {name}")).into(),
+        ],
+    ))
+    .await
+    .expect("price list translation should be inserted");
 
     price_list_id
 }
@@ -1204,8 +1218,11 @@ async fn admin_graphql_supports_shipping_option_create_update_and_list() {
             tenant_id,
             rustok_commerce::dto::CreateShippingProfileInput {
                 slug: "bulky".to_string(),
-                name: "Bulky".to_string(),
-                description: None,
+                translations: vec![ShippingProfileTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Bulky".to_string(),
+                    description: None,
+                }],
                 metadata: serde_json::json!({}),
             },
         )
@@ -1216,8 +1233,11 @@ async fn admin_graphql_supports_shipping_option_create_update_and_list() {
             tenant_id,
             rustok_commerce::dto::CreateShippingProfileInput {
                 slug: "cold-chain".to_string(),
-                name: "Cold Chain".to_string(),
-                description: None,
+                translations: vec![ShippingProfileTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Cold Chain".to_string(),
+                    description: None,
+                }],
                 metadata: serde_json::json!({}),
             },
         )
@@ -2123,7 +2143,10 @@ async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -2137,7 +2160,10 @@ async fn storefront_graphql_read_path_is_stable_after_complete_checkout() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -2265,7 +2291,10 @@ async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -2279,7 +2308,10 @@ async fn admin_graphql_catalog_query_is_stable_after_complete_checkout() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -2394,7 +2426,10 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -2408,7 +2443,10 @@ async fn legacy_catalog_read_path_is_stable_after_complete_checkout() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -2519,6 +2557,7 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
                     metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
                 }],
                 adjustments: Vec::new(),
+                tax_lines: Vec::new(),
                 metadata: serde_json::json!({ "source": "graphql-admin-order-parity" }),
             },
         )
@@ -2669,6 +2708,126 @@ async fn admin_graphql_order_payment_and_fulfillment_surface_matches_runtime_ser
 }
 
 #[tokio::test]
+async fn admin_graphql_order_query_exposes_typed_adjustments_and_totals() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            actor_id,
+            CreateOrderInput {
+                customer_id: Some(Uuid::new_v4()),
+                currency_code: "eur".to_string(),
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("ADMIN-ADJUSTMENT-1".to_string()),
+                    title: "Admin Adjusted Order".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("25.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "graphql-admin-adjustment-order" }),
+                }],
+                adjustments: vec![rustok_order::dto::CreateOrderAdjustmentInput {
+                    line_item_index: Some(0),
+                    source_type: "Promotion".to_string(),
+                    source_id: Some("promo-admin".to_string()),
+                    amount: Decimal::from_str("5.00").expect("valid decimal"),
+                    metadata: serde_json::json!({
+                        "rule_code": "admin-adjustment",
+                        "display_label": "Admin promotion"
+                    }),
+                }],
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "graphql-admin-adjustment-order" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(admin_order_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              order(tenantId: "{tenant_id}", id: "{order_id}") {{
+                order {{
+                  id
+                  subtotalAmount
+                  adjustmentTotal
+                  totalAmount
+                  lineItems {{
+                    id
+                  }}
+                  adjustments {{
+                    lineItemId
+                    sourceType
+                    sourceId
+                    amount
+                    currencyCode
+                    metadata
+                  }}
+                }}
+              }}
+            }}
+            "#,
+            order_id = order.id
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected admin order adjustment GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(json["order"]["order"]["subtotalAmount"], Value::from("25"));
+    assert_eq!(json["order"]["order"]["adjustmentTotal"], Value::from("5"));
+    assert_eq!(json["order"]["order"]["totalAmount"], Value::from("20"));
+    assert_eq!(
+        json["order"]["order"]["adjustments"][0]["lineItemId"],
+        json["order"]["order"]["lineItems"][0]["id"]
+    );
+    assert_eq!(
+        json["order"]["order"]["adjustments"][0]["sourceType"],
+        Value::from("promotion")
+    );
+    assert_eq!(
+        json["order"]["order"]["adjustments"][0]["sourceId"],
+        Value::from("promo-admin")
+    );
+    assert_eq!(
+        json["order"]["order"]["adjustments"][0]["amount"],
+        Value::from("5")
+    );
+    assert_eq!(
+        json["order"]["order"]["adjustments"][0]["currencyCode"],
+        Value::from("EUR")
+    );
+    let metadata: Value = serde_json::from_str(
+        json["order"]["order"]["adjustments"][0]["metadata"]
+            .as_str()
+            .expect("order adjustment metadata should be JSON string"),
+    )
+    .expect("order adjustment metadata should parse");
+    assert_eq!(metadata["rule_code"], Value::from("admin-adjustment"));
+    assert!(metadata.get("display_label").is_none());
+}
+
+#[tokio::test]
 async fn admin_graphql_create_fulfillment_supports_typed_manual_post_order_items() {
     let db = setup_test_db().await;
     support::ensure_commerce_schema(&db).await;
@@ -2702,6 +2861,7 @@ async fn admin_graphql_create_fulfillment_supports_typed_manual_post_order_items
                     }),
                 }],
                 adjustments: Vec::new(),
+                tax_lines: Vec::new(),
                 metadata: serde_json::json!({ "source": "graphql-manual-fulfillment" }),
             },
         )
@@ -2799,6 +2959,7 @@ async fn admin_graphql_ship_and_deliver_support_partial_item_progress() {
                     metadata: serde_json::json!({ "source": "graphql-partial-fulfillment" }),
                 }],
                 adjustments: Vec::new(),
+                tax_lines: Vec::new(),
                 metadata: serde_json::json!({ "source": "graphql-partial-fulfillment" }),
             },
         )
@@ -2897,6 +3058,7 @@ async fn admin_graphql_reopen_fulfillment_restores_shipped_progress() {
                     metadata: serde_json::json!({ "source": "graphql-reopen-fulfillment" }),
                 }],
                 adjustments: Vec::new(),
+                tax_lines: Vec::new(),
                 metadata: serde_json::json!({ "source": "graphql-reopen-fulfillment" }),
             },
         )
@@ -3022,6 +3184,7 @@ async fn admin_graphql_reship_fulfillment_reopens_delivery_with_new_tracking() {
                     metadata: serde_json::json!({ "source": "graphql-reship-fulfillment" }),
                 }],
                 adjustments: Vec::new(),
+                tax_lines: Vec::new(),
                 metadata: serde_json::json!({ "source": "graphql-reship-fulfillment" }),
             },
         )
@@ -3166,6 +3329,7 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
                     metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
                 }],
                 adjustments: Vec::new(),
+                tax_lines: Vec::new(),
                 metadata: serde_json::json!({ "source": "storefront-graphql-order-parity" }),
             },
         )
@@ -3217,6 +3381,143 @@ async fn storefront_graphql_customer_and_order_queries_match_customer_owned_read
         json["storefrontOrder"]["lineItems"][0]["quantity"],
         Value::from(2)
     );
+}
+
+#[tokio::test]
+async fn storefront_graphql_order_query_exposes_typed_adjustments_and_totals() {
+    let db = setup_test_db().await;
+    support::ensure_commerce_schema(&db).await;
+    let tenant_id = Uuid::new_v4();
+    let owner_user_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let customer = CustomerService::new(db.clone())
+        .create_customer(
+            tenant_id,
+            CreateCustomerInput {
+                user_id: Some(owner_user_id),
+                email: "buyer@example.com".to_string(),
+                first_name: Some("Buyer".to_string()),
+                last_name: None,
+                phone: None,
+                locale: Some("de".to_string()),
+                metadata: serde_json::json!({ "source": "storefront-graphql-adjusted-order" }),
+            },
+        )
+        .await
+        .expect("customer should be created");
+
+    let order = OrderService::new(db.clone(), mock_transactional_event_bus())
+        .create_order(
+            tenant_id,
+            owner_user_id,
+            CreateOrderInput {
+                customer_id: Some(customer.id),
+                currency_code: "eur".to_string(),
+                line_items: vec![CreateOrderLineItemInput {
+                    product_id: Some(Uuid::new_v4()),
+                    variant_id: Some(Uuid::new_v4()),
+                    shipping_profile_slug: "default".to_string(),
+                    seller_id: None,
+                    sku: Some("STOREFRONT-ADJUSTMENT-1".to_string()),
+                    title: "Storefront Adjusted Order".to_string(),
+                    quantity: 1,
+                    unit_price: Decimal::from_str("30.00").expect("valid decimal"),
+                    metadata: serde_json::json!({ "source": "storefront-graphql-adjusted-order" }),
+                }],
+                adjustments: vec![rustok_order::dto::CreateOrderAdjustmentInput {
+                    line_item_index: Some(0),
+                    source_type: "Promotion".to_string(),
+                    source_id: Some("promo-storefront".to_string()),
+                    amount: Decimal::from_str("7.50").expect("valid decimal"),
+                    metadata: serde_json::json!({
+                        "rule_code": "storefront-adjustment",
+                        "display_label": "Storefront promotion"
+                    }),
+                }],
+                tax_lines: Vec::new(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-adjusted-order" }),
+            },
+        )
+        .await
+        .expect("order should be created");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        Some(customer_auth_context(tenant_id, owner_user_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontOrder(tenantId: "{tenant_id}", id: "{order_id}") {{
+                id
+                subtotalAmount
+                adjustmentTotal
+                totalAmount
+                lineItems {{
+                  id
+                }}
+                adjustments {{
+                  lineItemId
+                  sourceType
+                  sourceId
+                  amount
+                  currencyCode
+                  metadata
+                }}
+              }}
+            }}
+            "#,
+            order_id = order.id
+        )))
+        .await;
+    assert!(
+        response.errors.is_empty(),
+        "unexpected storefront order adjustment GraphQL errors: {:?}",
+        response.errors
+    );
+    let json = response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(json["storefrontOrder"]["subtotalAmount"], Value::from("30"));
+    assert_eq!(
+        json["storefrontOrder"]["adjustmentTotal"],
+        Value::from("7.5")
+    );
+    assert_eq!(json["storefrontOrder"]["totalAmount"], Value::from("22.5"));
+    assert_eq!(
+        json["storefrontOrder"]["adjustments"][0]["lineItemId"],
+        json["storefrontOrder"]["lineItems"][0]["id"]
+    );
+    assert_eq!(
+        json["storefrontOrder"]["adjustments"][0]["sourceType"],
+        Value::from("promotion")
+    );
+    assert_eq!(
+        json["storefrontOrder"]["adjustments"][0]["sourceId"],
+        Value::from("promo-storefront")
+    );
+    assert_eq!(
+        json["storefrontOrder"]["adjustments"][0]["amount"],
+        Value::from("7.5")
+    );
+    assert_eq!(
+        json["storefrontOrder"]["adjustments"][0]["currencyCode"],
+        Value::from("EUR")
+    );
+    let metadata: Value = serde_json::from_str(
+        json["storefrontOrder"]["adjustments"][0]["metadata"]
+            .as_str()
+            .expect("order adjustment metadata should be JSON string"),
+    )
+    .expect("order adjustment metadata should parse");
+    assert_eq!(metadata["rule_code"], Value::from("storefront-adjustment"));
+    assert!(metadata.get("display_label").is_none());
 }
 
 #[tokio::test]
@@ -3278,6 +3579,7 @@ async fn storefront_graphql_order_query_rejects_foreign_customer_access() {
                     metadata: serde_json::json!({ "source": "storefront-graphql-order-foreign" }),
                 }],
                 adjustments: Vec::new(),
+                tax_lines: Vec::new(),
                 metadata: serde_json::json!({ "source": "storefront-graphql-order-foreign" }),
             },
         )
@@ -3334,7 +3636,10 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -3348,7 +3653,10 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -3457,6 +3765,335 @@ async fn storefront_graphql_checkout_reuses_cart_payment_collection_for_guest_ca
         json["completeStorefrontCheckout"]["context"]["currencyCode"],
         Value::from("EUR")
     );
+}
+
+#[tokio::test]
+async fn storefront_graphql_checkout_preserves_typed_adjustments_and_net_payment_amount() {
+    let (db, catalog, cart_service, _checkout, fulfillment) = setup_checkout().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .unwrap();
+    let published = catalog
+        .publish_product(tenant_id, actor_id, created.id)
+        .await
+        .unwrap();
+    let published_variant = published
+        .variants
+        .first()
+        .expect("published product must have variant");
+
+    let region = RegionService::new(db.clone())
+        .create_region(
+            tenant_id,
+            CreateRegionInput {
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
+                currency_code: "eur".to_string(),
+                tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
+                tax_included: true,
+                countries: vec!["de".to_string()],
+                metadata: serde_json::json!({ "source": "storefront-graphql-adjustments" }),
+            },
+        )
+        .await
+        .unwrap();
+    let shipping_option = fulfillment
+        .create_shipping_option(
+            tenant_id,
+            CreateShippingOptionInput {
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
+                currency_code: "eur".to_string(),
+                amount: Decimal::from_str("9.99").expect("valid decimal"),
+                provider_id: None,
+                allowed_shipping_profile_slugs: None,
+                metadata: serde_json::json!({ "source": "storefront-graphql-adjustments" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .create_cart(
+            tenant_id,
+            CreateCartInput {
+                customer_id: None,
+                email: Some("guest@example.com".to_string()),
+                region_id: Some(region.id),
+                country_code: Some("de".to_string()),
+                locale_code: Some("de".to_string()),
+                selected_shipping_option_id: Some(shipping_option.id),
+                currency_code: "eur".to_string(),
+                metadata: serde_json::json!({ "source": "storefront-graphql-adjustments" }),
+            },
+        )
+        .await
+        .unwrap();
+    let cart = cart_service
+        .add_line_item(
+            tenant_id,
+            cart.id,
+            AddCartLineItemInput {
+                product_id: Some(published.id),
+                variant_id: Some(published_variant.id),
+                shipping_profile_slug: None,
+                sku: published_variant.sku.clone(),
+                title: "Parity Product".to_string(),
+                quantity: 1,
+                unit_price: Decimal::from_str("19.99").expect("valid decimal"),
+                metadata: serde_json::json!({ "source": "storefront-graphql-adjustments" }),
+            },
+        )
+        .await
+        .unwrap();
+    let line_item_id = cart.line_items[0].id;
+    cart_service
+        .set_adjustments(
+            tenant_id,
+            cart.id,
+            vec![SetCartAdjustmentInput {
+                line_item_id: Some(line_item_id),
+                source_type: "Promotion".to_string(),
+                source_id: Some("promo-spring".to_string()),
+                amount: Decimal::from_str("4.99").expect("valid decimal"),
+                metadata: serde_json::json!({
+                    "rule_code": "spring",
+                    "display_label": "Spring sale"
+                }),
+            }],
+        )
+        .await
+        .expect("cart adjustment should be stored");
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "de"),
+        None,
+    );
+    let cart_query = schema
+        .execute(Request::new(format!(
+            r#"
+            query {{
+              storefrontCart(tenantId: "{tenant_id}", id: "{cart_id}") {{
+                id
+                subtotalAmount
+                adjustmentTotal
+                totalAmount
+                adjustments {{
+                  lineItemId
+                  sourceType
+                  sourceId
+                  amount
+                  currencyCode
+                  metadata
+                }}
+              }}
+            }}
+            "#,
+            cart_id = cart.id
+        )))
+        .await;
+    assert!(
+        cart_query.errors.is_empty(),
+        "unexpected storefront cart adjustment errors: {:?}",
+        cart_query.errors
+    );
+    let cart_json = cart_query
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        cart_json["storefrontCart"]["subtotalAmount"],
+        Value::from("19.99")
+    );
+    assert_eq!(
+        cart_json["storefrontCart"]["adjustmentTotal"],
+        Value::from("4.99")
+    );
+    assert_eq!(
+        cart_json["storefrontCart"]["totalAmount"],
+        Value::from("15.00")
+    );
+    assert_eq!(
+        cart_json["storefrontCart"]["adjustments"][0]["lineItemId"],
+        Value::from(line_item_id.to_string())
+    );
+    assert_eq!(
+        cart_json["storefrontCart"]["adjustments"][0]["sourceType"],
+        Value::from("promotion")
+    );
+    assert_eq!(
+        cart_json["storefrontCart"]["adjustments"][0]["sourceId"],
+        Value::from("promo-spring")
+    );
+    assert_eq!(
+        cart_json["storefrontCart"]["adjustments"][0]["amount"],
+        Value::from("4.99")
+    );
+    let cart_adjustment_metadata: Value = serde_json::from_str(
+        cart_json["storefrontCart"]["adjustments"][0]["metadata"]
+            .as_str()
+            .expect("cart adjustment metadata should be a JSON string"),
+    )
+    .expect("cart adjustment metadata should parse");
+    assert_eq!(cart_adjustment_metadata["rule_code"], Value::from("spring"));
+    assert!(cart_adjustment_metadata.get("display_label").is_none());
+
+    let checkout_response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              createStorefrontPaymentCollection(
+                tenantId: "{tenant_id}",
+                input: {{
+                  cartId: "{cart_id}"
+                  metadata: "{{\"source\":\"storefront-graphql-adjustments\",\"step\":\"payment\"}}"
+                }}
+              ) {{
+                id
+                status
+                amount
+              }}
+              completeStorefrontCheckout(
+                tenantId: "{tenant_id}",
+                input: {{
+                  cartId: "{cart_id}"
+                  createFulfillment: true
+                  metadata: "{{\"source\":\"storefront-graphql-adjustments\",\"step\":\"complete\"}}"
+                }}
+              ) {{
+                cart {{
+                  id
+                  status
+                  subtotalAmount
+                  adjustmentTotal
+                  totalAmount
+                  adjustments {{
+                    sourceType
+                    sourceId
+                    amount
+                    currencyCode
+                    metadata
+                  }}
+                }}
+                order {{
+                  id
+                  status
+                  subtotalAmount
+                  adjustmentTotal
+                  totalAmount
+                  lineItems {{
+                    id
+                  }}
+                  adjustments {{
+                    lineItemId
+                    sourceType
+                    sourceId
+                    amount
+                    currencyCode
+                    metadata
+                  }}
+                }}
+                paymentCollection {{
+                  id
+                  status
+                  amount
+                  authorizedAmount
+                  capturedAmount
+                }}
+              }}
+            }}
+            "#,
+            cart_id = cart.id
+        )))
+        .await;
+    assert!(
+        checkout_response.errors.is_empty(),
+        "unexpected storefront checkout adjustment errors: {:?}",
+        checkout_response.errors
+    );
+    let checkout_json = checkout_response
+        .data
+        .into_json()
+        .expect("GraphQL response must serialize");
+
+    assert_eq!(
+        checkout_json["createStorefrontPaymentCollection"]["amount"],
+        Value::from("15")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["paymentCollection"]["amount"],
+        Value::from("15")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["paymentCollection"]["authorizedAmount"],
+        Value::from("15")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["paymentCollection"]["capturedAmount"],
+        Value::from("15")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["cart"]["adjustmentTotal"],
+        Value::from("4.99")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["cart"]["totalAmount"],
+        Value::from("15.00")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["order"]["subtotalAmount"],
+        Value::from("19.99")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["order"]["adjustmentTotal"],
+        Value::from("4.99")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["order"]["totalAmount"],
+        Value::from("15")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["order"]["adjustments"][0]["sourceType"],
+        Value::from("promotion")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["order"]["adjustments"][0]["sourceId"],
+        Value::from("promo-spring")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["order"]["adjustments"][0]["amount"],
+        Value::from("4.99")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["order"]["adjustments"][0]["currencyCode"],
+        Value::from("EUR")
+    );
+    assert_eq!(
+        checkout_json["completeStorefrontCheckout"]["order"]["adjustments"][0]["lineItemId"],
+        checkout_json["completeStorefrontCheckout"]["order"]["lineItems"][0]["id"]
+    );
+    let order_adjustment_metadata: Value = serde_json::from_str(
+        checkout_json["completeStorefrontCheckout"]["order"]["adjustments"][0]["metadata"]
+            .as_str()
+            .expect("order adjustment metadata should be a JSON string"),
+    )
+    .expect("order adjustment metadata should parse");
+    assert_eq!(
+        order_adjustment_metadata["rule_code"],
+        Value::from("spring")
+    );
+    assert!(order_adjustment_metadata.get("display_label").is_none());
 }
 
 #[tokio::test]
@@ -3774,7 +4411,10 @@ async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -3788,7 +4428,10 @@ async fn storefront_graphql_cart_context_patch_keeps_tristate_semantics() {
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Standard".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -3876,7 +4519,10 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -3890,7 +4536,10 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "EUR Standard".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "EUR Standard".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -3904,7 +4553,10 @@ async fn storefront_graphql_discovery_queries_follow_live_region_and_shipping_co
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "USD Express".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "USD Express".to_string(),
+                }],
                 currency_code: "usd".to_string(),
                 amount: Decimal::from_str("14.99").expect("valid decimal"),
                 provider_id: None,
@@ -3999,7 +4651,10 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Default Shipping".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Default Shipping".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,
@@ -4017,7 +4672,10 @@ async fn storefront_graphql_shipping_options_filter_incompatible_shipping_profil
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Bulky Freight".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Bulky Freight".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("29.99").expect("valid decimal"),
                 provider_id: None,
@@ -5035,8 +5693,15 @@ async fn admin_graphql_update_pricing_variant_price_supports_price_list_tier_sco
         .variants
         .first()
         .expect("product should include a variant");
-    let price_list_id =
-        seed_active_price_list(&db, tenant_id, "Tiered Sale", None, None, None).await;
+    let price_list_id = seed_active_price_list(
+        &db,
+        tenant_id,
+        "Tiered Sale",
+        Some(channel_id),
+        Some("web-store"),
+        None,
+    )
+    .await;
 
     let schema = build_schema(
         &db,
@@ -5147,6 +5812,79 @@ async fn admin_graphql_update_pricing_variant_price_supports_price_list_tier_sco
         persisted.compare_at_amount,
         Some(Decimal::from_str("19.99").unwrap())
     );
+}
+
+#[tokio::test]
+async fn admin_graphql_update_pricing_variant_price_rejects_price_list_scope_mismatch() {
+    let (db, catalog, _cart_service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    let web_channel_id = Uuid::new_v4();
+    let mobile_channel_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+
+    let created = catalog
+        .create_product(tenant_id, actor_id, create_product_input())
+        .await
+        .expect("product should be created");
+    let variant = created
+        .variants
+        .first()
+        .expect("product should include a variant");
+    let price_list_id = seed_active_price_list(
+        &db,
+        tenant_id,
+        "Tiered Sale",
+        Some(web_channel_id),
+        Some("web-store"),
+        None,
+    )
+    .await;
+
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        Some(pricing_update_auth_context(tenant_id)),
+    );
+    let response = schema
+        .execute(Request::new(format!(
+            r#"
+            mutation {{
+              updateAdminPricingVariantPrice(
+                tenantId: "{tenant_id}",
+                variantId: "{variant_id}",
+                input: {{
+                  currencyCode: "eur",
+                  amount: "14.50",
+                  compareAtAmount: "19.99",
+                  priceListId: "{price_list_id}",
+                  channelId: "{mobile_channel_id}",
+                  channelSlug: "mobile-app",
+                  minQuantity: 5,
+                  maxQuantity: 9
+                }}
+              ) {{
+                currencyCode
+              }}
+            }}
+            "#,
+            variant_id = variant.id,
+        )))
+        .await;
+
+    assert_eq!(response.errors.len(), 1);
+    assert!(response.errors[0].message.contains(
+        "price rows for a selected price_list_id must match the price list channel scope"
+    ));
+
+    let scoped_override = PricingService::new(db.clone(), mock_transactional_event_bus())
+        .get_variant_prices(variant.id)
+        .await
+        .expect("variant prices should load")
+        .into_iter()
+        .find(|price| price.price_list_id == Some(price_list_id));
+    assert!(scoped_override.is_none());
 }
 
 #[tokio::test]
@@ -6084,7 +6822,10 @@ async fn storefront_graphql_update_cart_context_rejects_incompatible_shipping_pr
         .create_shipping_option(
             tenant_id,
             CreateShippingOptionInput {
-                name: "Default Shipping".to_string(),
+                translations: vec![ShippingOptionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Default Shipping".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 amount: Decimal::from_str("9.99").expect("valid decimal"),
                 provider_id: None,

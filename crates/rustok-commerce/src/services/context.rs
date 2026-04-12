@@ -63,7 +63,9 @@ impl StoreContextService {
             .filter(|locale| available_locales.iter().any(|item| item == locale))
             .unwrap_or_else(|| default_locale.clone());
 
-        let region = self.resolve_region(tenant_id, &input).await?;
+        let region = self
+            .resolve_region(tenant_id, &input, requested_locale.as_deref(), Some(&default_locale))
+            .await?;
         let currency_code = match (input.currency_code.as_deref(), region.as_ref()) {
             (Some(currency_code), Some(region)) => {
                 let normalized = normalize_currency(currency_code)?;
@@ -94,17 +96,31 @@ impl StoreContextService {
         &self,
         tenant_id: Uuid,
         input: &ResolveStoreContextInput,
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
     ) -> StoreContextResult<Option<RegionResponse>> {
         if let Some(region_id) = input.region_id {
             return Ok(Some(
-                self.region_service.get_region(tenant_id, region_id).await?,
+                self.region_service
+                    .get_region(
+                        tenant_id,
+                        region_id,
+                        requested_locale,
+                        tenant_default_locale,
+                    )
+                    .await?,
             ));
         }
 
         if let Some(country_code) = input.country_code.as_deref() {
             return self
                 .region_service
-                .resolve_region_for_country(tenant_id, country_code)
+                .resolve_region_for_country(
+                    tenant_id,
+                    country_code,
+                    requested_locale,
+                    tenant_default_locale,
+                )
                 .await
                 .map_err(StoreContextError::from);
         }

@@ -7,6 +7,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_api::UiRouteContext;
+use rustok_core::locale_tags_match;
 
 use crate::i18n::t;
 use crate::model::{
@@ -17,7 +18,7 @@ use crate::model::{
 pub fn ProductAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let initial_locale = ui_locale.clone().unwrap_or_else(|| "en".to_string());
+    let effective_locale = ui_locale.clone();
     let initial_selected_product_id = route_context.query_value("id").map(ToOwned::to_owned);
     let token = use_token();
     let tenant = use_tenant();
@@ -25,7 +26,6 @@ pub fn ProductAdmin() -> impl IntoView {
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_id, set_editing_id) = signal(Option::<String>::None);
     let (selected, set_selected) = signal(Option::<ProductDetail>::None);
-    let (locale, set_locale) = signal(initial_locale.clone());
     let (title, set_title) = signal(String::new());
     let (handle, set_handle) = signal(String::new());
     let (description, set_description) = signal(String::new());
@@ -45,6 +45,9 @@ pub fn ProductAdmin() -> impl IntoView {
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
     let (query_selection_applied, set_query_selection_applied) = signal(false);
+    let effective_locale_for_products = effective_locale.clone();
+    let effective_locale_for_selected_pricing = effective_locale.clone();
+    let effective_locale_for_initial_open = effective_locale.clone();
 
     let bootstrap = Resource::new(
         move || (token.get(), tenant.get()),
@@ -59,7 +62,7 @@ pub fn ProductAdmin() -> impl IntoView {
                 token.get(),
                 tenant.get(),
                 refresh_nonce.get(),
-                locale.get(),
+                effective_locale_for_products.clone(),
                 search.get(),
                 status_filter.get(),
             )
@@ -92,7 +95,7 @@ pub fn ProductAdmin() -> impl IntoView {
                 token.get(),
                 tenant.get(),
                 refresh_nonce.get(),
-                locale.get(),
+                effective_locale_for_selected_pricing.clone(),
                 selected.get().map(|product| {
                     (
                         product.id.clone(),
@@ -137,10 +140,15 @@ pub fn ProductAdmin() -> impl IntoView {
         "product.error.productNotFound",
         "Product not found.",
     );
-    let locale_title_required_label = t(
+    let title_required_label = t(
         ui_locale.as_deref(),
-        "product.error.localeTitleRequired",
-        "Locale and title are required.",
+        "product.error.titleRequired",
+        "Title is required.",
+    );
+    let locale_unavailable_label = t(
+        ui_locale.as_deref(),
+        "product.error.localeUnavailable",
+        "Host locale is unavailable.",
     );
     let save_product_error_label = t(
         ui_locale.as_deref(),
@@ -180,7 +188,7 @@ pub fn ProductAdmin() -> impl IntoView {
             bootstrap,
             token.get(),
             tenant.get(),
-            locale.get(),
+            effective_locale_for_initial_open.clone(),
             product_id,
             initial_product_not_found_label.clone(),
             initial_load_product_error_label.clone(),
@@ -188,7 +196,6 @@ pub fn ProductAdmin() -> impl IntoView {
             set_error,
             set_editing_id,
             set_selected,
-            set_locale,
             set_title,
             set_handle,
             set_description,
@@ -206,11 +213,9 @@ pub fn ProductAdmin() -> impl IntoView {
         );
     });
 
-    let reset_form_initial_locale = initial_locale.clone();
     let reset_form = move || {
         set_editing_id.set(None);
         set_selected.set(None);
-        set_locale.set(reset_form_initial_locale.clone());
         set_title.set(String::new());
         set_handle.set(String::new());
         set_description.set(String::new());
@@ -228,14 +233,20 @@ pub fn ProductAdmin() -> impl IntoView {
         set_error.set(None);
     };
 
-    let locale_title_required_label_for_submit = locale_title_required_label.clone();
+    let title_required_label_for_submit = title_required_label.clone();
+    let submit_ui_locale = ui_locale.clone();
+    let locale_unavailable_label_for_submit = locale_unavailable_label.clone();
     let bootstrap_loading_label_for_submit = bootstrap_loading_label.clone();
     let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
-        if locale.get_untracked().trim().is_empty() || title.get_untracked().trim().is_empty() {
-            set_error.set(Some(locale_title_required_label_for_submit.clone()));
+        if title.get_untracked().trim().is_empty() {
+            set_error.set(Some(title_required_label_for_submit.clone()));
             return;
         }
+        let Some(submit_locale) = submit_ui_locale.clone() else {
+            set_error.set(Some(locale_unavailable_label_for_submit.clone()));
+            return;
+        };
 
         let Some(bootstrap) = bootstrap.get_untracked().and_then(Result::ok) else {
             set_error.set(Some(bootstrap_loading_label_for_submit.clone()));
@@ -246,7 +257,7 @@ pub fn ProductAdmin() -> impl IntoView {
         set_error.set(None);
 
         let draft = ProductDraft {
-            locale: locale.get_untracked(),
+            locale: submit_locale.clone(),
             title: title.get_untracked(),
             handle: handle.get_untracked(),
             description: description.get_untracked(),
@@ -296,9 +307,9 @@ pub fn ProductAdmin() -> impl IntoView {
                 Ok(product) => {
                     apply_product(
                         &product,
+                        Some(submit_locale.as_str()),
                         set_editing_id,
                         set_selected,
-                        set_locale,
                         set_title,
                         set_handle,
                         set_description,
@@ -438,7 +449,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                         let delete_product_error_label_for_delete = delete_product_error_label.clone();
                                         let product_not_found_label_for_edit = product_not_found_label.clone();
                                         let load_product_error_label_for_edit = load_product_error_label.clone();
-                                        let initial_locale_for_delete = initial_locale.clone();
+                                        let effective_locale_for_edit = effective_locale.clone();
                                         view! {
                                             <article class="rounded-2xl border border-border bg-background p-5 transition hover:border-primary/40">
                                                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -472,7 +483,7 @@ pub fn ProductAdmin() -> impl IntoView {
                                                                 bootstrap,
                                                                 token.get_untracked(),
                                                                 tenant.get_untracked(),
-                                                                locale.get_untracked(),
+                                                                effective_locale_for_edit.clone(),
                                                                 edit_id.clone(),
                                                                 product_not_found_label_for_edit.clone(),
                                                                 load_product_error_label_for_edit.clone(),
@@ -480,7 +491,6 @@ pub fn ProductAdmin() -> impl IntoView {
                                                                 set_error,
                                                                 set_editing_id,
                                                                 set_selected,
-                                                                set_locale,
                                                                 set_title,
                                                                 set_handle,
                                                                 set_description,
@@ -551,7 +561,6 @@ pub fn ProductAdmin() -> impl IntoView {
                                                             let token_value = token.get_untracked();
                                                             let tenant_value = tenant.get_untracked();
                                                             let delete_id_value = delete_id.clone();
-                                                            let initial_locale_value = initial_locale_for_delete.clone();
                                                             let delete_returned_false_label = delete_returned_false_label_for_delete.clone();
                                                             let delete_product_error_label = delete_product_error_label_for_delete.clone();
                                                             spawn_local(async move {
@@ -566,7 +575,6 @@ pub fn ProductAdmin() -> impl IntoView {
                                                                         if editing_id.get_untracked().as_deref() == Some(delete_id_value.as_str()) {
                                                                             set_editing_id.set(None);
                                                                             set_selected.set(None);
-                                                                            set_locale.set(initial_locale_value.clone());
                                                                             set_title.set(String::new());
                                                                             set_handle.set(String::new());
                                                                             set_description.set(String::new());
@@ -631,7 +639,6 @@ pub fn ProductAdmin() -> impl IntoView {
 
                         <form class="mt-5 space-y-4" on:submit=on_submit>
                             <div class="grid gap-4 md:grid-cols-2">
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "product.field.locale", "Locale") prop:value=move || locale.get() on:input=move |ev| set_locale.set(event_target_value(&ev)) />
                                 <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "product.field.handle", "Handle") prop:value=move || handle.get() on:input=move |ev| set_handle.set(event_target_value(&ev)) />
                             </div>
                             <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "product.field.title", "Title") prop:value=move || title.get() on:input=move |ev| set_title.set(event_target_value(&ev)) />
@@ -712,7 +719,7 @@ fn open_product_for_edit(
     bootstrap: ProductAdminBootstrap,
     token: Option<String>,
     tenant: Option<String>,
-    locale: String,
+    requested_locale: Option<String>,
     product_id: String,
     product_not_found_label: String,
     load_product_error_label: String,
@@ -720,7 +727,6 @@ fn open_product_for_edit(
     set_error: WriteSignal<Option<String>>,
     set_editing_id: WriteSignal<Option<String>>,
     set_selected: WriteSignal<Option<ProductDetail>>,
-    set_locale: WriteSignal<String>,
     set_title: WriteSignal<String>,
     set_handle: WriteSignal<String>,
     set_description: WriteSignal<String>,
@@ -744,15 +750,15 @@ fn open_product_for_edit(
             tenant,
             bootstrap.current_tenant.id,
             product_id,
-            locale,
+            requested_locale.clone(),
         )
         .await
         {
             Ok(Some(product)) => apply_product(
                 &product,
+                requested_locale.as_deref(),
                 set_editing_id,
                 set_selected,
-                set_locale,
                 set_title,
                 set_handle,
                 set_description,
@@ -768,18 +774,56 @@ fn open_product_for_edit(
                 set_inventory_quantity,
                 set_publish_now,
             ),
-            Ok(None) => set_error.set(Some(product_not_found_label)),
-            Err(err) => set_error.set(Some(format!("{load_product_error_label}: {err}"))),
+            Ok(None) => {
+                clear_product_form(
+                    set_editing_id,
+                    set_selected,
+                    set_title,
+                    set_handle,
+                    set_description,
+                    set_seller_id,
+                    set_vendor,
+                    set_product_type,
+                    set_shipping_profile_slug,
+                    set_sku,
+                    set_barcode,
+                    set_currency_code,
+                    set_amount,
+                    set_compare_at_amount,
+                    set_inventory_quantity,
+                    set_publish_now,
+                );
+                set_error.set(Some(product_not_found_label));
+            }
+            Err(err) => {
+                clear_product_form(
+                    set_editing_id,
+                    set_selected,
+                    set_title,
+                    set_handle,
+                    set_description,
+                    set_seller_id,
+                    set_vendor,
+                    set_product_type,
+                    set_shipping_profile_slug,
+                    set_sku,
+                    set_barcode,
+                    set_currency_code,
+                    set_amount,
+                    set_compare_at_amount,
+                    set_inventory_quantity,
+                    set_publish_now,
+                );
+                set_error.set(Some(format!("{load_product_error_label}: {err}")));
+            }
         }
         set_busy.set(false);
     });
 }
 
-fn apply_product(
-    product: &ProductDetail,
+fn clear_product_form(
     set_editing_id: WriteSignal<Option<String>>,
     set_selected: WriteSignal<Option<ProductDetail>>,
-    set_locale: WriteSignal<String>,
     set_title: WriteSignal<String>,
     set_handle: WriteSignal<String>,
     set_description: WriteSignal<String>,
@@ -795,7 +839,45 @@ fn apply_product(
     set_inventory_quantity: WriteSignal<i32>,
     set_publish_now: WriteSignal<bool>,
 ) {
-    let translation = product.translations.first().cloned();
+    set_editing_id.set(None);
+    set_selected.set(None);
+    set_title.set(String::new());
+    set_handle.set(String::new());
+    set_description.set(String::new());
+    set_seller_id.set(String::new());
+    set_vendor.set(String::new());
+    set_product_type.set(String::new());
+    set_shipping_profile_slug.set(String::new());
+    set_sku.set(String::new());
+    set_barcode.set(String::new());
+    set_currency_code.set("USD".to_string());
+    set_amount.set("0.00".to_string());
+    set_compare_at_amount.set(String::new());
+    set_inventory_quantity.set(0);
+    set_publish_now.set(false);
+}
+
+fn apply_product(
+    product: &ProductDetail,
+    requested_locale: Option<&str>,
+    set_editing_id: WriteSignal<Option<String>>,
+    set_selected: WriteSignal<Option<ProductDetail>>,
+    set_title: WriteSignal<String>,
+    set_handle: WriteSignal<String>,
+    set_description: WriteSignal<String>,
+    set_seller_id: WriteSignal<String>,
+    set_vendor: WriteSignal<String>,
+    set_product_type: WriteSignal<String>,
+    set_shipping_profile_slug: WriteSignal<String>,
+    set_sku: WriteSignal<String>,
+    set_barcode: WriteSignal<String>,
+    set_currency_code: WriteSignal<String>,
+    set_amount: WriteSignal<String>,
+    set_compare_at_amount: WriteSignal<String>,
+    set_inventory_quantity: WriteSignal<i32>,
+    set_publish_now: WriteSignal<bool>,
+) {
+    let translation = translation_for_locale(&product.translations, requested_locale);
     let variant = product.variants.first().cloned();
     let price = variant
         .as_ref()
@@ -803,12 +885,6 @@ fn apply_product(
 
     set_editing_id.set(Some(product.id.clone()));
     set_selected.set(Some(product.clone()));
-    set_locale.set(
-        translation
-            .as_ref()
-            .map(|item| item.locale.clone())
-            .unwrap_or_else(|| "en".to_string()),
-    );
     set_title.set(
         translation
             .as_ref()
@@ -862,6 +938,18 @@ fn apply_product(
             .unwrap_or(0),
     );
     set_publish_now.set(product.status == "ACTIVE");
+}
+
+fn translation_for_locale(
+    translations: &[crate::model::ProductTranslation],
+    requested_locale: Option<&str>,
+) -> Option<crate::model::ProductTranslation> {
+    requested_locale.and_then(|requested_locale| {
+        translations
+            .iter()
+            .find(|translation| locale_tags_match(&translation.locale, requested_locale))
+            .cloned()
+    })
 }
 
 fn mutate_status(
@@ -921,10 +1009,9 @@ fn SelectedProductSummary(
         .into_any();
     };
 
-    let title = product
-        .translations
-        .first()
-        .map(|item| item.title.clone())
+    let title = translation_for_locale(&product.translations, locale.as_deref())
+        .map(|item| item.title)
+        .or_else(|| product.translations.first().map(|item| item.title.clone()))
         .unwrap_or_else(|| t(locale.as_deref(), "product.summary.untitled", "Untitled"));
     let inventory = product
         .variants

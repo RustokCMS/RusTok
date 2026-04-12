@@ -1,7 +1,7 @@
 use rust_decimal::Decimal;
 use rustok_commerce::dto::ResolveStoreContextInput;
 use rustok_commerce::services::StoreContextService;
-use rustok_region::dto::CreateRegionInput;
+use rustok_region::dto::{CreateRegionInput, RegionTranslationInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
@@ -29,7 +29,10 @@ async fn resolve_context_uses_tenant_locales_and_region_currency() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -75,7 +78,10 @@ async fn resolve_context_rejects_currency_mismatch_for_region() {
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,
@@ -115,7 +121,10 @@ async fn resolve_context_falls_back_to_default_locale_when_requested_locale_disa
         .create_region(
             tenant_id,
             CreateRegionInput {
-                name: "Europe".to_string(),
+                translations: vec![RegionTranslationInput {
+                    locale: "en".to_string(),
+                    name: "Europe".to_string(),
+                }],
                 currency_code: "eur".to_string(),
                 tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
                 tax_included: true,

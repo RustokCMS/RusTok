@@ -160,6 +160,16 @@ pub struct GqlRegion {
     pub metadata: String,
     pub created_at: String,
     pub updated_at: String,
+    pub requested_locale: Option<String>,
+    pub effective_locale: Option<String>,
+    pub available_locales: Vec<String>,
+    pub translations: Vec<GqlRegionTranslation>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlRegionTranslation {
+    pub locale: String,
+    pub name: String,
 }
 
 #[derive(SimpleObject)]
@@ -175,6 +185,16 @@ pub struct GqlShippingOption {
     pub metadata: String,
     pub created_at: String,
     pub updated_at: String,
+    pub requested_locale: Option<String>,
+    pub effective_locale: Option<String>,
+    pub available_locales: Vec<String>,
+    pub translations: Vec<GqlShippingOptionTranslation>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlShippingOptionTranslation {
+    pub locale: String,
+    pub name: String,
 }
 
 #[derive(SimpleObject)]
@@ -188,6 +208,17 @@ pub struct GqlShippingProfile {
     pub metadata: String,
     pub created_at: String,
     pub updated_at: String,
+    pub requested_locale: Option<String>,
+    pub effective_locale: Option<String>,
+    pub available_locales: Vec<String>,
+    pub translations: Vec<GqlShippingProfileTranslation>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlShippingProfileTranslation {
+    pub locale: String,
+    pub name: String,
+    pub description: Option<String>,
 }
 
 #[derive(SimpleObject)]
@@ -327,12 +358,14 @@ pub struct GqlCart {
     pub subtotal_amount: String,
     pub adjustment_total: String,
     pub total_amount: String,
+    pub tax_total: String,
     pub metadata: String,
     pub created_at: String,
     pub updated_at: String,
     pub completed_at: Option<String>,
     pub line_items: Vec<GqlCartLineItem>,
     pub adjustments: Vec<GqlCartAdjustment>,
+    pub tax_lines: Vec<GqlCartTaxLine>,
     pub delivery_groups: Vec<GqlCartDeliveryGroup>,
 }
 
@@ -363,6 +396,21 @@ pub struct GqlCartAdjustment {
     pub line_item_id: Option<Uuid>,
     pub source_type: String,
     pub source_id: Option<String>,
+    pub amount: String,
+    pub currency_code: String,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlCartTaxLine {
+    pub id: Uuid,
+    pub cart_id: Uuid,
+    pub line_item_id: Option<Uuid>,
+    pub shipping_option_id: Option<Uuid>,
+    pub description: Option<String>,
+    pub rate: String,
     pub amount: String,
     pub currency_code: String,
     pub metadata: String,
@@ -419,6 +467,8 @@ pub struct GqlOrder {
     pub subtotal_amount: String,
     pub adjustment_total: String,
     pub total_amount: String,
+    pub tax_total: String,
+    pub tax_included: bool,
     pub metadata: String,
     pub payment_id: Option<String>,
     pub payment_method: Option<String>,
@@ -435,6 +485,7 @@ pub struct GqlOrder {
     pub cancelled_at: Option<String>,
     pub line_items: Vec<GqlOrderLineItem>,
     pub adjustments: Vec<GqlOrderAdjustment>,
+    pub tax_lines: Vec<GqlOrderTaxLine>,
 }
 
 #[derive(SimpleObject)]
@@ -466,6 +517,21 @@ pub struct GqlOrderAdjustment {
     pub currency_code: String,
     pub metadata: String,
     pub created_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlOrderTaxLine {
+    pub id: Uuid,
+    pub order_id: Uuid,
+    pub line_item_id: Option<Uuid>,
+    pub shipping_option_id: Option<Uuid>,
+    pub description: Option<String>,
+    pub rate: String,
+    pub amount: String,
+    pub currency_code: String,
+    pub metadata: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(SimpleObject)]
@@ -596,6 +662,12 @@ pub struct ProductTranslationInput {
 
 #[derive(InputObject)]
 pub struct ProductOptionInput {
+    pub translations: Vec<ProductOptionTranslationInput>,
+}
+
+#[derive(InputObject)]
+pub struct ProductOptionTranslationInput {
+    pub locale: String,
     pub name: String,
     pub values: Vec<String>,
 }
@@ -905,9 +977,16 @@ pub struct CancelFulfillmentInputObject {
 }
 
 #[derive(InputObject)]
+#[graphql(name = "ShippingOptionTranslationInput")]
+pub struct ShippingOptionTranslationInput {
+    pub locale: String,
+    pub name: String,
+}
+
+#[derive(InputObject)]
 #[graphql(name = "CreateShippingOptionInput")]
 pub struct CreateShippingOptionInputObject {
-    pub name: String,
+    pub translations: Vec<ShippingOptionTranslationInput>,
     pub currency_code: String,
     pub amount: String,
     pub provider_id: Option<String>,
@@ -918,7 +997,7 @@ pub struct CreateShippingOptionInputObject {
 #[derive(InputObject)]
 #[graphql(name = "UpdateShippingOptionInput")]
 pub struct UpdateShippingOptionInputObject {
-    pub name: Option<String>,
+    pub translations: Option<Vec<ShippingOptionTranslationInput>>,
     pub currency_code: Option<String>,
     pub amount: Option<String>,
     pub provider_id: Option<String>,
@@ -927,11 +1006,18 @@ pub struct UpdateShippingOptionInputObject {
 }
 
 #[derive(InputObject)]
+#[graphql(name = "ShippingProfileTranslationInput")]
+pub struct ShippingProfileTranslationInput {
+    pub locale: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(InputObject)]
 #[graphql(name = "CreateShippingProfileInput")]
 pub struct CreateShippingProfileInputObject {
     pub slug: String,
-    pub name: String,
-    pub description: Option<String>,
+    pub translations: Vec<ShippingProfileTranslationInput>,
     pub metadata: Option<String>,
 }
 
@@ -939,8 +1025,7 @@ pub struct CreateShippingProfileInputObject {
 #[graphql(name = "UpdateShippingProfileInput")]
 pub struct UpdateShippingProfileInputObject {
     pub slug: Option<String>,
-    pub name: Option<String>,
-    pub description: Option<String>,
+    pub translations: Option<Vec<ShippingProfileTranslationInput>>,
     pub metadata: Option<String>,
 }
 
@@ -1067,6 +1152,17 @@ impl From<dto::RegionResponse> for GqlRegion {
             metadata: value.metadata.to_string(),
             created_at: value.created_at.to_rfc3339(),
             updated_at: value.updated_at.to_rfc3339(),
+            requested_locale: value.requested_locale,
+            effective_locale: value.effective_locale,
+            available_locales: value.available_locales,
+            translations: value
+                .translations
+                .into_iter()
+                .map(|translation| GqlRegionTranslation {
+                    locale: translation.locale,
+                    name: translation.name,
+                })
+                .collect(),
         }
     }
 }
@@ -1085,6 +1181,17 @@ impl From<dto::ShippingOptionResponse> for GqlShippingOption {
             metadata: value.metadata.to_string(),
             created_at: value.created_at.to_rfc3339(),
             updated_at: value.updated_at.to_rfc3339(),
+            requested_locale: value.requested_locale,
+            effective_locale: value.effective_locale,
+            available_locales: value.available_locales,
+            translations: value
+                .translations
+                .into_iter()
+                .map(|translation| GqlShippingOptionTranslation {
+                    locale: translation.locale,
+                    name: translation.name,
+                })
+                .collect(),
         }
     }
 }
@@ -1101,6 +1208,18 @@ impl From<dto::ShippingProfileResponse> for GqlShippingProfile {
             metadata: value.metadata.to_string(),
             created_at: value.created_at.to_rfc3339(),
             updated_at: value.updated_at.to_rfc3339(),
+            requested_locale: value.requested_locale,
+            effective_locale: value.effective_locale,
+            available_locales: value.available_locales,
+            translations: value
+                .translations
+                .into_iter()
+                .map(|translation| GqlShippingProfileTranslation {
+                    locale: translation.locale,
+                    name: translation.name,
+                    description: translation.description,
+                })
+                .collect(),
         }
     }
 }
@@ -1347,12 +1466,14 @@ impl From<dto::CartResponse> for GqlCart {
             subtotal_amount: value.subtotal_amount.to_string(),
             adjustment_total: value.adjustment_total.to_string(),
             total_amount: value.total_amount.to_string(),
+            tax_total: value.tax_total.to_string(),
             metadata: value.metadata.to_string(),
             created_at: value.created_at.to_rfc3339(),
             updated_at: value.updated_at.to_rfc3339(),
             completed_at: value.completed_at.map(|value| value.to_rfc3339()),
             line_items: value.line_items.into_iter().map(Into::into).collect(),
             adjustments: value.adjustments.into_iter().map(Into::into).collect(),
+            tax_lines: value.tax_lines.into_iter().map(Into::into).collect(),
             delivery_groups: value.delivery_groups.into_iter().map(Into::into).collect(),
         }
     }
@@ -1389,6 +1510,24 @@ impl From<dto::CartAdjustmentResponse> for GqlCartAdjustment {
             line_item_id: value.line_item_id,
             source_type: value.source_type,
             source_id: value.source_id,
+            amount: value.amount.to_string(),
+            currency_code: value.currency_code,
+            metadata: value.metadata.to_string(),
+            created_at: value.created_at.to_rfc3339(),
+            updated_at: value.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::CartTaxLineResponse> for GqlCartTaxLine {
+    fn from(value: dto::CartTaxLineResponse) -> Self {
+        Self {
+            id: value.id,
+            cart_id: value.cart_id,
+            line_item_id: value.line_item_id,
+            shipping_option_id: value.shipping_option_id,
+            description: value.description,
+            rate: value.rate.to_string(),
             amount: value.amount.to_string(),
             currency_code: value.currency_code,
             metadata: value.metadata.to_string(),
@@ -1464,6 +1603,8 @@ impl From<dto::OrderResponse> for GqlOrder {
             subtotal_amount: order.subtotal_amount.to_string(),
             adjustment_total: order.adjustment_total.to_string(),
             total_amount: order.total_amount.to_string(),
+            tax_total: order.tax_total.to_string(),
+            tax_included: order.tax_included,
             metadata: order.metadata.to_string(),
             payment_id: order.payment_id,
             payment_method: order.payment_method,
@@ -1480,6 +1621,7 @@ impl From<dto::OrderResponse> for GqlOrder {
             cancelled_at: order.cancelled_at.map(|value| value.to_rfc3339()),
             line_items: order.line_items.into_iter().map(Into::into).collect(),
             adjustments: order.adjustments.into_iter().map(Into::into).collect(),
+            tax_lines: order.tax_lines.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -1517,6 +1659,24 @@ impl From<dto::OrderAdjustmentResponse> for GqlOrderAdjustment {
             currency_code: item.currency_code,
             metadata: item.metadata.to_string(),
             created_at: item.created_at.to_rfc3339(),
+        }
+    }
+}
+
+impl From<dto::OrderTaxLineResponse> for GqlOrderTaxLine {
+    fn from(item: dto::OrderTaxLineResponse) -> Self {
+        Self {
+            id: item.id,
+            order_id: item.order_id,
+            line_item_id: item.line_item_id,
+            shipping_option_id: item.shipping_option_id,
+            description: item.description,
+            rate: item.rate.to_string(),
+            amount: item.amount.to_string(),
+            currency_code: item.currency_code,
+            metadata: item.metadata.to_string(),
+            created_at: item.created_at.to_rfc3339(),
+            updated_at: item.updated_at.to_rfc3339(),
         }
     }
 }

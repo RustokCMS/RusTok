@@ -1,9 +1,9 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{
-    graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError},
+    graphql::{require_module_enabled, GraphQLError},
     AuthContext, RequestContext, TenantContext,
 };
-use rustok_core::Permission;
+use rustok_core::{locale_tags_match, Permission};
 use rustok_outbox::TransactionalEventBus;
 use rustok_telemetry::metrics;
 use sea_orm::{
@@ -60,15 +60,11 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
         let request_context = ctx.data_opt::<RequestContext>();
-        let requested_locale = locale
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| tenant.default_locale.clone());
+        let requested_locale =
+            resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
         let selected_channel_id =
             channel_id.or_else(|| request_context.and_then(|item| item.channel_id));
         let selected_channel_slug = normalize_pricing_channel_slug(channel_slug.as_deref())
@@ -159,6 +155,10 @@ impl CommerceQuery {
                 tenant_id,
                 selected_channel_id,
                 selected_channel_slug.as_deref(),
+                request_context
+                    .as_ref()
+                    .map(|context| context.locale.as_str()),
+                Some(tenant.default_locale.as_str()),
             )
             .await?;
 
@@ -237,6 +237,7 @@ impl CommerceQuery {
         &self,
         ctx: &Context<'_>,
         tenant_id: Option<Uuid>,
+        locale: Option<String>,
     ) -> Result<Vec<GqlRegion>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         super::require_storefront_channel_enabled(ctx).await?;
@@ -244,8 +245,17 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let requested_locale = resolve_commerce_graphql_locale(
+            ctx,
+            locale.as_deref(),
+            tenant.default_locale.as_str(),
+        );
         let regions = RegionService::new(db.clone())
-            .list_regions(tenant_id)
+            .list_regions(
+                tenant_id,
+                Some(requested_locale.as_str()),
+                Some(tenant.default_locale.as_str()),
+            )
             .await?;
 
         Ok(regions.into_iter().map(Into::into).collect())
@@ -313,7 +323,11 @@ impl CommerceQuery {
             };
 
         let mut options = FulfillmentService::new(db.clone())
-            .list_shipping_options(tenant_id)
+            .list_shipping_options(
+                tenant_id,
+                Some(context.locale.as_str()),
+                Some(context.default_locale.as_str()),
+            )
             .await?;
         if let Some(currency_code) = context.currency_code.as_deref() {
             options.retain(|option| option.currency_code.eq_ignore_ascii_case(currency_code));
@@ -366,7 +380,7 @@ impl CommerceQuery {
         let tenant = ctx.data::<TenantContext>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
-        let locale = resolve_graphql_locale(ctx, None);
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
         let auth = ctx
             .data::<AuthContext>()
             .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
@@ -430,7 +444,14 @@ impl CommerceQuery {
         let request_context = ctx.data::<RequestContext>()?;
         let public_channel_slug = storefront_public_channel_slug_for_cart(&cart, ctx)
             .or_else(|| public_channel_slug_from_request(request_context));
-        let cart = enrich_cart_delivery_groups(db, tenant_id, cart, public_channel_slug.as_deref())
+        let cart = enrich_cart_delivery_groups(
+            db,
+            tenant_id,
+            cart,
+            public_channel_slug.as_deref(),
+            Some(request_context.locale.as_str()),
+            Some(tenant.default_locale.as_str()),
+        )
             .await?;
         Ok(Some(cart.into()))
     }
@@ -451,7 +472,7 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let locale = resolve_graphql_locale(ctx, None);
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
 
         let order = match OrderService::new(db.clone(), event_bus.clone())
             .get_order_with_locale_fallback(
@@ -498,7 +519,7 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let locale = resolve_graphql_locale(ctx, None);
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
         let filter = filter.unwrap_or(OrdersFilter {
             status: None,
             customer_id: None,
@@ -621,8 +642,15 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
         let option = match FulfillmentService::new(db.clone())
-            .get_shipping_option(tenant_id, id)
+            .get_shipping_option(
+                tenant_id,
+                id,
+                Some(locale.as_str()),
+                Some(tenant.default_locale.as_str()),
+            )
             .await
         {
             Ok(option) => option,
@@ -649,8 +677,15 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
         let profile = match ShippingProfileService::new(db.clone())
-            .get_shipping_profile(tenant_id, id)
+            .get_shipping_profile(
+                tenant_id,
+                id,
+                Some(locale.as_str()),
+                Some(tenant.default_locale.as_str()),
+            )
             .await
         {
             Ok(profile) => profile,
@@ -675,6 +710,8 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
         let filter = filter.unwrap_or(ShippingOptionsFilter {
             active: None,
             currency_code: None,
@@ -686,7 +723,11 @@ impl CommerceQuery {
         let page = filter.page.unwrap_or(1).max(1);
         let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
         let mut items = FulfillmentService::new(db.clone())
-            .list_all_shipping_options(tenant_id)
+            .list_all_shipping_options(
+                tenant_id,
+                Some(locale.as_str()),
+                Some(tenant.default_locale.as_str()),
+            )
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
         if let Some(active) = filter.active {
@@ -736,6 +777,8 @@ impl CommerceQuery {
         )?;
 
         let db = ctx.data::<DatabaseConnection>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let locale = resolve_commerce_graphql_locale(ctx, None, tenant.default_locale.as_str());
         let filter = filter.unwrap_or(ShippingProfilesFilter {
             active: None,
             search: None,
@@ -753,6 +796,8 @@ impl CommerceQuery {
                     active: filter.active,
                     search: filter.search,
                 },
+                Some(locale.as_str()),
+                Some(tenant.default_locale.as_str()),
             )
             .await
             .map_err(|err| async_graphql::Error::new(err.to_string()))?;
@@ -862,7 +907,8 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let locale =
+            resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
 
         let service = CatalogService::new(db.clone(), event_bus.clone());
         let product = match service
@@ -901,7 +947,8 @@ impl CommerceQuery {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let locale =
+            resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
         let filter = filter.unwrap_or(ProductsFilter {
             status: None,
             vendor: None,
@@ -986,7 +1033,8 @@ impl CommerceQuery {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
-        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let locale =
+            resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
 
         let public_channel_slug = request_public_channel_slug(ctx);
         let product_id = match (id, handle.as_deref().map(str::trim)) {
@@ -1066,7 +1114,8 @@ impl CommerceQuery {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = tenant_id.unwrap_or(tenant.id);
-        let locale = resolve_graphql_locale(ctx, locale.as_deref());
+        let locale =
+            resolve_commerce_graphql_locale(ctx, locale.as_deref(), tenant.default_locale.as_str());
         let filter = filter.unwrap_or(StorefrontProductsFilter {
             vendor: None,
             product_type: None,
@@ -1317,12 +1366,12 @@ fn pick_translation<'a>(
 ) -> Option<&'a product_translation::Model> {
     translations
         .iter()
-        .find(|translation| translation.locale == locale)
+        .find(|translation| locale_tags_match(&translation.locale, locale))
         .or_else(|| {
-            (default_locale != locale).then(|| {
+            (!locale_tags_match(default_locale, locale)).then(|| {
                 translations
                     .iter()
-                    .find(|translation| translation.locale == default_locale)
+                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
             })?
         })
         .or_else(|| translations.first())
@@ -1335,12 +1384,12 @@ fn pick_response_translation<'a>(
 ) -> Option<&'a crate::dto::ProductTranslationResponse> {
     translations
         .iter()
-        .find(|translation| translation.locale == locale)
+        .find(|translation| locale_tags_match(&translation.locale, locale))
         .or_else(|| {
-            (default_locale != locale).then(|| {
+            (!locale_tags_match(default_locale, locale)).then(|| {
                 translations
                     .iter()
-                    .find(|translation| translation.locale == default_locale)
+                    .find(|translation| locale_tags_match(&translation.locale, default_locale))
             })?
         })
         .or_else(|| translations.first())
@@ -1361,7 +1410,7 @@ async fn find_published_product_id_by_handle(
         return Ok(Some(product_id));
     }
 
-    if default_locale != locale {
+    if !locale_tags_match(default_locale, locale) {
         if let Some(product_id) = find_published_product_id_for_locale(
             db,
             tenant_id,
@@ -1387,9 +1436,11 @@ async fn find_published_product_id_for_locale(
 ) -> Result<Option<Uuid>> {
     let translations = product_translation::Entity::find()
         .filter(product_translation::Column::Handle.eq(handle))
-        .filter(product_translation::Column::Locale.eq(locale))
         .all(db)
-        .await?;
+        .await?
+        .into_iter()
+        .filter(|translation| locale_tags_match(&translation.locale, locale))
+        .collect();
 
     find_first_published_product(db, tenant_id, translations, public_channel_slug).await
 }
@@ -1494,7 +1545,12 @@ async fn resolve_storefront_context(
     locale: Option<String>,
     currency_code: Option<String>,
 ) -> Result<crate::dto::StoreContextResponse> {
-    let locale = locale.or_else(|| Some(resolve_graphql_locale(ctx, None)));
+    let tenant = ctx.data::<TenantContext>()?;
+    let locale = Some(resolve_commerce_graphql_locale(
+        ctx,
+        locale.as_deref(),
+        tenant.default_locale.as_str(),
+    ));
     StoreContextService::new(db.clone())
         .resolve_context(
             tenant_id,
@@ -1507,4 +1563,20 @@ async fn resolve_storefront_context(
         )
         .await
         .map_err(|err| async_graphql::Error::new(err.to_string()))
+}
+
+fn resolve_commerce_graphql_locale(
+    ctx: &Context<'_>,
+    requested: Option<&str>,
+    tenant_default_locale: &str,
+) -> String {
+    requested
+        .map(str::trim)
+        .filter(|locale| !locale.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            ctx.data_opt::<RequestContext>()
+                .map(|request| request.locale.clone())
+        })
+        .unwrap_or_else(|| tenant_default_locale.to_string())
 }

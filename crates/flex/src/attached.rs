@@ -441,17 +441,17 @@ fn is_missing_attached_storage_error(message: &str) -> bool {
 mod tests {
     use std::collections::{BTreeMap, HashMap};
 
-    use serde_json::{json, Map};
     use sea_orm::{
-        ActiveModelTrait, ConnectionTrait, Database, DatabaseBackend, EntityTrait, Statement, Set,
+        ActiveModelTrait, ConnectionTrait, Database, DatabaseBackend, EntityTrait, Set, Statement,
     };
+    use serde_json::{json, Map};
     use uuid::Uuid;
 
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
 
     use super::{
-        delete_attached_localized_values, first_available_localized_values, prepare_attached_values_create,
-        split_existing_metadata, ActiveModel, Entity,
+        delete_attached_localized_values, first_available_localized_values,
+        prepare_attached_values_create, split_existing_metadata, ActiveModel, Entity,
     };
 
     fn definition(field_key: &str, is_localized: bool) -> FieldDefinition {
@@ -522,14 +522,10 @@ mod tests {
             .await
             .expect("sqlite in-memory db");
 
-        let deleted = delete_attached_localized_values(
-            &db,
-            Uuid::new_v4(),
-            "product",
-            Uuid::new_v4(),
-        )
-        .await
-        .expect("missing storage should be tolerated");
+        let deleted =
+            delete_attached_localized_values(&db, Uuid::new_v4(), "product", Uuid::new_v4())
+                .await
+                .expect("missing storage should be tolerated");
 
         assert_eq!(deleted, 0);
     }

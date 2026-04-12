@@ -137,8 +137,8 @@ rule и scope write paths, а полный promotions engine и остально
   scoped override.
 - admin SSR transport parity теперь тоже закрывает `price_list` rule/scope mutation
   lifecycle: clear rule metadata не оставляет stale `rule_kind` / `adjustment_percent`,
-  update rule path режет future/expired lists тем же contract, а scope clear
-  возвращает active option и existing override rows к global boundary.
+  update rule path режет inactive/draft, future/expired lists тем же contract, а
+  scope clear возвращает active option и existing override rows к global boundary.
 - pricing-focused GraphQL parity теперь ещё и фиксирует rule-driven effective
   price resolution без explicit override, precedence explicit override над rule,
   selector lifecycle после clear/scope update и channel-mismatch validation для

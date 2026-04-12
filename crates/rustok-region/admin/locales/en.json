@@ -17,6 +17,7 @@
   "region.editor.subtitle": "Native region CRUD lives in the region module package. Countries are entered as comma-separated ISO codes and metadata is stored as raw JSON.",
   "region.error.countriesRequired": "At least one country code is required.",
   "region.error.currencyRequired": "Currency code is required.",
+  "region.error.localeUnavailable": "Host locale is unavailable.",
   "region.error.loadRegion": "Failed to load region",
   "region.error.loadRegions": "Failed to load regions",
   "region.error.nameRequired": "Name is required.",

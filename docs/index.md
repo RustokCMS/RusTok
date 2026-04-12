@@ -87,8 +87,23 @@
   остаются только catalog compatibility snapshot contract; последний широкий
   parity sweep также зафиксировал, что admin-side `price_list` rule/scope mutation
   paths режут future/expired lists без hidden fallback, clear rule metadata не
-  оставляет stale selector state, а pricing-focused GraphQL helper/read roots
-  сохраняют rule/channel parity отдельно от остального storefront suite.
+  оставляет stale selector state, pricing-focused GraphQL helper/read roots
+  сохраняют rule/channel parity отдельно от остального storefront suite, а storefront
+  cart/checkout GraphQL path теперь ещё и фиксирует typed adjustment snapshots и net
+  payment amount поверх `cart_adjustments` / `order_adjustments`.
+- `Phase 9` тоже уже начат: cart/order получили tax lines + `tax_total`/`tax_included` snapshot, checkout переносит tax lines в order, расчёт пока опирается на `region.tax_rate` / `tax_included` без provider seam.
+- REST-side parity для этого snapshot layer теперь тоже закреплена: storefront/admin controller tests
+  фиксируют typed adjustment snapshots, sanitized metadata и live shipping-selection semantics, а
+  текущий verification baseline для `rustok-commerce` снова включает полный `cargo test -p rustok-commerce --lib`.
+- storefront GraphQL add-to-cart теперь берёт `unit_price` через pricing resolver (currency + region + channel + quantity),
+  а не из raw `price` row, чтобы cart pricing semantics у store GraphQL и REST совпадали.
+- storefront cart quantity update теперь переоценивает `unit_price` через pricing resolver,
+  чтобы quantity tiers применялись и при изменении количества.
+- storefront cart context update теперь перепрайсит line items через pricing resolver,
+  чтобы смена региона/контекста не оставляла stale `unit_price`.
+- storefront payment-collection и complete-checkout paths перепрайсят line items перед созданием
+  payment collection и перед `complete checkout`, чтобы price-list/quantity-tier изменения не
+  оставляли stale `unit_price`.
 - [Спец-план rich-text и визуального page builder](./modules/tiptap-page-builder-implementation-plan.md)
 
 ## UI и клиентские поверхности
@@ -172,6 +187,8 @@
 - Один файл — один язык.
 - Не создавайте новый документ, если подходящий уже существует: расширяйте текущий.
 - При изменении архитектуры, API, tenancy, routing, observability или модульной системы обновляйте и локальные docs компонента, и центральные документы в `docs/`.
+- Любая новая схема проходит i18n-аудит: локализованные строки не храним в base-таблицах, display-поля живут только в `*_translations`. Module-owned UI пакеты не вводят package-local locale override и гидратят edit/detail формы по host-provided effective locale, а не по `first()` переводу сущности.
+- Read-side/runtime locale resolution тоже живёт по общему contract: locale matching идёт через shared normalization (`requested -> tenant default -> first available`), а не через raw string equality вроде `ru` vs `ru-RU`.
 
 ## Architecture Decisions
 

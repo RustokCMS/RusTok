@@ -10,7 +10,7 @@ use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerDraft, Custom
 pub fn CustomerAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
-    let initial_locale = ui_locale.clone().unwrap_or_else(|| "en".to_string());
+    let initial_selected_customer_id = route_context.query_value("id").map(ToOwned::to_owned);
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_id, set_editing_id) = signal(Option::<String>::None);
@@ -21,9 +21,9 @@ pub fn CustomerAdmin() -> impl IntoView {
     let (first_name, set_first_name) = signal(String::new());
     let (last_name, set_last_name) = signal(String::new());
     let (phone, set_phone) = signal(String::new());
-    let (locale, set_locale) = signal(initial_locale.clone());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
+    let (query_selection_applied, set_query_selection_applied) = signal(false);
 
     let bootstrap = Resource::new(
         move || refresh_nonce.get(),
@@ -50,13 +50,17 @@ pub fn CustomerAdmin() -> impl IntoView {
         "customer.error.saveCustomer",
         "Failed to save customer",
     );
+    let locale_unavailable_label = t(
+        ui_locale.as_deref(),
+        "customer.error.localeUnavailable",
+        "Host locale is unavailable.",
+    );
     let load_customers_error_label = t(
         ui_locale.as_deref(),
         "customer.error.loadCustomers",
         "Failed to load customers",
     );
 
-    let reset_form_initial_locale = initial_locale.clone();
     let reset_form = move || {
         set_editing_id.set(None);
         set_selected.set(None);
@@ -65,7 +69,6 @@ pub fn CustomerAdmin() -> impl IntoView {
         set_first_name.set(String::new());
         set_last_name.set(String::new());
         set_phone.set(String::new());
-        set_locale.set(reset_form_initial_locale.clone());
         set_error.set(None);
     };
 
@@ -85,20 +88,50 @@ pub fn CustomerAdmin() -> impl IntoView {
                     set_first_name,
                     set_last_name,
                     set_phone,
-                    set_locale,
                 ),
-                Err(err) => set_error.set(Some(format!("{load_customer_error_label}: {err}"))),
+                Err(err) => {
+                    clear_customer_form(
+                        set_editing_id,
+                        set_selected,
+                        set_user_id,
+                        set_email,
+                        set_first_name,
+                        set_last_name,
+                        set_phone,
+                    );
+                    set_error.set(Some(format!("{load_customer_error_label}: {err}")));
+                }
             }
             set_busy.set(false);
         });
     });
+    let initial_open_customer = open_customer.clone();
+    Effect::new(move |_| {
+        if query_selection_applied.get() {
+            return;
+        }
+        let Some(customer_id) = initial_selected_customer_id.clone() else {
+            set_query_selection_applied.set(true);
+            return;
+        };
+        set_query_selection_applied.set(true);
+        if customer_id.trim().is_empty() {
+            return;
+        }
+        initial_open_customer.run(customer_id);
+    });
 
+    let submit_ui_locale = ui_locale.clone();
     let on_submit = move |ev: SubmitEvent| {
         ev.prevent_default();
         if email.get_untracked().trim().is_empty() {
             set_error.set(Some(email_required_label.clone()));
             return;
         }
+        let Some(submit_locale) = submit_ui_locale.clone() else {
+            set_error.set(Some(locale_unavailable_label.clone()));
+            return;
+        };
 
         let payload = CustomerDraft {
             user_id: user_id.get_untracked(),
@@ -106,7 +139,7 @@ pub fn CustomerAdmin() -> impl IntoView {
             first_name: first_name.get_untracked(),
             last_name: last_name.get_untracked(),
             phone: phone.get_untracked(),
-            locale: locale.get_untracked(),
+            locale: submit_locale,
         };
         let editing_customer_id = editing_id.get_untracked();
         let save_customer_error_label = save_customer_error_label.clone();
@@ -129,7 +162,6 @@ pub fn CustomerAdmin() -> impl IntoView {
                         set_first_name,
                         set_last_name,
                         set_phone,
-                        set_locale,
                     );
                     set_refresh_nonce.update(|value| *value += 1);
                 }
@@ -272,7 +304,6 @@ pub fn CustomerAdmin() -> impl IntoView {
                             </div>
                             <div class="grid gap-4 md:grid-cols-2">
                                 <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "customer.field.phone", "Phone") prop:value=move || phone.get() on:input=move |ev| set_phone.set(event_target_value(&ev)) />
-                                <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary" placeholder=t(ui_locale.as_deref(), "customer.field.locale", "Locale") prop:value=move || locale.get() on:input=move |ev| set_locale.set(event_target_value(&ev)) />
                             </div>
                             <button type="submit" class="inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50" disabled=move || busy.get()>
                                 {move || if editing_id.get().is_some() { t(ui_locale.as_deref(), "customer.action.save", "Save customer") } else { t(ui_locale.as_deref(), "customer.action.create", "Create customer") }}
@@ -348,7 +379,6 @@ fn apply_customer_detail(
     set_first_name: WriteSignal<String>,
     set_last_name: WriteSignal<String>,
     set_phone: WriteSignal<String>,
-    set_locale: WriteSignal<String>,
 ) {
     set_editing_id.set(Some(detail.customer.id.clone()));
     set_selected.set(Some(detail.clone()));
@@ -357,13 +387,24 @@ fn apply_customer_detail(
     set_first_name.set(detail.customer.first_name.clone().unwrap_or_default());
     set_last_name.set(detail.customer.last_name.clone().unwrap_or_default());
     set_phone.set(detail.customer.phone.clone().unwrap_or_default());
-    set_locale.set(
-        detail
-            .customer
-            .locale
-            .clone()
-            .unwrap_or_else(|| "en".to_string()),
-    );
+}
+
+fn clear_customer_form(
+    set_editing_id: WriteSignal<Option<String>>,
+    set_selected: WriteSignal<Option<CustomerDetail>>,
+    set_user_id: WriteSignal<String>,
+    set_email: WriteSignal<String>,
+    set_first_name: WriteSignal<String>,
+    set_last_name: WriteSignal<String>,
+    set_phone: WriteSignal<String>,
+) {
+    set_editing_id.set(None);
+    set_selected.set(None);
+    set_user_id.set(String::new());
+    set_email.set(String::new());
+    set_first_name.set(String::new());
+    set_last_name.set(String::new());
+    set_phone.set(String::new());
 }
 
 fn linked_badge(locale: Option<&str>, customer: &CustomerListItem) -> String {

@@ -1,12 +1,11 @@
 //! GraphQL queries for Flex field definitions.
 
-use async_graphql::{Context, FieldError, Object, Result};
+use async_graphql::{Context, Object, Result};
 use rustok_core::Permission;
 use uuid::Uuid;
 
-use crate::context::{AuthContext, TenantContext};
+use crate::context::TenantContext;
 use crate::graphql::common::PaginationInput;
-use crate::graphql::errors::GraphQLError;
 use crate::services::field_definition_cache::FieldDefinitionCache;
 use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
 use flex::{FieldDefRegistry, FieldDefinitionView};
@@ -35,8 +34,7 @@ impl FlexQuery {
         entity_type: Option<String>,
         #[graphql(default)] pagination: PaginationInput,
     ) -> Result<Vec<FieldDefinitionObject>> {
-        ctx.data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        require_permission(ctx, Permission::FLEX_SCHEMAS_LIST)?;
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
         let entity_type = resolve_entity_type(entity_type)?;
@@ -64,8 +62,7 @@ impl FlexQuery {
         entity_type: Option<String>,
         id: Uuid,
     ) -> Result<Option<FieldDefinitionObject>> {
-        ctx.data::<AuthContext>()
-            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        require_permission(ctx, Permission::FLEX_SCHEMAS_READ)?;
         let tenant = ctx.data::<TenantContext>()?;
         let app_ctx = ctx.data::<loco_rs::prelude::AppContext>()?;
         let entity_type = resolve_entity_type(entity_type)?;

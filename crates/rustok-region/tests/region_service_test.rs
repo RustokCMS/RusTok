@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use rustok_region::dto::{CreateRegionInput, UpdateRegionInput};
+use rustok_region::dto::{CreateRegionInput, RegionTranslationInput, UpdateRegionInput};
 use rustok_region::services::RegionService;
 use rustok_test_utils::db::setup_test_db;
 use std::str::FromStr;
@@ -15,7 +15,10 @@ async fn setup() -> RegionService {
 
 fn create_region_input() -> CreateRegionInput {
     CreateRegionInput {
-        name: "European Union".to_string(),
+        translations: vec![RegionTranslationInput {
+            locale: "en".to_string(),
+            name: "European Union".to_string(),
+        }],
         currency_code: "eur".to_string(),
         tax_rate: Decimal::from_str("20.00").expect("valid decimal"),
         tax_included: true,
@@ -37,7 +40,7 @@ async fn create_and_resolve_region_by_country() {
     assert_eq!(created.countries, vec!["DE".to_string(), "FR".to_string()]);
 
     let resolved = service
-        .resolve_region_for_country(tenant_id, "fr")
+        .resolve_region_for_country(tenant_id, "fr", Some("en"), Some("en"))
         .await
         .expect("region lookup should succeed")
         .expect("region should resolve");

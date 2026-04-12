@@ -10,7 +10,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_core::events::ValidateEvent;
-use rustok_core::generate_id;
+use rustok_core::{generate_id, locale_tags_match, normalize_locale_tag};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_product::CatalogService;
@@ -291,11 +291,17 @@ impl PricingService {
             active_price.update(&txn).await?;
         }
 
+        let translations = entities::price_list_translation::Entity::find()
+            .filter(entities::price_list_translation::Column::PriceListId.eq(price_list_id))
+            .all(&txn)
+            .await?;
+        let name = Self::resolve_price_list_name(&translations, None, None);
+
         txn.commit().await?;
 
         Ok(ActivePriceListOption {
             id: updated_price_list.id,
-            name: updated_price_list.name,
+            name,
             list_type: updated_price_list.r#type,
             channel_id: updated_price_list.channel_id,
             channel_slug: updated_price_list.channel_slug,
@@ -1047,9 +1053,17 @@ impl PricingService {
     pub async fn list_active_price_lists(
         &self,
         tenant_id: Uuid,
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
     ) -> CommerceResult<Vec<ActivePriceListOption>> {
-        self.list_active_price_lists_for_channel(tenant_id, None, None)
-            .await
+        self.list_active_price_lists_for_channel(
+            tenant_id,
+            None,
+            None,
+            requested_locale,
+            tenant_default_locale,
+        )
+        .await
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id, channel_id = ?channel_id, channel_slug = ?channel_slug))]
@@ -1058,15 +1072,35 @@ impl PricingService {
         tenant_id: Uuid,
         channel_id: Option<Uuid>,
         channel_slug: Option<&str>,
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
     ) -> CommerceResult<Vec<ActivePriceListOption>> {
         let now = chrono::Utc::now();
         let channel_slug = normalize_channel_slug(channel_slug);
         let price_lists = entities::price_list::Entity::find()
             .filter(entities::price_list::Column::TenantId.eq(tenant_id))
             .order_by_desc(entities::price_list::Column::UpdatedAt)
-            .order_by_asc(entities::price_list::Column::Name)
             .all(&self.db)
             .await?;
+        let translations = if price_lists.is_empty() {
+            Vec::new()
+        } else {
+            let ids = price_lists.iter().map(|price_list| price_list.id).collect::<Vec<_>>();
+            entities::price_list_translation::Entity::find()
+                .filter(entities::price_list_translation::Column::PriceListId.is_in(ids))
+                .all(&self.db)
+                .await?
+        };
+        let mut translations_by_list: HashMap<
+            Uuid,
+            Vec<entities::price_list_translation::Model>,
+        > = HashMap::new();
+        for translation in translations {
+            translations_by_list
+                .entry(translation.price_list_id)
+                .or_default()
+                .push(translation);
+        }
 
         Ok(price_lists
             .into_iter()
@@ -1091,16 +1125,57 @@ impl PricingService {
                     channel_slug.as_deref(),
                 )
             })
-            .map(|price_list| ActivePriceListOption {
-                id: price_list.id,
-                name: price_list.name,
-                list_type: price_list.r#type,
-                channel_id: price_list.channel_id,
-                channel_slug: price_list.channel_slug,
-                rule_kind: price_list.rule_kind,
-                adjustment_percent: price_list.adjustment_percent,
+            .map(|price_list| {
+                let translations = translations_by_list
+                    .remove(&price_list.id)
+                    .unwrap_or_default();
+                ActivePriceListOption {
+                    id: price_list.id,
+                    name: Self::resolve_price_list_name(
+                        &translations,
+                        requested_locale,
+                        tenant_default_locale,
+                    ),
+                    list_type: price_list.r#type,
+                    channel_id: price_list.channel_id,
+                    channel_slug: price_list.channel_slug,
+                    rule_kind: price_list.rule_kind,
+                    adjustment_percent: price_list.adjustment_percent,
+                }
             })
             .collect())
+    }
+
+    fn resolve_price_list_name(
+        translations: &[entities::price_list_translation::Model],
+        requested_locale: Option<&str>,
+        tenant_default_locale: Option<&str>,
+    ) -> String {
+        if translations.is_empty() {
+            return String::new();
+        }
+
+        let mut lookup = HashMap::new();
+        for translation in translations {
+            if let Some(normalized) = normalize_locale_tag(&translation.locale) {
+                lookup.insert(normalized, translation);
+            }
+        }
+
+        if let Some(locale) = requested_locale.and_then(normalize_locale_tag) {
+            if let Some(found) = lookup.get(&locale) {
+                return found.name.clone();
+            }
+        }
+        if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag) {
+            if let Some(found) = lookup.get(&locale) {
+                return found.name.clone();
+            }
+        }
+        translations
+            .first()
+            .map(|translation| translation.name.clone())
+            .unwrap_or_default()
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id))]
@@ -2056,12 +2131,12 @@ fn pick_product_translation<'a>(
 ) -> Option<&'a rustok_commerce_foundation::dto::ProductTranslationResponse> {
     translations
         .iter()
-        .find(|translation| translation.locale == locale)
+        .find(|translation| locale_tags_match(&translation.locale, locale))
         .or_else(|| {
-            (fallback_locale != locale).then(|| {
+            (!locale_tags_match(fallback_locale, locale)).then(|| {
                 translations
                     .iter()
-                    .find(|translation| translation.locale == fallback_locale)
+                    .find(|translation| locale_tags_match(&translation.locale, fallback_locale))
             })?
         })
         .or_else(|| translations.first())
