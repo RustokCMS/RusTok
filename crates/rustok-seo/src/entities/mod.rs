@@ -195,3 +195,137 @@ pub mod seo_sitemap_file {
 
     impl ActiveModelBehavior for ActiveModel {}
 }
+
+pub mod seo_bulk_job {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "seo_bulk_jobs")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub operation_kind: String,
+        pub status: String,
+        pub target_kind: String,
+        pub locale: String,
+        pub filter_payload: Json,
+        pub input_payload: Json,
+        pub publish_after_write: bool,
+        pub matched_count: i32,
+        pub processed_count: i32,
+        pub succeeded_count: i32,
+        pub failed_count: i32,
+        pub artifact_count: i32,
+        pub last_error: Option<String>,
+        pub created_by: Option<Uuid>,
+        pub started_at: Option<DateTimeWithTimeZone>,
+        pub completed_at: Option<DateTimeWithTimeZone>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {
+        #[sea_orm(has_many = "super::seo_bulk_job_item::Entity")]
+        Items,
+        #[sea_orm(has_many = "super::seo_bulk_job_artifact::Entity")]
+        Artifacts,
+    }
+
+    impl Related<super::seo_bulk_job_item::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Items.def()
+        }
+    }
+
+    impl Related<super::seo_bulk_job_artifact::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Artifacts.def()
+        }
+    }
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod seo_bulk_job_item {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "seo_bulk_job_items")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub job_id: Uuid,
+        pub target_id: Uuid,
+        pub status: String,
+        pub error_message: Option<String>,
+        pub published_revision: Option<i32>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {
+        #[sea_orm(
+            belongs_to = "super::seo_bulk_job::Entity",
+            from = "Column::JobId",
+            to = "super::seo_bulk_job::Column::Id",
+            on_delete = "Cascade"
+        )]
+        Job,
+    }
+
+    impl Related<super::seo_bulk_job::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Job.def()
+        }
+    }
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod seo_bulk_job_artifact {
+    use sea_orm::entity::prelude::*;
+    use serde::{Deserialize, Serialize};
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "seo_bulk_job_artifacts")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub job_id: Uuid,
+        pub kind: String,
+        pub file_name: String,
+        pub mime_type: String,
+        pub content: String,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {
+        #[sea_orm(
+            belongs_to = "super::seo_bulk_job::Entity",
+            from = "Column::JobId",
+            to = "super::seo_bulk_job::Column::Id",
+            on_delete = "Cascade"
+        )]
+        Job,
+    }
+
+    impl Related<super::seo_bulk_job::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Job.def()
+        }
+    }
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
