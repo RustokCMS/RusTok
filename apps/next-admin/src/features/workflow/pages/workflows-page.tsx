@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { GqlOpts, WorkflowSummary } from '../api/workflows';
 import { listWorkflows, listWorkflowTemplates } from '../api/workflows';
 import { TemplateGallery } from '../components/template-gallery';
+import { ModuleUnavailable } from '@/shared/ui/module-unavailable';
 
 interface WorkflowsPageProps {
   token?: string | null;
@@ -15,10 +16,24 @@ export default async function WorkflowsPage({
   tenantId
 }: WorkflowsPageProps) {
   const opts: GqlOpts = { token, tenantSlug, tenantId };
+  let workflowLoadError: string | null = null;
   const [workflows, templates] = await Promise.all([
-    listWorkflows(opts),
+    listWorkflows(opts).catch((error) => {
+      workflowLoadError =
+        error instanceof Error ? error.message : 'Failed to load workflows';
+      return [] as WorkflowSummary[];
+    }),
     listWorkflowTemplates(opts).catch(() => []),
   ]);
+
+  if (workflowLoadError) {
+    return (
+      <ModuleUnavailable
+        title='Workflow module is unavailable'
+        description={workflowLoadError}
+      />
+    );
+  }
 
   return (
     <div className="space-y-8">

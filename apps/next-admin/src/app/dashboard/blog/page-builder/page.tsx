@@ -1,11 +1,11 @@
 import { auth } from '@/auth';
 import { buttonVariants } from '@/shared/ui/shadcn/button';
 import { cn } from '@/shared/lib/utils';
-import { getPage, listPages } from '@/features/blog/api/pages';
+import { getPage, listPages } from '../../../../../packages/blog/src';
 import Link from 'next/link';
 import { SearchParams } from 'nuqs/server';
 import { PageContainer } from '@/widgets/app-shell';
-import { PageBuilder } from '@/features/blog';
+import { PageBuilder } from '../../../../../packages/blog/src';
 import {
   buildRouteSelectionHref,
   listRouteQueryEntries,

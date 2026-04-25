@@ -106,6 +106,7 @@ Next helpers. Legacy keys вроде `id`, `pageId`, `topicId` не поддер
 # 1. apps/server
 $env:RUSTOK_MODULES_MANIFEST = (Resolve-Path .\modules.local.toml)
 target\debug\rustok-server.exe start --no-banner --binding localhost --port 5150
+Invoke-WebRequest http://localhost:5150/health/live -UseBasicParsing
 
 # 2. apps/next-admin
 cd apps\next-admin

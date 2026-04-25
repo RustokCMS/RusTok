@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { CachePage } from '@/features/cache';
+import { CachePage } from '../../../../packages/cache/src';
 import { Suspense } from 'react';
 
 export const metadata = {

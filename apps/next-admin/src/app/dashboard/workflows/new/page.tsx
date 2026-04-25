@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { WorkflowFormPage } from '@/features/workflow';
+import { WorkflowFormPage } from '../../../../../packages/workflow/src';
 import { Suspense } from 'react';
 
 export const metadata = {

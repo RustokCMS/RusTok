@@ -23,21 +23,50 @@ async function ModulesContent() {
   const tenantSlug = session?.user?.tenantSlug;
   const opts = { token, tenantSlug };
 
-  const [modulesData, marketplaceModules, installedModules, activeBuild, activeRelease, buildHistory] = await Promise.all([
-    listModules(opts),
-    listMarketplaceModules(
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      opts
+  const loadErrors: string[] = [];
+
+  async function safeLoad<T>(
+    label: string,
+    loader: () => Promise<T>,
+    fallback: T
+  ): Promise<T> {
+    try {
+      return await loader();
+    } catch (error) {
+      loadErrors.push(
+        `${label}: ${error instanceof Error ? error.message : 'request failed'}`
+      );
+      return fallback;
+    }
+  }
+
+  const [
+    modulesData,
+    marketplaceModules,
+    installedModules,
+    activeBuild,
+    activeRelease,
+    buildHistory
+  ] = await Promise.all([
+    safeLoad('module registry', () => listModules(opts), { modules: [] }),
+    safeLoad(
+      'marketplace modules',
+      () =>
+        listMarketplaceModules(
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          opts
+        ),
+      []
     ),
-    listInstalledModules(opts),
-    getActiveBuild(opts),
-    getActiveRelease(opts),
-    getBuildHistory(10, 0, opts)
+    safeLoad('installed modules', () => listInstalledModules(opts), []),
+    safeLoad('active build', () => getActiveBuild(opts), null),
+    safeLoad('active release', () => getActiveRelease(opts), null),
+    safeLoad('build history', () => getBuildHistory(10, 0, opts), [])
   ]);
 
   return (
@@ -49,6 +78,7 @@ async function ModulesContent() {
       activeBuild={activeBuild}
       activeRelease={activeRelease}
       buildHistory={buildHistory}
+      loadErrors={loadErrors}
     />
   );
 }

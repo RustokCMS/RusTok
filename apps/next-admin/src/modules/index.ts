@@ -1,13 +1,12 @@
-// Feature modules — each registers its nav items via registerAdminModule()
-// To add a new module: create src/features/<name>/index.ts and add import here
-import '@/features/blog';
-import '@/features/products';
-import '@/features/workflow';
-// Core module UIs
-import '@/features/rbac';
-import '@/features/email';
-import '@/features/cache';
-import '@/features/events';
+// Admin modules register their nav through module-owned package entrypoints.
+// Host shell code should not import business UI feature folders directly.
+import '../../packages/blog/src';
+import '../../packages/rustok-product/src';
+import '../../packages/workflow/src';
+import '../../packages/rbac/src';
+import '../../packages/email/src';
+import '../../packages/cache/src';
+import '../../packages/events/src';
 
 export type { AdminModule } from './types';
 export { registerAdminModule, getAdminModules, getAdminNavItems } from './registry';

@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { EmailSettingsPage } from '@/features/email';
+import { EmailSettingsPage } from '../../../../packages/email/src';
 import { Suspense } from 'react';
 
 export const metadata = {

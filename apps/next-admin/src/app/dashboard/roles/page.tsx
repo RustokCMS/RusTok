@@ -1,7 +1,7 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
 import { DataTableSkeleton } from '@/widgets/data-table';
-import { RolesPage } from '@/features/rbac';
+import { RolesPage } from '../../../../packages/rbac/src';
 import { Suspense } from 'react';
 
 export const metadata = {

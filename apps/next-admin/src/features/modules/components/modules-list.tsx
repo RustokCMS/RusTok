@@ -67,6 +67,7 @@ interface ModulesListProps {
   activeBuild: BuildJob | null;
   activeRelease: ReleaseInfo | null;
   buildHistory: BuildJob[];
+  loadErrors?: string[];
 }
 
 interface CatalogFilters {
@@ -168,7 +169,8 @@ export function ModulesList({
   installedModules: initialInstalledModules,
   activeBuild: initialActiveBuild,
   activeRelease: initialActiveRelease,
-  buildHistory: initialBuildHistory
+  buildHistory: initialBuildHistory,
+  loadErrors = []
 }: ModulesListProps) {
   const [modules, setModules] = useState(initialModules);
   const [marketplaceCatalog, setMarketplaceCatalog] = useState(
@@ -577,6 +579,26 @@ export function ModulesList({
 
   return (
     <div className='space-y-8'>
+      {loadErrors.length > 0 && (
+        <Card className='border-destructive/30 bg-destructive/5'>
+          <CardHeader>
+            <CardTitle className='text-base'>
+              Module data is partially unavailable
+            </CardTitle>
+            <CardDescription>
+              The admin shell remains usable, but some module registry calls failed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className='text-muted-foreground list-disc space-y-1 pl-5 text-sm'>
+              {loadErrors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className='pb-3'>
           <CardTitle className='text-sm font-medium'>Admin surface policy</CardTitle>

@@ -46,7 +46,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
           <CardContent className='space-y-3 py-6'>
             <p className='text-muted-foreground text-sm'>
               The old demo form has been removed. Product creation must use the
-              module-owned product write contract, not the starter template
+              module-owned product write contract, not the old demo form
               fields.
             </p>
             <Button asChild variant='outline'>

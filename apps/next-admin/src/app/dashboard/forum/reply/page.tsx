@@ -1,10 +1,10 @@
 import { auth } from '@/auth';
 import { buttonVariants } from '@/shared/ui/shadcn/button';
-import { listForumTopics } from '@/features/blog/api/forum';
+import { listForumTopics } from '../../../../../packages/blog/src';
 import { cn } from '@/shared/lib/utils';
 import { SearchParams } from 'nuqs/server';
 import { PageContainer } from '@/widgets/app-shell';
-import { ForumReplyEditor } from '@/features/blog';
+import { ForumReplyEditor } from '../../../../../packages/blog/src';
 import { listRouteQueryEntries, readRouteSelection } from '@/shared/lib/route-selection';
 
 export const metadata = {

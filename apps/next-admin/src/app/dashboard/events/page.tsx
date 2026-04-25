@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { EventsPage } from '@/features/events';
+import { EventsPage } from '../../../../packages/events/src';
 import { Suspense } from 'react';
 import { getTranslations } from 'next-intl/server';
 

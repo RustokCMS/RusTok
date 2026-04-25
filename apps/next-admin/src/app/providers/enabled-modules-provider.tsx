@@ -10,10 +10,18 @@ export async function EnabledModulesProvider({
   const session = await auth();
   const token = session?.user?.rustokToken ?? null;
   const tenantSlug = session?.user?.tenantSlug ?? null;
-  const enabledModules =
-    token && tenantSlug
-      ? await fetchEnabledModules({ token, tenantSlug })
-      : [];
+  let enabledModules: string[] = [];
+
+  if (token && tenantSlug) {
+    try {
+      enabledModules = await fetchEnabledModules({ token, tenantSlug });
+    } catch (error) {
+      console.warn(
+        'Failed to load enabled modules for Next admin shell.',
+        error
+      );
+    }
+  }
 
   return (
     <EnabledModulesClientProvider initialModules={enabledModules}>

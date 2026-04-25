@@ -1,5 +1,6 @@
 import type { NavItem } from '../../../src/types';
 import { graphqlRequest } from '../../../src/shared/api/graphql';
+import { registerAdminModule } from '../../../src/modules/registry';
 
 export const productNavItems: NavItem[] = [
   {
@@ -17,6 +18,12 @@ export const productNavItems: NavItem[] = [
     access: { role: 'manager' }
   }
 ];
+
+registerAdminModule({
+  id: 'product',
+  name: 'Product Catalog',
+  navItems: productNavItems
+});
 
 export type ProductListItem = {
   id: string;
