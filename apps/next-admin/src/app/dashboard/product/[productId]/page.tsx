@@ -27,7 +27,7 @@ export const metadata = {
 type PageProps = { params: Promise<{ productId: string }> };
 
 function formatDate(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : '—';
+  return value ? new Date(value).toLocaleString() : '-';
 }
 
 function formatMoney(amount: number): string {
@@ -112,19 +112,19 @@ export default async function ProductDetailPage({ params }: PageProps) {
               </div>
               <div>
                 <p className='text-muted-foreground text-xs'>Handle</p>
-                <p className='text-sm'>{primaryTranslation?.handle ?? '—'}</p>
+                <p className='text-sm'>{primaryTranslation?.handle ?? '-'}</p>
               </div>
               <div>
                 <p className='text-muted-foreground text-xs'>Seller</p>
-                <p className='text-sm'>{product.sellerId ?? '—'}</p>
+                <p className='text-sm'>{product.sellerId ?? '-'}</p>
               </div>
               <div>
                 <p className='text-muted-foreground text-xs'>Vendor</p>
-                <p className='text-sm'>{product.vendor ?? '—'}</p>
+                <p className='text-sm'>{product.vendor ?? '-'}</p>
               </div>
               <div>
                 <p className='text-muted-foreground text-xs'>Type</p>
-                <p className='text-sm'>{product.productType ?? '—'}</p>
+                <p className='text-sm'>{product.productType ?? '-'}</p>
               </div>
               <div>
                 <p className='text-muted-foreground text-xs'>Published</p>
@@ -191,7 +191,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
                       product.variants.map((variant) => (
                         <TableRow key={variant.id}>
                           <TableCell>{variant.title ?? variant.id}</TableCell>
-                          <TableCell>{variant.sku ?? '—'}</TableCell>
+                          <TableCell>{variant.sku ?? '-'}</TableCell>
                           <TableCell>
                             {variant.inventoryQuantity}{' '}
                             {variant.inStock ? 'in stock' : 'out of stock'}
@@ -199,7 +199,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
                           <TableCell>{variant.inventoryPolicy}</TableCell>
                           <TableCell>
                             {variant.prices.length === 0
-                              ? '—'
+                              ? '-'
                               : variant.prices
                                   .map(
                                     (price) =>

@@ -6,18 +6,26 @@ import { Card, CardContent, CardHeader } from '@/shared/ui/shadcn/card';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useTransition } from 'react';
-import * as Sentry from '@sentry/nextjs';
 
 interface StatsErrorProps {
   error: Error;
   reset: () => void; // Add reset function from error boundary
 }
+
+async function captureException(error: Error) {
+  if (process.env.NEXT_PUBLIC_SENTRY_DISABLED) return;
+
+  const packageName = '@sentry/nextjs';
+  const Sentry = await import(/* webpackIgnore: true */ packageName);
+  Sentry.captureException(error);
+}
+
 export default function StatsError({ error, reset }: StatsErrorProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    Sentry.captureException(error);
+    void captureException(error);
   }, [error]);
 
   // the reload fn ensures the refresh is deferred  until the next render phase allowing react to handle any pending states before processing

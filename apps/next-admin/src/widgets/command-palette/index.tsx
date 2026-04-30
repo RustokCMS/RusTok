@@ -7,55 +7,56 @@ import {
   KBarProvider,
   KBarSearch
 } from 'kbar';
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 import RenderResults from './render-result';
 import AdminGlobalSearchActions from './admin-global-search';
 import useThemeSwitching from './use-theme-switching';
 import { useFilteredNavItems } from '@/shared/hooks/use-nav';
+import type { NavItem } from '@/shared/types';
+
+function getNavLabel(t: ReturnType<typeof useTranslations>, item: NavItem) {
+  return item.i18nKey ? t(item.i18nKey) : item.title;
+}
 
 function KBar({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const filteredItems = useFilteredNavItems(navItems);
+  const tNav = useTranslations('app.nav');
+  const tCommand = useTranslations('app.command');
 
-  // These action are for the navigation
+  // These actions are for the navigation.
   const actions = useMemo(() => {
-    // Define navigateTo inside the useMemo callback to avoid dependency array issues
     const navigateTo = (url: string) => {
       router.push(url);
     };
 
-    return filteredItems.flatMap((navItem) => {
-      // Only include base action if the navItem has a real URL and is not just a container
-      const baseAction =
-        navItem.url !== '#'
-          ? {
-              id: `${navItem.title.toLowerCase()}Action`,
-              name: navItem.title,
-              shortcut: navItem.shortcut,
-              keywords: navItem.title.toLowerCase(),
-              section: 'Navigation',
-              subtitle: `Go to ${navItem.title}`,
-              perform: () => navigateTo(navItem.url)
-            }
-          : null;
+    const collectActions = (items: NavItem[], section: string): any[] =>
+      items.flatMap((item) => {
+        const label = getNavLabel(tNav, item);
+        const action =
+          item.url !== '#'
+            ? {
+                id: `${item.url}-${item.title}-action`,
+                name: label,
+                shortcut: item.shortcut,
+                keywords: `${item.title} ${label}`.toLowerCase(),
+                section,
+                subtitle: `${tCommand('goTo')} ${label}`,
+                perform: () => navigateTo(item.url)
+              }
+            : null;
 
-      // Map child items into actions
-      const childActions =
-        navItem.items?.map((childItem) => ({
-          id: `${childItem.title.toLowerCase()}Action`,
-          name: childItem.title,
-          shortcut: childItem.shortcut,
-          keywords: childItem.title.toLowerCase(),
-          section: navItem.title,
-          subtitle: `Go to ${childItem.title}`,
-          perform: () => navigateTo(childItem.url)
-        })) ?? [];
+        const childActions = item.items?.length
+          ? collectActions(item.items, label)
+          : [];
 
-      // Return only valid actions (ignoring null base actions for containers)
-      return baseAction ? [baseAction, ...childActions] : childActions;
-    });
-  }, [router, filteredItems]);
+        return action ? [action, ...childActions] : childActions;
+      });
+
+    return collectActions(filteredItems, tCommand('navigation'));
+  }, [router, filteredItems, tCommand, tNav]);
 
   return (
     <KBarProvider actions={actions}>

@@ -50,7 +50,10 @@
       "search": "Поиск",
       "users": "Пользователи",
       "apps": "Подключения приложений",
-      "modulePlugins": "Модули"
+      "modulePlugins": "Модули",
+      "language": "Язык",
+      "languageEn": "Английский",
+      "languageRu": "Русский"
     },
     "menu": {
       "defaultUser": "Пользователь",
@@ -61,6 +64,11 @@
     },
     "brand": {
       "title": "RusToK"
+    },
+    "theme": {
+      "toggle": "Переключить тему",
+      "light": "Светлая тема",
+      "dark": "Тёмная тема"
     },
     "search": {
       "placeholder": "Поиск по админке…",

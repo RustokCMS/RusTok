@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::shared::api::queries::{USER_DETAILS_QUERY, USER_DETAILS_QUERY_HASH};
 use crate::shared::api::{request, request_with_persisted, ApiError};
-use crate::shared::ui::{Button, Input, LanguageToggle};
+use crate::shared::ui::{Button, Input, PageHeader};
 use crate::{t_string, use_i18n};
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_hook_form::FormState;
@@ -422,21 +422,12 @@ pub fn UserDetails() -> impl IntoView {
     };
 
     view! {
-        <section class="px-10 py-8">
-            <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <span class="inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
-                        {move || t_string!(i18n, app.nav.users)}
-                    </span>
-                    <h1 class="mt-2 text-2xl font-semibold text-foreground">
-                        {move || t_string!(i18n, users.detail.title)}
-                    </h1>
-                    <p class="mt-2 text-sm text-muted-foreground">
-                        {move || t_string!(i18n, users.detail.subtitle)}
-                    </p>
-                </div>
-                <div class="flex flex-wrap items-center gap-3">
-                    <LanguageToggle />
+        <section class="flex flex-1 flex-col p-4 md:px-6">
+            <PageHeader
+                title=move || t_string!(i18n, users.detail.title).to_string()
+                subtitle=move || t_string!(i18n, users.detail.subtitle).to_string()
+                eyebrow=move || t_string!(i18n, app.nav.users).to_string()
+                actions=view! {
                     <Button
                         on_click=go_back
                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
@@ -488,8 +479,9 @@ pub fn UserDetails() -> impl IntoView {
                             {move || t_string!(i18n, users.detail.cancel)}
                         </Button>
                     </Show>
-                </div>
-            </header>
+                }
+                .into_any()
+            />
 
             <Show when=move || form_state.get().form_error.is_some()>
                 <div class="mb-4 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
@@ -499,7 +491,7 @@ pub fn UserDetails() -> impl IntoView {
 
             <Show when=move || show_delete_confirm.get()>
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                    <div class="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl border border-border">
+                    <div class="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-xl">
                         <h3 class="mb-2 text-lg font-semibold text-card-foreground">
                             {move || t_string!(i18n, users.detail.deleteConfirmTitle)}
                         </h3>
@@ -535,7 +527,7 @@ pub fn UserDetails() -> impl IntoView {
                 </div>
             </Show>
 
-            <div class="rounded-2xl bg-card p-6 shadow border border-border">
+            <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                 <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                     {move || t_string!(i18n, users.detail.section)}
                 </h4>

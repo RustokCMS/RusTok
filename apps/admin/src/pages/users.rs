@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::shared::api::queries::{CREATE_USER_MUTATION, USERS_QUERY, USERS_QUERY_HASH};
 use crate::shared::api::{request, request_with_persisted, ApiError};
-use crate::shared::ui::{Button, Input, LanguageToggle, PageHeader};
+use crate::shared::ui::{Button, Input, PageHeader};
 use crate::{t_string, use_i18n};
 
 fn local_resource<S, Fut, T>(
@@ -598,13 +598,12 @@ pub fn Users() -> impl IntoView {
     };
 
     view! {
-        <section class="px-10 py-8">
+        <section class="flex flex-1 flex-col p-4 md:px-6">
             <PageHeader
                 title=t_string!(i18n, users.title)
                 subtitle=t_string!(i18n, users.subtitle).to_string()
                 eyebrow=t_string!(i18n, app.nav.users).to_string()
                 actions=view! {
-                    <LanguageToggle />
                     <Button
                         on_click=refresh
                         class="border border-input bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
@@ -618,7 +617,7 @@ pub fn Users() -> impl IntoView {
                 .into_any()
             />
 
-            <div class="rounded-2xl bg-card p-6 shadow border border-border">
+            <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                 <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                     {move || t_string!(i18n, users.graphql.title)}
                 </h4>
@@ -753,7 +752,7 @@ pub fn Users() -> impl IntoView {
 
             <Show when=move || show_create_modal.get()>
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                    <div class="w-full max-w-md rounded-2xl bg-card p-6 shadow-xl border border-border">
+                    <div class="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl">
                         <h3 class="mb-4 text-lg font-semibold text-card-foreground">
                             {move || t_string!(i18n, users.create.title)}
                         </h3>

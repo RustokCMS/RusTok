@@ -24,6 +24,8 @@ struct ModulePackageManifest {
     module: ModuleMetadata,
     #[serde(default)]
     provides: ModuleProvides,
+    #[serde(default)]
+    settings: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,7 +57,11 @@ struct LeptosUiContract {
     #[serde(default)]
     nav_label: Option<String>,
     #[serde(default)]
-    pages: Vec<AdminNestedPageContract>,
+    nav_group: Option<String>,
+    #[serde(default)]
+    nav_order: Option<usize>,
+    #[serde(default, alias = "pages")]
+    child_pages: Vec<AdminNestedPageContract>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -75,6 +81,9 @@ struct AdminUiEntry {
     component_name: String,
     route_segment: String,
     nav_label: String,
+    nav_group: String,
+    nav_order: usize,
+    has_settings: bool,
     child_pages: Vec<AdminChildPageEntry>,
 }
 

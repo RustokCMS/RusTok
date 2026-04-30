@@ -7,8 +7,10 @@ import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 
 export default function UserRegisterForm() {
+  const t = useTranslations('register');
   const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -19,7 +21,7 @@ export default function UserRegisterForm() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || !tenantSlug) {
-      toast.error('Please fill in all required fields');
+      toast.error(t('errorRequired'));
       return;
     }
     setIsLoading(true);
@@ -44,8 +46,8 @@ export default function UserRegisterForm() {
         );
         router.push('/auth/sign-in');
       } else {
-        toast.success('Account created successfully');
-        router.push('/dashboard/overview');
+        toast.success(t('success'));
+        router.push('/dashboard');
         router.refresh();
       }
     } catch (err) {
@@ -58,7 +60,7 @@ export default function UserRegisterForm() {
   return (
     <form onSubmit={onSubmit} className='w-full space-y-4'>
       <div className='space-y-2'>
-        <Label htmlFor='tenant'>Workspace</Label>
+        <Label htmlFor='tenant'>{t('tenantLabel')}</Label>
         <Input
           id='tenant'
           placeholder='demo'
@@ -69,7 +71,7 @@ export default function UserRegisterForm() {
         />
       </div>
       <div className='space-y-2'>
-        <Label htmlFor='name'>Name (optional)</Label>
+        <Label htmlFor='name'>{t('nameLabel')}</Label>
         <Input
           id='name'
           placeholder='Your Name'
@@ -79,7 +81,7 @@ export default function UserRegisterForm() {
         />
       </div>
       <div className='space-y-2'>
-        <Label htmlFor='email'>Email</Label>
+        <Label htmlFor='email'>{t('emailLabel')}</Label>
         <Input
           id='email'
           type='email'
@@ -91,11 +93,11 @@ export default function UserRegisterForm() {
         />
       </div>
       <div className='space-y-2'>
-        <Label htmlFor='password'>Password</Label>
+        <Label htmlFor='password'>{t('passwordLabel')}</Label>
         <Input
           id='password'
           type='password'
-          placeholder='••••••••'
+          placeholder='********'
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={isLoading}
@@ -103,7 +105,7 @@ export default function UserRegisterForm() {
         />
       </div>
       <Button type='submit' className='w-full' disabled={isLoading}>
-        {isLoading ? 'Creating account...' : 'Create Account'}
+        {isLoading ? `${t('submit')}...` : t('submit')}
       </Button>
     </form>
   );

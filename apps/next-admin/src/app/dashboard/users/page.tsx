@@ -13,7 +13,7 @@ export default async function UsersPage() {
   const session = await auth();
   const role = session?.user?.role;
   if (!role || role === 'CUSTOMER') {
-    redirect('/dashboard/overview');
+    redirect('/dashboard');
   }
 
   return (

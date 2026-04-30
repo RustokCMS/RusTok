@@ -6,11 +6,13 @@ import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 
 export default function UserAuthForm() {
+  const t = useTranslations('auth');
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard/overview';
+  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,7 +22,7 @@ export default function UserAuthForm() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || !tenantSlug) {
-      toast.error('Please fill in all fields');
+      toast.error(t('errorRequired'));
       return;
     }
 
@@ -38,7 +40,6 @@ export default function UserAuthForm() {
           'Invalid credentials. Check your email, password and workspace.'
         );
       } else {
-        toast.success('Signed in successfully');
         router.push(callbackUrl);
         router.refresh();
       }
@@ -50,7 +51,7 @@ export default function UserAuthForm() {
   return (
     <form onSubmit={onSubmit} className='w-full space-y-4'>
       <div className='space-y-2'>
-        <Label htmlFor='tenant'>Workspace</Label>
+        <Label htmlFor='tenant'>{t('tenantLabel')}</Label>
         <Input
           id='tenant'
           placeholder='demo'
@@ -61,7 +62,7 @@ export default function UserAuthForm() {
         />
       </div>
       <div className='space-y-2'>
-        <Label htmlFor='email'>Email</Label>
+        <Label htmlFor='email'>{t('emailLabel')}</Label>
         <Input
           id='email'
           type='email'
@@ -73,11 +74,11 @@ export default function UserAuthForm() {
         />
       </div>
       <div className='space-y-2'>
-        <Label htmlFor='password'>Password</Label>
+        <Label htmlFor='password'>{t('passwordLabel')}</Label>
         <Input
           id='password'
           type='password'
-          placeholder='••••••••'
+          placeholder='********'
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={isLoading}
@@ -85,7 +86,7 @@ export default function UserAuthForm() {
         />
       </div>
       <Button type='submit' className='w-full' disabled={isLoading}>
-        {isLoading ? 'Signing in...' : 'Sign In'}
+        {isLoading ? `${t('submit')}...` : t('submit')}
       </Button>
     </form>
   );

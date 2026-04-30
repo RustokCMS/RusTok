@@ -885,14 +885,14 @@ fn follow_up_gate_status_summary(
         .filter(|gate| status_eq(&gate.status, "blocked"))
         .count();
     let summary = format!(
-        "{}: {} В· {}: {} В· {}: {} В· {}: {} В· {}: {}",
-        tr(locale, "Pending", "Р’ РѕР¶РёРґР°РЅРёРё"),
+        "{}: {} | {}: {} | {}: {} | {}: {} | {}: {}",
+        tr(locale, "Pending", "В ожидании"),
         pending,
         tr(locale, "Running", "В работе"),
         running,
-        tr(locale, "Passed", "РџСЂРѕР№РґРµРЅРѕ"),
+        tr(locale, "Passed", "Пройдено"),
         passed,
-        tr(locale, "Failed", "РџСЂРѕРІР°Р»РµРЅРѕ"),
+        tr(locale, "Failed", "Провалено"),
         failed,
         tr(locale, "Blocked", "Заблокировано"),
         blocked
@@ -940,7 +940,7 @@ fn validation_stage_status_summary(
         .count();
 
     Some(format!(
-        "{}: {} В· {}: {} В· {}: {} В· {}: {} В· {}: {}",
+        "{}: {} | {}: {} | {}: {} | {}: {} | {}: {}",
         tr(locale, "Queued", "В очереди"),
         queued,
         tr(locale, "Running", "В работе"),
@@ -5528,7 +5528,7 @@ pub fn ModuleDetailPanel(
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5644,7 +5644,7 @@ pub fn ModuleDetailPanel(
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -5747,7 +5747,7 @@ pub fn ModuleDetailPanel(
                                     && reason_code.is_empty()
                                 {
                                     set_governance_error.set(Some(
-                                        tr(locale, "Reason code is required.", "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ reason code.")
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
                                             .to_string(),
                                     ));
                                     return;
@@ -6334,7 +6334,7 @@ pub fn ModuleDetailPanel(
                                                             }
                                                         })}
                                                         <p class="mt-1 text-[11px] text-muted-foreground">
-                                                            {format!("{}: {}", tr(locale, "Updated", "РћР±РЅРѕРІР»РµРЅРѕ"), stage.updated_at)}
+                                                            {format!("{}: {}", tr(locale, "Updated", "Обновлено"), stage.updated_at)}
                                                         </p>
                                                         <Show when=move || has_stage_history>
                                                             <div class="mt-2 space-y-2 border-t border-border/70 pt-2">

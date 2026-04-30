@@ -1,179 +1,122 @@
-# Simplified Navigation RBAC System
+# Контракт навигации и RBAC
 
-## Overview
+## Назначение
 
-This document explains the fully client-side RBAC (Role-Based Access Control) system for navigation items.
+Этот документ фиксирует текущий контракт sidebar/navigation в `apps/next-admin`.
+Навигация является UX-фильтром, а не security boundary: server pages, API routes,
+GraphQL и server actions обязаны выполнять собственные проверки доступа.
 
-**Key Insight**: Navigation visibility is UX only, not security. We can check everything client-side using Clerk's hooks!
+## Активные файлы
 
-## Architecture
+- `src/shared/config/nav-config.ts` задаёт host-owned core navigation.
+- `src/modules/index.ts` импортирует module-owned entrypoints и собирает registry.
+- `src/modules/registry.ts` отдаёт зарегистрированные module-owned пункты.
+- `src/shared/hooks/use-nav.ts` фильтрует пункты по session role и enabled modules.
+- `src/widgets/app-shell/app-sidebar.tsx` группирует отфильтрованные пункты в shell.
+- `src/widgets/command-palette/index.tsx` рекурсивно индексирует те же отфильтрованные пункты.
 
-### Core Files
+## Источники данных
 
-1. **`src/hooks/use-nav.ts`** - Single hook that handles all filtering logic (fully client-side)
-2. **`src/types/index.ts`** - Type definitions with `access` property
+- Пользовательская роль приходит из `next-auth` session: `session.user.role`.
+- Enabled modules читаются через host hook `useEnabledModules()`.
+- Module-owned navigation обязана приходить из module/package entrypoint, а не из
+  host-owned feature folder.
+- Starter-only routes вроде `billing`, `exclusive`, `workspaces` и `workspaces/team`
+  не должны попадать в public navigation RusTok.
 
-### Why Client-Side?
+## Фильтрация
 
-- **Navigation visibility is UX only** - Users can't bypass security by seeing/hiding nav items
-- **Clerk provides all data client-side** - `useOrganization()` gives us `membership.permissions` and `membership.role`
-- **Zero server calls** - Instant filtering, no loading states, no UI flashing
-- **Better performance** - No network latency, no async complexity
+`useFilteredNavItems()` применяет два синхронных UX-фильтра:
 
-**Note**: For actual security (API routes, server actions, page protection), always use server-side checks.
+1. Если у пункта есть `moduleSlug`, он показывается только когда этот slug есть в
+   списке enabled modules.
+2. Если у пункта есть `access.role`, роль пользователя должна быть не ниже заданной
+   в иерархии `customer < manager < admin < super_admin`.
 
-## Performance Characteristics
+`access.requireOrg` сейчас считается legacy starter-полем и скрывает пункт. Новые
+пункты не должны использовать `requireOrg`, `permission`, `plan` или `feature` без
+обновления реального runtime contract.
 
-### All Checks Are Synchronous
+Фильтрация применяется рекурсивно: сначала проверяются сами пункты и дети, затем
+пустые container-пункты с `url: '#'` скрываются. Это не даёт показывать пустые
+collapsible-разделы, если все дочерние routes недоступны роли или отключены по
+`moduleSlug`.
 
-✅ **requireOrg**: Client-side check using `useOrganization()`  
-✅ **permission**: Client-side check using `membership.permissions` array  
-✅ **role**: Client-side check using `membership.role`  
-⚠️ **plan/feature**: Requires server-side check (see below)
+## Sidebar grouping
 
-### Zero Server Calls
+Shell группирует уже отфильтрованные пункты через поле `group` с fallback на
+`moduleSlug` для module-owned пунктов:
 
-- All navigation filtering happens synchronously
-- No loading states
-- No UI flashing
-- Instant results
+- `Overview` — `Dashboard`.
+- `Management` — collapsible `Access`, `Platform`, `Operations`.
+- `Module Plugins` — collapsible module-owned containers `Blog`, `Forum`, `Catalog`, `Workflows`.
+- `Account` — `Profile`; `Sign Out` остаётся в footer user menu.
 
-## Usage
+Core Next Admin navigation использует `i18nKey` для всех host-owned labels.
+Sidebar и command palette берут localized labels из `messages/en.json` и
+`messages/ru.json`. Module-owned пункты могут передать `i18nKey`, но не должны
+вводить собственную locale fallback-chain поверх host/runtime locale.
 
-### In `nav-config.ts`
+Active state считается рекурсивно по текущему pathname, поэтому detail routes вроде
+`/dashboard/product/:id` подсвечивают родительский пункт `/dashboard/product`.
 
-```typescript
+## Добавление пункта
+
+Host-owned platform screen добавляется в `coreNavItems` только если это действительно
+обязанность host shell. Module-owned screen должен регистрироваться из package/module
+entrypoint через `registerAdminModule()`.
+
+Пример host-owned пункта:
+
+```ts
 {
-  title: 'Teams',
-  url: '/dashboard/workspaces/team',
-  icon: 'userPen',
-  // Simple: requireOrg (client-side check, instant)
-  access: { requireOrg: true }
-}
-
-{
-  title: 'Admin Panel',
-  url: '/dashboard/admin',
-  icon: 'settings',
-  // All client-side checks - instant!
-  access: {
-    requireOrg: true,
-    permission: 'org:admin:manage',  // Client-side from membership.permissions
-    role: 'admin'  // Client-side from membership.role
+  title: 'Access',
+  url: '#',
+  i18nKey: 'access',
+  group: 'management',
+  icon: 'users',
+  items: [
+    {
+      title: 'Users',
+      url: '/dashboard/users',
+      i18nKey: 'users',
+      access: { role: 'manager' }
+    }
+  ]
 }
 ```
 
-### In Components
+Пример module-owned пункта должен жить в пакете модуля:
 
-```typescript
-import { useFilteredNavItems } from '@/hooks/use-nav';
-
-function MyComponent() {
-  const filteredItems = useFilteredNavItems(navItems);
-  // filteredItems is automatically filtered based on RBAC
-}
+```ts
+registerAdminModule({
+  slug: 'product',
+  navItems: [
+    {
+      title: 'Catalog',
+      url: '#',
+      i18nKey: 'catalog',
+      group: 'modulePlugins',
+      icon: 'product',
+      moduleSlug: 'product',
+      items: [
+        {
+          title: 'Products',
+          url: '/dashboard/product',
+          i18nKey: 'products'
+        }
+      ]
+    }
+  ]
+});
 ```
 
-### Plan/Feature Checks
+## Verification
 
-Plans and features require Clerk's `has()` function which is server-side only. Options:
+После изменений навигации нужно прогнать:
 
-1. **Store in organization metadata** (recommended for navigation):
-
-   ```typescript
-   // In your organization setup
-   organization.publicMetadata.plan = 'pro';
-
-   // In nav-config.ts
-   access: {
-     requireOrg: true,
-     // Check metadata instead of plan
-   }
-   ```
-
-2. **Show item, protect at page level** (current approach):
-   - Navigation item is shown
-   - Page component checks server-side and redirects/shows error if needed
-
-3. **Use server action** (if you really need it):
-   - Only for navigation items that absolutely need plan/feature checks
-   - Most navigation items won't need this
-
-## Scalability
-
-### Adding New Items
-
-Just add to `nav-config.ts`:
-
-```typescript
-{
-  title: 'New Feature',
-  url: '/dashboard/new',
-  icon: 'star',
-  access: { plan: 'pro' }  // That's it!
-}
-```
-
-The system automatically:
-
-- Filters it in sidebar
-- Filters it in kbar
-- Handles async checks if needed
-- Handles sync checks immediately
-
-### Adding New Access Types
-
-1. Add to `PermissionCheck` interface in `src/app/actions/rbac.ts`
-2. Add check logic in `checkAccess()` function
-3. Update `use-nav.ts` to handle the new type
-
-## Comparison: Before vs After
-
-### Before (Overcomplicated)
-
-- 4 files with complex logic
-- Multiple hooks and utilities
-- Unclear data flow
-- Potential for bugs
-
-### After (Simplified)
-
-- 1 main hook file
-- Clear, linear logic
-- Easy to understand
-- Easy to maintain
-
-## Best Practices
-
-1. **Use `requireOrg: true` for simple cases** - It's instant and requires no server call
-2. **Combine checks when possible** - `{ requireOrg: true, permission: '...' }` is more efficient than separate checks
-3. **Avoid unnecessary checks** - Don't add `access` if the item should always be visible
-
-## Migration from Old System
-
-The old `visible` function still works for backward compatibility:
-
-```typescript
-// Old way (still works)
-visible: (context) => !!context?.organization;
-
-// New way (recommended)
-access: {
-  requireOrg: true;
-}
-```
-
-## Future Improvements
-
-Potential optimizations if needed:
-
-1. Cache permission checks (e.g., React Query)
-2. Prefetch permissions on app load
-3. Optimistic UI updates
-
-But for now, the current implementation is:
-
-- ✅ Simple
-- ✅ Fast
-- ✅ Scalable
-- ✅ Maintainable
+- `npm run typecheck` в `apps/next-admin`;
+- визуальную проверку sidebar на active state и группировку;
+- проверку, что отключённые module slug не показывают module-owned пункты.
+- проверку command palette: дочерние routes индексируются рекурсивно и названы
+  на текущем языке.

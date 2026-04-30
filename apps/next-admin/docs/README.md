@@ -12,6 +12,9 @@
 - монтировать package-owned admin surfaces из `packages/*`;
 - использовать canonical frontend contracts для auth, GraphQL, forms и shared UI;
 - поддерживать parity с `apps/admin` на уровне платформенных контрактов;
+- держать admin shell navigation в parity с Leptos Admin: `Overview`, `Management`,
+  `Module Plugins`, `Account`, при этом module-owned пункты остаются registry-driven
+  и фильтруются по enabled module slug;
 - не забирать module-owned business UI в host-код.
 
 ## Runtime contract
@@ -20,6 +23,9 @@
 - backend integration идёт через `apps/server` и shared transport packages;
 - effective locale выбирается host/runtime слоем через `x-rustok-effective-locale`
   и `next-intl`; module-owned packages читают host-provided locale, а не cookie/query fallback chain;
+- пользовательский выбор языка в Next Admin хранится host-owned cookie `rustok-admin-locale`;
+  middleware нормализует effective locale в порядке `?locale` → cookie → `x-rustok-effective-locale`
+  → `Accept-Language` → `en`, а UI использует dropdown в header и auth screens;
 - глобальный admin search использует `rustok-search` как host-level capability;
 - shared SEO operator/headless contract тоже должен идти через backend surface:
   registry-backed target descriptors читаются из GraphQL `seoTargets`, а не из host-local slug mapping;

@@ -4,6 +4,7 @@ import { Button } from '@/shared/ui/shadcn/button';
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle
 } from '@/shared/ui/shadcn/card';
@@ -91,93 +92,99 @@ export default function ProfileViewPage() {
   };
 
   return (
-    <PageContainer>
-      <div className='flex w-full flex-col gap-6 p-4'>
-        <h1 className='text-2xl font-bold tracking-tight'>Profile</h1>
-        {user ? (
-          <div className='grid gap-4 md:grid-cols-2'>
-            <Card>
-              <CardHeader>
-                <CardTitle>Account Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSaveProfile} className='space-y-4'>
-                  <div>
-                    <Label htmlFor='profile-name'>Name</Label>
-                    <Input
-                      id='profile-name'
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder='Your name'
-                      disabled={isSavingProfile}
-                    />
-                  </div>
-                  <div>
-                    <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                      Email
-                    </p>
-                    <p className='mt-1 text-sm font-medium'>{user.email}</p>
-                  </div>
-                  <div>
-                    <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                      Role
-                    </p>
-                    <p className='mt-1 text-sm font-medium'>{user.role}</p>
-                  </div>
-                  <div>
-                    <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                      Workspace
-                    </p>
-                    <p className='mt-1 text-sm font-medium'>
-                      {user.tenantSlug || '—'}
-                    </p>
-                  </div>
-                  <Button type='submit' disabled={isSavingProfile}>
-                    {isSavingProfile ? 'Saving...' : 'Save changes'}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
+    <PageContainer
+      pageTitle='Profile'
+      pageDescription='Manage account information and password settings.'
+    >
+      {user ? (
+        <div className='grid gap-4 md:grid-cols-2'>
+          <Card>
+            <CardHeader>
+              <CardTitle>Account Information</CardTitle>
+              <CardDescription>
+                Update the profile data used across the admin workspace.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSaveProfile} className='space-y-4'>
+                <div>
+                  <Label htmlFor='profile-name'>Name</Label>
+                  <Input
+                    id='profile-name'
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder='Your name'
+                    disabled={isSavingProfile}
+                  />
+                </div>
+                <div>
+                  <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+                    Email
+                  </p>
+                  <p className='mt-1 text-sm font-medium'>{user.email}</p>
+                </div>
+                <div>
+                  <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+                    Role
+                  </p>
+                  <p className='mt-1 text-sm font-medium'>{user.role}</p>
+                </div>
+                <div>
+                  <p className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+                    Workspace
+                  </p>
+                  <p className='mt-1 text-sm font-medium'>
+                    {user.tenantSlug || '-'}
+                  </p>
+                </div>
+                <Button type='submit' disabled={isSavingProfile}>
+                  {isSavingProfile ? 'Saving...' : 'Save changes'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Change Password</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleChangePassword} className='space-y-4'>
-                  <div>
-                    <Label htmlFor='current-password'>Current Password</Label>
-                    <Input
-                      id='current-password'
-                      type='password'
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder='••••••••'
-                      disabled={isChangingPassword}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor='new-password'>New Password</Label>
-                    <Input
-                      id='new-password'
-                      type='password'
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder='••••••••'
-                      disabled={isChangingPassword}
-                    />
-                  </div>
-                  <Button type='submit' disabled={isChangingPassword}>
-                    {isChangingPassword ? 'Updating...' : 'Update password'}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
-          <p className='text-muted-foreground text-sm'>Loading profile...</p>
-        )}
-      </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Change Password</CardTitle>
+              <CardDescription>
+                Keep credentials current for the active admin account.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleChangePassword} className='space-y-4'>
+                <div>
+                  <Label htmlFor='current-password'>Current Password</Label>
+                  <Input
+                    id='current-password'
+                    type='password'
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder='********'
+                    disabled={isChangingPassword}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor='new-password'>New Password</Label>
+                  <Input
+                    id='new-password'
+                    type='password'
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder='********'
+                    disabled={isChangingPassword}
+                  />
+                </div>
+                <Button type='submit' disabled={isChangingPassword}>
+                  {isChangingPassword ? 'Updating...' : 'Update password'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <p className='text-muted-foreground text-sm'>Loading profile...</p>
+      )}
     </PageContainer>
   );
 }

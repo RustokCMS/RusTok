@@ -69,7 +69,7 @@ pub fn WorkflowDetailPage() -> impl IntoView {
     let tenant_sig = tenant;
 
     view! {
-        <section class="px-10 py-8">
+        <section class="flex flex-1 flex-col p-4 md:px-6">
             <div class="mb-4">
                 <A href="/workflows" attr:class="text-sm text-muted-foreground hover:text-foreground">
                     "← " {t_string!(i18n, workflows.back)}

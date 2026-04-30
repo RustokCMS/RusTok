@@ -36,18 +36,9 @@ export default async function WorkflowsPage({
   }
 
   return (
-    <div className='space-y-8'>
+    <div className='space-y-6'>
       <div className='space-y-4'>
-        <div className='flex items-center justify-between'>
-          <h1 className='text-2xl font-bold'>Workflows</h1>
-          <Link
-            href='/dashboard/workflows/new'
-            className='bg-primary text-primary-foreground rounded px-4 py-2 text-sm font-medium'
-          >
-            New Workflow
-          </Link>
-        </div>
-        <div className='rounded-md border'>
+        <div className='bg-card rounded-xl border shadow-sm'>
           <table className='w-full text-sm'>
             <thead>
               <tr className='bg-muted/50 border-b text-left'>
@@ -103,7 +94,7 @@ export default async function WorkflowsPage({
       </div>
 
       {templates.length > 0 && (
-        <section className='border-border rounded-xl border p-6'>
+        <section className='bg-card border-border rounded-xl border p-6 shadow-sm'>
           <TemplateGallery templates={templates} opts={opts} />
         </section>
       )}

@@ -3,8 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "author": {
-    "name": "Kiran",
-    "url": "https://github.com/Kiranism"
+    "name": "RusTok Team"
   },
   "scripts": {
     "dev": "next dev",

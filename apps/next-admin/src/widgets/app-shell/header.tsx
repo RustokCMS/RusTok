@@ -3,9 +3,9 @@ import { SidebarTrigger } from '@/shared/ui/shadcn/sidebar';
 import { Separator } from '@/shared/ui/shadcn/separator';
 import { Breadcrumbs } from '@/shared/ui/breadcrumbs';
 import SearchInput from '@/shared/ui/search-input';
-import { UserNav } from './user-nav';
-import { ThemeSelector } from '@/shared/lib/themes/theme-selector';
 import { ThemeModeToggle } from '@/shared/lib/themes/theme-mode-toggle';
+import { LanguageSelect } from './language-select';
+import { HeaderUserMenu } from './header-user-menu';
 
 export default function Header() {
   return (
@@ -20,9 +20,9 @@ export default function Header() {
         <div className='hidden md:flex'>
           <SearchInput />
         </div>
-        <UserNav />
+        <LanguageSelect />
         <ThemeModeToggle />
-        <ThemeSelector />
+        <HeaderUserMenu />
       </div>
     </header>
   );

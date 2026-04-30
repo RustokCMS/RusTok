@@ -34,7 +34,7 @@ pub fn Workflows() -> impl IntoView {
     );
 
     view! {
-        <section class="px-10 py-8">
+        <section class="flex flex-1 flex-col p-4 md:px-6">
             <div class="flex items-start justify-between">
                 <PageHeader
                     title=t_string!(i18n, workflows.title)

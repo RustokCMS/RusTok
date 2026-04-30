@@ -1,0 +1,50 @@
+- generic:
+  - region "Notifications alt+T"
+  - generic:
+    - generic:
+      - generic:
+        - img
+        - text: RusTok Admin
+      - img
+      - generic:
+        - blockquote:
+          - paragraph: "\"RusTok - a modern multi-tenant CMS built with Rust and WebAssembly.\""
+          - contentinfo: RusTok Team
+    - generic:
+      - generic:
+        - generic:
+          - heading [level=1]: Вход в админ-панель
+          - paragraph: Введите рабочие данные для доступа к панели управления.
+        - combobox [expanded]:
+          - img
+          - generic: Русский
+          - img
+        - generic:
+          - generic:
+            - generic: Tenant Slug
+            - textbox:
+              - /placeholder: demo
+              - text: demo
+          - generic:
+            - generic: Email
+            - textbox:
+              - /placeholder: admin@rustok.io
+          - generic:
+            - generic: Пароль
+            - textbox:
+              - /placeholder: "********"
+          - button: Продолжить
+        - paragraph:
+          - link:
+            - /url: /auth/sign-up
+            - text: Создать аккаунт
+  - button "Open Next.js Dev Tools" [ref=e614] [cursor=pointer]:
+    - img [ref=e615]
+  - alert
+  - listbox [ref=e619]:
+    - option "English" [ref=e620]:
+      - generic [ref=e622]: English
+    - option "Русский" [active] [selected] [ref=e623]:
+      - generic [ref=e625]:
+        - img
+      - generic [ref=e626]: Русский

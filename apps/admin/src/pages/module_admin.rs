@@ -48,13 +48,13 @@ pub fn ModuleAdminPage() -> impl IntoView {
     let is_loading = Signal::derive(move || enabled_modules.is_loading.get());
 
     view! {
-        <section class="px-10 py-8">
+        <section class="flex flex-1 flex-col p-4 md:px-6">
             {move || {
                 if is_loading.get() {
                     return view! {
                         <div class="space-y-4">
                             <div class="h-10 w-64 animate-pulse rounded-xl bg-muted"></div>
-                            <div class="h-64 animate-pulse rounded-2xl bg-muted"></div>
+                            <div class="h-64 animate-pulse rounded-xl bg-muted"></div>
                         </div>
                     }
                     .into_any();
@@ -81,7 +81,7 @@ pub fn ModuleAdminPage() -> impl IntoView {
                         .into_any()
                     }
                     (Some(page), None) => view! {
-                        <div class="rounded-2xl border border-border bg-card p-8 shadow-sm">
+                        <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                             <div class="max-w-2xl space-y-3">
                                 <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
                                     {page.module_slug.to_string()}
@@ -95,7 +95,7 @@ pub fn ModuleAdminPage() -> impl IntoView {
                     }
                     .into_any(),
                     (None, None) => view! {
-                        <div class="rounded-2xl border border-border bg-card p-8 shadow-sm">
+                        <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                             <div class="max-w-2xl space-y-3">
                                 <span class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
                                     "module route"
@@ -130,7 +130,7 @@ fn ModulePageSecondaryNav(
     let root_is_active = active_subpath.is_none();
 
     view! {
-        <nav class="rounded-2xl border border-border bg-card p-3 shadow-sm">
+        <nav class="rounded-xl border border-border bg-card p-2 shadow-sm">
             <div class="flex flex-wrap gap-2">
                 <A
                     href=root_href

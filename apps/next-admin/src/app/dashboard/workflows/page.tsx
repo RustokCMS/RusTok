@@ -1,6 +1,8 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
+import { Button } from '@/shared/ui/shadcn/button';
 import { WorkflowsPage } from '../../../../packages/workflow/src';
+import Link from 'next/link';
 import { Suspense } from 'react';
 
 export const metadata = {
@@ -18,6 +20,11 @@ export default async function Page() {
       scrollable
       pageTitle='Workflows'
       pageDescription='Manage automated workflows'
+      pageHeaderAction={
+        <Button asChild>
+          <Link href='/dashboard/workflows/new'>New Workflow</Link>
+        </Button>
+      }
     >
       <Suspense fallback={<div>Loading workflows...</div>}>
         <WorkflowsPage

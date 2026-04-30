@@ -6,12 +6,15 @@ export const productNavItems: NavItem[] = [
   {
     title: 'Catalog',
     url: '#',
+    i18nKey: 'catalog',
+    group: 'modulePlugins',
     icon: 'product',
     isActive: false,
     items: [
       {
         title: 'Products',
         url: '/dashboard/product',
+        i18nKey: 'products',
         shortcut: ['p', 'l']
       }
     ],

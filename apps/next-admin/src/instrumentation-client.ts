@@ -1,9 +1,19 @@
 // This file configures the initialization of Sentry on the client.
 // The added config here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
-import * as Sentry from '@sentry/nextjs';
 
-if (!process.env.NEXT_PUBLIC_SENTRY_DISABLED) {
+async function loadSentry() {
+  const packageName = '@sentry/nextjs';
+  return import(/* webpackIgnore: true */ packageName) as Promise<
+    typeof import('@sentry/nextjs')
+  >;
+}
+
+async function initSentry() {
+  if (process.env.NEXT_PUBLIC_SENTRY_DISABLED) return;
+
+  const Sentry = await loadSentry();
+
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
@@ -29,4 +39,15 @@ if (!process.env.NEXT_PUBLIC_SENTRY_DISABLED) {
   });
 }
 
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+void initSentry();
+
+export const onRouterTransitionStart = async (
+  ...args: Parameters<
+    typeof import('@sentry/nextjs').captureRouterTransitionStart
+  >
+) => {
+  if (process.env.NEXT_PUBLIC_SENTRY_DISABLED) return;
+
+  const Sentry = await loadSentry();
+  return Sentry.captureRouterTransitionStart(...args);
+};

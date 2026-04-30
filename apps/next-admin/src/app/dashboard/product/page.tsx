@@ -38,7 +38,7 @@ function toPositiveInt(value: string | undefined, fallback: number): number {
 }
 
 function formatDate(value: string | null): string {
-  return value ? new Date(value).toLocaleDateString() : '—';
+  return value ? new Date(value).toLocaleDateString() : '-';
 }
 
 export default async function ProductPage({ searchParams }: PageProps) {
@@ -161,10 +161,10 @@ export default async function ProductPage({ searchParams }: PageProps) {
                           <TableCell>
                             <Badge variant='outline'>{product.status}</Badge>
                           </TableCell>
-                          <TableCell>{product.vendor ?? '—'}</TableCell>
-                          <TableCell>{product.productType ?? '—'}</TableCell>
+                          <TableCell>{product.vendor ?? '-'}</TableCell>
+                          <TableCell>{product.productType ?? '-'}</TableCell>
                           <TableCell className='text-muted-foreground text-xs'>
-                            {product.sellerId ?? '—'}
+                            {product.sellerId ?? '-'}
                           </TableCell>
                           <TableCell>
                             {formatDate(product.publishedAt)}

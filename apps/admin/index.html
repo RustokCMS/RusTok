@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RusToK Admin</title>
+    <script>
+      (function () {
+        try {
+          var theme = window.localStorage.getItem("rustok-admin-theme");
+          var isDark = theme === "dark";
+          document.documentElement.classList.toggle("dark", isDark);
+          document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+        } catch (_) {
+          document.documentElement.classList.remove("dark");
+          document.documentElement.style.colorScheme = "light";
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="/output.css" />
     <link data-trunk rel="rust" data-target-name="rustok-admin" />
   </head>

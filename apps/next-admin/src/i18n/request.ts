@@ -1,16 +1,23 @@
 import { getRequestConfig } from 'next-intl/server';
 import { headers } from 'next/headers';
+import type { AbstractIntlMessages } from 'next-intl';
+import {
+  defaultLocale,
+  EFFECTIVE_LOCALE_HEADER,
+  locales,
+  type Locale
+} from './config';
 
 const messageLoaders = {
-  en: () => import('../../messages/en.json').then((module) => module.default),
-  ru: () => import('../../messages/ru.json').then((module) => module.default)
-} as const;
-
-export type Locale = keyof typeof messageLoaders;
-export const locales = Object.keys(messageLoaders) as Locale[];
-export const defaultLocale: Locale = 'en';
-
-export const EFFECTIVE_LOCALE_HEADER = 'x-rustok-effective-locale';
+  en: () =>
+    import('../../messages/en.json').then(
+      (module) => module.default as AbstractIntlMessages
+    ),
+  ru: () =>
+    import('../../messages/ru.json').then(
+      (module) => module.default as AbstractIntlMessages
+    )
+} satisfies Record<Locale, () => Promise<AbstractIntlMessages>>;
 
 function matchSupportedLocale(value?: string | null): Locale | undefined {
   const normalized = value?.trim().replaceAll('_', '-').toLowerCase();

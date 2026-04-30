@@ -10,13 +10,14 @@ use super::sidebar::Sidebar;
 #[component]
 pub fn app_layout() -> impl IntoView {
     init_modules();
+    let (sidebar_open, set_sidebar_open) = signal(true);
 
     view! {
         <EnabledModulesProvider>
             <div class="min-h-svh bg-background text-foreground md:flex">
-                <Sidebar />
+                <Sidebar sidebar_open=sidebar_open />
                 <div class="flex min-w-0 flex-1 flex-col">
-                    <Header />
+                    <Header sidebar_open=sidebar_open set_sidebar_open=set_sidebar_open />
                     <main class="flex-1 overflow-y-auto">
                         <Outlet />
                     </main>

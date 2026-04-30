@@ -1,11 +1,13 @@
 import { auth } from '@/auth';
-import { EFFECTIVE_LOCALE_HEADER, resolveLocale } from '@/i18n/request';
+import { EFFECTIVE_LOCALE_HEADER, LOCALE_COOKIE } from '@/i18n/config';
+import { resolveLocale } from '@/i18n/request';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 function resolveEffectiveLocale(req: NextRequest): string {
   const requestedLocale =
     req.nextUrl.searchParams.get('locale') ??
+    req.cookies.get(LOCALE_COOKIE)?.value ??
     req.headers.get(EFFECTIVE_LOCALE_HEADER) ??
     req.headers.get('accept-language')?.split(',')[0]?.split(';')[0]?.trim();
 
@@ -31,7 +33,7 @@ export default auth((req) => {
   if (nextUrl.pathname === '/') {
     return NextResponse.redirect(
       new URL(
-        isAuthenticated ? '/dashboard/overview' : '/auth/sign-in',
+        isAuthenticated ? '/dashboard' : '/auth/sign-in',
         nextUrl.origin
       )
     );

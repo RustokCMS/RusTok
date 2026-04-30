@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos_ui::{Badge, BadgeVariant, Card, CardAction, CardFooter, CardHeader, CardTitle};
 
 #[component]
 pub fn stats_card(
@@ -12,35 +13,31 @@ pub fn stats_card(
 ) -> impl IntoView {
     let is_up = trend_up.unwrap_or(true);
     let color_class = if is_up {
-        "text-emerald-600"
+        "border-emerald-200 text-emerald-700 dark:border-emerald-900/50 dark:text-emerald-400"
     } else {
-        "text-destructive"
+        "border-destructive/30 text-destructive"
     };
-    let prefix = if is_up { "+" } else { "" };
     let label = trend_label.unwrap_or_default();
 
     view! {
-        <div class=format!(
-            "rounded-xl border bg-card text-card-foreground shadow transition-all hover:-translate-y-1 hover:shadow-md p-6 {}",
-            class
-        )>
-            <div class="flex items-start justify-between">
-                <div>
-                    <p class="text-sm font-medium text-muted-foreground">{title}</p>
-                    <h3 class="mt-2 text-3xl font-bold">{value}</h3>
-                </div>
-                <div class="rounded-lg bg-primary/10 p-3 text-primary">
+        <Card class=format!("bg-gradient-to-t from-primary/5 to-card {}", class)>
+            <CardHeader class="grid-cols-[1fr_auto]">
+                <div class="text-sm text-muted-foreground">{title}</div>
+                <CardTitle class="text-2xl font-semibold tabular-nums md:text-3xl">{value}</CardTitle>
+                <CardAction class="rounded-lg bg-muted p-3 text-muted-foreground">
                     {icon}
+                </CardAction>
+            </CardHeader>
+            <CardFooter class="flex-col items-start gap-1.5 text-sm">
+                <div class="line-clamp-1 flex items-center gap-2 font-medium">
+                    <Badge variant=BadgeVariant::Outline class=color_class>
+                        {trend}
+                    </Badge>
+                    {(!label.is_empty()).then(|| view! {
+                        <span>{label}</span>
+                    })}
                 </div>
-            </div>
-            <div class="mt-4 flex items-center gap-2">
-                <span class=format!("flex items-center text-sm font-medium {}", color_class)>
-                    {prefix}{trend}
-                </span>
-                {(!label.is_empty()).then(|| view! {
-                    <span class="text-sm text-muted-foreground">{label}</span>
-                })}
-            </div>
-        </div>
+            </CardFooter>
+        </Card>
     }
 }

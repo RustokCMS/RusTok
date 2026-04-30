@@ -17,20 +17,20 @@ pub fn page_header(
     });
 
     view! {
-        <header class="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <header class="mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
                 {eyebrow.map(|text| {
                     view! {
-                        <span class="mb-2 inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
+                        <span class="mb-2 inline-flex items-center text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                             {move || text.get()}
                         </span>
                     }
                 })}
 
-                <h1 class="text-2xl font-semibold text-foreground">{move || title.get()}</h1>
+                <h1 class="text-3xl font-bold tracking-tight text-foreground">{move || title.get()}</h1>
 
                 {subtitle.map(|text| {
-                    view! { <p class="mt-2 text-sm text-muted-foreground">{move || text.get()}</p> }
+                    view! { <p class="text-sm text-muted-foreground">{move || text.get()}</p> }
                 })}
 
                 {breadcrumbs.map(|crumbs| {

@@ -37,7 +37,7 @@ fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
 fn StorefrontShellContent(locale: String) -> impl IntoView {
     let strings = locale_strings(locale.as_str());
     let products = featured_products(locale.as_str());
-    let enabled_modules = use_enabled_modules().get();
+    let enabled_modules = use_enabled_modules().get_untracked();
     let after_hero_views =
         components_for_slot(StorefrontSlot::HomeAfterHero, Some(&enabled_modules))
             .into_iter()
@@ -84,7 +84,7 @@ fn StorefrontShellContent(locale: String) -> impl IntoView {
 
 #[component]
 fn StorefrontModulePageContent(locale: String, route_segment: String) -> impl IntoView {
-    let enabled_modules = use_enabled_modules().get();
+    let enabled_modules = use_enabled_modules().get_untracked();
     let body = match page_for_route_segment(route_segment.as_str(), Some(&enabled_modules)) {
         StorefrontPageLookup::Found(page) => {
             view! {

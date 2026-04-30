@@ -8,9 +8,17 @@ export interface PermissionCheck {
   requireOrg?: boolean;
 }
 
+export type NavGroupKey =
+  | 'overview'
+  | 'management'
+  | 'modulePlugins'
+  | 'account';
+
 export interface NavItem {
   title: string;
   url: string;
+  i18nKey?: string;
+  group?: NavGroupKey;
   moduleSlug?: string;
   disabled?: boolean;
   external?: boolean;

@@ -18,6 +18,46 @@ function hasMinRole(userRole: string | undefined, minRole: string): boolean {
   return userLevel >= minLevel;
 }
 
+function canAccessItem(
+  item: NavItem,
+  role: string | undefined,
+  enabledModules: string[]
+): boolean {
+  if (item.moduleSlug && !enabledModules.includes(item.moduleSlug)) {
+    return false;
+  }
+
+  if (!item.access) return true;
+  if (item.access.requireOrg) return false;
+  if (item.access.role && !hasMinRole(role, item.access.role)) return false;
+
+  return true;
+}
+
+function filterNavItem(
+  item: NavItem,
+  role: string | undefined,
+  enabledModules: string[]
+): NavItem | null {
+  if (!canAccessItem(item, role, enabledModules)) {
+    return null;
+  }
+
+  const filteredChildren =
+    item.items
+      ?.map((child) => filterNavItem(child, role, enabledModules))
+      .filter((child): child is NavItem => Boolean(child)) ?? [];
+
+  if (item.items?.length && filteredChildren.length === 0 && item.url === '#') {
+    return null;
+  }
+
+  return {
+    ...item,
+    items: filteredChildren
+  };
+}
+
 export function useFilteredNavItems(items: NavItem[]) {
   const { data: session } = useSession();
   const role = session?.user?.role;
@@ -25,32 +65,7 @@ export function useFilteredNavItems(items: NavItem[]) {
 
   return useMemo(() => {
     return items
-      .filter((item) => {
-        if (item.moduleSlug && !enabledModules.includes(item.moduleSlug)) {
-          return false;
-        }
-        if (!item.access) return true;
-        if (item.access.requireOrg) return false;
-        if (item.access.role && !hasMinRole(role, item.access.role))
-          return false;
-        return true;
-      })
-      .map((item) => ({
-        ...item,
-        items:
-          item.items?.filter((child) => {
-            if (
-              child.moduleSlug &&
-              !enabledModules.includes(child.moduleSlug)
-            ) {
-              return false;
-            }
-            if (!child.access) return true;
-            if (child.access.requireOrg) return false;
-            if (child.access.role && !hasMinRole(role, child.access.role))
-              return false;
-            return true;
-          }) ?? []
-      }));
+      .map((item) => filterNavItem(item, role, enabledModules))
+      .filter((item): item is NavItem => Boolean(item));
   }, [enabledModules, items, role]);
 }

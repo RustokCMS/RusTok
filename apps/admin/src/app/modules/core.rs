@@ -14,7 +14,7 @@ pub fn register_components() {
 
 fn module_status_card() -> AnyView {
     view! {
-        <div class="rounded-2xl bg-card border border-border p-6 shadow">
+        <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
             <h4 class="text-lg font-semibold text-card-foreground">"Modules ready"</h4>
             <p class="mt-2 text-sm text-muted-foreground">
                 "Frontend packages can register dashboard widgets dynamically."

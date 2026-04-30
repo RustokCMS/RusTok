@@ -6,7 +6,7 @@ use leptos_ui::{Select, SelectOption};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::api::{request, ApiError};
-use crate::shared::ui::{Button, Input, LanguageToggle};
+use crate::shared::ui::{Button, Input, LanguageToggle, PageHeader};
 use crate::{t_string, use_i18n};
 
 const UPDATE_PROFILE_MUTATION: &str = r#"
@@ -205,27 +205,19 @@ pub fn Profile() -> impl IntoView {
     };
 
     view! {
-        <section class="px-10 py-8">
-            <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <span class="inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
-                        {move || t_string!(i18n, profile.badge)}
-                    </span>
-                    <h1 class="mt-2 text-2xl font-semibold text-foreground">
-                        {move || t_string!(i18n, profile.title)}
-                    </h1>
-                    <p class="mt-2 text-sm text-muted-foreground">
-                        {move || t_string!(i18n, profile.subtitle)}
-                    </p>
-                </div>
-                <div class="flex flex-wrap items-center gap-3">
-                    <LanguageToggle />
+        <section class="flex flex-1 flex-col p-4 md:px-6">
+            <PageHeader
+                title=move || t_string!(i18n, profile.title).to_string()
+                subtitle=move || t_string!(i18n, profile.subtitle).to_string()
+                eyebrow=move || t_string!(i18n, profile.badge).to_string()
+                actions=view! {
                     <Button on_click=on_save>{move || t_string!(i18n, profile.save)}</Button>
-                </div>
-            </header>
+                }
+                .into_any()
+            />
 
             <div class="grid gap-6 lg:grid-cols-2">
-                <div class="grid gap-4 rounded-2xl bg-card p-6 shadow border border-border">
+                <div class="grid gap-4 rounded-xl border border-border bg-card p-6 shadow-sm">
                     <h3 class="text-lg font-semibold text-card-foreground">
                         {move || t_string!(i18n, profile.sectionTitle)}
                     </h3>
@@ -295,7 +287,7 @@ pub fn Profile() -> impl IntoView {
                     </Show>
                 </div>
 
-                <div class="grid gap-4 rounded-2xl bg-card p-6 shadow border border-border">
+                <div class="grid gap-4 rounded-xl border border-border bg-card p-6 shadow-sm">
                     <h3 class="text-lg font-semibold text-card-foreground">
                         {move || t_string!(i18n, profile.preferencesTitle)}
                     </h3>

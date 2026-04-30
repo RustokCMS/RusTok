@@ -1,8 +1,7 @@
 #[cfg(feature = "ssr")]
 use chrono::{Duration, Utc};
 use leptos::prelude::*;
-use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_auth, use_current_user, use_tenant, use_token};
+use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 #[cfg(feature = "ssr")]
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
@@ -13,7 +12,10 @@ use crate::app::providers::enabled_modules::use_enabled_modules;
 use crate::shared::api::queries::{DASHBOARD_STATS_QUERY, RECENT_ACTIVITY_QUERY};
 use crate::shared::api::request;
 use crate::shared::api::ApiError;
-use crate::shared::ui::{Button, LanguageToggle, PageHeader};
+use crate::shared::ui::{
+    Badge, BadgeVariant, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
+    PageHeader,
+};
 use crate::widgets::stats_card::StatsCard;
 use crate::{t_string, use_i18n};
 
@@ -277,7 +279,6 @@ async fn recent_activity_native(_limit: i64) -> Result<RecentActivityResponse, S
 #[component]
 pub fn Dashboard() -> impl IntoView {
     let i18n = use_i18n();
-    let auth = use_auth();
     let current_user = use_current_user();
     let token = use_token();
     let tenant = use_tenant();
@@ -296,13 +297,6 @@ pub fn Dashboard() -> impl IntoView {
         },
     );
 
-    let logout = move |_| {
-        let auth = auth.clone();
-        spawn_local(async move {
-            let _ = auth.sign_out().await;
-        });
-    };
-
     let enabled_modules = use_enabled_modules();
 
     let module_sections = Signal::derive(move || {
@@ -311,7 +305,7 @@ pub fn Dashboard() -> impl IntoView {
     });
 
     view! {
-        <section class="p-4 md:p-8">
+        <section class="flex flex-1 flex-col p-4 md:px-6">
             <PageHeader
                 title=move || {
                     current_user
@@ -321,27 +315,15 @@ pub fn Dashboard() -> impl IntoView {
                 }
                 eyebrow=move || t_string!(i18n, app.nav.dashboard).to_string()
                 subtitle=move || t_string!(i18n, app.dashboard.subtitle).to_string()
-                actions=view! {
-                    <LanguageToggle />
-                    <Button
-                        on_click=logout
-                        class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
-                    >
-                        {move || t_string!(i18n, app.dashboard.logout)}
-                    </Button>
-                    <Button on_click=move |_| {}>
-                        {move || t_string!(i18n, app.dashboard.createTenant)}
-                    </Button>
-                }
-                .into_any()
             />
 
+            <div class="flex flex-1 flex-col gap-6">
             <Suspense
                 fallback=move || view! {
-                    <div class="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                         {(0..4)
                             .map(|_| {
-                                view! { <div class="h-32 animate-pulse rounded-xl bg-muted"></div> }
+                                view! { <div class="h-36 animate-pulse rounded-xl bg-muted"></div> }
                             })
                             .collect_view()}
                     </div>
@@ -358,46 +340,50 @@ pub fn Dashboard() -> impl IntoView {
                                     t_string!(i18n, app.dashboard.stats.users),
                                     stats.total_users.to_string(),
                                     format!("{:+.1}%", stats.users_change),
+                                    stats.users_change >= 0.0,
                                 ),
                                 (
                                     t_string!(i18n, app.dashboard.stats.posts),
                                     stats.total_posts.to_string(),
                                     format!("{:+.1}%", stats.posts_change),
+                                    stats.posts_change >= 0.0,
                                 ),
                                 (
                                     t_string!(i18n, app.dashboard.stats.orders),
                                     stats.total_orders.to_string(),
                                     format!("{:+.1}%", stats.orders_change),
+                                    stats.orders_change >= 0.0,
                                 ),
                                 (
                                     t_string!(i18n, app.dashboard.stats.revenue),
                                     format!("${}", stats.total_revenue),
                                     format!("{:+.1}%", stats.revenue_change),
+                                    stats.revenue_change >= 0.0,
                                 ),
                             ]
                         })
                         .unwrap_or_else(|| {
                             vec![
-                                (t_string!(i18n, app.dashboard.stats.users), "—".to_string(), "".to_string()),
-                                (t_string!(i18n, app.dashboard.stats.posts), "—".to_string(), "".to_string()),
-                                (t_string!(i18n, app.dashboard.stats.orders), "—".to_string(), "".to_string()),
-                                (t_string!(i18n, app.dashboard.stats.revenue), "—".to_string(), "".to_string()),
+                                (t_string!(i18n, app.dashboard.stats.users), "-".to_string(), "0.0%".to_string(), true),
+                                (t_string!(i18n, app.dashboard.stats.posts), "-".to_string(), "0.0%".to_string(), true),
+                                (t_string!(i18n, app.dashboard.stats.orders), "-".to_string(), "0.0%".to_string(), true),
+                                (t_string!(i18n, app.dashboard.stats.revenue), "-".to_string(), "0.0%".to_string(), true),
                             ]
                         });
 
                     view! {
-                        <div class="mb-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                             {stats
                                 .into_iter()
-                                .map(|(title, value, hint)| {
+                                .map(|(title, value, hint, trend_up)| {
                                     view! {
                                         <StatsCard
                                             title=title
                                             value=value
-                                            icon=view! { <span class="text-muted-foreground">"•"</span> }.into_any()
+                                            icon=view! { <span class="size-5 text-center text-base leading-5">"•"</span> }.into_any()
                                             trend=hint
                                             trend_label=t_string!(i18n, app.dashboard.stats.vsLastMonth)
-                                            class="transition-all hover:scale-[1.02]"
+                                            trend_up=trend_up
                                         />
                                     }
                                 })
@@ -407,11 +393,13 @@ pub fn Dashboard() -> impl IntoView {
                 }}
             </Suspense>
 
-            <div class="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-                <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
-                    <h4 class="mb-4 text-lg font-semibold text-card-foreground">
-                        {move || t_string!(i18n, app.dashboard.activity.title)}
-                    </h4>
+            <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{move || t_string!(i18n, app.dashboard.activity.title)}</CardTitle>
+                        <CardDescription>{move || t_string!(i18n, app.dashboard.subtitle).to_string()}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
                     <Suspense
                         fallback=move || view! {
                             <div class="space-y-3">
@@ -432,12 +420,13 @@ pub fn Dashboard() -> impl IntoView {
 
                             if activities.is_empty() {
                                 view! {
-                                    <div class="py-8 text-center text-muted-foreground">
+                                    <div class="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
                                         {t_string!(i18n, app.dashboard.activity.empty)}
                                     </div>
                                 }.into_any()
                             } else {
                                 view! {
+                                    <div class="divide-y divide-border">
                                     {activities
                                         .into_iter()
                                         .map(|item| {
@@ -448,48 +437,57 @@ pub fn Dashboard() -> impl IntoView {
                                                 .and_then(|u| u.name.clone())
                                                 .unwrap_or_else(|| t_string!(i18n, app.dashboard.activity.system).to_string());
                                             view! {
-                                                <div class="flex items-center justify-between border-b border-border py-3 last:border-b-0">
-                                                    <div class="min-w-0 flex-1">
+                                                <div class="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                                                    <div class="min-w-0">
                                                         <div class="flex items-center gap-2">
-                                                            <ActivityIcon activity_type=item.r#type.clone() />
-                                                            <strong class="truncate text-foreground">{item.description}</strong>
+                                                            <Badge variant=BadgeVariant::Secondary>{item.r#type.clone()}</Badge>
+                                                            <span class="truncate font-medium text-foreground">{item.description}</span>
                                                         </div>
                                                         <p class="mt-1 text-sm text-muted-foreground">
                                                             {format!("by {}", user_name)}
                                                         </p>
                                                     </div>
-                                                    <span class="ml-3 inline-flex shrink-0 items-center rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
+                                                    <span class="shrink-0 text-xs text-muted-foreground">
                                                         {time_ago}
                                                     </span>
                                                 </div>
                                             }
                                         })
                                         .collect_view()}
+                                    </div>
                                 }.into_any()
                             }
                         }}
                     </Suspense>
-                </div>
-                <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
-                    <h4 class="mb-4 text-lg font-semibold text-card-foreground">
-                        {move || t_string!(i18n, app.dashboard.quick.title)}
-                    </h4>
-                    <div class="grid gap-3">
-                        <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/security">
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{move || t_string!(i18n, app.dashboard.quick.title)}</CardTitle>
+                        <CardDescription>{move || t_string!(i18n, app.nav.group.account).to_string()}</CardDescription>
+                    </CardHeader>
+                    <CardContent class="grid gap-2">
+                        <a class="inline-flex h-9 items-center justify-center rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary/80" href="/security">
                             {move || t_string!(i18n, app.dashboard.quick.security)}
                         </a>
-                        <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/profile">
+                        <a class="inline-flex h-9 items-center justify-center rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary/80" href="/profile">
                             {move || t_string!(i18n, app.dashboard.quick.profile)}
                         </a>
-                        <a class="rounded-lg bg-secondary px-4 py-3 text-left text-sm font-semibold text-secondary-foreground transition hover:bg-secondary/80" href="/users">
+                        <a class="inline-flex h-9 items-center justify-center rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary/80" href="/users">
                             {move || t_string!(i18n, app.dashboard.quick.users)}
                         </a>
-                    </div>
-                </div>
+                    </CardContent>
+                    <CardFooter>
+                        <a class="inline-flex h-9 w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground" href="/modules">
+                            {move || t_string!(i18n, app.nav.modules).to_string()}
+                        </a>
+                    </CardFooter>
+                </Card>
             </div>
 
-            <div class="mt-8 grid gap-6 lg:grid-cols-2">
+            <div class="grid gap-4 lg:grid-cols-2">
                 {move || module_sections.get().into_iter().map(|module| (module.render)()).collect_view()}
+            </div>
             </div>
 
         </section>
@@ -749,52 +747,4 @@ async fn load_recent_activity(
             })
         })
         .collect()
-}
-
-#[component]
-fn ActivityIcon(activity_type: String) -> impl IntoView {
-    let (icon, color_class) = match activity_type.as_str() {
-        "user.created" | "user.joined" => (
-            "M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M8 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
-            "text-green-500",
-        ),
-        "user.updated" | "user.changed" => (
-            "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z",
-            "text-blue-500",
-        ),
-        "user.deleted" | "user.disabled" => (
-            "M18 6L6 18M6 6l12 12",
-            "text-red-500",
-        ),
-        "system.started" | "system.initialized" => (
-            "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
-            "text-yellow-500",
-        ),
-        "tenant.checked" | "tenant.verified" => (
-            "M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
-            "text-purple-500",
-        ),
-        "security.login" | "security.auth" => (
-            "M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2zm10-10V7a4 4 0 0 0-8 0v4h8z",
-            "text-violet-500",
-        ),
-        _ => (
-            "M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
-            "text-muted-foreground",
-        ),
-    };
-
-    view! {
-        <svg
-            class=format!("h-4 w-4 shrink-0 {}", color_class)
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-        >
-            <path d=icon />
-        </svg>
-    }
 }

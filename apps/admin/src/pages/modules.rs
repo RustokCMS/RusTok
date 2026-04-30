@@ -81,7 +81,7 @@ pub fn Modules() -> impl IntoView {
     );
 
     view! {
-        <section class="px-10 py-8">
+        <section class="flex flex-1 flex-col p-4 md:px-6">
             <PageHeader
                 title=t_string!(i18n, modules.title)
                 eyebrow=t_string!(i18n, modules.eyebrow).to_string()

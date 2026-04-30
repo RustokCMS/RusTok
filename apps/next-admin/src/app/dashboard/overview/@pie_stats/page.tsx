@@ -1,4 +1,4 @@
-import { delay } from '@/shared/constants';
+import { delay } from '@/shared/lib/timing';
 import { PieGraph } from '@/features/overview/components/pie-graph';
 
 export default async function Stats() {

@@ -129,15 +129,14 @@ pub fn CachePage() -> impl IntoView {
     );
 
     view! {
-        <section class="px-10 py-8">
+        <section class="flex flex-1 flex-col p-4 md:px-6">
             <PageHeader
                 title=t_string!(i18n, cache.title)
                 subtitle=t_string!(i18n, cache.subtitle).to_string()
                 eyebrow=t_string!(i18n, cache.eyebrow).to_string()
-                actions=view! { <div /> }.into_any()
             />
 
-            <div class="rounded-2xl bg-card p-6 shadow border border-border max-w-lg">
+            <div class="rounded-xl border border-border bg-card p-6 shadow-sm max-w-lg">
                 <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                     {move || t_string!(i18n, cache.health.title)}
                 </h4>

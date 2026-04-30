@@ -233,7 +233,7 @@ pub fn InstallerPage() -> impl IntoView {
     });
 
     view! {
-        <section class="p-4 md:p-8">
+        <section class="flex flex-1 flex-col p-4 md:px-6">
             <PageHeader
                 title="Hybrid installer".to_string()
                 eyebrow="Platform setup".to_string()

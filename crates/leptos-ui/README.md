@@ -18,6 +18,12 @@
 - `Badge`
 - `Alert`
 - `Card`
+- `CardHeader`
+- `CardTitle`
+- `CardDescription`
+- `CardAction`
+- `CardContent`
+- `CardFooter`
 - `Label`
 - `Separator`
 - `LanguageToggle`

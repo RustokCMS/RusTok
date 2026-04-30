@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::features::auth::UserMenu;
 use crate::shared::api::queries::ADMIN_GLOBAL_SEARCH_QUERY;
 use crate::shared::api::request;
-use crate::shared::ui::LanguageToggle;
+use crate::shared::ui::{LanguageToggle, ThemeModeToggle};
 use crate::{t_string, use_i18n};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -245,7 +245,10 @@ fn derive_admin_search_result_url(item: &rustok_search::SearchResultItem) -> Opt
 }
 
 #[component]
-pub fn Header() -> impl IntoView {
+pub fn Header(
+    #[prop(into)] sidebar_open: Signal<bool>,
+    set_sidebar_open: WriteSignal<bool>,
+) -> impl IntoView {
     let i18n = use_i18n();
     let location = use_location();
 
@@ -254,7 +257,7 @@ pub fn Header() -> impl IntoView {
 
     Effect::new(move |_| {
         let title = format!(
-            "{} вЂ” {}",
+            "{} - {}",
             t_string!(i18n, app.brand.title),
             resolve_label(i18n, title_key.get())
         );
@@ -264,6 +267,15 @@ pub fn Header() -> impl IntoView {
     view! {
         <header class="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4">
             <div class="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                <button
+                    type="button"
+                    aria-label="Toggle sidebar"
+                    title="Toggle sidebar"
+                    class="hidden h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex"
+                    on:click=move |_| set_sidebar_open.update(|open| *open = !*open)
+                >
+                    <SidebarToggleIcon sidebar_open=sidebar_open />
+                </button>
                 <A href="/dashboard" attr:class="flex items-center gap-2 font-medium text-foreground md:hidden">
                     <span class="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">"R"</span>
                     <span>{move || t_string!(i18n, app.brand.title).to_string()}</span>
@@ -299,9 +311,35 @@ pub fn Header() -> impl IntoView {
             <div class="flex shrink-0 items-center gap-2">
                 <HeaderGlobalSearch />
                 <LanguageToggle />
+                <ThemeModeToggle />
                 <UserMenu />
             </div>
         </header>
+    }
+}
+
+#[component]
+fn SidebarToggleIcon(#[prop(into)] sidebar_open: Signal<bool>) -> impl IntoView {
+    view! {
+        <svg
+            class="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        >
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M9 4v16" />
+            {move || {
+                if sidebar_open.get() {
+                    view! { <path d="M16 9l-3 3 3 3" /> }.into_any()
+                } else {
+                    view! { <path d="M13 9l3 3-3 3" /> }.into_any()
+                }
+            }}
+        </svg>
     }
 }
 
@@ -440,7 +478,7 @@ fn HeaderGlobalSearch() -> impl IntoView {
                             || query.get().trim().len() >= 2)
                 }
             >
-                <div class="absolute right-0 top-11 z-50 w-[30rem] overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+                <div class="absolute right-0 top-11 z-50 w-[30rem] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
                     <button
                         type="button"
                         class="flex w-full items-center justify-between border-b border-border px-4 py-3 text-left text-sm hover:bg-accent hover:text-accent-foreground"

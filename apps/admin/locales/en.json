@@ -50,7 +50,10 @@
       "search": "Search",
       "users": "Users",
       "apps": "App Connections",
-      "modulePlugins": "Modules"
+      "modulePlugins": "Modules",
+      "language": "Language",
+      "languageEn": "English",
+      "languageRu": "Russian"
     },
     "menu": {
       "defaultUser": "User",
@@ -61,6 +64,11 @@
     },
     "brand": {
       "title": "RusToK"
+    },
+    "theme": {
+      "toggle": "Toggle theme",
+      "light": "Light mode",
+      "dark": "Dark mode"
     },
     "search": {
       "placeholder": "Search admin…",

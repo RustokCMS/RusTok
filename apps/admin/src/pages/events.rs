@@ -587,16 +587,15 @@ pub fn EventsPage() -> impl IntoView {
     };
 
     view! {
-        <section class="px-10 py-8 space-y-6">
+        <section class="flex flex-1 flex-col gap-6 p-4 md:px-6">
             <PageHeader
                 title=t_string!(i18n, events.title)
                 subtitle=t_string!(i18n, events.subtitle).to_string()
                 eyebrow=t_string!(i18n, events.eyebrow).to_string()
-                actions=view! { <div /> }.into_any()
             />
 
             // ── Transport selector ────────────────────────────────────────────
-            <div class="rounded-2xl bg-card p-6 shadow border border-border">
+            <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                 <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                     {move || t_string!(i18n, events.transport.label)}
                 </h4>
@@ -633,7 +632,7 @@ pub fn EventsPage() -> impl IntoView {
 
             // ── Outbox settings ───────────────────────────────────────────────
             <Show when=move || show_outbox_settings.get()>
-                <div class="rounded-2xl bg-card p-6 shadow border border-border">
+                <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                     <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                         {move || t_string!(i18n, events.outbox.title)}
                     </h4>
@@ -668,7 +667,7 @@ pub fn EventsPage() -> impl IntoView {
 
             // ── External Iggy form ────────────────────────────────────────────
             <Show when=move || show_iggy_external.get()>
-                <div class="rounded-2xl bg-card p-6 shadow border border-border">
+                <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                     <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                         {move || t_string!(i18n, events.iggy.title)}
                     </h4>
@@ -766,7 +765,7 @@ pub fn EventsPage() -> impl IntoView {
             </div>
 
             // ── Runtime status ────────────────────────────────────────────────
-            <div class="rounded-2xl bg-card p-6 shadow border border-border">
+            <div class="rounded-xl border border-border bg-card p-6 shadow-sm">
                 <h4 class="mb-4 text-lg font-semibold text-card-foreground">
                     {move || t_string!(i18n, events.status.title)}
                 </h4>

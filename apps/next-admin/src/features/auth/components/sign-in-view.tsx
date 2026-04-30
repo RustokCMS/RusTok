@@ -2,8 +2,12 @@ import { cn } from '@/shared/lib/utils';
 import Link from 'next/link';
 import { InteractiveGridPattern } from './interactive-grid';
 import UserAuthForm from './user-auth-form';
+import { getTranslations } from 'next-intl/server';
+import { LanguageSelect } from '@/widgets/app-shell/language-select';
 
-export default function SignInViewPage() {
+export default async function SignInViewPage() {
+  const t = await getTranslations('auth');
+
   return (
     <div className='relative h-screen flex-col items-center justify-center md:grid lg:max-w-none lg:grid-cols-2 lg:px-0'>
       <div className='bg-muted relative hidden h-full flex-col p-10 text-white lg:flex dark:border-r'>
@@ -32,8 +36,8 @@ export default function SignInViewPage() {
         <div className='relative z-20 mt-auto'>
           <blockquote className='space-y-2'>
             <p className='text-lg'>
-              &ldquo;RusTok — a modern multi-tenant CMS built with Rust and
-              WebAssembly.&rdquo;
+              "RusTok - a modern multi-tenant CMS built with Rust and
+              WebAssembly."
             </p>
             <footer className='text-sm'>RusTok Team</footer>
           </blockquote>
@@ -43,20 +47,18 @@ export default function SignInViewPage() {
         <div className='flex w-full max-w-md flex-col items-center justify-center space-y-6'>
           <div className='flex flex-col space-y-2 text-center'>
             <h1 className='text-2xl font-semibold tracking-tight'>
-              Sign in to your account
+              {t('title')}
             </h1>
-            <p className='text-muted-foreground text-sm'>
-              Enter your email, password and workspace to sign in
-            </p>
+            <p className='text-muted-foreground text-sm'>{t('subtitle')}</p>
           </div>
+          <LanguageSelect />
           <UserAuthForm />
           <p className='text-muted-foreground px-8 text-center text-sm'>
-            Don&apos;t have an account?{' '}
             <Link
               href='/auth/sign-up'
               className='hover:text-primary underline underline-offset-4'
             >
-              Sign up
+              {t('registerLink')}
             </Link>
           </p>
         </div>

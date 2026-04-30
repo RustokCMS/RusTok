@@ -6,7 +6,7 @@ license.workspace = true
 description.workspace = true
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [features]
 default = ["ssr"]

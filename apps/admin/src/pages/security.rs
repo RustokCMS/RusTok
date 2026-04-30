@@ -5,7 +5,7 @@ use leptos_hook_form::FormState;
 use serde::{Deserialize, Serialize};
 
 use crate::shared::api::{request, ApiError};
-use crate::shared::ui::{Button, Input};
+use crate::shared::ui::{Button, Input, PageHeader};
 use crate::{t_string, use_i18n};
 
 const CHANGE_PASSWORD_MUTATION: &str = r#"
@@ -193,28 +193,21 @@ pub fn Security() -> impl IntoView {
     };
 
     view! {
-        <section class="px-10 py-8">
-            <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <span class="inline-flex items-center rounded-full border bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
-                        {move || t_string!(i18n, security.badge)}
-                    </span>
-                    <h1 class="mt-2 text-2xl font-semibold text-foreground">
-                        {move || t_string!(i18n, security.title)}
-                    </h1>
-                    <p class="mt-2 text-sm text-muted-foreground">
-                        {move || t_string!(i18n, security.subtitle)}
-                    </p>
-                </div>
-                <div class="flex flex-wrap items-center gap-3">
+        <section class="flex flex-1 flex-col p-4 md:px-6">
+            <PageHeader
+                title=move || t_string!(i18n, security.title).to_string()
+                subtitle=move || t_string!(i18n, security.subtitle).to_string()
+                eyebrow=move || t_string!(i18n, security.badge).to_string()
+                actions=view! {
                     <Button
                         on_click=on_sign_out_all
                         class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {move || t_string!(i18n, security.signOutAll)}
                     </Button>
-                </div>
-            </header>
+                }
+                .into_any()
+            />
 
             <div class="grid gap-6 lg:grid-cols-2">
                 <div class="grid gap-4 rounded-xl border border-border bg-card p-6 shadow-sm">
