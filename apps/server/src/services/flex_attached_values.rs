@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use flex::{
     delete_attached_localized_values, persist_localized_values, prepare_attached_values_create,
-    prepare_attached_values_update, resolve_attached_payload,
+    prepare_attached_values_update, resolve_attached_payload, AttachedEntityRef,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
 
@@ -41,9 +41,11 @@ impl FlexAttachedValuesService {
         let schema = load_schema(db, tenant_id, entity_type).await?;
         prepare_attached_values_update(
             db,
-            tenant_id,
-            entity_type,
-            entity_id,
+            AttachedEntityRef {
+                tenant_id,
+                entity_type,
+                entity_id,
+            },
             schema,
             locale,
             existing_metadata,
@@ -64,9 +66,11 @@ impl FlexAttachedValuesService {
         let schema = load_schema(db, tenant_id, entity_type).await?;
         resolve_attached_payload(
             db,
-            tenant_id,
-            entity_type,
-            entity_id,
+            AttachedEntityRef {
+                tenant_id,
+                entity_type,
+                entity_id,
+            },
             schema,
             shared_metadata,
             preferred_locale,

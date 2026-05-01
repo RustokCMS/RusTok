@@ -1025,6 +1025,7 @@ impl CartService {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn apply_promotion_adjustment(
         &self,
         tenant_id: Uuid,
@@ -1167,7 +1168,7 @@ impl CartService {
         let total_amount = cart.total_amount;
         let delivery_group_snapshots = collect_delivery_group_snapshots(&line_items);
         let selection_map =
-            selection_map_from_records(&delivery_group_snapshots, shipping_selections.into_iter());
+            selection_map_from_records(&delivery_group_snapshots, shipping_selections);
         let delivery_groups = build_delivery_groups(&line_items, &selection_map);
         let selected_shipping_option_id = match delivery_groups.len() {
             0 => cart.selected_shipping_option_id,
@@ -1430,8 +1431,7 @@ impl CartService {
             .filter(entities::cart_shipping_selection::Column::CartId.eq(cart.id))
             .all(conn)
             .await?;
-        let mut desired =
-            selection_map_from_records(&available_group_snapshots, existing.into_iter());
+        let mut desired = selection_map_from_records(&available_group_snapshots, existing);
 
         if let Some(shipping_selections) = &input.shipping_selections {
             desired.clear();
@@ -1550,9 +1550,7 @@ impl CartService {
             .filter(entities::cart_shipping_selection::Column::CartId.eq(cart_id))
             .all(conn)
             .await
-            .map(|records| {
-                selection_map_from_records(&delivery_group_snapshots, records.into_iter())
-            })?;
+            .map(|records| selection_map_from_records(&delivery_group_snapshots, records))?;
 
         if delivery_group_snapshots.len() == 1
             && desired.is_empty()
@@ -1990,7 +1988,7 @@ fn promotion_metadata(
     Value::Object(metadata)
 }
 
-fn adjustment_scope<'a>(adjustment: &'a entities::cart_adjustment::Model) -> Option<&'a str> {
+fn adjustment_scope(adjustment: &entities::cart_adjustment::Model) -> Option<&str> {
     adjustment.metadata.get("scope").and_then(Value::as_str)
 }
 

@@ -369,6 +369,7 @@ impl PricingService {
     }
 
     #[instrument(skip(self))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn preview_price_list_percentage_discount_with_channel(
         &self,
         tenant_id: Uuid,
@@ -461,6 +462,7 @@ impl PricingService {
     }
 
     #[instrument(skip(self))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn apply_percentage_discount_with_channel(
         &self,
         tenant_id: Uuid,
@@ -522,6 +524,7 @@ impl PricingService {
     }
 
     #[instrument(skip(self))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn apply_price_list_percentage_discount_with_channel(
         &self,
         tenant_id: Uuid,
@@ -591,6 +594,7 @@ impl PricingService {
     }
 
     #[instrument(skip(self))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn set_price_tier(
         &self,
         tenant_id: Uuid,
@@ -618,6 +622,7 @@ impl PricingService {
     }
 
     #[instrument(skip(self))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn set_price_tier_with_channel(
         &self,
         tenant_id: Uuid,
@@ -648,6 +653,7 @@ impl PricingService {
     }
 
     #[instrument(skip(self))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn set_price_list_tier(
         &self,
         tenant_id: Uuid,
@@ -677,6 +683,7 @@ impl PricingService {
     }
 
     #[instrument(skip(self))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn set_price_list_tier_with_channel(
         &self,
         tenant_id: Uuid,
@@ -711,6 +718,7 @@ impl PricingService {
     }
 
     #[instrument(skip(self))]
+    #[allow(clippy::too_many_arguments)]
     async fn set_scoped_price_tier(
         &self,
         tenant_id: Uuid,
@@ -1180,6 +1188,7 @@ impl PricingService {
     }
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_admin_product_pricing_with_locale_fallback(
         &self,
         tenant_id: Uuid,
@@ -1505,6 +1514,7 @@ fn decimal_to_cents(amount: Decimal) -> Option<i64> {
     (amount * Decimal::from(100)).round_dp(0).to_i64()
 }
 
+#[allow(clippy::result_large_err)]
 fn normalize_resolution_currency(currency_code: &str) -> CommerceResult<String> {
     let normalized = currency_code.trim().to_ascii_uppercase();
     if normalized.len() != 3 || !normalized.chars().all(|ch| ch.is_ascii_alphabetic()) {
@@ -1522,6 +1532,7 @@ fn normalize_channel_slug(channel_slug: Option<&str>) -> Option<String> {
         .map(|value| value.to_ascii_lowercase())
 }
 
+#[allow(clippy::result_large_err)]
 fn normalize_resolution_quantity(quantity: Option<i32>) -> CommerceResult<i32> {
     match quantity {
         Some(value) if value < 1 => Err(CommerceError::Validation(
@@ -1640,6 +1651,7 @@ where
     Ok(price_list)
 }
 
+#[allow(clippy::result_large_err)]
 fn validate_active_price_list(price_list: &entities::price_list::Model) -> CommerceResult<()> {
     if !price_list.status.eq_ignore_ascii_case("active") {
         return Err(CommerceError::Validation(
@@ -2051,6 +2063,7 @@ fn validate_price_tier_quantities(
     Ok(())
 }
 
+#[allow(clippy::result_large_err)]
 fn validate_discount_percent(discount_percent: Decimal) -> CommerceResult<()> {
     if discount_percent <= Decimal::ZERO || discount_percent > Decimal::from(100) {
         return Err(CommerceError::InvalidPrice(
