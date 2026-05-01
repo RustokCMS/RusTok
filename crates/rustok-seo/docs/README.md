@@ -47,6 +47,8 @@ Owner modules не рендерят SEO templates сами. Они отдают 
 
 Если payload содержит `@graph`, runtime разворачивает граф в отдельные schema blocks и наследует `@context`. Diagnostics считает schema отсутствующей, если typed blocks не получились, и отдельно помечает блоки без распознанного schema.org type как `unknown_schema_type`.
 
+Explicit write paths (`upsertSeoMeta`, Leptos server functions и bulk apply) валидируют новые `structured_data` значения как JSON-LD. Payload должен быть object, array или `@graph` минимум с одним непустым `@type`; будущие schema.org типы допускаются как `other`, но untyped JSON/scalars отклоняются.
+
 ## Bulk remediation
 
 Bulk apply больше не является простым overwrite job. Каждый apply job обязан выбрать режим:

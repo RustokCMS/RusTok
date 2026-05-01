@@ -17,7 +17,7 @@ use crate::entities::{meta_translation, seo_revision};
 use crate::{SeoError, SeoResult};
 
 use super::redirects::validate_target_url;
-use super::robots::first_open_graph_image_url;
+use super::robots::{first_open_graph_image_url, is_valid_structured_data_payload};
 use super::templates::{generated_translation, render_generated_record, source_label};
 use super::{trimmed_option, LoadedMeta, SeoService, TargetState};
 
@@ -101,6 +101,9 @@ impl SeoService {
                 settings.allowed_canonical_hosts.as_slice(),
                 "canonical_url",
             )?;
+        }
+        if let Some(structured_data) = input.structured_data.as_ref() {
+            validate_structured_data_payload(&structured_data.0)?;
         }
 
         let existing = seo_meta::Entity::find()
@@ -550,6 +553,16 @@ fn field_state(source: SeoFieldSource, present: bool) -> SeoFieldState {
     SeoFieldState { source, present }
 }
 
+fn validate_structured_data_payload(value: &Value) -> SeoResult<()> {
+    if is_valid_structured_data_payload(value) {
+        Ok(())
+    } else {
+        Err(SeoError::validation(
+            "structured_data must be a JSON-LD object, array, or @graph with at least one non-empty @type",
+        ))
+    }
+}
+
 fn normalize_requested_meta_locale(
     locale: Option<&str>,
     fallback_locale: &str,
@@ -632,8 +645,11 @@ fn snapshot_to_input(payload: Value, target_kind: SeoTargetSlug, target_id: Uuid
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_requested_meta_locale, upsert_response_locale};
+    use super::{
+        normalize_requested_meta_locale, upsert_response_locale, validate_structured_data_payload,
+    };
     use crate::{seo_builtin_slug, SeoMetaInput, SeoMetaTranslationInput, SeoTargetSlug};
+    use serde_json::json;
     use uuid::Uuid;
 
     #[test]
@@ -676,5 +692,21 @@ mod tests {
         let locale = upsert_response_locale(&input, "en").expect("response locale should resolve");
 
         assert_eq!(locale, "pt-BR");
+    }
+
+    #[test]
+    fn validate_structured_data_payload_requires_json_ld_type() {
+        validate_structured_data_payload(&json!({"@type": "Product", "name": "Demo"}))
+            .expect("typed JSON-LD should be accepted");
+        validate_structured_data_payload(&json!({
+            "@graph": [
+                {"@type": "Product", "name": "Demo"},
+                {"@type": "BreadcrumbList", "itemListElement": []}
+            ]
+        }))
+        .expect("@graph with typed nodes should be accepted");
+
+        assert!(validate_structured_data_payload(&json!({"name": "Missing type"})).is_err());
+        assert!(validate_structured_data_payload(&json!("not-json-ld")).is_err());
     }
 }

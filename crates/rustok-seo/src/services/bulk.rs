@@ -23,6 +23,7 @@ use crate::dto::{
 use crate::entities::{seo_bulk_job, seo_bulk_job_artifact, seo_bulk_job_item};
 use crate::{SeoError, SeoResult};
 
+use super::robots::is_valid_structured_data_payload;
 use super::SeoService;
 
 const MAX_BULK_PAGE_SIZE: i32 = 100;
@@ -169,10 +170,17 @@ fn validate_bool_field_patch(patch: Option<&SeoBulkBoolFieldPatch>, field: &str)
 
 fn validate_json_field_patch(patch: Option<&SeoBulkJsonFieldPatch>, field: &str) -> SeoResult<()> {
     if let Some(patch) = patch {
-        if matches!(patch.mode, SeoBulkFieldPatchMode::Set) && patch.value.is_none() {
-            return Err(SeoError::validation(format!(
-                "bulk patch field `{field}` requires a JSON `value`"
-            )));
+        if matches!(patch.mode, SeoBulkFieldPatchMode::Set) {
+            let value = patch.value.as_ref().ok_or_else(|| {
+                SeoError::validation(format!(
+                    "bulk patch field `{field}` requires a JSON `value`"
+                ))
+            })?;
+            if !is_valid_structured_data_payload(&value.0) {
+                return Err(SeoError::validation(format!(
+                    "bulk patch field `{field}` must be a JSON-LD object, array, or @graph with at least one non-empty @type"
+                )));
+            }
         }
     }
     Ok(())
@@ -225,7 +233,16 @@ fn apply_json_patch(
             SeoBulkFieldPatchMode::Set => patch
                 .value
                 .clone()
-                .map(|value| Some(value.0))
+                .map(|value| {
+                    if is_valid_structured_data_payload(&value.0) {
+                        Ok(Some(value.0))
+                    } else {
+                        Err(SeoError::validation(
+                            "bulk patch JSON value must be a JSON-LD object, array, or @graph with at least one non-empty @type",
+                        ))
+                    }
+                })
+                .transpose()?
                 .ok_or_else(|| SeoError::validation("bulk patch JSON value is required")),
         },
     }
@@ -618,6 +635,33 @@ mod tests {
                 .to_string()
                 .contains("title"),
             "validation error should mention title"
+        );
+    }
+
+    #[test]
+    fn validate_bulk_patch_rejects_untyped_structured_data() {
+        let result = validate_bulk_patch(&SeoBulkMetaPatchInput {
+            title: None,
+            description: None,
+            keywords: None,
+            canonical_url: None,
+            og_title: None,
+            og_description: None,
+            og_image: None,
+            structured_data: Some(SeoBulkJsonFieldPatch {
+                mode: SeoBulkFieldPatchMode::Set,
+                value: Some(Json(json!({"name": "Missing type"}))),
+            }),
+            noindex: None,
+            nofollow: None,
+        });
+
+        assert!(
+            result
+                .expect_err("untyped structured data should be rejected")
+                .to_string()
+                .contains("structured_data"),
+            "validation error should mention structured_data"
         );
     }
 

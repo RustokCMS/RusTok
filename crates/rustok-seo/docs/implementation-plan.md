@@ -79,6 +79,7 @@
 - [x] `SeoStructuredDataBlock` отдаёт `schema_kind`, `schema_type`, legacy `kind`, `source` и JSON-LD payload без изменения storage schema.
 - [x] JSON-LD `@graph` разворачивается в отдельные typed blocks с наследованием `@context`.
 - [x] `rustok-seo-render`, Leptos storefront GraphQL/server-function contract и Next shared SEO type знают о typed schema-block metadata.
+- [x] Explicit `structured_data` writes через metadata и bulk paths валидируют JSON-LD shape: object/array/`@graph` минимум с одним непустым `@type`; будущие schema.org types остаются допустимыми как `other`.
 
 ### Следующий scope
 

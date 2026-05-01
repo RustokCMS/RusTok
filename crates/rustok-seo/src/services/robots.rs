@@ -212,6 +212,14 @@ pub(super) fn schema_blocks_from_value(
     blocks
 }
 
+pub(super) fn is_valid_structured_data_payload(value: &Value) -> bool {
+    let blocks = schema_blocks_from_value(value.clone(), SeoFieldSource::Explicit);
+    !blocks.is_empty()
+        && blocks
+            .iter()
+            .all(|block| block.schema_kind != SeoSchemaBlockKind::Unknown)
+}
+
 fn collect_schema_blocks(
     value: Value,
     source: SeoFieldSource,
@@ -339,5 +347,23 @@ mod tests {
         let blocks = schema_blocks_from_value(json!("not-json-ld"), SeoFieldSource::Explicit);
 
         assert!(blocks.is_empty());
+    }
+
+    #[test]
+    fn structured_data_validation_requires_typed_blocks() {
+        assert!(super::is_valid_structured_data_payload(&json!({
+            "@type": "Product",
+            "name": "Demo"
+        })));
+        assert!(super::is_valid_structured_data_payload(&json!({
+            "@type": "MerchantReturnPolicy",
+            "name": "Future schema type"
+        })));
+        assert!(!super::is_valid_structured_data_payload(&json!({
+            "name": "Missing schema type"
+        })));
+        assert!(!super::is_valid_structured_data_payload(&json!(
+            "not-json-ld"
+        )));
     }
 }
