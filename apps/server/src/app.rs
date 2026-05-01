@@ -363,6 +363,21 @@ mod tests {
     use std::sync::Arc;
     use tower::ServiceExt;
 
+    #[cfg(feature = "mod-seo")]
+    async fn enable_test_module(ctx: &loco_rs::app::AppContext, tenant_id: uuid::Uuid, slug: &str) {
+        let registry = crate::modules::build_registry();
+        crate::services::module_lifecycle::ModuleLifecycleService::toggle_module_with_actor(
+            &ctx.db,
+            &registry,
+            tenant_id,
+            slug,
+            true,
+            Some("test".to_string()),
+        )
+        .await
+        .expect("module should enable");
+    }
+
     #[test]
     fn production_guardrail_detects_known_dev_jwt_fragments() {
         assert_eq!(
@@ -684,9 +699,7 @@ mod tests {
         }));
 
         let tenant = insert_tenant(&ctx, "seo-rest", Some("seo-rest.example.com")).await;
-        crate::models::tenant_modules::toggle(&ctx.db, tenant.id, "seo", true)
-            .await
-            .expect("seo module should enable");
+        enable_test_module(&ctx, tenant.id, "seo").await;
         insert_seo_redirect(&ctx, tenant.id, "/legacy", "https://example.com/new", 308).await;
 
         let base_router = build_runtime_router(&ctx).await;
@@ -785,9 +798,7 @@ mod tests {
         }));
 
         let tenant = insert_tenant(&ctx, "seo-invalid", Some("seo-invalid.example.com")).await;
-        crate::models::tenant_modules::toggle(&ctx.db, tenant.id, "seo", true)
-            .await
-            .expect("seo module should enable");
+        enable_test_module(&ctx, tenant.id, "seo").await;
 
         let base_router = build_runtime_router(&ctx).await;
         let mut request = Request::builder()
@@ -835,9 +846,7 @@ mod tests {
         }));
 
         let tenant = insert_tenant(&ctx, "seo-forum-channel", Some("seo-forum.example.com")).await;
-        crate::models::tenant_modules::toggle(&ctx.db, tenant.id, "seo", true)
-            .await
-            .expect("seo module should enable");
+        enable_test_module(&ctx, tenant.id, "seo").await;
         let (category_id, topic_id) =
             insert_forum_topic(&ctx, tenant.id, Some(vec!["mobile".to_string()])).await;
 
@@ -930,9 +939,7 @@ mod tests {
         }));
 
         let tenant = insert_tenant(&ctx, "seo-targets", Some("seo-targets.example.com")).await;
-        crate::models::tenant_modules::toggle(&ctx.db, tenant.id, "seo", true)
-            .await
-            .expect("seo module should enable");
+        enable_test_module(&ctx, tenant.id, "seo").await;
 
         let base_router = build_runtime_router(&ctx).await;
         let mut request = Request::builder()
@@ -1062,9 +1069,7 @@ mod tests {
             Some("seo-targets-permission.example.com"),
         )
         .await;
-        crate::models::tenant_modules::toggle(&ctx.db, tenant.id, "seo", true)
-            .await
-            .expect("seo module should enable");
+        enable_test_module(&ctx, tenant.id, "seo").await;
 
         let base_router = build_runtime_router(&ctx).await;
         let mut request = Request::builder()

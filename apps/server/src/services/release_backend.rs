@@ -961,6 +961,8 @@ mod tests {
             uuid::Uuid::nil(),
             "prod eu".to_string(),
             "hash".to_string(),
+            1,
+            serde_json::json!({}),
             vec!["blog".to_string()],
         );
 

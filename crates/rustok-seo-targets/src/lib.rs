@@ -21,6 +21,95 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
+pub mod schema {
+    use serde_json::{json, Map, Value};
+
+    pub fn web_page(name: &str, description: Option<&str>, in_language: &str) -> Value {
+        base_page("WebPage", name, description, in_language)
+    }
+
+    pub fn collection_page(name: &str, description: Option<&str>, in_language: &str) -> Value {
+        base_page("CollectionPage", name, description, in_language)
+    }
+
+    pub fn product(
+        name: &str,
+        description: Option<&str>,
+        image_url: Option<&str>,
+        in_language: &str,
+    ) -> Value {
+        let mut object = schema_object("Product");
+        insert_string(&mut object, "name", Some(name));
+        insert_string(&mut object, "description", description);
+        insert_string(&mut object, "image", image_url);
+        insert_string(&mut object, "inLanguage", Some(in_language));
+        Value::Object(object)
+    }
+
+    pub fn blog_posting(
+        headline: &str,
+        description: Option<&str>,
+        image_url: Option<&str>,
+        in_language: &str,
+        date_published: Option<Value>,
+        date_modified: Option<Value>,
+    ) -> Value {
+        let mut object = schema_object("BlogPosting");
+        insert_string(&mut object, "headline", Some(headline));
+        insert_string(&mut object, "description", description);
+        insert_string(&mut object, "image", image_url);
+        insert_string(&mut object, "inLanguage", Some(in_language));
+        insert_value(&mut object, "datePublished", date_published);
+        insert_value(&mut object, "dateModified", date_modified);
+        Value::Object(object)
+    }
+
+    pub fn discussion_forum_posting(
+        headline: &str,
+        article_body: &str,
+        description: Option<&str>,
+        in_language: &str,
+        date_published: Option<Value>,
+        date_modified: Option<Value>,
+    ) -> Value {
+        let mut object = schema_object("DiscussionForumPosting");
+        insert_string(&mut object, "headline", Some(headline));
+        insert_string(&mut object, "articleBody", Some(article_body));
+        insert_string(&mut object, "description", description);
+        insert_string(&mut object, "inLanguage", Some(in_language));
+        insert_value(&mut object, "datePublished", date_published);
+        insert_value(&mut object, "dateModified", date_modified);
+        Value::Object(object)
+    }
+
+    fn base_page(kind: &str, name: &str, description: Option<&str>, in_language: &str) -> Value {
+        let mut object = schema_object(kind);
+        insert_string(&mut object, "name", Some(name));
+        insert_string(&mut object, "description", description);
+        insert_string(&mut object, "inLanguage", Some(in_language));
+        Value::Object(object)
+    }
+
+    fn schema_object(kind: &str) -> Map<String, Value> {
+        let mut object = Map::new();
+        object.insert("@context".to_string(), json!("https://schema.org"));
+        object.insert("@type".to_string(), json!(kind));
+        object
+    }
+
+    fn insert_string(object: &mut Map<String, Value>, key: &str, value: Option<&str>) {
+        if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
+            object.insert(key.to_string(), Value::String(value.to_string()));
+        }
+    }
+
+    fn insert_value(object: &mut Map<String, Value>, key: &str, value: Option<Value>) {
+        if let Some(value) = value.filter(|value| !value.is_null()) {
+            object.insert(key.to_string(), value);
+        }
+    }
+}
+
 pub mod builtin_slug {
     pub const PAGE: &str = "page";
     pub const PRODUCT: &str = "product";
@@ -519,6 +608,32 @@ mod tests {
         assert!(SeoTargetSlug::new(" blog ").is_err());
         assert!(SeoTargetSlug::new("forum topic").is_err());
         assert!(SeoTargetSlug::new("forum.topic").is_err());
+    }
+
+    #[test]
+    fn schema_builders_emit_typed_json_ld_without_null_fields() {
+        let product = schema::product("Demo", None, Some("https://cdn.test/demo.png"), "en-US");
+
+        assert_eq!(product["@context"], json!("https://schema.org"));
+        assert_eq!(product["@type"], json!("Product"));
+        assert_eq!(product["name"], json!("Demo"));
+        assert_eq!(product["image"], json!("https://cdn.test/demo.png"));
+        assert!(product.get("description").is_none());
+
+        let discussion = schema::discussion_forum_posting(
+            "Welcome",
+            "Forum body",
+            Some("Intro"),
+            "en-US",
+            Some(json!("2026-05-01T00:00:00Z")),
+            None,
+        );
+
+        assert_eq!(discussion["@type"], json!("DiscussionForumPosting"));
+        assert_eq!(discussion["headline"], json!("Welcome"));
+        assert_eq!(discussion["articleBody"], json!("Forum body"));
+        assert_eq!(discussion["datePublished"], json!("2026-05-01T00:00:00Z"));
+        assert!(discussion.get("dateModified").is_none());
     }
 
     #[test]

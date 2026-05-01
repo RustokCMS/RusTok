@@ -25,6 +25,7 @@ use crate::services::module_event_dispatcher::{
     build_shared_runtime_extensions, spawn_module_event_dispatcher,
 };
 use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
+use crate::services::platform_composition::PlatformCompositionService;
 use rustok_cache::CacheService;
 use rustok_core::ModuleRuntimeExtensions;
 
@@ -68,8 +69,11 @@ pub async fn bootstrap_app_runtime(
 
     init_marketplace_catalog(ctx);
 
-    let manifest = ManifestManager::load()
-        .map_err(|error| Error::BadRequest(format!("modules.toml validation failed: {error}")))?;
+    let manifest = PlatformCompositionService::active_manifest(&ctx.db)
+        .await
+        .map_err(|error| {
+            Error::BadRequest(format!("platform composition validation failed: {error}"))
+        })?;
     let deployment_surfaces = if settings.runtime.is_registry_only() {
         DeploymentSurfaceContract {
             profile: crate::models::build::DeploymentProfile::HeadlessApi,

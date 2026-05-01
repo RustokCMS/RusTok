@@ -509,6 +509,8 @@ pub struct BuildJob {
     pub manifest_ref: String,
     #[serde(rename = "manifestHash")]
     pub manifest_hash: String,
+    #[serde(rename = "manifestRevision", default)]
+    pub manifest_revision: i64,
     #[serde(rename = "modulesDelta")]
     pub modules_delta: String,
     #[serde(rename = "requestedBy")]
@@ -545,6 +547,8 @@ pub struct ReleaseInfo {
     pub environment: String,
     #[serde(rename = "manifestHash")]
     pub manifest_hash: String,
+    #[serde(rename = "manifestRevision", default)]
+    pub manifest_revision: i64,
     pub modules: Vec<String>,
     #[serde(rename = "previousReleaseId")]
     pub previous_release_id: Option<String>,

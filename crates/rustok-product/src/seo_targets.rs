@@ -3,13 +3,12 @@ use async_trait::async_trait;
 use rustok_commerce_foundation::dto::{ProductResponse, ProductTranslationResponse};
 use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_seo_targets::{
-    builtin_slug, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    builtin_slug, schema, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkListRequest,
     SeoTargetCapabilities, SeoTargetImageRecord, SeoTargetLoadRequest, SeoTargetLoadScope,
     SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
 };
-use serde_json::json;
 use url::Url;
 
 use crate::{CatalogService, StorefrontProductListItem};
@@ -304,14 +303,12 @@ fn map_product_response(
                 })
                 .unwrap_or_default(),
         },
-        structured_data: json!({
-            "@context": "https://schema.org",
-            "@type": "Product",
-            "name": translation.title,
-            "description": translation.description,
-            "image": product.images.first().map(|image| image.url.clone()),
-            "inLanguage": effective_locale,
-        }),
+        structured_data: schema::product(
+            translation.title.as_str(),
+            translation.description.as_deref(),
+            product.images.first().map(|image| image.url.as_str()),
+            effective_locale.as_str(),
+        ),
         fallback_source: "product".to_string(),
         template_fields,
     }

@@ -2,11 +2,11 @@ use axum::{
     extract::{FromRef, FromRequestParts},
     http::{request::Parts, StatusCode},
 };
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use std::marker::PhantomData;
 
 use crate::context::TenantContextExt;
-use crate::models::_entities::tenant_modules::{self, Entity as TenantModules};
+use crate::modules::build_registry;
+use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use loco_rs::app::AppContext;
 
 pub trait ModuleSlug {
@@ -29,14 +29,11 @@ where
             .id;
         let ctx = AppContext::from_ref(state);
 
-        let is_enabled = TenantModules::find()
-            .filter(tenant_modules::Column::TenantId.eq(tenant_id))
-            .filter(tenant_modules::Column::ModuleSlug.eq(M::SLUG))
-            .filter(tenant_modules::Column::Enabled.eq(true))
-            .one(&ctx.db)
-            .await
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
-            .is_some();
+        let registry = build_registry();
+        let is_enabled =
+            EffectiveModulePolicyService::is_enabled(&ctx.db, &registry, tenant_id, M::SLUG)
+                .await
+                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
         if is_enabled {
             Ok(Self(PhantomData))

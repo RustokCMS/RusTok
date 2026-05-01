@@ -2,13 +2,12 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::{
-    builtin_slug, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    builtin_slug, schema, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkListRequest,
     SeoTargetCapabilities, SeoTargetImageRecord, SeoTargetLoadRequest, SeoTargetLoadScope,
     SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
 };
-use serde_json::json;
 use url::Url;
 
 use crate::state_machine::BlogPostStatus;
@@ -322,16 +321,14 @@ fn map_post_response(post: PostResponse) -> SeoLoadedTargetRecord {
                 })
                 .unwrap_or_default(),
         },
-        structured_data: json!({
-            "@context": "https://schema.org",
-            "@type": "BlogPosting",
-            "headline": post.title,
-            "description": description,
-            "image": post.featured_image_url,
-            "inLanguage": post.effective_locale,
-            "datePublished": post.published_at,
-            "dateModified": post.updated_at,
-        }),
+        structured_data: schema::blog_posting(
+            post.title.as_str(),
+            description.as_deref(),
+            post.featured_image_url.as_deref(),
+            post.effective_locale.as_str(),
+            serde_json::to_value(post.published_at).ok(),
+            serde_json::to_value(post.updated_at).ok(),
+        ),
         fallback_source: "blog".to_string(),
         template_fields,
     }

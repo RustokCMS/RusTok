@@ -42,6 +42,7 @@ mod m20260412_000001_reset_registry_identity_and_artifacts;
 mod m20260412_000002_split_registry_localized_metadata;
 mod m20260419_000001_normalize_registry_governance_event_payloads;
 mod m20260426_000001_create_install_sessions;
+mod m20260501_000001_create_platform_composition_state;
 
 pub struct Migrator;
 
@@ -115,20 +116,53 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_search::migrations::migrations());
         all.extend(rustok_taxonomy::migrations::migrations());
         all.extend(rustok_workflow::migrations::migrations());
-        all.sort_by(|a, b| migration_sort_key(a.name()).cmp(&migration_sort_key(b.name())));
+        all.push(Box::new(
+            m20260501_000001_create_platform_composition_state::Migration,
+        ));
+        all.sort_by(|a, b| a.name().cmp(&b.name()));
+        sort_migrations_by_dependencies(&mut all);
         all
     }
 }
 
-fn migration_sort_key(name: &str) -> String {
+fn migration_dependencies(name: &str) -> &'static [&'static str] {
     match name {
-        // Product tags has an FK to taxonomy_terms. Both migrations were added
-        // with the same timestamp prefix, so plain lexical ordering is wrong.
-        "m20260329_000001_create_taxonomy_tables" => {
-            "m20260329_000000_create_taxonomy_tables".to_string()
-        }
-        _ => name.to_string(),
+        "m20260329_000001_create_product_tags" => &["m20260329_000001_create_taxonomy_tables"],
+        _ => &[],
     }
+}
+
+fn sort_migrations_by_dependencies(
+    migrations: &mut Vec<Box<dyn sea_orm_migration::MigrationTrait>>,
+) {
+    let mut sorted = Vec::with_capacity(migrations.len());
+    let mut remaining = std::mem::take(migrations);
+
+    while !remaining.is_empty() {
+        let before = remaining.len();
+        let mut index = 0;
+        while index < remaining.len() {
+            let name = remaining[index].name().to_string();
+            let deps_satisfied = migration_dependencies(&name).iter().all(|dependency| {
+                sorted
+                    .iter()
+                    .any(|migration: &Box<dyn sea_orm_migration::MigrationTrait>| {
+                        migration.name() == *dependency
+                    })
+            });
+            if deps_satisfied {
+                sorted.push(remaining.remove(index));
+            } else {
+                index += 1;
+            }
+        }
+
+        if remaining.len() == before {
+            sorted.append(&mut remaining);
+        }
+    }
+
+    *migrations = sorted;
 }
 
 #[cfg(test)]
@@ -153,12 +187,22 @@ mod tests {
             "server migrator must include oauth token migration"
         );
 
-        let mut sorted = names.clone();
-        sorted.sort_by_key(|name| super::migration_sort_key(name));
-        assert_eq!(
-            names, sorted,
-            "server migrator must remain globally sorted by migration dependency order"
-        );
+        for name in &names {
+            let migration_index = names
+                .iter()
+                .position(|candidate| candidate == name)
+                .expect("migration exists");
+            for dependency in super::migration_dependencies(name) {
+                let dependency_index = names
+                    .iter()
+                    .position(|candidate| candidate == dependency)
+                    .expect("dependency migration exists");
+                assert!(
+                    dependency_index < migration_index,
+                    "migration {name} must run after dependency {dependency}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -249,7 +293,9 @@ mod tests {
             "server migrator must include flex schema translation split migration"
         );
         assert!(
-            names.contains(&"m20260405_000003_add_is_localized_to_server_field_definitions".to_string()),
+            names.contains(
+                &"m20260405_000003_add_is_localized_to_server_field_definitions".to_string()
+            ),
             "server migrator must include attached-mode field definition localization semantics migration"
         );
         assert!(

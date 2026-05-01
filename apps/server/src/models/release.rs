@@ -54,6 +54,12 @@ pub struct Model {
     /// Manifest hash (for verification)
     pub manifest_hash: String,
 
+    /// Platform composition revision used by this release.
+    pub manifest_revision: i64,
+
+    /// Immutable platform composition snapshot used by this release.
+    pub manifest_snapshot: Json,
+
     /// List of modules in this release
     pub modules: Json,
 
@@ -98,6 +104,8 @@ impl Model {
         build_id: Uuid,
         environment: String,
         manifest_hash: String,
+        manifest_revision: i64,
+        manifest_snapshot: Json,
         modules: Vec<String>,
     ) -> Self {
         Self {
@@ -110,6 +118,8 @@ impl Model {
             admin_artifact_url: None,
             storefront_artifact_url: None,
             manifest_hash,
+            manifest_revision,
+            manifest_snapshot,
             modules: serde_json::to_value(modules).expect("Vec<String> is always valid JSON"),
             previous_release_id: None,
             deployed_at: None,

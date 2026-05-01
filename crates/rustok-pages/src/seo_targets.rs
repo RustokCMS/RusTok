@@ -3,13 +3,12 @@ use async_trait::async_trait;
 use rustok_content::entities::node::ContentStatus;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::{
-    builtin_slug, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    builtin_slug, schema, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkListRequest,
     SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
     SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
     SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
 };
-use serde_json::json;
 use url::Url;
 
 use crate::{ListPagesFilter, PageListItem, PageResponse, PageService, PageTranslationResponse};
@@ -316,13 +315,11 @@ fn map_page_response(page: PageResponse, requested_locale: &str) -> SeoLoadedTar
             locale: Some(effective_locale.clone()),
             images: Vec::new(),
         },
-        structured_data: json!({
-            "@context": "https://schema.org",
-            "@type": "WebPage",
-            "name": structured_name,
-            "description": description,
-            "inLanguage": effective_locale,
-        }),
+        structured_data: schema::web_page(
+            structured_name.as_str(),
+            description.as_deref(),
+            effective_locale.as_str(),
+        ),
         fallback_source: "pages".to_string(),
         template_fields,
     }

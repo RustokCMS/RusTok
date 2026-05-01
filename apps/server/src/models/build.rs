@@ -83,6 +83,8 @@ pub struct Model {
     pub profile: DeploymentProfile,
     pub manifest_ref: String,
     pub manifest_hash: String,
+    pub manifest_revision: i64,
+    pub manifest_snapshot: Json,
     pub modules_delta: Option<Json>,
     pub requested_by: String,
     pub reason: Option<String>,
@@ -104,6 +106,8 @@ impl Model {
     pub fn new(
         manifest_ref: String,
         manifest_hash: String,
+        manifest_revision: i64,
+        manifest_snapshot: Json,
         requested_by: String,
         profile: DeploymentProfile,
     ) -> Self {
@@ -115,6 +119,8 @@ impl Model {
             profile,
             manifest_ref,
             manifest_hash,
+            manifest_revision,
+            manifest_snapshot,
             modules_delta: None,
             requested_by,
             reason: None,

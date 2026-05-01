@@ -2,13 +2,12 @@ use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::{
-    builtin_slug, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
+    builtin_slug, schema, SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord,
     SeoSitemapCandidateRecord, SeoTargetAlternateRoute, SeoTargetBulkListRequest,
     SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope, SeoTargetOpenGraphRecord,
     SeoTargetProvider, SeoTargetRouteResolveRequest, SeoTargetRuntimeContext,
     SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
 };
-use serde_json::json;
 use url::Url;
 use uuid::Uuid;
 
@@ -530,13 +529,11 @@ fn map_category_response(category: CategoryResponse) -> SeoLoadedTargetRecord {
             locale: Some(category.effective_locale.clone()),
             images: Vec::new(),
         },
-        structured_data: json!({
-            "@context": "https://schema.org",
-            "@type": "CollectionPage",
-            "name": category.name,
-            "description": description,
-            "inLanguage": category.effective_locale,
-        }),
+        structured_data: schema::collection_page(
+            category.name.as_str(),
+            description.as_deref(),
+            category.effective_locale.as_str(),
+        ),
         fallback_source: "forum_category".to_string(),
         template_fields,
     }
@@ -584,16 +581,14 @@ fn map_topic_response(topic: TopicResponse) -> SeoLoadedTargetRecord {
             locale: Some(topic.effective_locale.clone()),
             images: Vec::new(),
         },
-        structured_data: json!({
-            "@context": "https://schema.org",
-            "@type": "DiscussionForumPosting",
-            "headline": topic.title,
-            "articleBody": topic.body,
-            "description": description,
-            "inLanguage": topic.effective_locale,
-            "datePublished": topic.created_at,
-            "dateModified": topic.updated_at,
-        }),
+        structured_data: schema::discussion_forum_posting(
+            topic.title.as_str(),
+            topic.body.as_str(),
+            description.as_deref(),
+            topic.effective_locale.as_str(),
+            serde_json::to_value(topic.created_at).ok(),
+            serde_json::to_value(topic.updated_at).ok(),
+        ),
         fallback_source: "forum_topic".to_string(),
         template_fields,
     }

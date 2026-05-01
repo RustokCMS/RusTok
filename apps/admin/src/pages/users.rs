@@ -173,6 +173,14 @@ async fn fetch_users(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<GraphqlUsersResponse, String> {
+    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    {
+        return fetch_users_graphql(page, limit, search, role, status, token, tenant_slug)
+            .await
+            .map_err(|graphql_err| graphql_err.to_string());
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
     match fetch_users_server(page, limit, search.clone(), role.clone(), status.clone()).await {
         Ok(response) => Ok(response),
         Err(server_err) => {
@@ -740,9 +748,9 @@ pub fn Users() -> impl IntoView {
                             }
                             .into_any()
                         }
-                        Some(Err(err)) => view! {
+                        Some(Err(_err)) => view! {
                             <div class="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-2 text-sm text-destructive">
-                                {err}
+                                {move || t_string!(i18n, users.loadError)}
                             </div>
                         }
                         .into_any(),

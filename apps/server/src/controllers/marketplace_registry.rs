@@ -45,6 +45,7 @@ use crate::services::marketplace_catalog::{
     RegistryRunnerClaimResponse, RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
     RegistryRunnerMutationResponse, RegistryValidationStageReportRequest, RegistryYankRequest,
 };
+use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::registry_governance::{
     release_status_label, request_status_label, validation_stage_status_label,
     RegistryArtifactUpload, RegistryFollowUpGateSnapshot, RegistryGovernanceActionSnapshot,
@@ -1761,12 +1762,10 @@ async fn transfer_owner(
             version: String::new(),
             warnings,
             errors: Vec::new(),
-            next_step: Some(
-                format!(
-                    "Dry-run preview only. Re-run with dry_run=false, a non-empty reason, and a supported reason_code ({}) to transfer the persisted owner binding.",
-                    REGISTRY_OWNER_TRANSFER_REASON_CODES.join(", ")
-                ),
-            ),
+            next_step: Some(format!(
+                "Dry-run preview only. Re-run with dry_run=false, a non-empty reason, and a supported reason_code ({}) to transfer the persisted owner binding.",
+                REGISTRY_OWNER_TRANSFER_REASON_CODES.join(", ")
+            )),
         }),
     ))
 }
@@ -1838,13 +1837,13 @@ async fn first_party_catalog_modules(
     ctx: &AppContext,
     request_context: &RequestContext,
 ) -> Result<Vec<CatalogManifestModule>, Error> {
-    let manifest = ManifestManager::load().unwrap_or_else(|error| {
-        tracing::warn!(
-            error = %error,
-            "Failed to load modules manifest for registry catalog; falling back to builtin catalog"
-        );
-        ModulesManifest::default()
-    });
+    let manifest = PlatformCompositionService::active_manifest(&ctx.db)
+        .await
+        .map_err(|error| {
+            Error::Message(format!(
+                "Failed to load platform composition for catalog: {error}"
+            ))
+        })?;
     let modules = catalog_modules_with_builtin_fallback(&manifest)
         .map_err(|error| Error::Message(format!("Failed to build marketplace catalog: {error}")))?;
 
@@ -2397,9 +2396,7 @@ fn authority_from_auth(
         None => Err(Error::Unauthorized(format!(
             "{action_label} requires authentication"
         ))),
-        Some(AuthContextExtension(ctx))
-            if ctx.client_id.is_some() && ctx.session_id.is_nil() =>
-        {
+        Some(AuthContextExtension(ctx)) if ctx.client_id.is_some() && ctx.session_id.is_nil() => {
             Err(Error::CustomError(
                 StatusCode::FORBIDDEN,
                 ErrorDetail::new(

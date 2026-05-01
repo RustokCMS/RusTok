@@ -57,6 +57,9 @@ use crate::services::flex_attached_values::{
 use crate::services::module_lifecycle::{
     ModuleLifecycleService, ToggleModuleError, UpdateModuleSettingsError,
 };
+use crate::services::platform_composition::{
+    PlatformCompositionError, PlatformCompositionService, PlatformCompositionSnapshot,
+};
 use crate::services::rbac_service::RbacService;
 use rustok_core::{ModuleRegistry, Permission};
 use std::sync::Arc;
@@ -264,7 +267,7 @@ async fn ensure_modules_manage_permission(
 async fn request_build_for_manifest(
     app_ctx: &loco_rs::app::AppContext,
     tenant_id: Uuid,
-    manifest: &ModulesManifest,
+    snapshot: &PlatformCompositionSnapshot,
     manifest_diff: &ManifestDiff,
     requested_by: &str,
     reason: &str,
@@ -281,13 +284,16 @@ async fn request_build_for_manifest(
 
     let build = BuildService::with_event_publisher(app_ctx.db.clone(), event_publisher)
         .request_build(BuildRequest {
-            manifest_ref: ManifestManager::manifest_ref(),
+            manifest_ref: format!("platform_state:{}", snapshot.revision),
+            manifest_revision: snapshot.revision,
+            manifest_snapshot: serde_json::to_value(&snapshot.manifest)
+                .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?,
             requested_by: requested_by.to_string(),
             reason: Some(reason.to_string()),
             modules_delta: manifest_diff.summary(),
-            modules: ManifestManager::build_modules(manifest),
-            profile: ManifestManager::deployment_profile(manifest),
-            execution_plan: ManifestManager::build_execution_plan(manifest),
+            modules: ManifestManager::build_modules(&snapshot.manifest),
+            profile: ManifestManager::deployment_profile(&snapshot.manifest),
+            execution_plan: ManifestManager::build_execution_plan(&snapshot.manifest),
         })
         .await
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -299,35 +305,42 @@ async fn persist_manifest_and_request_build(
     app_ctx: &loco_rs::app::AppContext,
     tenant_id: Uuid,
     registry: &ModuleRegistry,
-    original_manifest: ModulesManifest,
+    expected_revision: Option<i64>,
     manifest: ModulesManifest,
     manifest_diff: ManifestDiff,
     requested_by: &str,
     reason: String,
 ) -> Result<BuildJob> {
-    ManifestManager::validate_with_registry(&manifest, registry).map_err(map_manifest_error)?;
-    ManifestManager::save(&manifest).map_err(map_manifest_error)?;
+    let snapshot = PlatformCompositionService::update_manifest(
+        &app_ctx.db,
+        registry,
+        expected_revision,
+        manifest,
+        Some(requested_by.to_string()),
+    )
+    .await
+    .map_err(map_platform_composition_error)?;
 
-    match request_build_for_manifest(
+    request_build_for_manifest(
         app_ctx,
         tenant_id,
-        &manifest,
+        &snapshot,
         &manifest_diff,
         requested_by,
         &reason,
     )
     .await
-    {
-        Ok(build) => Ok(build),
-        Err(err) => {
-            if let Err(restore_err) = ManifestManager::save(&original_manifest) {
-                return Err(<FieldError as GraphQLError>::internal_error(&format!(
-                    "failed to request build after manifest update: {:?}; rollback failed: {:?}",
-                    err, restore_err
-                )));
-            }
-            Err(err)
+}
+
+fn map_platform_composition_error(error: PlatformCompositionError) -> FieldError {
+    match error {
+        PlatformCompositionError::RevisionConflict { expected, current } => {
+            FieldError::new(format!(
+                "Platform composition revision conflict: expected {expected}, current {current}"
+            ))
         }
+        PlatformCompositionError::Manifest(error) => map_manifest_error(error),
+        other => <FieldError as GraphQLError>::internal_error(&other.to_string()),
     }
 }
 
@@ -813,13 +826,16 @@ impl RootMutation {
         ctx: &Context<'_>,
         slug: String,
         version: String,
+        expected_revision: Option<i64>,
     ) -> Result<BuildJob> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
         let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let mut manifest = ManifestManager::load().map_err(map_manifest_error)?;
-        let original_manifest = manifest.clone();
+        let snapshot = PlatformCompositionService::active_snapshot(&app_ctx.db)
+            .await
+            .map_err(map_platform_composition_error)?;
+        let mut manifest = snapshot.manifest.clone();
         let manifest_diff =
             ManifestManager::install_builtin_module(&mut manifest, &slug, Some(version))
                 .map_err(map_manifest_error)?;
@@ -828,7 +844,7 @@ impl RootMutation {
             app_ctx,
             tenant.id,
             registry,
-            original_manifest,
+            Some(expected_revision.unwrap_or(snapshot.revision)),
             manifest,
             manifest_diff,
             &auth.user_id.to_string(),
@@ -837,13 +853,20 @@ impl RootMutation {
         .await
     }
 
-    async fn uninstall_module(&self, ctx: &Context<'_>, slug: String) -> Result<BuildJob> {
+    async fn uninstall_module(
+        &self,
+        ctx: &Context<'_>,
+        slug: String,
+        expected_revision: Option<i64>,
+    ) -> Result<BuildJob> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
         let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let mut manifest = ManifestManager::load().map_err(map_manifest_error)?;
-        let original_manifest = manifest.clone();
+        let snapshot = PlatformCompositionService::active_snapshot(&app_ctx.db)
+            .await
+            .map_err(map_platform_composition_error)?;
+        let mut manifest = snapshot.manifest.clone();
         let manifest_diff =
             ManifestManager::uninstall_module(&mut manifest, &slug).map_err(map_manifest_error)?;
 
@@ -851,7 +874,7 @@ impl RootMutation {
             app_ctx,
             tenant.id,
             registry,
-            original_manifest,
+            Some(expected_revision.unwrap_or(snapshot.revision)),
             manifest,
             manifest_diff,
             &auth.user_id.to_string(),
@@ -865,13 +888,16 @@ impl RootMutation {
         ctx: &Context<'_>,
         slug: String,
         version: String,
+        expected_revision: Option<i64>,
     ) -> Result<BuildJob> {
         let (auth, tenant) = ensure_modules_manage_permission(ctx).await?;
         let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let mut manifest = ManifestManager::load().map_err(map_manifest_error)?;
-        let original_manifest = manifest.clone();
+        let snapshot = PlatformCompositionService::active_snapshot(&app_ctx.db)
+            .await
+            .map_err(map_platform_composition_error)?;
+        let mut manifest = snapshot.manifest.clone();
         let manifest_diff = ManifestManager::upgrade_module(&mut manifest, &slug, version)
             .map_err(map_manifest_error)?;
 
@@ -879,7 +905,7 @@ impl RootMutation {
             app_ctx,
             tenant.id,
             registry,
-            original_manifest,
+            Some(expected_revision.unwrap_or(snapshot.revision)),
             manifest,
             manifest_diff,
             &auth.user_id.to_string(),
@@ -994,12 +1020,13 @@ impl RootMutation {
 
         let registry = ctx.data::<ModuleRegistry>()?;
 
-        let module = ModuleLifecycleService::toggle_module(
+        let module = ModuleLifecycleService::toggle_module_with_actor(
             &app_ctx.db,
             registry,
             tenant.id,
             &module_slug,
             enabled,
+            Some(auth.user_id.to_string()),
         )
         .await
         .map_err(|err| match err {
@@ -1020,6 +1047,7 @@ impl RootMutation {
                 "Module lifecycle hook failed, state rolled back: {}",
                 err
             )),
+            ToggleModuleError::Policy(err) => <FieldError as GraphQLError>::internal_error(&err),
         })?;
 
         Ok(TenantModule {
@@ -1061,6 +1089,9 @@ impl RootMutation {
             }
             UpdateModuleSettingsError::Validation(message) => FieldError::new(message),
             UpdateModuleSettingsError::Manifest(err) => map_manifest_error(err),
+            UpdateModuleSettingsError::Policy(err) => {
+                <FieldError as GraphQLError>::internal_error(&err)
+            }
             UpdateModuleSettingsError::Database(err) => {
                 <FieldError as GraphQLError>::internal_error(&err.to_string())
             }

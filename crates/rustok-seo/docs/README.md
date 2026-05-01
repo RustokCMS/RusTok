@@ -49,6 +49,8 @@ Owner modules не рендерят SEO templates сами. Они отдают 
 
 Explicit write paths (`upsertSeoMeta`, Leptos server functions и bulk apply) валидируют новые `structured_data` значения как JSON-LD. Payload должен быть object, array или `@graph` минимум с одним непустым `@type`; будущие schema.org типы допускаются как `other`, но untyped JSON/scalars отклоняются.
 
+Built-in owner providers (`pages/product/blog/forum`) генерируют fallback structured data через `rustok-seo-targets::schema` builders. Это сохраняет module ownership, но не даёт каждому provider hand-roll-ить собственный raw `json!` shape.
+
 ## Bulk remediation
 
 Bulk apply больше не является простым overwrite job. Каждый apply job обязан выбрать режим:

@@ -9,6 +9,7 @@
 - registry entry metadata (`display_name`, `owner_module_slug`) для shared operator/admin surfaces;
 - capability flags `authoring`, `routing`, `bulk`, `sitemaps`;
 - typed backend records для route match, loaded target, bulk summary и sitemap candidate;
+- минимальные JSON-LD builders для built-in rich-snippet shapes, чтобы owner providers не собирали schema.org payload как raw `json!` blobs;
 - runtime wiring через `ModuleRuntimeExtensions`, а не через manifest-магии.
 
 ## Что crate не делает
@@ -36,3 +37,15 @@
 - slug/handle/id поля, которые нужны для шаблонов (`slug`, `handle`, `category_id`, `topic_id`).
 
 Owner module не должен отдавать сырой HTML, произвольный JSON или внутренние DTO в template runtime. Шаблоны рендерит только `rustok-seo`; provider отвечает только за typed target loading и безопасный field map.
+
+## JSON-LD builders
+
+`rustok-seo-targets::schema` даёт небольшие typed builders для текущих owner providers:
+
+- `web_page`;
+- `collection_page`;
+- `product`;
+- `blog_posting`;
+- `discussion_forum_posting`.
+
+Эти helpers не являются полноценным schema editor. Они фиксируют безопасный baseline для fallback/generated rich snippets: обязательный `@context`, корректный `@type`, пропуск пустых optional полей и единый shape для `pages/product/blog/forum`. Более богатые Product Offer/Review, FAQ/HowTo, BreadcrumbList, ItemList и Organization/LocalBusiness должны наращиваться через этот же typed слой, а не через host-local schema.org classifier.

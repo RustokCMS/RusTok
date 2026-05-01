@@ -5,6 +5,7 @@ pub mod auth_lifecycle;
 pub mod build_event_hub;
 pub mod build_executor;
 pub mod content_orchestration;
+pub mod effective_module_policy;
 pub mod email;
 pub mod event_bus;
 pub mod graphql_schema;
@@ -15,6 +16,7 @@ pub mod mcp_runtime;
 pub mod module_event_dispatcher;
 pub mod module_lifecycle;
 pub mod oauth_app;
+pub mod platform_composition;
 
 pub mod build_service;
 pub mod event_transport_factory;

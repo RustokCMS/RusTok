@@ -556,6 +556,7 @@ pub struct BuildJob {
     pub profile: GqlDeploymentProfile,
     pub manifest_ref: String,
     pub manifest_hash: String,
+    pub manifest_revision: i64,
     pub modules_delta: String,
     pub build_command: Option<String>,
     pub build_features: Vec<String>,
@@ -612,6 +613,7 @@ impl BuildJob {
             profile: model.profile.clone().into(),
             manifest_ref: model.manifest_ref.clone(),
             manifest_hash: model.manifest_hash.clone(),
+            manifest_revision: model.manifest_revision,
             modules_delta: build_modules_delta_summary(model.modules_delta.as_ref()),
             build_command: execution_plan
                 .as_ref()
@@ -735,6 +737,7 @@ pub struct ReleaseInfo {
     pub admin_artifact_url: Option<String>,
     pub storefront_artifact_url: Option<String>,
     pub manifest_hash: String,
+    pub manifest_revision: i64,
     pub modules: Vec<String>,
     pub previous_release_id: Option<String>,
     pub deployed_at: Option<String>,
@@ -755,6 +758,7 @@ impl ReleaseInfo {
             admin_artifact_url: model.admin_artifact_url.clone(),
             storefront_artifact_url: model.storefront_artifact_url.clone(),
             manifest_hash: model.manifest_hash.clone(),
+            manifest_revision: model.manifest_revision,
             modules: serde_json::from_value(model.modules.clone()).unwrap_or_default(),
             previous_release_id: model.previous_release_id.clone(),
             deployed_at: model.deployed_at.map(|value| value.to_rfc3339()),

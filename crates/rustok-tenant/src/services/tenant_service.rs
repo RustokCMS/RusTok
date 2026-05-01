@@ -116,6 +116,14 @@ impl TenantService {
         Ok((items, total))
     }
 
+    /// Deprecated low-level tenant override writer.
+    ///
+    /// Runtime module enable/disable paths must go through the host
+    /// `ModuleLifecycleService` so policy resolution, dependency checks, hooks,
+    /// and operation journaling stay consistent.
+    #[deprecated(
+        note = "use the host ModuleLifecycleService for runtime module enable/disable paths"
+    )]
     #[instrument(skip(self, input), fields(tenant_id = %tenant_id, module_slug = %input.module_slug))]
     pub async fn toggle_module(
         &self,

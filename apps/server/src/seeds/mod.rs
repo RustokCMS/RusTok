@@ -125,8 +125,18 @@ async fn seed_development(ctx: &AppContext) -> Result<()> {
     )
     .await?;
 
+    let registry = crate::modules::build_registry();
     for module in ["content", "commerce", "pages", "blog", "forum", "index"] {
-        crate::models::tenant_modules::toggle(&ctx.db, demo_tenant.id, module, true).await?;
+        crate::services::module_lifecycle::ModuleLifecycleService::toggle_module_with_actor(
+            &ctx.db,
+            &registry,
+            demo_tenant.id,
+            module,
+            true,
+            Some("seed".to_string()),
+        )
+        .await
+        .map_err(|error| loco_rs::Error::Message(error.to_string()))?;
     }
 
     tracing::info!(tenant_id = %demo_tenant.id, "Development seed data ensured");

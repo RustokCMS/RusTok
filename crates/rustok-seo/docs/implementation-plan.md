@@ -80,10 +80,12 @@
 - [x] JSON-LD `@graph` разворачивается в отдельные typed blocks с наследованием `@context`.
 - [x] `rustok-seo-render`, Leptos storefront GraphQL/server-function contract и Next shared SEO type знают о typed schema-block metadata.
 - [x] Explicit `structured_data` writes через metadata и bulk paths валидируют JSON-LD shape: object/array/`@graph` минимум с одним непустым `@type`; будущие schema.org types остаются допустимыми как `other`.
+- [x] Built-in owner providers (`pages/product/blog/forum`) используют `rustok-seo-targets::schema` builders для fallback JSON-LD вместо hand-rolled raw `json!` blobs.
 
 ### Следующий scope
 
-- [ ] Typed schema generators/editors для Product/Offer/Review, Article/BlogPosting, BreadcrumbList, ItemList, Organization/LocalBusiness, FAQ/HowTo и forum-specific schema.
+- [ ] Нарастить schema builders до Product Offer/Review, BreadcrumbList, ItemList, Organization/LocalBusiness, FAQ/HowTo и расширенных forum-specific schema.
+- [ ] Owner-module schema editors должны писать через typed schema input, а не через свободный JSON textarea.
 - [ ] Rich-snippet preview/validation UI в owner-module panels и diagnostics remediation.
 - [ ] Cross-linking engine с controlled insertion points без silent HTML mutation.
 - [ ] Google Indexing API / sitemap ping и позже Search Console-style diagnostics adapters.

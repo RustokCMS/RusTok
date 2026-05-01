@@ -28,25 +28,8 @@ ALTER TABLE tenant_locales
         Ok(())
     }
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        if manager.get_database_backend() != DatabaseBackend::Postgres {
-            return Ok(());
-        }
-
-        manager
-            .get_connection()
-            .execute_unprepared(
-                r#"
-ALTER TABLE tenant_locales
-    ALTER COLUMN fallback_locale TYPE VARCHAR(5),
-    ALTER COLUMN locale TYPE VARCHAR(5);
-
-ALTER TABLE tenants
-    ALTER COLUMN default_locale TYPE VARCHAR(5);
-"#,
-            )
-            .await?;
-
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
+        // Irreversible by design: shrinking locale columns can truncate valid BCP47-like tags.
         Ok(())
     }
 }

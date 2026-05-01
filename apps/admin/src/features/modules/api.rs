@@ -15,30 +15,19 @@ use crate::entities::module::{
 use crate::shared::api::{request, ApiError};
 
 pub const ENABLED_MODULES_QUERY: &str = "query EnabledModules { enabledModules }";
-pub const MODULE_REGISTRY_QUERY: &str =
-    "query ModuleRegistry { moduleRegistry { moduleSlug name description version kind dependencies enabled ownership trustLevel recommendedAdminSurfaces showcaseAdminSurfaces } }";
-pub const INSTALLED_MODULES_QUERY: &str =
-    "query InstalledModules { installedModules { slug source crateName version required dependencies } }";
+pub const MODULE_REGISTRY_QUERY: &str = "query ModuleRegistry { moduleRegistry { moduleSlug name description version kind dependencies enabled ownership trustLevel recommendedAdminSurfaces showcaseAdminSurfaces } }";
+pub const INSTALLED_MODULES_QUERY: &str = "query InstalledModules { installedModules { slug source crateName version required dependencies } }";
 pub const TENANT_MODULES_QUERY: &str =
     "query TenantModules { tenantModules { moduleSlug enabled settings } }";
-pub const MARKETPLACE_QUERY: &str =
-    "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
-pub const MARKETPLACE_MODULE_QUERY: &str =
-    "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { owner { displayLabel } boundBy { displayLabel } boundAt updatedAt } latestRequest { id status requestedBy { displayLabel } publisher { displayLabel } approvedBy { displayLabel } rejectedBy { displayLabel } rejectionReason changesRequestedBy { displayLabel } changesRequestedReason changesRequestedReasonCode changesRequestedAt heldBy { displayLabel } heldReason heldReasonCode heldAt heldFromStatus warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher { displayLabel } checksumSha256 publishedAt yankedReason yankedBy { displayLabel } yankedAt } recentEvents { id eventType actor { displayLabel } publisher { displayLabel } payload { reason reasonCode detail version stageKey attemptNumber warnings errors mode ownerTransition { previousOwner { displayLabel } newOwner { displayLabel } boundBy { displayLabel } } } createdAt } followUpGates { key status detail updatedAt } validationStages { key status detail attemptNumber updatedAt startedAt finishedAt } governanceActions { key reasonRequired reasonCodeRequired reasonCodes destructive } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
-pub const ACTIVE_BUILD_QUERY: &str =
-    "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
-pub const ACTIVE_RELEASE_QUERY: &str =
-    "query ActiveRelease { activeRelease { id buildId status environment manifestHash modules previousReleaseId deployedAt rolledBackAt createdAt updatedAt } }";
-pub const BUILD_HISTORY_QUERY: &str =
-    "query BuildHistory($limit: Int!, $offset: Int!) { buildHistory(limit: $limit, offset: $offset) { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
-pub const BUILD_PROGRESS_SUBSCRIPTION: &str =
-    "subscription BuildProgress { buildProgress { buildId status stage progress releaseId errorMessage } }";
-pub const TOGGLE_MODULE_MUTATION: &str =
-    "mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!) { toggleModule(moduleSlug: $moduleSlug, enabled: $enabled) { moduleSlug enabled settings } }";
-pub const UPDATE_MODULE_SETTINGS_MUTATION: &str =
-    "mutation UpdateModuleSettings($moduleSlug: String!, $settings: String!) { updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings) { moduleSlug enabled settings } }";
-pub const INSTALL_MODULE_MUTATION: &str =
-    "mutation InstallModule($slug: String!, $version: String!) { installModule(slug: $slug, version: $version) { id status stage progress modulesDelta requestedBy reason createdAt updatedAt finishedAt } }";
+pub const MARKETPLACE_QUERY: &str = "query Marketplace($search: String, $category: String, $tag: String, $source: String, $trustLevel: String, $onlyCompatible: Boolean, $installedOnly: Boolean) { marketplace(search: $search, category: $category, tag: $tag, source: $source, trustLevel: $trustLevel, onlyCompatible: $onlyCompatible, installedOnly: $installedOnly) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+pub const MARKETPLACE_MODULE_QUERY: &str = "query MarketplaceModule($slug: String!) { marketplaceModule(slug: $slug) { slug name latestVersion description source kind category tags iconUrl bannerUrl screenshots crateName dependencies ownership trustLevel rustokMinVersion rustokMaxVersion publisher checksumSha256 signaturePresent versions { version changelog yanked publishedAt checksumSha256 signaturePresent } registryLifecycle { ownerBinding { owner { displayLabel } boundBy { displayLabel } boundAt updatedAt } latestRequest { id status requestedBy { displayLabel } publisher { displayLabel } approvedBy { displayLabel } rejectedBy { displayLabel } rejectionReason changesRequestedBy { displayLabel } changesRequestedReason changesRequestedReasonCode changesRequestedAt heldBy { displayLabel } heldReason heldReasonCode heldAt heldFromStatus warnings errors createdAt updatedAt publishedAt } latestRelease { version status publisher { displayLabel } checksumSha256 publishedAt yankedReason yankedBy { displayLabel } yankedAt } recentEvents { id eventType actor { displayLabel } publisher { displayLabel } payload { reason reasonCode detail version stageKey attemptNumber warnings errors mode ownerTransition { previousOwner { displayLabel } newOwner { displayLabel } boundBy { displayLabel } } } createdAt } followUpGates { key status detail updatedAt } validationStages { key status detail attemptNumber updatedAt startedAt finishedAt } governanceActions { key reasonRequired reasonCodeRequired reasonCodes destructive } } compatible recommendedAdminSurfaces showcaseAdminSurfaces settingsSchema { key type required defaultValue description min max options objectKeys itemType shape } installed installedVersion updateAvailable } }";
+pub const ACTIVE_BUILD_QUERY: &str = "query ActiveBuild { activeBuild { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+pub const ACTIVE_RELEASE_QUERY: &str = "query ActiveRelease { activeRelease { id buildId status environment manifestHash manifestRevision modules previousReleaseId deployedAt rolledBackAt createdAt updatedAt } }";
+pub const BUILD_HISTORY_QUERY: &str = "query BuildHistory($limit: Int!, $offset: Int!) { buildHistory(limit: $limit, offset: $offset) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+pub const BUILD_PROGRESS_SUBSCRIPTION: &str = "subscription BuildProgress { buildProgress { buildId status stage progress releaseId errorMessage } }";
+pub const TOGGLE_MODULE_MUTATION: &str = "mutation ToggleModule($moduleSlug: String!, $enabled: Boolean!) { toggleModule(moduleSlug: $moduleSlug, enabled: $enabled) { moduleSlug enabled settings } }";
+pub const UPDATE_MODULE_SETTINGS_MUTATION: &str = "mutation UpdateModuleSettings($moduleSlug: String!, $settings: String!) { updateModuleSettings(moduleSlug: $moduleSlug, settings: $settings) { moduleSlug enabled settings } }";
+pub const INSTALL_MODULE_MUTATION: &str = "mutation InstallModule($slug: String!, $version: String!) { installModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 
 #[cfg(feature = "ssr")]
 const REGISTRY_OWNER_TRANSFER_REASON_CODES: &[&str] = &[
@@ -58,12 +47,9 @@ const REGISTRY_YANK_REASON_CODES: &[&str] = &[
     "rollback",
     "other",
 ];
-pub const UNINSTALL_MODULE_MUTATION: &str =
-    "mutation UninstallModule($slug: String!) { uninstallModule(slug: $slug) { id status stage progress modulesDelta requestedBy reason createdAt updatedAt finishedAt } }";
-pub const UPGRADE_MODULE_MUTATION: &str =
-    "mutation UpgradeModule($slug: String!, $version: String!) { upgradeModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
-pub const ROLLBACK_BUILD_MUTATION: &str =
-    "mutation RollbackBuild($buildId: String!) { rollbackBuild(buildId: $buildId) { id status stage progress profile manifestRef manifestHash modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+pub const UNINSTALL_MODULE_MUTATION: &str = "mutation UninstallModule($slug: String!) { uninstallModule(slug: $slug) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+pub const UPGRADE_MODULE_MUTATION: &str = "mutation UpgradeModule($slug: String!, $version: String!) { upgradeModule(slug: $slug, version: $version) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
+pub const ROLLBACK_BUILD_MUTATION: &str = "mutation RollbackBuild($buildId: String!) { rollbackBuild(buildId: $buildId) { id status stage progress profile manifestRef manifestHash manifestRevision modulesDelta requestedBy reason releaseId logsUrl errorMessage startedAt createdAt updatedAt finishedAt } }";
 #[cfg(feature = "ssr")]
 const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
 
@@ -701,52 +687,177 @@ fn build_modules_delta_summary(value: Option<&serde_json::Value>) -> String {
 }
 
 #[cfg(feature = "ssr")]
-fn runtime_modules_manifest_path() -> std::path::PathBuf {
-    if let Ok(path) = std::env::var("RUSTOK_MODULES_MANIFEST") {
-        return std::path::PathBuf::from(path);
+#[derive(Debug, Clone)]
+struct RuntimePlatformSnapshot {
+    revision: i64,
+    manifest: RuntimeModulesManifest,
+}
+
+#[cfg(feature = "ssr")]
+fn bootstrap_runtime_modules_manifest() -> Result<RuntimeModulesManifest, ServerFnError> {
+    let raw = include_str!("../../../../../modules.toml");
+    toml::from_str(raw)
+        .map_err(|err| server_error(format!("failed to parse embedded modules.toml: {err}")))
+}
+
+#[cfg(feature = "ssr")]
+fn platform_state_select_sql(backend: sea_orm::DbBackend) -> &'static str {
+    match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "SELECT revision, manifest_json, manifest_hash FROM platform_state WHERE id = ?1 LIMIT 1"
+        }
+        _ => {
+            "SELECT revision, manifest_json, manifest_hash FROM platform_state WHERE id = $1 LIMIT 1"
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn platform_state_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
+    match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "INSERT INTO platform_state (id, revision, manifest_json, manifest_hash, active_release_id, updated_by, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?7)"
+        }
+        _ => {
+            "INSERT INTO platform_state (id, revision, manifest_json, manifest_hash, active_release_id, updated_by, created_at, updated_at) VALUES ($1, $2, $3, $4, NULL, $5, $6, $7)"
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn platform_state_update_sql(backend: sea_orm::DbBackend) -> &'static str {
+    match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "UPDATE platform_state SET revision = ?1, manifest_json = ?2, manifest_hash = ?3, updated_by = ?4, updated_at = ?5 WHERE id = ?6 AND revision = ?7"
+        }
+        _ => {
+            "UPDATE platform_state SET revision = $1, manifest_json = $2, manifest_hash = $3, updated_by = $4, updated_at = $5 WHERE id = $6 AND revision = $7"
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn module_operation_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
+    match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, error_message, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9)"
+        }
+        _ => {
+            "INSERT INTO module_operations (id, tenant_id, module_slug, requested_enabled, previous_effective_enabled, status, requested_by, error_message, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $9)"
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn module_operation_update_sql(backend: sea_orm::DbBackend) -> &'static str {
+    match backend {
+        sea_orm::DbBackend::Sqlite => {
+            "UPDATE module_operations SET status = ?1, error_message = ?2, updated_at = ?3 WHERE id = ?4"
+        }
+        _ => {
+            "UPDATE module_operations SET status = $1, error_message = $2, updated_at = $3 WHERE id = $4"
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+async fn active_runtime_platform_snapshot(
+    db: &sea_orm::DatabaseConnection,
+) -> Result<RuntimePlatformSnapshot, ServerFnError> {
+    use sea_orm::{ConnectionTrait, Statement};
+
+    let backend = db.get_database_backend();
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            platform_state_select_sql(backend),
+            vec!["active".into()],
+        ))
+        .await
+        .map_err(|err| server_error(err.to_string()))?;
+
+    if let Some(row) = row {
+        let manifest_json = row
+            .try_get::<serde_json::Value>("", "manifest_json")
+            .map_err(|err| server_error(err.to_string()))?;
+        return Ok(RuntimePlatformSnapshot {
+            revision: row
+                .try_get("", "revision")
+                .map_err(|err| server_error(err.to_string()))?,
+            manifest: serde_json::from_value(manifest_json).map_err(|err| {
+                server_error(format!("failed to decode platform manifest: {err}"))
+            })?,
+        });
     }
 
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../modules.toml")
+    let manifest = bootstrap_runtime_modules_manifest()?;
+    let manifest_hash = runtime_manifest_hash(&manifest);
+    let now = chrono::Utc::now();
+    let manifest_json = serde_json::to_value(&manifest)
+        .map_err(|err| server_error(format!("failed to encode platform manifest: {err}")))?;
+    let insert = Statement::from_sql_and_values(
+        backend,
+        platform_state_insert_sql(backend),
+        vec![
+            "active".into(),
+            1.into(),
+            manifest_json.into(),
+            manifest_hash.clone().into(),
+            "bootstrap".into(),
+            now.into(),
+            now.into(),
+        ],
+    );
+    let _ = db.execute(insert).await;
+    Ok(RuntimePlatformSnapshot {
+        revision: 1,
+        manifest,
+    })
 }
 
 #[cfg(feature = "ssr")]
-fn load_runtime_modules_manifest() -> Result<RuntimeModulesManifest, ServerFnError> {
-    let path = runtime_modules_manifest_path();
-    let raw = std::fs::read_to_string(&path)
-        .map_err(|err| server_error(format!("failed to read {}: {err}", path.display())))?;
-    toml::from_str(&raw)
-        .map_err(|err| server_error(format!("failed to parse {}: {err}", path.display())))
-}
+async fn effective_enabled_modules_native(
+    db: &sea_orm::DatabaseConnection,
+    registry: &rustok_core::ModuleRegistry,
+    tenant_id: uuid::Uuid,
+) -> Result<std::collections::HashSet<String>, ServerFnError> {
+    use rustok_tenant::entities::tenant_module;
+    use rustok_tenant::entities::tenant_module::Entity as TenantModuleEntity;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
-#[cfg(feature = "ssr")]
-fn save_runtime_modules_manifest(manifest: &RuntimeModulesManifest) -> Result<(), ServerFnError> {
-    let path = runtime_modules_manifest_path();
-    let raw = toml::to_string_pretty(manifest)
-        .map_err(|err| server_error(format!("failed to serialize {}: {err}", path.display())))?;
-    std::fs::write(&path, raw)
-        .map_err(|err| server_error(format!("failed to write {}: {err}", path.display())))
+    let manifest = active_runtime_platform_snapshot(db).await?.manifest;
+    let mut enabled = registry
+        .list()
+        .into_iter()
+        .filter(|module| registry.is_core(module.slug()))
+        .map(|module| module.slug().to_string())
+        .collect::<std::collections::HashSet<_>>();
+
+    for slug in manifest.settings.default_enabled {
+        if registry.get(&slug).is_some() {
+            enabled.insert(slug);
+        }
+    }
+
+    let overrides = TenantModuleEntity::find()
+        .filter(tenant_module::Column::TenantId.eq(tenant_id))
+        .all(db)
+        .await
+        .map_err(|err| server_error(err.to_string()))?;
+    for module in overrides {
+        if module.enabled {
+            enabled.insert(module.module_slug);
+        } else {
+            enabled.remove(&module.module_slug);
+        }
+    }
+
+    Ok(enabled)
 }
 
 #[cfg(feature = "ssr")]
 fn runtime_workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../")
-}
-
-#[cfg(feature = "ssr")]
-fn runtime_builtin_default_enabled() -> std::collections::HashSet<&'static str> {
-    std::collections::HashSet::from([
-        "content",
-        "cart",
-        "customer",
-        "product",
-        "pricing",
-        "inventory",
-        "order",
-        "payment",
-        "fulfillment",
-        "commerce",
-        "pages",
-    ])
 }
 
 #[cfg(feature = "ssr")]
@@ -1055,19 +1166,21 @@ fn runtime_build_job_insert_sql(backend: sea_orm::DbBackend) -> &'static str {
         sea_orm::DbBackend::Sqlite => {
             r#"
             INSERT INTO builds (
-                id, status, stage, progress, profile, manifest_ref, manifest_hash, modules_delta,
+                id, status, stage, progress, profile, manifest_ref, manifest_hash,
+                manifest_revision, manifest_snapshot, modules_delta,
                 requested_by, reason, release_id, logs_url, error_message, started_at, finished_at,
                 created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL, NULL, NULL, NULL, NULL, ?11, ?12)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL, NULL, NULL, NULL, NULL, ?13, ?14)
             "#
         }
         _ => {
             r#"
             INSERT INTO builds (
-                id, status, stage, progress, profile, manifest_ref, manifest_hash, modules_delta,
+                id, status, stage, progress, profile, manifest_ref, manifest_hash,
+                manifest_revision, manifest_snapshot, modules_delta,
                 requested_by, reason, release_id, logs_url, error_message, started_at, finished_at,
                 created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL, NULL, NULL, NULL, NULL, $11, $12)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULL, NULL, NULL, NULL, NULL, $13, $14)
             "#
         }
     }
@@ -1079,7 +1192,8 @@ fn runtime_build_job_select_sql(backend: sea_orm::DbBackend) -> &'static str {
         sea_orm::DbBackend::Sqlite => {
             r#"
             SELECT
-                id, status, stage, progress, profile, manifest_ref, manifest_hash, modules_delta,
+                id, status, stage, progress, profile, manifest_ref, manifest_hash,
+                manifest_revision, modules_delta,
                 requested_by, reason, release_id, logs_url, error_message, started_at,
                 created_at, updated_at, finished_at
             FROM builds
@@ -1090,7 +1204,8 @@ fn runtime_build_job_select_sql(backend: sea_orm::DbBackend) -> &'static str {
         _ => {
             r#"
             SELECT
-                id, status, stage, progress, profile, manifest_ref, manifest_hash, modules_delta,
+                id, status, stage, progress, profile, manifest_ref, manifest_hash,
+                manifest_revision, modules_delta,
                 requested_by, reason, release_id, logs_url, error_message, started_at,
                 created_at, updated_at, finished_at
             FROM builds
@@ -1136,10 +1251,10 @@ fn runtime_module_roots(
 #[cfg(feature = "ssr")]
 fn load_runtime_marketplace_modules(
     registry: &rustok_core::ModuleRegistry,
+    manifest: &RuntimeModulesManifest,
 ) -> Result<Vec<MarketplaceModule>, ServerFnError> {
-    let manifest = load_runtime_modules_manifest()?;
     let module_roots = runtime_module_roots(&manifest)?;
-    let mut installed_by_slug = manifest.modules;
+    let mut installed_by_slug = manifest.modules.clone();
     let mut modules = Vec::new();
 
     for module_root in module_roots {
@@ -1334,8 +1449,8 @@ struct RuntimeModuleDescriptor {
 #[cfg(feature = "ssr")]
 fn load_runtime_module_package_manifest_by_slug(
     module_slug: &str,
+    manifest: &RuntimeModulesManifest,
 ) -> Result<Option<RuntimeModulePackageManifest>, ServerFnError> {
-    let manifest = load_runtime_modules_manifest()?;
     for module_root in runtime_module_roots(&manifest)? {
         let package_manifest: RuntimeModulePackageManifest =
             load_toml_file(&module_root.join("rustok-module.toml"))?;
@@ -1350,8 +1465,8 @@ fn load_runtime_module_package_manifest_by_slug(
 #[cfg(feature = "ssr")]
 fn load_runtime_module_descriptor_by_slug(
     module_slug: &str,
+    manifest: &RuntimeModulesManifest,
 ) -> Result<Option<RuntimeModuleDescriptor>, ServerFnError> {
-    let manifest = load_runtime_modules_manifest()?;
     for module_root in runtime_module_roots(&manifest)? {
         let package_manifest: RuntimeModulePackageManifest =
             load_toml_file(&module_root.join("rustok-module.toml"))?;
@@ -1372,7 +1487,7 @@ fn load_runtime_module_descriptor_by_slug(
 #[cfg(feature = "ssr")]
 async fn save_manifest_and_enqueue_build(
     app_ctx: &loco_rs::app::AppContext,
-    original_manifest: &RuntimeModulesManifest,
+    expected_revision: i64,
     manifest: &RuntimeModulesManifest,
     requested_by: &str,
     reason: String,
@@ -1380,11 +1495,37 @@ async fn save_manifest_and_enqueue_build(
 ) -> Result<BuildJob, ServerFnError> {
     use sea_orm::{ConnectionTrait, Statement};
 
-    save_runtime_modules_manifest(manifest)?;
-
     let backend = app_ctx.db.get_database_backend();
-    let build_id = rustok_core::generate_id();
+    let next_revision = expected_revision + 1;
+    let manifest_hash = runtime_manifest_hash(manifest);
+    let manifest_snapshot = serde_json::to_value(manifest)
+        .map_err(|err| server_error(format!("failed to encode platform manifest: {err}")))?;
     let now = chrono::Utc::now();
+    let update = Statement::from_sql_and_values(
+        backend,
+        platform_state_update_sql(backend),
+        vec![
+            next_revision.into(),
+            manifest_snapshot.clone().into(),
+            manifest_hash.clone().into(),
+            requested_by.to_string().into(),
+            now.into(),
+            "active".into(),
+            expected_revision.into(),
+        ],
+    );
+    let update_result = app_ctx
+        .db
+        .execute(update)
+        .await
+        .map_err(|err| server_error(format!("failed to update platform_state: {err}")))?;
+    if update_result.rows_affected() != 1 {
+        return Err(server_error(format!(
+            "Platform composition revision conflict: expected {expected_revision}"
+        )));
+    }
+
+    let build_id = rustok_core::generate_id();
     let insert = Statement::from_sql_and_values(
         backend,
         runtime_build_job_insert_sql(backend),
@@ -1394,8 +1535,10 @@ async fn save_manifest_and_enqueue_build(
             "pending".into(),
             0.into(),
             runtime_deployment_profile(manifest).into(),
-            runtime_modules_manifest_path().display().to_string().into(),
-            runtime_manifest_hash(manifest).into(),
+            format!("platform_state:{next_revision}").into(),
+            manifest_hash.into(),
+            next_revision.into(),
+            manifest_snapshot.into(),
             runtime_modules_delta_json(manifest, summary).into(),
             requested_by.to_string().into(),
             reason.into(),
@@ -1404,12 +1547,11 @@ async fn save_manifest_and_enqueue_build(
         ],
     );
 
-    if let Err(err) = app_ctx.db.execute(insert).await {
-        let _ = save_runtime_modules_manifest(original_manifest);
-        return Err(server_error(format!(
+    app_ctx.db.execute(insert).await.map_err(|err| {
+        server_error(format!(
             "failed to enqueue build after manifest update: {err}"
-        )));
-    }
+        ))
+    })?;
 
     let select = Statement::from_sql_and_values(
         backend,
@@ -1643,6 +1785,7 @@ fn map_build_job_row(row: sea_orm::QueryResult) -> Result<BuildJob, ServerFnErro
         manifest_hash: row
             .try_get("", "manifest_hash")
             .map_err(|err| server_error(err.to_string()))?,
+        manifest_revision: row.try_get("", "manifest_revision").unwrap_or_default(),
         modules_delta: build_modules_delta_summary(modules_delta.as_ref()),
         requested_by: row
             .try_get("", "requested_by")
@@ -1704,6 +1847,7 @@ fn map_release_info_row(row: sea_orm::QueryResult) -> Result<ReleaseInfo, Server
         manifest_hash: row
             .try_get("", "manifest_hash")
             .map_err(|err| server_error(err.to_string()))?,
+        manifest_revision: row.try_get("", "manifest_revision").unwrap_or_default(),
         modules,
         previous_release_id: row
             .try_get("", "previous_release_id")
@@ -2888,8 +3032,7 @@ async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError> {
         use leptos_axum::extract;
         use loco_rs::app::AppContext;
         use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
-        use rustok_core::Permission;
-        use rustok_tenant::TenantService;
+        use rustok_core::{ModuleRegistry, Permission};
 
         let app_ctx = expect_context::<AppContext>();
         let auth = extract::<AuthContext>().await.map_err(ServerFnError::new)?;
@@ -2910,13 +3053,10 @@ async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError> {
             ));
         }
 
-        let mut modules = TenantService::new(app_ctx.db.clone())
-            .list_tenant_modules(tenant.id)
-            .await
-            .map_err(ServerFnError::new)?
+        let registry = expect_context::<ModuleRegistry>();
+        let mut modules = effective_enabled_modules_native(&app_ctx.db, &registry, tenant.id)
+            .await?
             .into_iter()
-            .filter(|module| module.enabled)
-            .map(|module| module.module_slug)
             .collect::<Vec<_>>();
 
         modules.sort();
@@ -2960,18 +3100,11 @@ async fn list_module_registry_native() -> Result<Vec<ModuleInfo>, ServerFnError>
         use crate::app::modules::module_runtime_metadata;
         use leptos::prelude::expect_context;
         use rustok_core::ModuleRegistry;
-        use rustok_tenant::TenantService;
 
         let (app_ctx, _auth, tenant) = modules_server_context().await?;
         let registry = expect_context::<ModuleRegistry>();
-        let enabled_modules = TenantService::new(app_ctx.db.clone())
-            .list_tenant_modules(tenant.id)
-            .await
-            .map_err(|err| server_error(err.to_string()))?
-            .into_iter()
-            .filter(|module| module.enabled)
-            .map(|module| module.module_slug)
-            .collect::<std::collections::HashSet<_>>();
+        let enabled_modules =
+            effective_enabled_modules_native(&app_ctx.db, &registry, tenant.id).await?;
 
         Ok(registry
             .list()
@@ -3061,8 +3194,10 @@ pub async fn fetch_installed_modules(
 async fn list_installed_modules_native() -> Result<Vec<InstalledModule>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        let (_app_ctx, _auth, _tenant) = modules_server_context().await?;
-        let manifest = load_runtime_modules_manifest()?;
+        let (app_ctx, _auth, _tenant) = modules_server_context().await?;
+        let manifest = active_runtime_platform_snapshot(&app_ctx.db)
+            .await?
+            .manifest;
 
         let mut modules = manifest
             .modules
@@ -3306,7 +3441,7 @@ async fn list_marketplace_modules_native(
         use leptos::prelude::expect_context;
         use rustok_core::ModuleRegistry;
 
-        let (_app_ctx, _auth, _tenant) = modules_server_context().await?;
+        let (app_ctx, _auth, _tenant) = modules_server_context().await?;
         let registry = expect_context::<ModuleRegistry>();
         let search = search
             .as_deref()
@@ -3335,44 +3470,47 @@ async fn list_marketplace_modules_native(
             .map(str::to_lowercase);
         let only_compatible = only_compatible.unwrap_or(true);
         let installed_only = installed_only.unwrap_or(false);
+        let snapshot = active_runtime_platform_snapshot(&app_ctx.db).await?;
 
-        Ok(load_runtime_marketplace_modules(&registry)?
-            .into_iter()
-            .filter(|module| module.kind == "optional")
-            .filter(|module| !only_compatible || module.compatible || module.installed)
-            .filter(|module| !installed_only || module.installed)
-            .filter(|module| {
-                trust_level
-                    .as_ref()
-                    .is_none_or(|value| module.trust_level.eq_ignore_ascii_case(value))
-            })
-            .filter(|module| {
-                source
-                    .as_ref()
-                    .is_none_or(|value| module.source.eq_ignore_ascii_case(value))
-            })
-            .filter(|module| {
-                category
-                    .as_ref()
-                    .is_none_or(|value| module.category.eq_ignore_ascii_case(value))
-            })
-            .filter(|module| {
-                tag.as_ref().is_none_or(|value| {
-                    module
-                        .tags
-                        .iter()
-                        .any(|module_tag| module_tag.eq_ignore_ascii_case(value))
+        Ok(
+            load_runtime_marketplace_modules(&registry, &snapshot.manifest)?
+                .into_iter()
+                .filter(|module| module.kind == "optional")
+                .filter(|module| !only_compatible || module.compatible || module.installed)
+                .filter(|module| !installed_only || module.installed)
+                .filter(|module| {
+                    trust_level
+                        .as_ref()
+                        .is_none_or(|value| module.trust_level.eq_ignore_ascii_case(value))
                 })
-            })
-            .filter(|module| {
-                search.as_ref().is_none_or(|value| {
-                    module.slug.to_lowercase().contains(value)
-                        || module.name.to_lowercase().contains(value)
-                        || module.description.to_lowercase().contains(value)
-                        || module.crate_name.to_lowercase().contains(value)
+                .filter(|module| {
+                    source
+                        .as_ref()
+                        .is_none_or(|value| module.source.eq_ignore_ascii_case(value))
                 })
-            })
-            .collect())
+                .filter(|module| {
+                    category
+                        .as_ref()
+                        .is_none_or(|value| module.category.eq_ignore_ascii_case(value))
+                })
+                .filter(|module| {
+                    tag.as_ref().is_none_or(|value| {
+                        module
+                            .tags
+                            .iter()
+                            .any(|module_tag| module_tag.eq_ignore_ascii_case(value))
+                    })
+                })
+                .filter(|module| {
+                    search.as_ref().is_none_or(|value| {
+                        module.slug.to_lowercase().contains(value)
+                            || module.name.to_lowercase().contains(value)
+                            || module.description.to_lowercase().contains(value)
+                            || module.crate_name.to_lowercase().contains(value)
+                    })
+                })
+                .collect(),
+        )
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -3403,7 +3541,8 @@ async fn marketplace_module_native(
         let (app_ctx, _auth, _tenant) = modules_server_context().await?;
         let registry = expect_context::<ModuleRegistry>();
         let slug = slug.trim().to_lowercase();
-        let module = load_runtime_marketplace_modules(&registry)?
+        let snapshot = active_runtime_platform_snapshot(&app_ctx.db).await?;
+        let module = load_runtime_marketplace_modules(&registry, &snapshot.manifest)?
             .into_iter()
             .find(|module| module.slug.eq_ignore_ascii_case(&slug) && module.kind == "optional");
 
@@ -3733,9 +3872,7 @@ async fn toggle_module_native(
         use leptos::prelude::expect_context;
         use rustok_api::has_any_effective_permission;
         use rustok_core::{ModuleContext, ModuleRegistry, Permission};
-        use rustok_tenant::entities::tenant_module;
-        use rustok_tenant::entities::tenant_module::Entity as TenantModuleEntity;
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+        use sea_orm::{ConnectionTrait, Statement};
 
         let (app_ctx, auth, tenant) = modules_server_context().await?;
 
@@ -3754,24 +3891,9 @@ async fn toggle_module_native(
             )));
         }
 
-        let mut enabled_set = TenantModuleEntity::find()
-            .filter(tenant_module::Column::TenantId.eq(tenant.id))
-            .filter(tenant_module::Column::Enabled.eq(true))
-            .all(&app_ctx.db)
-            .await
-            .map_err(|err| server_error(err.to_string()))?
-            .into_iter()
-            .map(|module| module.module_slug)
-            .collect::<std::collections::HashSet<_>>();
-
-        for core_slug in registry
-            .list()
-            .into_iter()
-            .filter(|module| registry.is_core(module.slug()))
-            .map(|module| module.slug().to_string())
-        {
-            enabled_set.insert(core_slug);
-        }
+        let enabled_set =
+            effective_enabled_modules_native(&app_ctx.db, &registry, tenant.id).await?;
+        let previous_effective_enabled = enabled_set.contains(&module_slug);
 
         if enabled {
             let missing = module_impl
@@ -3804,11 +3926,45 @@ async fn toggle_module_native(
             }
         }
 
+        if previous_effective_enabled == enabled {
+            let (module, _, _) =
+                persist_tenant_module_state_native(&app_ctx.db, tenant.id, &module_slug, enabled)
+                    .await?;
+            return Ok(ToggleModuleResult {
+                module_slug: module.module_slug,
+                enabled: module.enabled,
+                settings: module.settings.to_string(),
+            });
+        }
+
         let (module, previous_enabled, changed) =
             persist_tenant_module_state_native(&app_ctx.db, tenant.id, &module_slug, enabled)
                 .await?;
 
         if changed {
+            let backend = app_ctx.db.get_database_backend();
+            let operation_id = rustok_core::generate_id();
+            let now = chrono::Utc::now();
+            app_ctx
+                .db
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    module_operation_insert_sql(backend),
+                    vec![
+                        operation_id.into(),
+                        tenant.id.into(),
+                        module_slug.clone().into(),
+                        enabled.into(),
+                        previous_effective_enabled.into(),
+                        "running".into(),
+                        auth.user_id.to_string().into(),
+                        now.into(),
+                        now.into(),
+                    ],
+                ))
+                .await
+                .map_err(|err| server_error(err.to_string()))?;
+
             let module_ctx = ModuleContext {
                 db: &app_ctx.db,
                 tenant_id: tenant.id,
@@ -3837,8 +3993,38 @@ async fn toggle_module_native(
                     previous_enabled,
                 )
                 .await?;
+                let now = chrono::Utc::now();
+                app_ctx
+                    .db
+                    .execute(Statement::from_sql_and_values(
+                        backend,
+                        module_operation_update_sql(backend),
+                        vec![
+                            "failed".into(),
+                            err.to_string().into(),
+                            now.into(),
+                            operation_id.into(),
+                        ],
+                    ))
+                    .await
+                    .map_err(|err| server_error(err.to_string()))?;
                 return Err(server_error(format!("Module hook failed: {err}")));
             }
+            let now = chrono::Utc::now();
+            app_ctx
+                .db
+                .execute(Statement::from_sql_and_values(
+                    backend,
+                    module_operation_update_sql(backend),
+                    vec![
+                        "done".into(),
+                        Option::<String>::None.into(),
+                        now.into(),
+                        operation_id.into(),
+                    ],
+                ))
+                .await
+                .map_err(|err| server_error(err.to_string()))?;
         }
 
         Ok(ToggleModuleResult {
@@ -3883,9 +4069,11 @@ async fn update_module_settings_native(
 
         let raw_settings: serde_json::Value = serde_json::from_str(&settings)
             .map_err(|err| server_error(format!("invalid module settings JSON: {err}")))?;
-        let schema = load_runtime_module_package_manifest_by_slug(&module_slug)?
-            .map(|manifest| manifest.settings)
-            .unwrap_or_default();
+        let snapshot = active_runtime_platform_snapshot(&app_ctx.db).await?;
+        let schema =
+            load_runtime_module_package_manifest_by_slug(&module_slug, &snapshot.manifest)?
+                .map(|manifest| manifest.settings)
+                .unwrap_or_default();
         let normalized_settings =
             normalize_runtime_module_settings(&module_slug, &schema, raw_settings)?;
 
@@ -4297,10 +4485,10 @@ async fn install_module_native(slug: String, version: String) -> Result<BuildJob
             return Err(server_error("Version must not be empty"));
         }
 
-        let descriptor = load_runtime_module_descriptor_by_slug(&slug)?
+        let snapshot = active_runtime_platform_snapshot(&app_ctx.db).await?;
+        let descriptor = load_runtime_module_descriptor_by_slug(&slug, &snapshot.manifest)?
             .ok_or_else(|| server_error(format!("Unknown module '{slug}'")))?;
-        let mut manifest = load_runtime_modules_manifest()?;
-        let original_manifest = manifest.clone();
+        let mut manifest = snapshot.manifest.clone();
 
         if manifest.modules.contains_key(&slug) {
             return Err(server_error(format!(
@@ -4353,20 +4541,9 @@ async fn install_module_native(slug: String, version: String) -> Result<BuildJob
             },
         );
 
-        if runtime_builtin_default_enabled().contains(slug.as_str())
-            && !manifest
-                .settings
-                .default_enabled
-                .iter()
-                .any(|item| item == &slug)
-        {
-            manifest.settings.default_enabled.push(slug.clone());
-            manifest.settings.default_enabled.sort();
-        }
-
         save_manifest_and_enqueue_build(
             &app_ctx,
-            &original_manifest,
+            snapshot.revision,
             &manifest,
             &auth.user_id.to_string(),
             format!("install module {slug}"),
@@ -4396,8 +4573,8 @@ async fn uninstall_module_native(slug: String) -> Result<BuildJob, ServerFnError
             return Err(ServerFnError::new("modules:manage required"));
         }
 
-        let mut manifest = load_runtime_modules_manifest()?;
-        let original_manifest = manifest.clone();
+        let snapshot = active_runtime_platform_snapshot(&app_ctx.db).await?;
+        let mut manifest = snapshot.manifest.clone();
         let spec = manifest.modules.get(&slug).cloned().ok_or_else(|| {
             server_error(format!("Module '{slug}' is not installed in modules.toml"))
         })?;
@@ -4431,7 +4608,7 @@ async fn uninstall_module_native(slug: String) -> Result<BuildJob, ServerFnError
 
         save_manifest_and_enqueue_build(
             &app_ctx,
-            &original_manifest,
+            snapshot.revision,
             &manifest,
             &auth.user_id.to_string(),
             format!("uninstall module {slug}"),
@@ -4466,8 +4643,8 @@ async fn upgrade_module_native(slug: String, version: String) -> Result<BuildJob
             return Err(server_error("Version must not be empty"));
         }
 
-        let mut manifest = load_runtime_modules_manifest()?;
-        let original_manifest = manifest.clone();
+        let snapshot = active_runtime_platform_snapshot(&app_ctx.db).await?;
+        let mut manifest = snapshot.manifest.clone();
         let spec = manifest.modules.get_mut(&slug).ok_or_else(|| {
             server_error(format!("Module '{slug}' is not installed in modules.toml"))
         })?;
@@ -4482,7 +4659,7 @@ async fn upgrade_module_native(slug: String, version: String) -> Result<BuildJob
 
         save_manifest_and_enqueue_build(
             &app_ctx,
-            &original_manifest,
+            snapshot.revision,
             &manifest,
             &auth.user_id.to_string(),
             format!("upgrade module {slug}"),

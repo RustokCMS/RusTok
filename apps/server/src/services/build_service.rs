@@ -6,8 +6,8 @@ use chrono::Utc;
 use rustok_core::EventBus;
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, Set, TransactionTrait,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
@@ -17,15 +17,18 @@ use crate::models::build::{
     ActiveModel as BuildActiveModel, BuildStage, BuildStatus, DeploymentProfile,
     Entity as BuildEntity, Model as Build,
 };
+use crate::models::platform_state::{Column as PlatformStateColumn, Entity as PlatformStateEntity};
 use crate::models::release::{
     ActiveModel as ReleaseActiveModel, Entity as ReleaseEntity, Model as Release, ReleaseStatus,
 };
-use crate::modules::{BuildExecutionPlan, ManifestManager};
+use crate::modules::BuildExecutionPlan;
 use crate::services::oauth_app::sync_manifest_managed_apps_for_all_tenants;
 
 #[derive(Debug, Clone)]
 pub struct BuildRequest {
     pub manifest_ref: String,
+    pub manifest_revision: i64,
+    pub manifest_snapshot: serde_json::Value,
     pub requested_by: String,
     pub reason: Option<String>,
     pub modules_delta: String,
@@ -183,6 +186,8 @@ impl BuildService {
         let build = Build::new(
             request.manifest_ref,
             manifest_hash,
+            request.manifest_revision,
+            request.manifest_snapshot.clone(),
             request.requested_by,
             request.profile,
         );
@@ -201,6 +206,8 @@ impl BuildService {
             profile: Set(build.profile.clone()),
             manifest_ref: Set(build.manifest_ref.clone()),
             manifest_hash: Set(build.manifest_hash.clone()),
+            manifest_revision: Set(build.manifest_revision),
+            manifest_snapshot: Set(build.manifest_snapshot.clone()),
             modules_delta: Set(Some(modules_delta)),
             requested_by: Set(build.requested_by.clone()),
             reason: Set(request.reason),
@@ -412,7 +419,14 @@ impl BuildService {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Build not found"))?;
 
-        let mut release = Release::new(build_id, environment, build.manifest_hash.clone(), modules);
+        let mut release = Release::new(
+            build_id,
+            environment,
+            build.manifest_hash.clone(),
+            build.manifest_revision,
+            build.manifest_snapshot.clone(),
+            modules,
+        );
 
         if let Some(prev) = self.get_active_release().await? {
             release.previous_release_id = Some(prev.id);
@@ -428,6 +442,8 @@ impl BuildService {
             admin_artifact_url: Set(None),
             storefront_artifact_url: Set(None),
             manifest_hash: Set(release.manifest_hash.clone()),
+            manifest_revision: Set(release.manifest_revision),
+            manifest_snapshot: Set(release.manifest_snapshot.clone()),
             modules: Set(release.modules.clone()),
             previous_release_id: Set(release.previous_release_id.clone()),
             deployed_at: Set(None),
@@ -495,12 +511,28 @@ impl BuildService {
             .await
             .map_err(|error| anyhow::anyhow!("Failed to activate release: {error}"))?;
 
-        let manifest = ManifestManager::load().map_err(|error| {
-            anyhow::anyhow!("Failed to load modules.toml after activation: {error}")
-        })?;
+        let manifest =
+            serde_json::from_value(updated.manifest_snapshot.clone()).map_err(|error| {
+                anyhow::anyhow!(
+                    "Failed to load release manifest snapshot after activation: {error}"
+                )
+            })?;
         sync_manifest_managed_apps_for_all_tenants(&self.db, &manifest)
             .await
             .map_err(|error| anyhow::anyhow!("Failed to sync OAuth app connections: {error}"))?;
+
+        let _ = PlatformStateEntity::update_many()
+            .filter(PlatformStateColumn::Id.eq("active"))
+            .col_expr(
+                PlatformStateColumn::ActiveReleaseId,
+                Expr::value(Some(updated.id.clone())),
+            )
+            .col_expr(
+                PlatformStateColumn::UpdatedAt,
+                Expr::value(chrono::Utc::now()),
+            )
+            .exec(&self.db)
+            .await;
 
         Ok(updated)
     }

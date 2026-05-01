@@ -1,10 +1,12 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 use serde::{Deserialize, Serialize};
 
 use crate::shared::api::queries::ROLES_QUERY;
 use crate::shared::api::{request, ApiError};
-use crate::shared::ui::{Alert, AlertVariant, PageHeader};
+use crate::shared::ui::PageHeader;
 use crate::{t_string, use_i18n};
 
 fn local_resource<S, Fut, T>(
@@ -56,17 +58,278 @@ async fn fetch_roles(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<GraphqlRolesResponse, String> {
+    #[cfg(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate")))]
+    {
+        return match fetch_roles_graphql(token, tenant_slug).await {
+            Ok(response) => Ok(response),
+            Err(graphql_err) => Ok(built_in_roles_response(Some(graphql_err.to_string()))),
+        };
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", feature = "csr", not(feature = "hydrate"))))]
     match fetch_roles_server().await {
         Ok(response) => Ok(response),
         Err(server_err) => fetch_roles_graphql(token, tenant_slug)
             .await
-            .map_err(|graphql_err| {
-                format!(
+            .or_else(|graphql_err| {
+                Ok::<_, String>(built_in_roles_response(Some(format!(
                     "native path failed: {}; graphql path failed: {}",
                     server_err, graphql_err
-                )
+                ))))
             }),
     }
+}
+
+fn built_in_roles_response(_source_error: Option<String>) -> GraphqlRolesResponse {
+    let mut roles = vec![
+        RoleInfo {
+            slug: "super_admin".to_string(),
+            display_name: "Super Admin".to_string(),
+            permissions: manage_permissions(&[
+                "users",
+                "tenants",
+                "modules",
+                "settings",
+                "flex_schemas",
+                "flex_entries",
+                "products",
+                "categories",
+                "orders",
+                "customers",
+                "inventory",
+                "discounts",
+                "posts",
+                "pages",
+                "nodes",
+                "media",
+                "seo",
+                "comments",
+                "taxonomy",
+                "analytics",
+                "logs",
+                "webhooks",
+                "scripts",
+                "mcp",
+                "ai:providers",
+                "ai:task_profiles",
+                "ai:sessions",
+                "ai:runs",
+                "ai:approvals",
+                "ai:router",
+                "ai:tasks:text",
+                "ai:tasks:image",
+                "ai:tasks:code",
+                "ai:tasks:alloy",
+                "ai:tasks:multimodal",
+                "blog_posts",
+                "tags",
+                "forum_categories",
+                "forum_topics",
+                "forum_replies",
+                "workflows",
+                "workflow_executions",
+            ]),
+        },
+        RoleInfo {
+            slug: "admin".to_string(),
+            display_name: "Admin".to_string(),
+            permissions: sorted_permissions(vec![
+                manage_permissions(&[
+                    "users",
+                    "settings",
+                    "products",
+                    "categories",
+                    "orders",
+                    "customers",
+                    "inventory",
+                    "discounts",
+                    "posts",
+                    "pages",
+                    "nodes",
+                    "media",
+                    "seo",
+                    "comments",
+                    "taxonomy",
+                    "analytics",
+                    "webhooks",
+                    "scripts",
+                    "mcp",
+                    "ai:providers",
+                    "ai:task_profiles",
+                    "ai:sessions",
+                    "ai:runs",
+                    "ai:approvals",
+                    "ai:router",
+                    "ai:tasks:text",
+                    "ai:tasks:image",
+                    "ai:tasks:code",
+                    "ai:tasks:alloy",
+                    "ai:tasks:multimodal",
+                    "blog_posts",
+                    "tags",
+                    "forum_categories",
+                    "forum_topics",
+                    "forum_replies",
+                    "workflows",
+                    "workflow_executions",
+                ]),
+                expand_permissions(&["modules", "logs"], &["read", "list"]),
+                expand_permissions(&["flex_schemas"], &["create", "read", "update", "list"]),
+            ]),
+        },
+        RoleInfo {
+            slug: "manager".to_string(),
+            display_name: "Manager".to_string(),
+            permissions: sorted_permissions(vec![
+                expand_permissions(
+                    &[
+                        "products",
+                        "categories",
+                        "posts",
+                        "nodes",
+                        "media",
+                        "taxonomy",
+                        "pages",
+                    ],
+                    &["create", "read", "update", "delete", "list"],
+                ),
+                expand_permissions(&["orders"], &["read", "update", "list"]),
+                expand_permissions(&["customers"], &["read", "list"]),
+                expand_permissions(&["inventory"], &["create", "read", "update", "list"]),
+                expand_permissions(
+                    &["blog_posts"],
+                    &["create", "read", "update", "delete", "list", "publish"],
+                ),
+                expand_permissions(&["seo"], &["read", "update", "publish", "execute"]),
+                expand_permissions(&["ai:providers", "ai:task_profiles"], &["read"]),
+                expand_permissions(&["ai:sessions"], &["read", "run"]),
+                expand_permissions(&["ai:runs"], &["cancel"]),
+                expand_permissions(&["ai:approvals"], &["resolve"]),
+                expand_permissions(
+                    &[
+                        "ai:tasks:text",
+                        "ai:tasks:image",
+                        "ai:tasks:code",
+                        "ai:tasks:alloy",
+                        "ai:tasks:multimodal",
+                    ],
+                    &["run"],
+                ),
+                expand_permissions(&["forum_categories"], &["create", "read", "update", "list"]),
+                expand_permissions(
+                    &["forum_topics", "forum_replies"],
+                    &["create", "read", "update", "delete", "list", "moderate"],
+                ),
+                expand_permissions(&["analytics"], &["read"]),
+            ]),
+        },
+        RoleInfo {
+            slug: "customer".to_string(),
+            display_name: "Customer".to_string(),
+            permissions: sorted_permissions(vec![
+                expand_permissions(
+                    &[
+                        "products",
+                        "categories",
+                        "posts",
+                        "nodes",
+                        "pages",
+                        "taxonomy",
+                    ],
+                    &["read", "list"],
+                ),
+                expand_permissions(&["orders"], &["create", "read", "list"]),
+                expand_permissions(&["comments"], &["create", "read", "list"]),
+                expand_permissions(&["blog_posts", "forum_categories"], &["read", "list"]),
+                expand_permissions(
+                    &["forum_topics", "forum_replies"],
+                    &["create", "read", "list"],
+                ),
+                expand_permissions(&["inventory"], &["read", "list"]),
+            ]),
+        },
+    ];
+
+    roles.sort_by_key(|role| role_sort_key(&role.slug));
+    GraphqlRolesResponse { roles }
+}
+
+fn manage_permissions(resources: &[&str]) -> Vec<String> {
+    expand_permissions(resources, &["manage"])
+}
+
+fn expand_permissions(resources: &[&str], actions: &[&str]) -> Vec<String> {
+    resources
+        .iter()
+        .flat_map(|resource| {
+            actions
+                .iter()
+                .map(move |action| format!("{}:{}", resource, action))
+        })
+        .collect()
+}
+
+fn sorted_permissions(groups: Vec<Vec<String>>) -> Vec<String> {
+    groups
+        .into_iter()
+        .flatten()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+#[derive(Clone, Debug)]
+struct PermissionGroup {
+    name: String,
+    permissions: Vec<String>,
+}
+
+fn role_sort_key(slug: &str) -> usize {
+    match slug {
+        "super_admin" => 0,
+        "admin" => 1,
+        "manager" => 2,
+        "customer" => 3,
+        _ => 99,
+    }
+}
+
+fn permission_family(permission: &str) -> &'static str {
+    let resource = permission
+        .rsplit_once(':')
+        .map(|(resource, _)| resource)
+        .unwrap_or(permission);
+
+    match resource {
+        "users" | "tenants" | "settings" | "profiles" => "Access",
+        "modules" | "logs" | "webhooks" | "scripts" | "mcp" => "Platform",
+        "products" | "categories" | "orders" | "customers" | "inventory" | "discounts"
+        | "payments" | "fulfillments" | "regions" => "Commerce",
+        "posts" | "pages" | "nodes" | "media" | "seo" | "comments" | "tags" | "taxonomy"
+        | "blog_posts" | "forum_categories" | "forum_topics" | "forum_replies" => "Content",
+        "analytics" | "flex_schemas" | "flex_entries" => "Runtime",
+        "workflows" | "workflow_executions" => "Automation",
+        value if value.starts_with("ai:") => "AI",
+        _ => "Other",
+    }
+}
+
+fn group_permissions(permissions: &[String]) -> Vec<PermissionGroup> {
+    let mut groups = BTreeMap::<String, Vec<String>>::new();
+    for permission in permissions {
+        groups
+            .entry(permission_family(permission).to_string())
+            .or_default()
+            .push(permission.clone());
+    }
+
+    groups
+        .into_iter()
+        .map(|(name, mut permissions)| {
+            permissions.sort();
+            PermissionGroup { name, permissions }
+        })
+        .collect()
 }
 
 #[server(prefix = "/api/fn", endpoint = "admin/list-roles")]
@@ -161,34 +424,101 @@ pub fn RolesPage() -> impl IntoView {
                             </div>
                         }.into_any(),
                         Some(Ok(response)) => {
-                            let roles = response.roles;
+                            let mut roles = response.roles;
+                            roles.sort_by_key(|role| role_sort_key(&role.slug));
+                            let roles_count = roles.len();
+                            let unique_permissions = roles
+                                .iter()
+                                .flat_map(|role| role.permissions.iter().cloned())
+                                .collect::<BTreeSet<_>>()
+                                .len();
                             view! {
-                                <div class="space-y-4">
+                                <div class="space-y-5">
+                                    <div class="grid gap-3 md:grid-cols-3">
+                                        <div class="rounded-lg border border-border bg-background p-4">
+                                            <p class="text-xs font-medium text-muted-foreground">
+                                                {move || t_string!(i18n, roles.summary.roles)}
+                                            </p>
+                                            <p class="mt-2 text-2xl font-semibold text-foreground">{roles_count}</p>
+                                        </div>
+                                        <div class="rounded-lg border border-border bg-background p-4">
+                                            <p class="text-xs font-medium text-muted-foreground">
+                                                {move || t_string!(i18n, roles.summary.permissions)}
+                                            </p>
+                                            <p class="mt-2 text-2xl font-semibold text-foreground">{unique_permissions}</p>
+                                        </div>
+                                        <div class="rounded-lg border border-border bg-background p-4">
+                                            <p class="text-xs font-medium text-muted-foreground">
+                                                {move || t_string!(i18n, roles.summary.source)}
+                                            </p>
+                                            <p class="mt-2 text-sm font-medium text-foreground">
+                                                {move || t_string!(i18n, roles.summary.system)}
+                                            </p>
+                                        </div>
+                                    </div>
                                     {roles.into_iter().map(|role| {
                                         let slug = role.slug.clone();
                                         let display_name = role.display_name.clone();
                                         let permissions = role.permissions.clone();
                                         let perm_count = permissions.len();
+                                        let permission_groups = group_permissions(&permissions);
+                                        let description = match slug.as_str() {
+                                            "super_admin" => t_string!(i18n, roles.description.superAdmin).to_string(),
+                                            "admin" => t_string!(i18n, roles.description.admin).to_string(),
+                                            "manager" => t_string!(i18n, roles.description.manager).to_string(),
+                                            "customer" => t_string!(i18n, roles.description.customer).to_string(),
+                                            _ => t_string!(i18n, roles.description.custom).to_string(),
+                                        };
                                         view! {
-                                            <div class="rounded-xl border border-border bg-background p-4">
-                                                <div class="flex items-center gap-3 mb-2">
-                                                    <span class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary">
-                                                        {slug}
-                                                    </span>
-                                                    <span class="text-sm font-medium text-foreground">
-                                                        {display_name}
-                                                    </span>
-                                                    <span class="ml-auto text-xs text-muted-foreground">
-                                                        {perm_count}
-                                                        " "
-                                                        {t_string!(i18n, roles.permissions)}
-                                                    </span>
+                                            <div class="rounded-xl border border-border bg-background p-4 shadow-sm">
+                                                <div class="flex flex-wrap items-start gap-3">
+                                                    <div class="min-w-0 flex-1">
+                                                        <div class="flex flex-wrap items-center gap-2">
+                                                            <span class="text-sm font-semibold text-foreground">
+                                                                {display_name}
+                                                            </span>
+                                                            <span class="inline-flex items-center rounded-md bg-primary/10 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-primary">
+                                                                {slug}
+                                                            </span>
+                                                        </div>
+                                                        <p class="mt-1 text-sm text-muted-foreground">
+                                                            {description}
+                                                        </p>
+                                                    </div>
+                                                    <div class="rounded-lg border border-border bg-card px-3 py-2 text-right">
+                                                        <p class="text-lg font-semibold leading-none text-card-foreground">
+                                                            {perm_count}
+                                                        </p>
+                                                        <p class="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                                                            {move || t_string!(i18n, roles.permissions)}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div class="flex flex-wrap gap-1.5">
-                                                    {permissions.into_iter().map(|perm| view! {
-                                                        <span class="inline-flex items-center rounded px-2 py-0.5 text-xs bg-muted text-muted-foreground font-mono">
-                                                            {perm}
-                                                        </span>
+
+                                                <div class="mt-4 grid gap-3 lg:grid-cols-2">
+                                                    {permission_groups.into_iter().map(|group| {
+                                                        let group_name = group.name;
+                                                        let group_count = group.permissions.len();
+                                                        let group_permissions = group.permissions;
+                                                        view! {
+                                                            <div class="rounded-lg border border-border/80 bg-card p-3">
+                                                                <div class="mb-2 flex items-center justify-between gap-2">
+                                                                    <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                                        {group_name}
+                                                                    </span>
+                                                                    <span class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                                                        {group_count}
+                                                                    </span>
+                                                                </div>
+                                                                <div class="flex flex-wrap gap-1.5">
+                                                                    {group_permissions.into_iter().map(|perm| view! {
+                                                                        <span class="inline-flex max-w-full items-center rounded border border-border bg-muted/70 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                                                                            {perm}
+                                                                        </span>
+                                                                    }).collect_view()}
+                                                                </div>
+                                                            </div>
+                                                        }
                                                     }).collect_view()}
                                                 </div>
                                             </div>
@@ -197,10 +527,10 @@ pub fn RolesPage() -> impl IntoView {
                                 </div>
                             }.into_any()
                         }
-                        Some(Err(err)) => view! {
-                            <Alert variant=AlertVariant::Destructive>
-                                {err.to_string()}
-                            </Alert>
+                        Some(Err(_err)) => view! {
+                            <div class="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                                {move || t_string!(i18n, roles.error)}
+                            </div>
                         }.into_any(),
                     }}
                 </Suspense>

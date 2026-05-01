@@ -30,8 +30,10 @@ use crate::models::release::{Column as ReleaseColumn, Entity as ReleaseEntity, R
 use crate::models::users;
 use crate::modules::ManifestManager;
 use crate::services::build_service::BuildService;
+use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::marketplace_catalog::marketplace_catalog_from_context;
 use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
+use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::rbac_service::RbacService;
 use crate::services::registry_governance::{
     RegistryGovernanceService, RegistryModuleLifecycleSnapshot,
@@ -796,20 +798,14 @@ impl RootQuery {
     async fn enabled_modules(&self, ctx: &Context<'_>, limit: Option<i32>) -> Result<Vec<String>> {
         let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let registry = ctx.data::<ModuleRegistry>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
-        let modules = TenantModulesEntity::find()
-            .filter(TenantModulesColumn::TenantId.eq(tenant.id))
-            .filter(TenantModulesColumn::Enabled.eq(true))
-            .order_by_asc(TenantModulesColumn::ModuleSlug)
-            .limit(limit as u64)
-            .all(&app_ctx.db)
+        let modules = EffectiveModulePolicyService::list_enabled(&app_ctx.db, registry, tenant.id)
             .await
-            .map_err(|err| err.to_string())?;
-
-        let modules = modules
+            .map_err(|err| err.to_string())?
             .into_iter()
-            .map(|module| module.module_slug)
+            .take(limit)
             .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
@@ -834,7 +830,8 @@ impl RootQuery {
         let request_context = ctx.data::<RequestContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
-        let manifest = ManifestManager::load()
+        let manifest = PlatformCompositionService::active_manifest(&app_ctx.db)
+            .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let query = MarketplaceCatalogQuery::default();
         let catalog_by_slug: HashMap<String, crate::modules::CatalogManifestModule> =
@@ -850,9 +847,10 @@ impl RootQuery {
             .into_iter()
             .map(|module| (module.slug.clone(), module))
             .collect();
-        let enabled_modules = TenantModulesEntity::find_enabled(&app_ctx.db, tenant.id)
-            .await
-            .map_err(|err| err.to_string())?;
+        let enabled_modules =
+            EffectiveModulePolicyService::list_enabled(&app_ctx.db, registry, tenant.id)
+                .await
+                .map_err(|err| err.to_string())?;
         let enabled_set: HashSet<String> = enabled_modules.into_iter().collect();
 
         let modules = registry
@@ -959,7 +957,9 @@ impl RootQuery {
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
 
-        let manifest = ManifestManager::load()
+        let app_ctx = ctx.data::<loco_rs::app::AppContext>()?;
+        let manifest = PlatformCompositionService::active_manifest(&app_ctx.db)
+            .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
         let modules = ManifestManager::installed_modules(&manifest)
@@ -999,7 +999,8 @@ impl RootQuery {
         let request_context = ctx.data::<RequestContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
-        let manifest = ManifestManager::load()
+        let manifest = PlatformCompositionService::active_manifest(&app_ctx.db)
+            .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let installed_modules = ManifestManager::installed_modules(&manifest);
         let search = search
@@ -1098,7 +1099,8 @@ impl RootQuery {
         let registry = ctx.data::<ModuleRegistry>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
-        let manifest = ManifestManager::load()
+        let manifest = PlatformCompositionService::active_manifest(&app_ctx.db)
+            .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
         let installed_modules = ManifestManager::installed_modules(&manifest);
         let slug = slug.trim().to_lowercase();

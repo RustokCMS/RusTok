@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, Set,
     TransactionTrait,
@@ -8,9 +6,11 @@ use thiserror::Error;
 
 use rustok_core::{ModuleContext, ModuleRegistry};
 
-use crate::models::_entities::tenant_modules;
+use crate::models::_entities::module_operations::Entity as ModuleOperationsEntity;
 use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
+use crate::models::_entities::{module_operations, tenant_modules};
 use crate::modules::{ManifestError, ManifestManager};
+use crate::services::effective_module_policy::EffectiveModulePolicyService;
 
 pub struct ModuleLifecycleService;
 
@@ -30,6 +30,8 @@ pub enum ToggleModuleError {
     Database(#[from] DbErr),
     #[error("Module hook failed: {0}")]
     HookFailed(String),
+    #[error("Platform module policy error: {0}")]
+    Policy(String),
 }
 
 #[derive(Debug, Error)]
@@ -44,6 +46,8 @@ pub enum UpdateModuleSettingsError {
     Validation(String),
     #[error("{0}")]
     Manifest(#[from] ManifestError),
+    #[error("Platform module policy error: {0}")]
+    Policy(String),
     #[error("Database error: {0}")]
     Database(#[from] DbErr),
 }
@@ -56,6 +60,17 @@ impl ModuleLifecycleService {
         module_slug: &str,
         enabled: bool,
     ) -> Result<tenant_modules::Model, ToggleModuleError> {
+        Self::toggle_module_with_actor(db, registry, tenant_id, module_slug, enabled, None).await
+    }
+
+    pub async fn toggle_module_with_actor(
+        db: &DatabaseConnection,
+        registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
+        module_slug: &str,
+        enabled: bool,
+        requested_by: Option<String>,
+    ) -> Result<tenant_modules::Model, ToggleModuleError> {
         let Some(module_impl) = registry.get(module_slug) else {
             return Err(ToggleModuleError::UnknownModule);
         };
@@ -66,8 +81,10 @@ impl ModuleLifecycleService {
             ));
         }
 
-        let enabled_modules = TenantModulesEntity::find_enabled(db, tenant_id).await?;
-        let enabled_set: HashSet<String> = enabled_modules.into_iter().collect();
+        let enabled_set = EffectiveModulePolicyService::resolve_enabled(db, registry, tenant_id)
+            .await
+            .map_err(|error| ToggleModuleError::Policy(error.to_string()))?;
+        let previous_effective_enabled = enabled_set.contains(module_slug);
 
         if enabled {
             let missing: Vec<String> = module_impl
@@ -94,12 +111,28 @@ impl ModuleLifecycleService {
             }
         }
 
+        if previous_effective_enabled == enabled {
+            let (module, _, _) =
+                Self::persist_module_state(db, tenant_id, module_slug, enabled).await?;
+            return Ok(module);
+        }
+
         let (module, previous_enabled, changed) =
             Self::persist_module_state(db, tenant_id, module_slug, enabled).await?;
 
         if !changed {
             return Ok(module);
         }
+
+        let operation = Self::record_operation(
+            db,
+            tenant_id,
+            module_slug,
+            enabled,
+            previous_effective_enabled,
+            requested_by,
+        )
+        .await?;
 
         let module_ctx = ModuleContext {
             db,
@@ -124,9 +157,11 @@ impl ModuleLifecycleService {
 
             let _ =
                 Self::persist_module_state(db, tenant_id, module_slug, previous_enabled).await?;
+            Self::mark_operation_failed(db, operation.id, &err.to_string()).await?;
             return Err(ToggleModuleError::HookFailed(err.to_string()));
         }
 
+        Self::mark_operation_done(db, operation.id).await?;
         Ok(module)
     }
 
@@ -162,10 +197,14 @@ impl ModuleLifecycleService {
             .await?;
 
         let is_core = registry.is_core(module_slug);
+        let is_effectively_enabled =
+            EffectiveModulePolicyService::is_enabled(db, registry, tenant_id, module_slug)
+                .await
+                .map_err(|error| UpdateModuleSettingsError::Policy(error.to_string()))?;
 
         match existing {
             Some(model) => {
-                if !is_core && !model.enabled {
+                if !is_effectively_enabled {
                     return Err(UpdateModuleSettingsError::ModuleNotEnabled(
                         module_slug.to_string(),
                     ));
@@ -177,12 +216,12 @@ impl ModuleLifecycleService {
                 active.settings = Set(settings);
                 Ok(active.update(db).await?)
             }
-            None if is_core => {
+            None if is_core || is_effectively_enabled => {
                 let module = tenant_modules::ActiveModel {
                     id: Set(rustok_core::generate_id()),
                     tenant_id: Set(tenant_id),
                     module_slug: Set(module_slug.to_string()),
-                    enabled: Set(true),
+                    enabled: Set(is_effectively_enabled),
                     settings: Set(settings),
                     created_at: sea_orm::ActiveValue::NotSet,
                     updated_at: sea_orm::ActiveValue::NotSet,
@@ -250,6 +289,65 @@ impl ModuleLifecycleService {
             sea_orm::TransactionError::Connection(db_err) => db_err,
             sea_orm::TransactionError::Transaction(db_err) => db_err,
         })
+    }
+
+    async fn record_operation(
+        db: &DatabaseConnection,
+        tenant_id: uuid::Uuid,
+        module_slug: &str,
+        requested_enabled: bool,
+        previous_effective_enabled: bool,
+        requested_by: Option<String>,
+    ) -> Result<module_operations::Model, DbErr> {
+        let now = chrono::Utc::now().into();
+        module_operations::ActiveModel {
+            id: sea_orm::ActiveValue::Set(rustok_core::generate_id()),
+            tenant_id: sea_orm::ActiveValue::Set(tenant_id),
+            module_slug: sea_orm::ActiveValue::Set(module_slug.to_string()),
+            requested_enabled: sea_orm::ActiveValue::Set(requested_enabled),
+            previous_effective_enabled: sea_orm::ActiveValue::Set(previous_effective_enabled),
+            status: sea_orm::ActiveValue::Set("running".to_string()),
+            requested_by: sea_orm::ActiveValue::Set(requested_by),
+            error_message: sea_orm::ActiveValue::Set(None),
+            created_at: sea_orm::ActiveValue::Set(now),
+            updated_at: sea_orm::ActiveValue::Set(now),
+        }
+        .insert(db)
+        .await
+    }
+
+    async fn mark_operation_done(
+        db: &DatabaseConnection,
+        operation_id: uuid::Uuid,
+    ) -> Result<(), DbErr> {
+        if let Some(model) = ModuleOperationsEntity::find_by_id(operation_id)
+            .one(db)
+            .await?
+        {
+            let mut active: module_operations::ActiveModel = model.into();
+            active.status = sea_orm::ActiveValue::Set("done".to_string());
+            active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+            active.update(db).await?;
+        }
+        Ok(())
+    }
+
+    async fn mark_operation_failed(
+        db: &DatabaseConnection,
+        operation_id: uuid::Uuid,
+        error_message: &str,
+    ) -> Result<(), DbErr> {
+        if let Some(model) = ModuleOperationsEntity::find_by_id(operation_id)
+            .one(db)
+            .await?
+        {
+            let mut active: module_operations::ActiveModel = model.into();
+            active.status = sea_orm::ActiveValue::Set("failed".to_string());
+            active.error_message = sea_orm::ActiveValue::Set(Some(error_message.to_string()));
+            active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
+            active.update(db).await?;
+        }
+        Ok(())
     }
 }
 

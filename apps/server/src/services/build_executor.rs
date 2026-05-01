@@ -11,7 +11,7 @@ use loco_rs::app::AppContext;
 
 use crate::models::build::{BuildStage, BuildStatus, Model as Build};
 use crate::models::release::Model as Release;
-use crate::modules::{BuildExecutionPlan, FrontendBuildPlan, FrontendBuildTool};
+use crate::modules::{BuildExecutionPlan, FrontendBuildPlan, FrontendBuildTool, ModulesManifest};
 use crate::services::build_event_hub::{build_event_hub_from_context, BuildEventHubPublisher};
 use crate::services::build_service::{BuildEventPublisher, BuildService};
 
@@ -99,16 +99,17 @@ impl BuildExecutionService {
         }
 
         let plan = build_execution_plan(&build)?;
-        let server_spec = BuildCommandSpec::from_server_plan(&plan);
+        let manifest_path = build_manifest_snapshot_path(build.id);
+        let server_spec = BuildCommandSpec::from_server_plan(&plan, manifest_path.clone());
         let admin_spec = plan
             .admin_build
             .as_ref()
-            .map(BuildCommandSpec::from_frontend_plan)
+            .map(|plan| BuildCommandSpec::from_frontend_plan(plan, manifest_path.clone()))
             .transpose()?;
         let storefront_spec = plan
             .storefront_build
             .as_ref()
-            .map(BuildCommandSpec::from_frontend_plan)
+            .map(|plan| BuildCommandSpec::from_frontend_plan(plan, manifest_path.clone()))
             .transpose()?;
 
         if dry_run {
@@ -131,6 +132,8 @@ impl BuildExecutionService {
                 Some(5),
             )
             .await?;
+
+        materialize_build_manifest_snapshot(&build, &manifest_path).await?;
 
         let mut specs = vec![("server", server_spec.clone())];
         if let Some(spec) = admin_spec.clone() {
@@ -244,11 +247,10 @@ struct BuildCommandSpec {
 }
 
 impl BuildCommandSpec {
-    fn from_server_plan(plan: &BuildExecutionPlan) -> Self {
+    fn from_server_plan(plan: &BuildExecutionPlan, manifest_path: PathBuf) -> Self {
         let program =
             std::env::var(BUILD_CARGO_BIN_ENV).unwrap_or_else(|_| DEFAULT_CARGO_BIN.to_string());
         let workdir = workspace_root();
-        let manifest_path = workdir.join("modules.toml");
 
         let mut args = vec![
             "build".to_string(),
@@ -278,9 +280,11 @@ impl BuildCommandSpec {
         }
     }
 
-    fn from_frontend_plan(plan: &FrontendBuildPlan) -> anyhow::Result<Self> {
+    fn from_frontend_plan(
+        plan: &FrontendBuildPlan,
+        manifest_path: PathBuf,
+    ) -> anyhow::Result<Self> {
         let workdir = workspace_root().join(&plan.workspace_path);
-        let manifest_path = workspace_root().join("modules.toml");
 
         match plan.tool {
             FrontendBuildTool::Cargo => {
@@ -357,6 +361,40 @@ fn build_execution_plan(build: &Build) -> anyhow::Result<BuildExecutionPlan> {
     })
 }
 
+fn build_manifest_snapshot_path(build_id: Uuid) -> PathBuf {
+    std::env::temp_dir()
+        .join("rustok-build-manifests")
+        .join(build_id.to_string())
+        .join("modules.toml")
+}
+
+async fn materialize_build_manifest_snapshot(
+    build: &Build,
+    manifest_path: &PathBuf,
+) -> anyhow::Result<()> {
+    let manifest: ModulesManifest = serde_json::from_value(build.manifest_snapshot.clone())
+        .with_context(|| format!("build {} has invalid manifest_snapshot", build.id))?;
+    let manifest_toml = toml::to_string_pretty(&manifest)
+        .with_context(|| format!("failed to encode manifest snapshot for build {}", build.id))?;
+    if let Some(parent) = manifest_path.parent() {
+        tokio::fs::create_dir_all(parent).await.with_context(|| {
+            format!(
+                "failed to create build manifest directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    tokio::fs::write(manifest_path, manifest_toml)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to write build manifest snapshot {}",
+                manifest_path.display()
+            )
+        })?;
+    Ok(())
+}
+
 fn build_module_slugs(build: &Build) -> anyhow::Result<Vec<String>> {
     let value = build
         .modules_delta
@@ -403,7 +441,9 @@ async fn run_build_command(spec: &BuildCommandSpec) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_execution_plan, workspace_root, BuildCommandSpec};
+    use super::{
+        build_execution_plan, build_manifest_snapshot_path, workspace_root, BuildCommandSpec,
+    };
     use crate::models::build::{DeploymentProfile, Model as Build};
     use crate::modules::{
         BuildExecutionPlan, FrontendArtifactKind, FrontendBuildPlan, FrontendBuildTool,
@@ -413,6 +453,8 @@ mod tests {
         let mut build = Build::new(
             "refs/heads/main".to_string(),
             "hash".to_string(),
+            1,
+            serde_json::json!({}),
             "tester".to_string(),
             DeploymentProfile::Monolith,
         );
@@ -461,7 +503,10 @@ mod tests {
             storefront_build: None,
         };
 
-        let spec = BuildCommandSpec::from_server_plan(&plan);
+        let spec = BuildCommandSpec::from_server_plan(
+            &plan,
+            build_manifest_snapshot_path(uuid::Uuid::nil()),
+        );
         assert_eq!(
             spec.args[0..4],
             ["build", "-p", "rustok-server", "--release"]
@@ -484,7 +529,11 @@ mod tests {
             command: "trunk build --release".to_string(),
         };
 
-        let spec = BuildCommandSpec::from_frontend_plan(&plan).unwrap();
+        let spec = BuildCommandSpec::from_frontend_plan(
+            &plan,
+            build_manifest_snapshot_path(uuid::Uuid::nil()),
+        )
+        .unwrap();
         assert_eq!(spec.program, "trunk");
         assert_eq!(
             spec.args,

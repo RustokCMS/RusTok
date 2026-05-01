@@ -14,8 +14,11 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::auth::hash_password;
-use crate::models::{tenant_modules, tenants, users};
+use crate::models::{tenants, users};
+use crate::modules::build_registry;
+use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::installer_persistence::InstallerPersistenceService;
+use crate::services::module_lifecycle::ModuleLifecycleService;
 use crate::services::rbac_service::RbacService;
 
 #[derive(Debug, Clone)]
@@ -609,15 +612,30 @@ async fn apply_seed_profile(db: &DatabaseConnection, plan: &InstallPlan) -> Resu
     disabled_modules.dedup();
     enabled_modules.retain(|module| !disabled_modules.contains(module));
 
+    let registry = build_registry();
     for module in &enabled_modules {
-        tenant_modules::toggle(db, tenant.id, module, true)
-            .await
-            .map_err(|error| eyre!("failed to enable module `{module}`: {error}"))?;
+        ModuleLifecycleService::toggle_module_with_actor(
+            db,
+            &registry,
+            tenant.id,
+            module,
+            true,
+            Some("installer".to_string()),
+        )
+        .await
+        .map_err(|error| eyre!("failed to enable module `{module}`: {error}"))?;
     }
     for module in &disabled_modules {
-        tenant_modules::toggle(db, tenant.id, module, false)
-            .await
-            .map_err(|error| eyre!("failed to disable module `{module}`: {error}"))?;
+        ModuleLifecycleService::toggle_module_with_actor(
+            db,
+            &registry,
+            tenant.id,
+            module,
+            false,
+            Some("installer".to_string()),
+        )
+        .await
+        .map_err(|error| eyre!("failed to disable module `{module}`: {error}"))?;
     }
 
     let demo_customer_created = if plan.seed_profile == SeedProfile::Dev {
@@ -750,7 +768,8 @@ async fn verify_installation(
         .await
         .map_err(|error| eyre!("failed to verify installer admin user: {error}"))?
         .ok_or_else(|| eyre!("installer admin `{}` was not created", plan.admin.email))?;
-    let enabled_modules = tenant_modules::find_enabled(db, tenant.id)
+    let registry = build_registry();
+    let enabled_modules = EffectiveModulePolicyService::list_enabled(db, &registry, tenant.id)
         .await
         .map_err(|error| eyre!("failed to verify installer module enablement: {error}"))?;
 
@@ -901,8 +920,8 @@ fn resolve_secret_ref(reference: &SecretRef, label: &str) -> Result<String> {
             .map_err(|_| eyre!("{label} env secret `{}` is not set", reference.key)),
         "file" | "mounted_file" | "mounted-file" => read_secret_file(&reference.key, label),
         "dotenv" | "dotenv_file" | "dotenv-file" => read_dotenv_secret(&reference.key, label),
-        "external_secret" | "external-secret" | "vault" | "kubernetes" | "k8s" | "aws"
-        | "gcp" | "azure" => bail!(
+        "external_secret" | "external-secret" | "vault" | "kubernetes" | "k8s" | "aws" | "gcp"
+        | "azure" => bail!(
             "{label} secret backend `{}` requires an external secret resolver, which is not implemented yet",
             reference.backend
         ),

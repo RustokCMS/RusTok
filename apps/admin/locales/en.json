@@ -286,6 +286,7 @@
       "empty": "User not found.",
       "id": "User ID",
       "loading": "Loading...",
+      "loadError": "Failed to load this user. Check API availability and access permissions.",
       "name": "Name",
       "pending": "Waiting for response...",
       "role": "Role",
@@ -322,6 +323,7 @@
     },
     "placeholderDash": "—",
     "refresh": "Refresh",
+    "loadError": "Failed to load users. Check API availability and access permissions.",
     "subtitle": "GraphQL API user management. View, create, and manage users.",
     "title": "Users",
     "create": {
@@ -413,6 +415,19 @@
     "title": "Roles & Permissions",
     "eyebrow": "Access Control",
     "subtitle": "Platform roles and their permission sets",
+    "description": {
+      "superAdmin": "Full platform owner with unrestricted administration rights.",
+      "admin": "Tenant administrator for access, content, commerce, runtime, and module operations.",
+      "manager": "Operational role for day-to-day content, catalog, order, and moderation work.",
+      "customer": "End-user role with read access and own-account transactional permissions.",
+      "custom": "Custom or external role resolved from the access backend."
+    },
+    "summary": {
+      "roles": "System roles",
+      "permissions": "Unique permissions",
+      "source": "Source",
+      "system": "Built-in RBAC matrix"
+    },
     "list": {
       "title": "Roles",
       "role": "Role",
@@ -420,7 +435,8 @@
       "permissionList": "Permission list",
       "showPermissions": "Show permissions"
     },
-    "permissions": "permissions"
+    "permissions": "permissions",
+    "error": "Failed to load roles."
   },
   "oauthApps": {
     "title": "OAuth App Connections",
