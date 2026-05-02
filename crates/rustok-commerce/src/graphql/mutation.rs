@@ -686,7 +686,7 @@ impl CommerceMutation {
             db,
             tenant_id,
             request_context,
-            &event_bus,
+            event_bus,
             &cart_service,
             updated,
         )
@@ -2203,6 +2203,7 @@ fn map_price_row_to_gql_price(price: crate::entities::price::Model) -> GqlPricin
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn load_pricing_price_row(
     service: &PricingService,
     variant_id: Uuid,
@@ -2352,6 +2353,7 @@ fn storefront_public_channel_slug_for_cart(
         .or_else(|| request_public_channel_slug(ctx))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn validate_selected_shipping_option(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
@@ -2485,6 +2487,7 @@ fn maybe_undefined_or_existing<T>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn resolve_storefront_line_item_input(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,

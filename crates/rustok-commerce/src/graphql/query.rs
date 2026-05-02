@@ -39,6 +39,7 @@ impl CommerceQuery {
     ///
     /// Use this root when the caller needs raw scoped price rows or effective
     /// prices for an explicit currency/region/price-list/channel/quantity context.
+    #[allow(clippy::too_many_arguments)]
     async fn admin_pricing_product(
         &self,
         ctx: &Context<'_>,
@@ -169,6 +170,7 @@ impl CommerceQuery {
     ///
     /// Use this root when the caller needs effective prices for an explicit
     /// currency/region/price-list/channel/quantity context.
+    #[allow(clippy::too_many_arguments)]
     async fn storefront_pricing_product(
         &self,
         ctx: &Context<'_>,
@@ -1024,7 +1026,7 @@ impl CommerceQuery {
             page: Some(1),
             per_page: Some(20),
         });
-        let requested_limit = filter.per_page.map(|value| value.max(0) as u64);
+        let requested_limit = filter.per_page;
         let page = filter.page.unwrap_or(1).max(1);
         let per_page = filter.per_page.unwrap_or(20).clamp(1, 100);
         let offset = (page.saturating_sub(1)) * per_page;
@@ -1191,7 +1193,7 @@ impl CommerceQuery {
             page: Some(1),
             per_page: Some(12),
         });
-        let requested_limit = filter.per_page.map(|value| value.max(0) as u64);
+        let requested_limit = filter.per_page;
         let page = filter.page.unwrap_or(1).max(1);
         let per_page = filter.per_page.unwrap_or(12).clamp(1, 48);
         let offset = (page.saturating_sub(1)) * per_page;
@@ -1556,7 +1558,7 @@ fn product_list_path(path: &'static str) -> &'static str {
 
 fn request_public_channel_slug(ctx: &Context<'_>) -> Option<String> {
     ctx.data_opt::<RequestContext>()
-        .and_then(|request_context| public_channel_slug_from_request(request_context))
+        .and_then(public_channel_slug_from_request)
 }
 
 fn storefront_public_channel_slug_for_cart(

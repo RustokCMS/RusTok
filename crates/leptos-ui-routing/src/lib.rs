@@ -38,9 +38,11 @@ impl RouteQueryPolicy {
     }
 }
 
+type RouteQueryApplyFn = dyn Fn(Vec<(String, Option<String>)>, bool) + Send + Sync;
+
 #[derive(Clone)]
 pub struct RouteQueryWriter {
-    apply: Arc<dyn Fn(Vec<(String, Option<String>)>, bool) + Send + Sync>,
+    apply: Arc<RouteQueryApplyFn>,
 }
 
 impl RouteQueryWriter {

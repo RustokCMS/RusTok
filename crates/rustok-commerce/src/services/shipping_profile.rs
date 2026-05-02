@@ -108,7 +108,7 @@ impl ShippingProfileService {
         let items = load_profiles_with_translations(
             &self.db,
             rows,
-            requested_locale.or_else(|| input.locale.as_deref()),
+            requested_locale.or(input.locale.as_deref()),
             tenant_default_locale,
         )
         .await?;
@@ -372,6 +372,7 @@ fn map_shipping_profile(
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn normalize_translation_inputs(
     translations: Vec<ShippingProfileTranslationInput>,
 ) -> CommerceResult<Vec<ShippingProfileTranslationInput>> {
@@ -458,12 +459,12 @@ fn resolve_translation<'a>(
 
     if let Some(locale) = requested_locale.and_then(normalize_locale_tag) {
         if let Some(found) = lookup.get(&locale) {
-            return (Some(*found), Some((*found).locale.clone()));
+            return (Some(*found), Some(found.locale.clone()));
         }
     }
     if let Some(locale) = tenant_default_locale.and_then(normalize_locale_tag) {
         if let Some(found) = lookup.get(&locale) {
-            return (Some(*found), Some((*found).locale.clone()));
+            return (Some(*found), Some(found.locale.clone()));
         }
     }
     translations
