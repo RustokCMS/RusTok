@@ -85,7 +85,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
-    "eslint": "10.2.1",
+    "eslint": "10.3.0",
     "eslint-config-next": "^16.2.4",
     "geist": "^1.7.0",
     "grapesjs": "^0.22.16",
@@ -106,7 +106,7 @@
     "react-day-picker": "^9.13.2",
     "react-dom": "^19.2.5",
     "react-dropzone": "^15.0.0",
-    "react-hook-form": "^7.74.0",
+    "react-hook-form": "^7.75.0",
     "react-resizable-panels": "^4.10.0",
     "react-responsive": "^10.0.0",
     "recharts": "^3.8.1",
@@ -119,7 +119,7 @@
     "typescript": "6.0.3",
     "uuid": "^14.0.0",
     "vaul": "^1.1.2",
-    "zod": "^4.4.1",
+    "zod": "^4.4.2",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
