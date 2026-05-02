@@ -66,6 +66,7 @@ fn configured_tenant_slug() -> Option<String> {
     })
 }
 
+#[allow(dead_code)]
 fn normalize_optional(value: Option<String>) -> Option<String> {
     value.and_then(|value| {
         let trimmed = value.trim();
@@ -77,6 +78,7 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
     })
 }
 
+#[allow(dead_code)]
 fn resolve_requested_locale(
     requested: Option<String>,
     request_context_locale: Option<&str>,

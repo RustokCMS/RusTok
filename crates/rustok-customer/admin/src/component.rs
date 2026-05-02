@@ -118,7 +118,7 @@ pub fn CustomerAdmin() -> impl IntoView {
             set_busy.set(false);
         });
     });
-    let initial_open_customer = open_customer.clone();
+    let initial_open_customer = open_customer;
     Effect::new(move |_| match selected_customer_query.get() {
         Some(customer_id) if !customer_id.trim().is_empty() => {
             initial_open_customer.run(customer_id);
@@ -396,6 +396,7 @@ pub fn CustomerAdmin() -> impl IntoView {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_customer_detail(
     detail: &CustomerDetail,
     set_editing_id: WriteSignal<Option<String>>,

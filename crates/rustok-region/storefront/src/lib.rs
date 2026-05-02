@@ -49,7 +49,7 @@ pub fn RegionView() -> impl IntoView {
             <div class="mt-8">
                 <Suspense fallback=|| view! { <div class="space-y-4"><div class="h-40 animate-pulse rounded-3xl bg-muted"></div><div class="grid gap-3 md:grid-cols-3"><div class="h-28 animate-pulse rounded-2xl bg-muted"></div><div class="h-28 animate-pulse rounded-2xl bg-muted"></div><div class="h-28 animate-pulse rounded-2xl bg-muted"></div></div></div> }>
                     {move || {
-                        let resource = resource.clone();
+                        let resource = resource;
                         let load_error = load_error.clone();
                         Suspend::new(async move {
                             match resource.await {

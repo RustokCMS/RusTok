@@ -258,6 +258,7 @@ fn parse_adjustment_scope(metadata: &str) -> Option<String> {
         })
 }
 
+#[allow(dead_code)]
 fn normalize_public_channel_slug(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
