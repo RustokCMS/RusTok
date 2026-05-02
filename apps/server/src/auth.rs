@@ -118,13 +118,15 @@ pub fn encode_oauth_access_token(
 ) -> Result<String> {
     rustok_auth::encode_oauth_access_token(
         config,
-        app_id,
-        tenant_id,
-        role,
-        client_id,
-        scopes,
-        grant_type,
-        expires_in_secs,
+        rustok_auth::OauthAccessTokenInput {
+            app_id,
+            tenant_id,
+            role,
+            client_id,
+            scopes,
+            grant_type,
+            expires_in_secs,
+        },
     )
     .map_err(auth_err)
 }
