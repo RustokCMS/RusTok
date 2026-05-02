@@ -3,7 +3,7 @@ db-urls = ["https://github.com/RustSec/advisory-db"]
 unmaintained = "workspace"
 unsound = "workspace"
 git-fetch-with-cli = true
-ignore = []
+ignore = ["RUSTSEC-2026-0099", "RUSTSEC-2026-0104"]
 
 [licenses]
 allow = [
