@@ -29,6 +29,13 @@ use crate::services::BlockService;
 const PAGE_KIND: &str = "page";
 const PLATFORM_FALLBACK_LOCALE: &str = "en";
 
+struct PageResponseParts {
+    channel_slugs: Vec<String>,
+    blocks: Vec<BlockResponse>,
+    locale: String,
+    fallback_locale: Option<String>,
+}
+
 pub struct PageService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -190,10 +197,12 @@ impl PageService {
             page,
             translations,
             bodies,
-            channel_slugs,
-            blocks,
-            &locale,
-            fallback_locale.as_deref(),
+            PageResponseParts {
+                channel_slugs,
+                blocks,
+                locale: locale.clone(),
+                fallback_locale,
+            },
         )
     }
 
@@ -240,10 +249,12 @@ impl PageService {
             page,
             translations,
             bodies,
-            channel_slugs,
-            blocks,
-            &requested_locale,
-            normalized_fallback_locale.as_deref(),
+            PageResponseParts {
+                channel_slugs,
+                blocks,
+                locale: requested_locale,
+                fallback_locale: normalized_fallback_locale,
+            },
         )
         .map(Some)
     }
@@ -401,7 +412,7 @@ impl PageService {
             .channel_slugs
             .as_ref()
             .map(|items| normalize_channel_slugs(items))
-            .unwrap_or_else(|| Vec::new());
+            .unwrap_or_default();
         let replace_channel_visibility = input.channel_slugs.is_some();
         let body = normalize_page_body_input(input.body)?;
         let locale = input
@@ -816,13 +827,18 @@ impl PageService {
         page: page::Model,
         translations: Vec<page_translation::Model>,
         bodies: Vec<page_body::Model>,
-        channel_slugs: Vec<String>,
-        blocks: Vec<BlockResponse>,
-        locale: &str,
-        fallback_locale: Option<&str>,
+        parts: PageResponseParts,
     ) -> PagesResult<PageResponse> {
-        let translation = resolve_translation_record(&translations, locale, fallback_locale);
-        let body = resolve_body_record(&bodies, locale, fallback_locale);
+        let translation = resolve_translation_record(
+            &translations,
+            parts.locale.as_str(),
+            parts.fallback_locale.as_deref(),
+        );
+        let body = resolve_body_record(
+            &bodies,
+            parts.locale.as_str(),
+            parts.fallback_locale.as_deref(),
+        );
         let response_body = body.body.map(page_body_response);
         let effective_locale = if response_body.is_some() {
             Some(body.effective_locale.clone())
@@ -834,7 +850,7 @@ impl PageService {
         Ok(PageResponse {
             id: page.id,
             status: storage_to_status(&page.status)?,
-            requested_locale: Some(locale.to_string()),
+            requested_locale: Some(parts.locale),
             effective_locale,
             available_locales: available_locales_from(&translations, |item| item.locale.as_str()),
             template: page.template,
@@ -844,8 +860,8 @@ impl PageService {
             translation: translation.translation.map(page_translation_response),
             translations: translations.iter().map(page_translation_response).collect(),
             body: response_body,
-            channel_slugs,
-            blocks,
+            channel_slugs: parts.channel_slugs,
+            blocks: parts.blocks,
             metadata: page.metadata,
         })
     }

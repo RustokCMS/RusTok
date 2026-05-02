@@ -1,5 +1,21 @@
 use std::collections::{HashMap, HashSet};
 
+struct TopicTranslationUpsertInput {
+    title: Option<String>,
+    body: Option<String>,
+    body_format: Option<String>,
+    content_json: Option<serde_json::Value>,
+}
+
+struct TopicResponseParts {
+    channel_slugs: Vec<String>,
+    tags: Vec<String>,
+    metadata: Value,
+    vote_summary: VoteSummary,
+    is_subscribed: bool,
+    solution_reply_id: Option<Uuid>,
+}
+
 use chrono::Utc;
 use flex::{
     delete_attached_localized_values, persist_localized_values, prepare_attached_values_create,
@@ -215,12 +231,14 @@ impl TopicService {
         Ok(to_topic_response(
             topic,
             translations,
-            channel_slugs,
-            tags,
-            metadata,
-            vote_summary,
-            is_subscribed,
-            solution_reply_id,
+            TopicResponseParts {
+                channel_slugs,
+                tags,
+                metadata,
+                vote_summary,
+                is_subscribed,
+                solution_reply_id,
+            },
             &locale,
             fallback_locale.as_deref(),
         ))
@@ -291,10 +309,12 @@ impl TopicService {
             &txn,
             topic_id,
             &locale,
-            input.title,
-            input.body,
-            input.body_format,
-            input.content_json,
+            TopicTranslationUpsertInput {
+                title: input.title,
+                body: input.body,
+                body_format: input.body_format,
+                content_json: input.content_json,
+            },
         )
         .await?;
 
@@ -839,11 +859,14 @@ impl TopicService {
         txn: &DatabaseTransaction,
         topic_id: Uuid,
         locale: &str,
-        title: Option<String>,
-        body: Option<String>,
-        body_format: Option<String>,
-        content_json: Option<serde_json::Value>,
+        input: TopicTranslationUpsertInput,
     ) -> ForumResult<()> {
+        let TopicTranslationUpsertInput {
+            title,
+            body,
+            body_format,
+            content_json,
+        } = input;
         let existing = forum_topic_translation::Entity::find()
             .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
             .filter(forum_topic_translation::Column::Locale.eq(locale))
@@ -1035,12 +1058,7 @@ impl TopicService {
 fn to_topic_response(
     topic: forum_topic::Model,
     translations: Vec<forum_topic_translation::Model>,
-    channel_slugs: Vec<String>,
-    tags: Vec<String>,
-    metadata: Value,
-    vote_summary: VoteSummary,
-    is_subscribed: bool,
-    solution_reply_id: Option<Uuid>,
+    parts: TopicResponseParts,
     locale: &str,
     fallback_locale: Option<&str>,
 ) -> TopicResponse {
@@ -1083,14 +1101,14 @@ fn to_topic_response(
         body,
         body_format,
         content_json,
-        metadata,
+        metadata: parts.metadata,
         status: topic.status,
-        tags,
-        channel_slugs,
-        vote_score: vote_summary.score,
-        current_user_vote: vote_summary.current_user_vote,
-        is_subscribed,
-        solution_reply_id,
+        tags: parts.tags,
+        channel_slugs: parts.channel_slugs,
+        vote_score: parts.vote_summary.score,
+        current_user_vote: parts.vote_summary.current_user_vote,
+        is_subscribed: parts.is_subscribed,
+        solution_reply_id: parts.solution_reply_id,
         is_pinned: topic.is_pinned,
         is_locked: topic.is_locked,
         reply_count: topic.reply_count,
