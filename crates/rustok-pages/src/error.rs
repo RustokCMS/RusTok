@@ -40,7 +40,7 @@ pub enum PagesError {
     Content(#[from] rustok_content::ContentError),
 
     #[error("Rich error: {0}")]
-    Rich(#[from] RichError),
+    Rich(#[from] Box<RichError>),
 }
 
 pub type PagesResult<T> = Result<T, PagesError>;
@@ -92,7 +92,7 @@ impl From<PagesError> for RichError {
             PagesError::Forbidden(msg) => RichError::new(ErrorKind::Forbidden, msg)
                 .with_user_message("You do not have permission to perform this action"),
             PagesError::Content(content_err) => content_err.into(),
-            PagesError::Rich(rich) => rich,
+            PagesError::Rich(rich) => *rich,
         }
     }
 }

@@ -142,7 +142,7 @@ impl PagesQuery {
             .await;
         }
 
-        let requested_limit = filter.per_page.map(|value| value.max(0) as u64);
+        let requested_limit = filter.per_page;
         let locale = resolve_graphql_locale(ctx, filter.locale.as_deref());
 
         let service = PageService::new(db.clone(), event_bus.clone());
@@ -174,7 +174,7 @@ impl PagesQuery {
             "graphql",
             "pages.pages",
             requested_limit,
-            filter.per_page.unwrap_or(20).min(100) as u64,
+            filter.per_page.unwrap_or(20).min(100),
             items.len(),
         );
 
