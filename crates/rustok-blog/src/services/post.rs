@@ -7,6 +7,15 @@ use std::collections::HashMap;
 use tracing::instrument;
 use uuid::Uuid;
 
+struct PostTranslationUpsertInput {
+    title: Option<String>,
+    excerpt: Option<String>,
+    seo_title: Option<String>,
+    seo_description: Option<String>,
+    prepared_body: Option<rustok_core::PreparedContent>,
+    now: chrono::DateTime<chrono::Utc>,
+}
+
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
     PLATFORM_FALLBACK_LOCALE,
@@ -274,12 +283,14 @@ impl PostService {
             &txn,
             post_id,
             &locale,
-            input.title,
-            input.excerpt,
-            input.seo_title,
-            input.seo_description,
-            prepared_body,
-            now,
+            PostTranslationUpsertInput {
+                title: input.title,
+                excerpt: input.excerpt,
+                seo_title: input.seo_title,
+                seo_description: input.seo_description,
+                prepared_body,
+                now,
+            },
         )
         .await?;
 
@@ -963,13 +974,16 @@ impl PostService {
         txn: &DatabaseTransaction,
         post_id: Uuid,
         locale: &str,
-        title: Option<String>,
-        excerpt: Option<String>,
-        seo_title: Option<String>,
-        seo_description: Option<String>,
-        prepared_body: Option<rustok_core::PreparedContent>,
-        now: chrono::DateTime<chrono::Utc>,
+        input: PostTranslationUpsertInput,
     ) -> BlogResult<()> {
+        let PostTranslationUpsertInput {
+            title,
+            excerpt,
+            seo_title,
+            seo_description,
+            prepared_body,
+            now,
+        } = input;
         let locale = normalize_locale(locale)?;
         let existing = blog_post_translation::Entity::find()
             .filter(blog_post_translation::Column::PostId.eq(post_id))
