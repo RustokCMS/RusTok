@@ -3,7 +3,9 @@ db-urls = ["https://github.com/RustSec/advisory-db"]
 unmaintained = "workspace"
 unsound = "workspace"
 git-fetch-with-cli = true
-ignore = []
+ignore = [
+    "RUSTSEC-2026-0099", # rustls-webpki wildcard name-constraint validation; no patched release in rustls 0.21 dependency chain yet
+]
 
 [licenses]
 allow = [
