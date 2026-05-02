@@ -5,6 +5,7 @@ unsound = "workspace"
 git-fetch-with-cli = true
 ignore = [
     "RUSTSEC-2026-0099", # rustls-webpki wildcard name-constraint validation; no patched release in rustls 0.21 dependency chain yet
+    "RUSTSEC-2026-0104", # rustls-webpki CRL parsing panic; no patched release in rustls 0.21 dependency chain yet
 ]
 
 [licenses]
