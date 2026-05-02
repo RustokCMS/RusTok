@@ -1,8 +1,11 @@
+#![allow(clippy::too_many_arguments)]
+
 use leptos::prelude::*;
 use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
+#[allow(unused_imports)]
 use crate::model::{
     ProductDetail, ProductEffectivePrice, ProductList, ProductListItem, ProductPricingContext,
     ProductPricingDetail, ProductPricingVariant, ProductScopedPrice, StorefrontProductsData,
@@ -174,6 +177,7 @@ fn sanitize_channel_slug(channel_slug: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+#[allow(dead_code)]
 fn normalize_optional(value: Option<String>) -> Option<String> {
     value.and_then(|value| {
         let trimmed = value.trim();
@@ -185,6 +189,7 @@ fn normalize_optional(value: Option<String>) -> Option<String> {
     })
 }
 
+#[allow(dead_code)]
 fn resolve_requested_locale(
     requested: Option<String>,
     request_context_locale: Option<&str>,
@@ -397,6 +402,7 @@ pub async fn fetch_storefront_products_graphql(
     })
 }
 
+#[allow(dead_code)]
 fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
     channel_slug
         .map(str::trim)
