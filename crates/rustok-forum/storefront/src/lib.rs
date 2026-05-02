@@ -72,7 +72,7 @@ pub fn ForumView() -> impl IntoView {
                     </div>
                 }>
                     {move || {
-                        let forum_resource = forum_resource.clone();
+                        let forum_resource = forum_resource;
                         let load_error_label = load_error_label.clone();
                         Suspend::new(async move {
                             match forum_resource.await {
@@ -392,7 +392,7 @@ fn ForumThreadPanel(
             </div>
 
             {if topic.tags.is_empty() {
-                view! { <></> }.into_any()
+                view! { <span class="hidden"></span> }.into_any()
             } else {
                 view! {
                     <div class="flex flex-wrap gap-2">

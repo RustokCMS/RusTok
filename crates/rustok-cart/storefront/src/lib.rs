@@ -110,10 +110,10 @@ pub fn CartView() -> impl IntoView {
                 }}
                 <Suspense fallback=|| view! { <div class="space-y-4"><div class="h-48 animate-pulse rounded-3xl bg-muted"></div><div class="grid gap-3 md:grid-cols-2"><div class="h-40 animate-pulse rounded-2xl bg-muted"></div><div class="h-40 animate-pulse rounded-2xl bg-muted"></div></div></div> }>
                     {move || {
-                        let resource = resource.clone();
+                        let resource = resource;
                         let load_error = load_error.clone();
-                        let on_decrement = on_decrement.clone();
-                        let on_remove = on_remove.clone();
+                        let on_decrement = on_decrement;
+                        let on_remove = on_remove;
                         Suspend::new(async move {
                             match resource.await {
                                 Ok(data) => view! {
@@ -387,8 +387,6 @@ fn LineItemsRail(
                             let decrement_quantity = quantity;
                             let remove_cart_id = cart_id.clone();
                             let remove_line_item_id = id;
-                            let on_decrement = on_decrement.clone();
-                            let on_remove = on_remove.clone();
                             let decrement_label_locale = locale.clone();
                             let remove_label_locale = locale.clone();
                             let decrement_busy_label = busy_label.clone();
