@@ -1340,6 +1340,7 @@ fn requested_cart_context(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn validate_selected_shipping_option(
     ctx: &AppContext,
     tenant_id: Uuid,
@@ -1443,6 +1444,7 @@ fn build_store_pricing_context(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn resolve_store_line_item_input(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,

@@ -146,9 +146,7 @@ impl StoreContextService {
             .await?;
 
         let row = row.ok_or(StoreContextError::TenantNotFound(tenant_id))?;
-        let default_locale = row
-            .try_get::<String>("", "default_locale")
-            .map_err(sea_orm::DbErr::from)?;
+        let default_locale = row.try_get::<String>("", "default_locale")?;
         normalize_locale(&default_locale)
     }
 
@@ -164,9 +162,7 @@ impl StoreContextService {
 
         let mut locales = Vec::new();
         for row in rows {
-            let locale = row
-                .try_get::<String>("", "locale")
-                .map_err(sea_orm::DbErr::from)?;
+            let locale = row.try_get::<String>("", "locale")?;
             let normalized = normalize_locale(&locale)?;
             if !locales.contains(&normalized) {
                 locales.push(normalized);
