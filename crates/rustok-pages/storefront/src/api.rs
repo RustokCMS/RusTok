@@ -3,6 +3,8 @@ use leptos_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlReques
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
+#[cfg(feature = "ssr")]
+use crate::model::{PageBlock, PageBody, PageListItem, PageTranslation};
 use crate::model::{PageDetail, PageList, StorefrontPagesData};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +37,10 @@ impl From<ServerFnError> for ApiError {
 }
 
 const STOREFRONT_PAGES_QUERY: &str = "query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) { selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) { effectiveLocale translation { locale title slug metaTitle metaDescription } body { locale content format } blocks { id blockType position } } pages(filter: $filter) { total items { id title slug status template } } }";
+#[cfg(feature = "ssr")]
+const MODULE_SLUG: &str = "pages";
+#[cfg(feature = "ssr")]
+const PLATFORM_FALLBACK_LOCALE: &str = "en";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontPagesResponse {
