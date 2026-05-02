@@ -59,6 +59,7 @@ struct StorefrontUiEntry {
     page_title: String,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy)]
 enum StorefrontSlot {
     HomeAfterHero,
