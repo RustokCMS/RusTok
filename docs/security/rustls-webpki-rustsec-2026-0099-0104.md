@@ -1,4 +1,4 @@
-# RUSTSEC-2026-0099 / RUSTSEC-2026-0104 remediation note
+# RUSTSEC-2026-0098 / RUSTSEC-2026-0099 / RUSTSEC-2026-0104 remediation note
 
 ## Summary
 
@@ -22,6 +22,7 @@ The second command fails with:
 
 `deny.toml` advisory ignores were added for:
 
+- `RUSTSEC-2026-0098`
 - `RUSTSEC-2026-0099`
 - `RUSTSEC-2026-0104`
 
@@ -36,4 +37,4 @@ cargo update -p aws-config -p aws-sdk-s3 -p aws-smithy-runtime -p aws-smithy-htt
 cargo tree -i rustls-webpki --workspace
 ```
 
-Then remove both ignore entries from `deny.toml` after `rustls-webpki 0.101.7` is no longer present in `Cargo.lock`.
+Then remove all three ignore entries from `deny.toml` after `rustls-webpki 0.101.7` is no longer present in `Cargo.lock`.
