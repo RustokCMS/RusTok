@@ -139,7 +139,7 @@ pub fn RegionAdmin() -> impl IntoView {
             set_busy.set(false);
         });
     });
-    let initial_open_region = open_region.clone();
+    let initial_open_region = open_region;
     Effect::new(move |_| match selected_region_query.get() {
         Some(region_id) if !region_id.trim().is_empty() => {
             initial_open_region.run(region_id);
@@ -428,6 +428,7 @@ pub fn RegionAdmin() -> impl IntoView {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_region_detail(
     detail: &RegionDetail,
     set_editing_id: WriteSignal<Option<String>>,
@@ -453,6 +454,7 @@ fn apply_region_detail(
     set_metadata.set(detail.region.metadata_pretty.clone());
 }
 
+#[allow(clippy::too_many_arguments)]
 fn clear_region_form(
     set_editing_id: WriteSignal<Option<String>>,
     set_selected: WriteSignal<Option<RegionDetail>>,
